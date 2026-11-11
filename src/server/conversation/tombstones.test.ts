@@ -19,7 +19,7 @@ let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 
-const definition = (name: string, openings: string[] = []) => ({ name, prompt: emptyPromptChannels(), openings });
+const definition = (name: string, openings: string[] = []) => ({ name, prompt: emptyPromptChannels(), sendAppearanceImages: true, openings });
 const setup = () => {
 	const library = createCharacterLibraryModule(database);
 	const source = library.execute({ type: "create", definition: definition("Source", ["Opening"]) });

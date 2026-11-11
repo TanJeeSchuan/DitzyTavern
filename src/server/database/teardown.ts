@@ -74,6 +74,7 @@ export function teardown(databasePath?: string) {
 				const snapshot = readCharacterSnapshot(db, candidate.id);
 				if (
 					snapshot !== undefined &&
+					snapshot.sendAppearanceImages === character.sendAppearanceImages &&
 					promptChannelOrder.every(
 						(channel) => snapshot.prompt[channel] === character.prompt[channel],
 					) &&

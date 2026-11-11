@@ -14,7 +14,7 @@ import { acceptConversationTailGeneration } from "../conversation";
 import { advanceRace } from "../../boxes/race/logic-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
 
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const initial = initialWorldClockSetup;
 
 let database: Database;
@@ -24,8 +24,8 @@ afterEach(() => database.close());
 const createClockChat = () => createConversationWithHistory(database, {
 	name: "Clock Chat",
 	participants: [
-		{ definition: { name: "Writer", prompt, openings: [] } },
-		{ definition: { name: "Maren", prompt, openings: [] } },
+		{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+		{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 	],
 	control: { human: 0, model: 1 },
 });

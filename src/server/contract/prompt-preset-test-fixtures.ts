@@ -29,6 +29,7 @@ export const key = new Uint8Array(32).fill(11);
 export const humanPrompt = {
 	systemInstruction: "Human system text never reaches the plan.",
 	identity: "I write as {{self}} opposite {{other}}.",
+	appearance: "",
 	scenario: "Human scenario never reaches the plan.",
 	exampleDialogue: "Human examples never reach the plan.",
 	postHistoryInstruction: "Human post-history never reaches the plan.",
@@ -37,6 +38,7 @@ export const humanPrompt = {
 export const modelPrompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "A quiet room.",
 	exampleDialogue: "Writer: Hello\nMaren: Hello back",
 	postHistoryInstruction: "Continue.",
@@ -70,6 +72,7 @@ export const createChat = (
 				definition: {
 					name: names.human ?? "Writer",
 					prompt: humanPrompt,
+					sendAppearanceImages: true,
 					openings: [],
 				},
 			},
@@ -77,6 +80,7 @@ export const createChat = (
 				definition: {
 					name: names.model ?? "Maren",
 					prompt: modelPrompt,
+					sendAppearanceImages: true,
 					openings: [],
 				},
 			},

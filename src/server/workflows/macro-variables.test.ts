@@ -33,10 +33,12 @@ describe("Conversation-persistent prompt macro variables", () => {
 						prompt: {
 							systemInstruction: "{{setvar::turn::{{incvar::turn}}}}",
 							identity: "turn={{getvar::turn}}",
+							appearance: "",
 							scenario: "",
 							exampleDialogue: "",
 							postHistoryInstruction: "",
 						},
+						sendAppearanceImages: true,
 						openings: [],
 					},
 				},
@@ -46,10 +48,12 @@ describe("Conversation-persistent prompt macro variables", () => {
 						prompt: {
 							systemInstruction: "{{setvar::turn::{{incvar::turn}}}}{{if::{{getvar::enabled}}}}yes{{else}}no{{/if}}",
 							identity: "turn={{getvar::turn}}",
+							appearance: "",
 							scenario: "",
 							exampleDialogue: "",
 							postHistoryInstruction: "",
 						},
+						sendAppearanceImages: true,
 						openings: [],
 					},
 				},
@@ -96,14 +100,16 @@ describe("Conversation-persistent prompt macro variables", () => {
 				{
 					definition: {
 						name: "Writer",
-						prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+						prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+						sendAppearanceImages: true,
 						openings: [],
 					},
 				},
 				{
 					definition: {
 						name: "Model",
-						prompt: { systemInstruction: "", identity: "greeted={{getvar::greeted}}", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+						prompt: { systemInstruction: "", identity: "greeted={{getvar::greeted}}", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+						sendAppearanceImages: true,
 						openings: ["{{setvar::greeted::yes}}Hello"],
 					},
 				},
@@ -129,14 +135,16 @@ describe("Conversation-persistent prompt macro variables", () => {
 				{
 					definition: {
 						name: "Writer",
-						prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+						prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+						sendAppearanceImages: true,
 						openings: [],
 					},
 				},
 				{
 					definition: {
 						name: "Model",
-						prompt: { systemInstruction: "{{setvar::recovered::yes}}", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+						prompt: { systemInstruction: "{{setvar::recovered::yes}}", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+						sendAppearanceImages: true,
 						openings: [],
 					},
 				},

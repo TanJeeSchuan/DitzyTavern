@@ -113,8 +113,8 @@ test.describe("a sandboxed Box's images", () => {
 			const { revision } = await (await request.get(`/api/conversations/${activeChatId}`)).json();
 			return (await (await request.post(`/api/conversations/${activeChatId}/commands`, { data: { expectedRevision: revision, action } })).json()).conversation;
 		};
-		const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-		const added = await command({ type: "add-participant", definition: { name: "Lantern Keeper", prompt, openings: [], portrait: { hash, focalX: 0.5, focalY: 0.5 } } });
+		const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+		const added = await command({ type: "add-participant", definition: { name: "Lantern Keeper", prompt, sendAppearanceImages: true, openings: [], portrait: { hash, focalX: 0.5, focalY: 0.5 } } });
 		const keeper = added.cast.find(({ name }: { name: string }) => name === "Lantern Keeper");
 
 		await page.getByRole("button", { name: "Escape Probe", exact: true }).click();

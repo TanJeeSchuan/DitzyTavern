@@ -15,6 +15,7 @@ import { openObservedDatabase, applyCommand } from "../test-fixtures/conversatio
 const prompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -34,8 +35,8 @@ describe("Chat rename and deletion", () => {
 		createConversationWithHistory(module, {
 			name,
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: ["The lamp turns."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["The lamp turns."] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -73,7 +74,7 @@ describe("Chat rename and deletion", () => {
 		const withThird = applyCommand(module, {
 			conversationId: doomed.id,
 			expectedRevision: composed.revision,
-			action: { type: "add-participant", definition: { name: "Juno", prompt, openings: [] } },
+			action: { type: "add-participant", definition: { name: "Juno", prompt, sendAppearanceImages: true, openings: [] } },
 		});
 		const reseated = applyCommand(module, {
 			conversationId: doomed.id,

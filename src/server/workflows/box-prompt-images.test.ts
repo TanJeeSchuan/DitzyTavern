@@ -39,11 +39,11 @@ const fixture = async (literal = false, instructions: (hash: string) => string =
 	};`);
 	await loadBoxes([builtInBoxes, folder]);
 	cleanup.push(async () => { await loadBoxes([builtInBoxes]); rmSync(folder, { recursive: true, force: true }); });
-	const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 	const chat = createConversationWithHistory(database, {
 		name: "Images", participants: [
-			{ definition: { name: "Writer", prompt, openings: [] } },
-			{ definition: { name: "Maren", prompt, openings: [], portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } } },
+			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [], portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } } },
 		], control: { human: 0, model: 1 },
 		messages: [0, 1].map((authorParticipantIndex) => ({
 			timestamp: "2026-11-10T00:00:00Z", authorParticipantIndex,

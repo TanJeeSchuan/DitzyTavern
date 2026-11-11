@@ -394,8 +394,8 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Imported preset chat",
 			participants: [
-				{ definition: { name: "Writer", prompt: { systemInstruction: "Human", identity: "Human", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
-				{ definition: { name: "Maren", prompt: { systemInstruction: "Model", identity: "Model", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, openings: [] } },
+				{ definition: { name: "Writer", prompt: { systemInstruction: "Human", identity: "Human", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt: { systemInstruction: "Model", identity: "Model", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});

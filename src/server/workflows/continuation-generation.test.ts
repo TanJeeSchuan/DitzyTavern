@@ -20,10 +20,12 @@ const definition = (name: string): ParticipantDefinition => ({
 	prompt: {
 		systemInstruction: "Write well.",
 		identity: "I am {{self}}.",
+		appearance: "",
 		scenario: "A quiet room.",
 		exampleDialogue: "",
 		postHistoryInstruction: "",
 	},
+	sendAppearanceImages: true,
 	openings: [],
 });
 

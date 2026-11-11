@@ -44,10 +44,12 @@ describe("Database seed and teardown", () => {
 					prompt: {
 						systemInstruction: "Custom system instruction",
 						identity: "A unique wanderer.",
+						appearance: "",
 						scenario: "Traveling through uncharted lands.",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 					openings: ["Hello, traveler."],
 				},
 			});

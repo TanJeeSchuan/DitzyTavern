@@ -14,6 +14,7 @@ import { generationSubscriptionEvents } from "./generation-sse";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "The room is quiet.",
 	exampleDialogue: "",
 	postHistoryInstruction: "Continue.",
@@ -67,8 +68,8 @@ describe("Resumable generation transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Resumable Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -167,8 +168,8 @@ describe("Resumable generation transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Responsive Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -257,8 +258,8 @@ describe("Resumable generation transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Stop Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -326,8 +327,8 @@ describe("Resumable generation transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Disconnect Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -399,8 +400,8 @@ describe("Resumable generation transport", () => {
 		const conversation = createConversationWithHistory(conversationModule, {
 			name: "Restart Recovery Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});

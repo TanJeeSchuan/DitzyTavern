@@ -8,6 +8,7 @@ import { createConversationRoutes } from "./conversation";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "The room is quiet.",
 	exampleDialogue: "",
 	postHistoryInstruction: "Continue.",
@@ -71,8 +72,8 @@ describe("Send generation transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Partial Send contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -126,8 +127,8 @@ describe("Send generation transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Zero-output retry contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -190,8 +191,8 @@ describe("Send generation transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Safe provider failure contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -242,8 +243,8 @@ describe("Send generation transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Safe finish contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -283,8 +284,8 @@ describe("Send generation transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Length-limited Send contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});

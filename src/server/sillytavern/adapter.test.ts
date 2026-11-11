@@ -42,10 +42,12 @@ const importedSeed = (name: string) => ({
 		prompt: {
 			systemInstruction: "",
 			identity: "",
+			appearance: "",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings: [],
 	},
 });

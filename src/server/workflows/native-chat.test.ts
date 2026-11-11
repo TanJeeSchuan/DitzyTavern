@@ -22,6 +22,7 @@ import { createNativeConversation } from ".";
 const prompt = () => ({
 	systemInstruction: "Keep the scene grounded.",
 	identity: "Lighthouse archivist on the northern coast.",
+	appearance: "",
 	scenario: "A storm season begins.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?",
 	postHistoryInstruction: "",
@@ -30,6 +31,7 @@ const prompt = () => ({
 const sourceDefinition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",
 	prompt: prompt(),
+	sendAppearanceImages: true,
 	openings: ["The lamp turns above you.", "Rain writes on every window."],
 	...overrides,
 });
@@ -61,7 +63,7 @@ describe("Native New Chat workflow", () => {
 	});
 	const adHoc = (name: string, openings: string[] = []) => ({
 		type: "adhoc" as const,
-		definition: { name, prompt: prompt(), openings },
+		definition: { name, prompt: prompt(), sendAppearanceImages: true, openings },
 	});
 
 	test("creates a playable Conversation from two ad-hoc Participants atomically", () => {
@@ -119,6 +121,7 @@ describe("Native New Chat workflow", () => {
 					...prompt(),
 					identity: "Night radio operator on the headland.",
 				},
+				sendAppearanceImages: true,
 				openings: ["Static clears, then a voice."],
 			}),
 		});

@@ -35,7 +35,7 @@ export type CreationOutcome = Awaited<ReturnType<typeof createNativeConversation
 
 export const emptySeatDraft = (): Extract<SeatDraft, { type: "adhoc" }> => ({
 	type: "adhoc",
-	definition: { name: "", prompt: emptyPromptChannels(), openings: [] },
+	definition: { name: "", prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] },
 });
 
 export async function createNativeConversation(input: {

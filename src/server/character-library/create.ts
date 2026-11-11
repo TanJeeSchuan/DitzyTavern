@@ -41,6 +41,7 @@ export function createCharacter(
 			.values({
 				character_id: inserted.id,
 				...toPromptChannelRow(definition.prompt),
+				send_appearance_images: definition.sendAppearanceImages,
 				...portraitRow(db, definition.portrait),
 			})
 			.run();

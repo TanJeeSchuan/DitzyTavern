@@ -9,6 +9,7 @@ const key = new Uint8Array(32).fill(31);
 const prompt = {
 	systemInstruction: "Continue carefully.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "A quiet room.",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -51,8 +52,8 @@ describe("Continuation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Continuation Contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 			messages: [{

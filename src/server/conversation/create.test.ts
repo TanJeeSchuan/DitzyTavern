@@ -22,6 +22,7 @@ import type { ConversationCreationInput, ParticipantDefinition } from ".";
 const prompt = (overrides: Partial<ParticipantDefinition["prompt"]> = {}) => ({
 	systemInstruction: "Keep the scene grounded.",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -35,6 +36,7 @@ const adHoc = (
 ): ParticipantDefinition => ({
 	name,
 	prompt: prompt(promptOverrides),
+	sendAppearanceImages: true,
 	openings,
 });
 
@@ -204,6 +206,7 @@ describe("Conversation creation", () => {
 			definition: {
 				name: "Maren Voss",
 				prompt: prompt({ identity: "Lighthouse archivist." }),
+				sendAppearanceImages: true,
 				openings: ["The lamp turns above you."],
 			},
 		});
@@ -216,6 +219,7 @@ describe("Conversation creation", () => {
 						definition: {
 							name: source.name,
 							prompt: source.prompt,
+							sendAppearanceImages: true,
 							openings: source.openings,
 						},
 						sourceCharacterId: source.id,
@@ -237,12 +241,14 @@ describe("Conversation creation", () => {
 			definition: {
 				name: "Twin Source",
 				prompt: prompt(),
+				sendAppearanceImages: true,
 				openings: ["Only the model seat greets."],
 			},
 		});
 		const forkDefinition = () => ({
 			name: source.name,
 			prompt: source.prompt,
+			sendAppearanceImages: true,
 			openings: source.openings,
 		});
 

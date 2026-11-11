@@ -13,12 +13,13 @@ import type { BoxDataExpectation, BoxDataWrite } from "../../shared/contract/box
 const prompt = () => ({
 	systemInstruction: "",
 	identity: "Lighthouse archivist on the northern coast.",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
 });
 
-const definition = (name: string) => ({ name, prompt: prompt(), openings: [] });
+const definition = (name: string) => ({ name, prompt: prompt(), sendAppearanceImages: true, openings: [] });
 const stats = (speed: number) => JSON.stringify({ style: "Pace Chaser", speed, stamina: 600, power: 600, guts: 600, wit: 600 });
 type Commit = { box: "race" | "author-note" | "phone"; setup?: typeof initialRaceSetup; writes?: BoxDataWrite[]; expected?: BoxDataExpectation[] };
 

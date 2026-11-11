@@ -18,7 +18,7 @@ import { writeVersionedBox } from "../test-fixtures/versioned-box";
 import { builtInBoxes, loadBoxes, loadBoxVersion } from "./registry";
 import { pinBoxVersion } from "./version-pin";
 
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const masterKey = new Uint8Array(32).fill(3);
 
 interface StubQuestion { readonly criteria?: Readonly<Record<string, string>> }
@@ -73,8 +73,8 @@ const createChat = () => {
 	const chat = createConversationWithHistory(database, {
 		name: "Clock Chat",
 		participants: [
-			{ definition: { name: "Writer", prompt, openings: [] } },
-			{ definition: { name: "Maren", prompt, openings: [] } },
+			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 		],
 		control: { human: 0, model: 1 },
 	});

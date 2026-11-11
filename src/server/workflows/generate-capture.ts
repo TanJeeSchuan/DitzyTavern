@@ -161,13 +161,8 @@ const compilePlanFrom = (
 
 const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
 	name: participant.name,
-	prompt: {
-		systemInstruction: participant.prompt.systemInstruction,
-		identity: participant.prompt.identity,
-		scenario: participant.prompt.scenario,
-		exampleDialogue: participant.prompt.exampleDialogue,
-		postHistoryInstruction: participant.prompt.postHistoryInstruction,
-	},
+	prompt: participant.prompt,
+	sendAppearanceImages: participant.sendAppearanceImages,
 });
 
 interface AttemptConfiguration {

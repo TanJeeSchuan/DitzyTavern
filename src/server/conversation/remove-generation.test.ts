@@ -40,8 +40,8 @@ describe("canonical Conversation Generation removal", () => {
 		const created = createConversationWithHistory(module, {
 			name: "Removal Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: ["Original answer."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original answer."] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -332,6 +332,7 @@ test("removing a Continuation Generation removes only its provisional Message", 
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "The room is quiet.",
 	exampleDialogue: "",
 	postHistoryInstruction: "Continue.",

@@ -83,10 +83,12 @@ describe("Chat import client boundary", () => {
 				prompt: {
 					systemInstruction: "",
 					identity: "",
+					appearance: "",
 					scenario: "",
 					exampleDialogue: "",
 					postHistoryInstruction: "",
 				},
+				sendAppearanceImages: true,
 				openings: [],
 			},
 		});

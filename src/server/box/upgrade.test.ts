@@ -15,7 +15,7 @@ import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createCharacterLibraryModule } from "../character-library";
 
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const integer = { type: "integer" };
 const object = (properties: Readonly<Record<string, BoxValue>>) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 const v1 = {
@@ -56,7 +56,7 @@ const versioned = async (other: BoxFiles) => {
 	return { ...box, v1: box.versions[0]!, v2: box.versions[1]! }; // @approved Two versions were written.
 };
 const createChat = () => createConversationWithHistory(database, {
-	name: "Tip Chat", participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: ["The jar waits."] } }], control: { human: 0, model: 1 },
+	name: "Tip Chat", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["The jar waits."] } }], control: { human: 0, model: 1 },
 });
 const command = (conversationId: number, action: ConversationAction) =>
 	executeConversationCommand(database, { conversationId, expectedRevision: readConversationSummary(database, conversationId)!.revision, action }); // @approved Every Chat here exists.
@@ -186,9 +186,9 @@ test("seeding a Participant from a Character copies only the values the Chat's p
 	setBoxState(database, chat.id, "tally", "enabled");
 	const characters = createCharacterLibraryModule(database);
 	const seeded = (name: string, odds: string) => {
-		const characterId = characters.execute({ type: "create", definition: { name, prompt, openings: [] } }).id;
+		const characterId = characters.execute({ type: "create", definition: { name, prompt, sendAppearanceImages: true, openings: [] } }).id;
 		database.query("INSERT INTO character_data (character_id, namespace, key, value) VALUES (?, 'box:tally', 'odds', ?)").run(characterId, odds);
-		command(chat.id, { type: "add-participant", definition: { name, prompt, openings: [] }, sourceCharacterId: characterId });
+		command(chat.id, { type: "add-participant", definition: { name, prompt, sendAppearanceImages: true, openings: [] }, sourceCharacterId: characterId });
 		const participant = readConversationSummary(database, chat.id)!.cast.at(-1)!.id; // @approved The Participant was just added.
 		return database.query<{ value: string }, [number]>("SELECT value FROM participant_data WHERE participant_id = ? AND namespace = 'box:tally' AND key = 'odds'").all(participant).map(({ value }) => value);
 	};
@@ -294,7 +294,7 @@ for (const deleteHistory of [false, true]) test(`removal ${deleteHistory ? "dele
 	data.run(selected, "generation-box", "traces", '{"box:tally":{"trace":{"kept":true},"items":[],"automaticText":"","finalText":""}}');
 	database.query("INSERT INTO library_data (namespace, key, value) VALUES ('box:tally', 'shared', 'kept')").run();
 	database.query("INSERT INTO participant_data (participant_id, namespace, key, value) VALUES (?, 'box:tally', 'odds', '{}')").run(chat.cast[0]!.id);
-	const character = createCharacterLibraryModule(database).execute({ type: "create", definition: { name: "Shared", prompt, openings: [] } });
+	const character = createCharacterLibraryModule(database).execute({ type: "create", definition: { name: "Shared", prompt, sendAppearanceImages: true, openings: [] } });
 	database.query("INSERT INTO character_data (character_id, namespace, key, value) VALUES (?, 'box:tally', 'shared', 'kept')").run(character.id);
 	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box-version', 'phone', 'kept')").run(chat.id);
 	const shared = () => ({ library: database.query("SELECT * FROM library_data").all(), character: database.query("SELECT * FROM character_data").all() });

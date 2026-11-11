@@ -60,6 +60,7 @@ import {
 const prompt = (): CharacterDefinition["prompt"] => ({
 	systemInstruction: "System text.",
 	identity: "Identity text.",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -68,6 +69,7 @@ const prompt = (): CharacterDefinition["prompt"] => ({
 const definition = (name: string, overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name,
 	prompt: prompt(),
+	sendAppearanceImages: true,
 	openings: [],
 	...overrides,
 });
@@ -303,6 +305,7 @@ describe("staged SillyTavern chat import commit", () => {
 				...prompt(),
 				identity: "A lighthouse keeper who reads the weather in birdsong.",
 			},
+			sendAppearanceImages: true,
 		});
 		const staged = await stageText([
 			header,
@@ -372,6 +375,7 @@ describe("staged SillyTavern chat import commit", () => {
 		expect(participant?.prompt).toEqual({
 			systemInstruction: "",
 			identity: "",
+			appearance: "",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "",

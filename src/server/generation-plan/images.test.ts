@@ -19,9 +19,9 @@ const COST_B = 1640;
 const lookup = (hash: string) => dimensions.get(hash);
 
 const ref = (name: string, hash: string) => formatImageReference(name, hash);
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-const human: CompilePromptDefinition = { name: "Writer", prompt };
-const model: CompilePromptDefinition = { name: "Maren", prompt };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const human: CompilePromptDefinition = { name: "Writer", prompt, sendAppearanceImages: true };
+const model: CompilePromptDefinition = { name: "Maren", prompt, sendAppearanceImages: true };
 const entry = (content: string, role: PromptContextEntry["role"]): PromptContextEntry => ({ kind: "message", speakerName: role === "human" ? "Writer" : "Maren", content, role });
 
 const settings = (overrides: Partial<CanonicalGenerationSettings> = {}): CanonicalGenerationSettings => ({
@@ -125,7 +125,7 @@ describe("Prompt Plan Images", () => {
 		const plan = compile(
 			[entry("go", "human")],
 			{},
-			{ human: { name: "Writer", prompt: { ...prompt, identity: "Wearing {{getvar::outfit}}" } }, recipe: [{ reference: "human-identity", enabled: true, role: "user" }, { reference: "history", enabled: true }], attempt },
+			{ human: { name: "Writer", prompt: { ...prompt, identity: "Wearing {{getvar::outfit}}" }, sendAppearanceImages: true }, recipe: [{ reference: "human-identity", enabled: true, role: "user" }, { reference: "history", enabled: true }], attempt },
 		);
 		expect(plan.promptPlan.blocks[0]?.content).toBe(`Wearing ${ref("dress", A)}`);
 		expect(plan.promptPlan.images).toEqual([{ block: 0, start: 8, hash: A, name: "dress", disposition: "send", tokens: COST_A }]);

@@ -8,7 +8,7 @@ const raceItem = async (page: Page) => {
 	return preview.getByRole("textbox", { name: /^box:race block/ }).innerText();
 };
 
-const emptyPrompt = () => ({ systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" });
+const emptyPrompt = () => ({ systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" });
 
 // @approved One Cast member's stats are written once, seed a new Chat's copy,
 // and stay hers when the Character changes afterwards.
@@ -58,7 +58,7 @@ test("a Cast Runner's stats copy on seeding and survive Character edits", async 
 	const character = characters.characters.find((entry: { id: number }) => entry.id === runner.sourceCharacterId);
 	const created = await (await request.post("/api/conversations/native", { data: {
 		name: "Second stable",
-		humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
+		humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
 		modelSeat: { type: "character", characterId: character.id, expectedRevision: character.revision },
 	} })).json();
 	expect(created.outcome).toBe("created");
@@ -105,7 +105,7 @@ test.describe("a Character stats save from a stale read", () => {
 		const character = characters.characters.find((entry: { id: number }) => entry.id === runner.sourceCharacterId);
 		const created = await (await request.post("/api/conversations/native", { data: {
 			name: "Second stable",
-			humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
+			humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
 			modelSeat: { type: "character", characterId: character.id, expectedRevision: character.revision },
 		} })).json();
 		const elsewhere = created.conversation;

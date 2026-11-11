@@ -19,9 +19,9 @@ beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 
 test("forks through a selected alternative and leaves later Messages behind", async () => {
-	const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 	const source = createConversationWithHistory(database, {
-		name: "Source", participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Model", prompt, openings: ["first", "alternative"] } }], control: { human: 0, model: 1 },
+		name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: ["first", "alternative"] } }], control: { human: 0, model: 1 },
 	});
 	executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["later"], authorParticipantId: source.cast[0]!.id } });
 	const app = createConversationRoutes(database);
@@ -42,8 +42,8 @@ test("forks through a selected alternative and leaves later Messages behind", as
 });
 
 const createSource = () => {
-	const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-	const source = createConversationWithHistory(database, { name: "Source", participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Model", prompt, openings: [] } }], control: { human: 0, model: 1 } });
+	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const source = createConversationWithHistory(database, { name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: [] } }], control: { human: 0, model: 1 } });
 	executeConversationCommand(database, { conversationId: source.id, expectedRevision: 0, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["Rewrite me"], authorParticipantId: source.cast[0]!.id } });
 	const message = database.query<{ id: number }, [number]>("SELECT id FROM messages WHERE conversation_id = ?").get(source.id)!;
 	return { source, message };
@@ -265,8 +265,8 @@ test("a record citing a trimmed Variant fails with the Box and path", async () =
 });
 
 test("a non-trimmed fork keeps every Variant while selecting the requested one", () => {
-	const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-	const source = createConversationWithHistory(database, { name: "Source", participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Model", prompt, openings: ["First", "Second"] } }], control: { human: 0, model: 1 } });
+	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const source = createConversationWithHistory(database, { name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: ["First", "Second"] } }], control: { human: 0, model: 1 } });
 	const point = source.messages[0]!;
 	const fork = forkConversation(database, { conversationId: source.id, expectedRevision: 0, at: { through: point.id, variantId: point.variants[1]!.id }, name: "Fork", trimVariants: false });
 	const variants = readTestConversationSnapshot(database, fork.conversation.id)!.messages[0]!.variants;

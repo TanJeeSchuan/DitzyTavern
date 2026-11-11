@@ -14,6 +14,7 @@ import { createConversationRoutes } from "./conversation";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "A quiet room.",
 	exampleDialogue: "",
 	postHistoryInstruction: "Continue.",
@@ -31,8 +32,8 @@ describe("Generation detail transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Details Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});

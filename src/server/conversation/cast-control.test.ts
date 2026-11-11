@@ -19,6 +19,7 @@ import { applyCommand } from "../test-fixtures/conversation";
 const emptyPrompt = () => ({
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -27,7 +28,7 @@ const emptyPrompt = () => ({
 const adHoc = (
 	name: string,
 	openings: string[] = [],
-): ParticipantDefinition => ({ name, prompt: emptyPrompt(), openings });
+): ParticipantDefinition => ({ name, prompt: emptyPrompt(), sendAppearanceImages: true, openings });
 
 const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);
@@ -119,6 +120,7 @@ describe("Cast and Control management", () => {
 			definition: {
 				name: "Maren Voss",
 				prompt: emptyPrompt(),
+				sendAppearanceImages: true,
 				openings: ["Opening one", "Opening two"],
 			},
 		});
@@ -129,6 +131,7 @@ describe("Cast and Control management", () => {
 			definition: {
 				name: source.name,
 				prompt: source.prompt,
+				sendAppearanceImages: true,
 				openings: [...source.openings],
 			},
 			sourceCharacterId: source.id,
@@ -138,6 +141,7 @@ describe("Cast and Control management", () => {
 			definition: {
 				name: source.name,
 				prompt: source.prompt,
+				sendAppearanceImages: true,
 				openings: [...source.openings],
 			},
 			sourceCharacterId: source.id,
@@ -174,6 +178,7 @@ describe("Cast and Control management", () => {
 			prompt: {
 				systemInstruction: "Keep responses literary.",
 				identity: "Lighthouse archivist.",
+				appearance: "",
 				scenario: "A storm season.",
 				exampleDialogue: "<START>\n{{user}}: Who tends the light?",
 				postHistoryInstruction: "Favor tactile detail.",
@@ -182,6 +187,7 @@ describe("Cast and Control management", () => {
 		expect(promptApplied.cast[1]?.prompt).toEqual({
 			systemInstruction: "Keep responses literary.",
 			identity: "Lighthouse archivist.",
+			appearance: "",
 			scenario: "A storm season.",
 			exampleDialogue: "<START>\n{{user}}: Who tends the light?",
 			postHistoryInstruction: "Favor tactile detail.",

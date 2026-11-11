@@ -24,10 +24,12 @@ const human: CompilePromptDefinition = {
 	prompt: {
 		systemInstruction: "",
 		identity: "I am Writer.",
+		appearance: "",
 		scenario: "",
 		exampleDialogue: "",
 		postHistoryInstruction: "",
 	},
+	sendAppearanceImages: true,
 };
 
 const model: CompilePromptDefinition = {
@@ -35,10 +37,12 @@ const model: CompilePromptDefinition = {
 	prompt: {
 		systemInstruction: "Keep the reply literary.",
 		identity: "I am Maren.",
+		appearance: "",
 		scenario: "",
 		exampleDialogue: "",
 		postHistoryInstruction: "",
 	},
+	sendAppearanceImages: true,
 };
 
 const configuredSettings = (

@@ -88,11 +88,11 @@ afterEach(async () => {
 	database.close();
 });
 
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 /** @approved A Chat holding the Scene, with the delegate set to the fake model at `requestUrl`, and the queue running. */
 const sceneChat = (requestUrl = `http://127.0.0.1:${server.port}/v1/`, box = "scene", applyMs?: number) => {
 	const chat = createConversationWithHistory(database, {
-		name: "Stage", participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: [] } }], control: { human: 0, model: 1 },
+		name: "Stage", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }], control: { human: 0, model: 1 },
 	});
 	setBoxState(database, chat.id, "memory", "absent");
 	const instance = insertBox(database, chat.id, box);

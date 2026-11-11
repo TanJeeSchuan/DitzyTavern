@@ -8,7 +8,7 @@ test("a refused Cast removal keeps the Participant editor open", async ({ page, 
 	const url = `/api/conversations/${activeChatId}`;
 	const { revision } = await (await request.get(url)).json();
 	await request.post(`${url}/commands`, { data: { expectedRevision: revision, action: {
-		type: "add-participant", definition: { name: "Guest", prompt: emptyPromptChannels(), openings: [] },
+		type: "add-participant", definition: { name: "Guest", prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] },
 	} } });
 	await page.goto("/");
 	await page.getByRole("button", { name: "Characters", exact: true }).click();

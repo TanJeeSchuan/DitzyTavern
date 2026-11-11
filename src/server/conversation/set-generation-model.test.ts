@@ -15,6 +15,7 @@ import { createConnectionSettingsModule } from "../connection-settings";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -24,8 +25,8 @@ const createTestConversation = (database: Database, name: string) =>
 	createConversationWithHistory(database, {
 		name,
 		participants: [
-			{ definition: { name: "Writer", prompt, openings: [] } },
-			{ definition: { name: "Maren", prompt, openings: [] } },
+			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 		],
 		control: { human: 0, model: 1 },
 	});

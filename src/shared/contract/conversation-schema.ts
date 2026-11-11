@@ -50,6 +50,7 @@ const promptDefinitionRole = Type.Union([
 const promptDefinitionBlockKind = Type.Union([
 	Type.Literal("system-instruction"),
 	Type.Literal("identity"),
+	Type.Literal("appearance"),
 	Type.Literal("scenario"),
 	Type.Literal("example-dialogue"),
 	Type.Literal("post-history-instruction"),
@@ -123,6 +124,7 @@ const castParticipant = Type.Object({
 	position: Type.Integer(),
 	name: Type.String(),
 	prompt: promptChannels,
+	sendAppearanceImages: Type.Boolean(),
 	openings: Type.Array(Type.String()),
 	portrait: Type.Optional(portrait),
 	sourceCharacterId: Type.Union([Type.Null(), Type.Integer()]),
@@ -429,6 +431,7 @@ export type ChatHistoryAuthorStamp = NonNullable<ChatHistoryMessage["author"]>;
 const participantDefinition = Type.Object({
 	name: Type.String(),
 	prompt: promptChannels,
+	sendAppearanceImages: Type.Boolean(),
 	openings: Type.Array(Type.String()),
 	portrait: Type.Optional(portrait),
 });

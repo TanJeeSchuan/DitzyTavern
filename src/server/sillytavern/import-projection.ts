@@ -36,6 +36,7 @@ export { UNKNOWN_IMPORTED_AUTHOR_NAME };
 export const emptyImportedDefinition = (name: string): ParticipantDefinition => ({
 	name,
 	prompt: emptyPromptChannels(),
+	sendAppearanceImages: true,
 	openings: [],
 });
 

@@ -28,20 +28,24 @@ const source = (overrides: Partial<CompilePromptInput> = {}): CompilePromptInput
 		prompt: {
 			systemInstruction: "",
 			identity: "",
+			appearance: "",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 	},
 	model: {
 		name: "Maren Voss",
 		prompt: {
 			systemInstruction: "",
 			identity: "",
+			appearance: "",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 	},
 	...overrides,
 });
@@ -53,20 +57,24 @@ const filled = (): CompilePromptInput =>
 			prompt: {
 				systemInstruction: "",
 				identity: "Human identity line.",
+				appearance: "",
 				scenario: "",
 				exampleDialogue: "",
 				postHistoryInstruction: "",
 			},
+			sendAppearanceImages: true,
 		},
 		model: {
 			name: "Maren Voss",
 			prompt: {
 				systemInstruction: "System line.",
 				identity: "Model identity line.",
+				appearance: "",
 				scenario: "Scenario line.",
 				exampleDialogue: "Example line.",
 				postHistoryInstruction: "Post line.",
 			},
+			sendAppearanceImages: true,
 		},
 		context: [
 			{ kind: "message", speakerName: "Writer", content: "First history line.", role: "human" },
@@ -142,10 +150,12 @@ describe("Prompt compiler", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "Only the human identity is filled.",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -162,10 +172,12 @@ describe("Prompt compiler", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "<START>\n{{user}}: Who tends the light?\n  indented line with trailing spaces  ",
 						postHistoryInstruction: "\nPost with leading newline.",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -221,20 +233,24 @@ describe("Prompt compiler", () => {
 					prompt: {
 						systemInstruction: "Human system must not render.",
 						identity: "",
+						appearance: "",
 						scenario: "Human scenario must not render.",
 						exampleDialogue: "Human example must not render.",
 						postHistoryInstruction: "Human post must not render.",
 					},
+					sendAppearanceImages: true,
 				},
 				model: {
 					name: "Maren Voss",
 					prompt: {
 						systemInstruction: "Model system.",
 						identity: "",
+						appearance: "",
 						scenario: "Model scenario.",
 						exampleDialogue: "Model example.",
 						postHistoryInstruction: "Model post.",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -260,10 +276,12 @@ describe("Outgoing roles and repeated occurrences", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "I am Maren Voss.",
+						appearance: "",
 						scenario: "A quiet room.",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -287,10 +305,12 @@ describe("Outgoing roles and repeated occurrences", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "",
+						appearance: "",
 						scenario: "A quiet room.",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 				context: [
 					{ kind: "message", speakerName: "Writer", content: "First.", role: "human" },
@@ -316,20 +336,24 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "I am {{self}}, you are {{other}}.",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 				model: {
 					name: "Maren Voss",
 					prompt: {
 						systemInstruction: "",
 						identity: "I am {{self}}, you are {{other}}.",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -348,10 +372,12 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "Name: {{self}}",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -367,10 +393,12 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "Use \\{{self}} and \\{{other}} literally.",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -386,10 +414,12 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "\\\\{{self}}",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -405,10 +435,12 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "Syntax: \\{{// draft: mention {{unfinished}} }} end.",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -424,10 +456,12 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "Syntax: \\{{//}} mention {{unfinished}} {{///}} end.",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -443,10 +477,12 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "\\\\{{// note }} and {{self}}",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -461,10 +497,12 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "Before {{//}} hidden {{self}} {{unknown}} {{///}} after {{other}}",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -480,10 +518,12 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "{{// oops, never closed",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -501,20 +541,24 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "{{random}} stays.",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 				model: {
 					name: "Maren Voss",
 					prompt: {
 						systemInstruction: "",
 						identity: "",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "{{char}}: {{random}}",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -529,10 +573,11 @@ describe("Macro expansion", () => {
 
 	test("warns about a macro that changes between requests only when its block comes before history", () => {
 		const prompt = (scenario: string, postHistoryInstruction: string) => ({
-			systemInstruction: "", identity: "", scenario, exampleDialogue: "", postHistoryInstruction,
+			systemInstruction: "", identity: "",
+			appearance: "", scenario, exampleDialogue: "", postHistoryInstruction,
 		});
 		const plan = compilePrompt(source({
-			model: { name: "Maren Voss", prompt: prompt("It is {{time}}. {{random}} stays.", "Roll {{roll::1d6}}.") },
+			model: { name: "Maren Voss", prompt: prompt("It is {{time}}. {{random}} stays.", "Roll {{roll::1d6}}."), sendAppearanceImages: true },
 		}));
 
 		expect(plan.warnings).toEqual([
@@ -548,7 +593,7 @@ describe("Macro expansion", () => {
 				{ reference: "model-scenario", enabled: true, role: "system" },
 				{ reference: "history", enabled: true },
 			],
-			model: { name: "Maren Voss", prompt: { ...source().model.prompt, scenario: "{{getvar::name}} at {{getvar::clock}}, {{getvar::clock}}, {{getvar::was}}." } },
+			model: { name: "Maren Voss", prompt: { ...source().model.prompt, scenario: "{{getvar::name}} at {{getvar::clock}}, {{getvar::clock}}, {{getvar::was}}." }, sendAppearanceImages: true },
 		}));
 
 		expect(plan.warnings).toEqual([{ block: "scenario", macro: "{{time}}", reason: "uncached" }]);
@@ -562,10 +607,12 @@ describe("Macro expansion", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "{{self and {also",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -650,8 +697,8 @@ describe("Authored instruction blocks", () => {
 						role,
 						content: "{{self}} writes to {{other}}.",
 					}),
-					human: { name: "Rowan", prompt: emptyChannels },
-					model: { name: "Sable", prompt: emptyChannels },
+					human: { name: "Rowan", prompt: emptyChannels, sendAppearanceImages: true },
+					model: { name: "Sable", prompt: emptyChannels, sendAppearanceImages: true },
 				}),
 			);
 			// The perspective never follows the outgoing role: self is always
@@ -672,10 +719,11 @@ describe("Authored instruction blocks", () => {
 					{ reference: "model-identity", enabled: true, role: "assistant" },
 					{ reference: "instruction", enabled: true, role: "system", name: "Intro", content: "{{self}} vs {{other}}." },
 				],
-				human: { name: "Rowan", prompt: emptyChannels },
+				human: { name: "Rowan", prompt: emptyChannels, sendAppearanceImages: true },
 				model: {
 					name: "Sable",
 					prompt: { ...emptyChannels, identity: "I am {{self}}, you are {{other}}." },
+					sendAppearanceImages: true,
 				},
 			}),
 		);
@@ -694,8 +742,8 @@ describe("Authored instruction blocks", () => {
 					name: "Jailbreak",
 					content: "{{random}} stays, but {{self}} works.",
 				}),
-				human: { name: "Rowan", prompt: emptyChannels },
-				model: { name: "Sable", prompt: emptyChannels },
+				human: { name: "Rowan", prompt: emptyChannels, sendAppearanceImages: true },
+				model: { name: "Sable", prompt: emptyChannels, sendAppearanceImages: true },
 			}),
 		);
 		expect(plan.blocks[0]?.content).toBe("{{random}} stays, but Rowan works.");
@@ -708,8 +756,8 @@ describe("Authored instruction blocks", () => {
 				recipe: instruction({
 					content: "A \\{{self}} literal and {{// note: {{unfinished}} }} done.",
 				}),
-				human: { name: "Rowan", prompt: emptyChannels },
-				model: { name: "Sable", prompt: emptyChannels },
+				human: { name: "Rowan", prompt: emptyChannels, sendAppearanceImages: true },
+				model: { name: "Sable", prompt: emptyChannels, sendAppearanceImages: true },
 			}),
 		);
 		expect(plan.blocks[0]?.content).toBe("A \\Rowan literal and  done.");
@@ -720,6 +768,7 @@ describe("Authored instruction blocks", () => {
 const emptyChannels = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",

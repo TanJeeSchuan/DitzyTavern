@@ -1,6 +1,7 @@
 import { ArrowLeft, ImageUp, Plus, X } from "lucide-react";
 import { useRef, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { ProseEditor, type ProseEditorHandle } from "../editor/ProseEditor";
 import { Portrait } from "../story/Portrait";
 import { PortraitDialog } from "./PortraitDialog";
@@ -14,15 +15,17 @@ import { useNavigationRequest } from "../SaveGuard";
 export const definitionOf = ({
 	name,
 	prompt,
+	sendAppearanceImages,
 	openings,
 	portrait,
 }: {
 	name: string;
 	prompt: PromptChannels;
+	sendAppearanceImages: boolean;
 	openings: readonly string[];
 	portrait?: PortraitImage | undefined;
 }): ParticipantDefinition =>
-	({ name, prompt, openings: [...openings], portrait });
+	({ name, prompt, sendAppearanceImages, openings: [...openings], portrait });
 
 export const sameDefinition = (a: ParticipantDefinition, b: ParticipantDefinition) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -33,6 +36,7 @@ export const submittableDefinition = (draft: ParticipantDefinition): Participant
 
 const primaryChannels = [
 	["identity", "Appearance, personality, voice…"],
+	["appearance", "Face, hair, eyes, build, clothing…"],
 	["scenario", "Where and how the story begins…"],
 ] as const satisfies readonly (readonly [keyof PromptChannels, string])[];
 const moreChannels = ["systemInstruction", "exampleDialogue", "postHistoryInstruction"] as const satisfies readonly (keyof PromptChannels)[];
@@ -70,6 +74,7 @@ export function DefinitionEditor({
 	const [editingPortrait, setEditingPortrait] = useState(false);
 	const [showMore] = useState(() => moreChannels.some((key) => draft.prompt[key] !== ""));
 	const identity = useRef<ProseEditorHandle>(null);
+	const appearance = useRef<ProseEditorHandle>(null);
 	const setChannel = (key: keyof PromptChannels, value: string) => onDraftChange({ ...draft, prompt: { ...draft.prompt, [key]: value } });
 	const setPortrait = (portrait: PortraitImage | undefined) => onDraftChange({ ...draft, portrait });
 	const setOpenings = (openings: string[]) => onDraftChange({ ...draft, openings });
@@ -77,7 +82,7 @@ export function DefinitionEditor({
 		<div key={key} className="flex flex-col gap-1.5">
 			<div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
 				<span>{promptChannelLabels[key]}</span>
-				{key === "identity" && (
+				{(key === "identity" || key === "appearance") && (
 					<Button
 						type="button"
 						size="xs"
@@ -85,7 +90,7 @@ export function DefinitionEditor({
 						disabled={draft.portrait === undefined}
 						onClick={() =>
 							draft.portrait !== undefined &&
-							identity.current?.insertReference(draft.name || "Portrait", draft.portrait.hash)
+							(key === "appearance" ? appearance : identity).current?.insertReference(draft.name || "Portrait", draft.portrait.hash)
 						}
 						>
 						<ImageUp aria-hidden="true" /> Insert Portrait
@@ -93,13 +98,17 @@ export function DefinitionEditor({
 				)}
 			</div>
 			<ProseEditor
-			ref={key === "identity" ? identity : undefined}
+			ref={key === "identity" ? identity : key === "appearance" ? appearance : undefined}
 			className="prose-editor-field"
 			ariaLabel={promptChannelLabels[key]}
 			value={draft.prompt[key]}
 			placeholder={placeholder}
 			onChange={(value) => setChannel(key, value)}
 		/>
+		{key === "appearance" && <label className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+			Send Appearance Images
+			<Switch checked={draft.sendAppearanceImages} onCheckedChange={(sendAppearanceImages) => onDraftChange({ ...draft, sendAppearanceImages })} />
+		</label>}
 		</div>
 	);
 

@@ -18,7 +18,7 @@ test("a Participant saved after it changed elsewhere conflicts instead of overwr
 	const { prompt, openings } = participant;
 	const changed = await request.post(`${url}/commands`, { data: {
 		expectedRevision: conversation.revision,
-		action: { type: "update-participant-definition", participantId: participant.id, definition: { name: "Theodora Theirs", prompt, openings } },
+		action: { type: "update-participant-definition", participantId: participant.id, definition: { name: "Theodora Theirs", prompt, sendAppearanceImages: true, openings } },
 	} });
 	expect(changed.ok()).toBe(true);
 	const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === url);

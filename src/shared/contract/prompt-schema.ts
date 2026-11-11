@@ -4,10 +4,11 @@ import { Type, type Static } from "@sinclair/typebox";
 // Participants. Keeping one schema object preserves identical wire behavior
 // while preventing the two contracts from drifting apart: every consumer —
 // transport schemas, domain seams, and the pure compiler — references this
-// declaration instead of restating the five Prompt channels.
+// declaration instead of restating the Prompt channels.
 export const promptChannels = Type.Object({
 	systemInstruction: Type.String(),
 	identity: Type.String(),
+	appearance: Type.String(),
 	scenario: Type.String(),
 	exampleDialogue: Type.String(),
 	postHistoryInstruction: Type.String(),

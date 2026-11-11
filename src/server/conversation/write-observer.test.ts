@@ -8,6 +8,7 @@ import type { ConversationWriteChange } from "../../shared/contract/conversation
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "The room is quiet.",
 	exampleDialogue: "",
 	postHistoryInstruction: "Continue.",
@@ -36,8 +37,8 @@ describe("Conversation write observer composition contract", () => {
 		const created = createConversationWithHistory(module, {
 			name: "Observer Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: ["Original answer."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original answer."] } },
 			],
 			control: { human: 0, model: 1 },
 		});

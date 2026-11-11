@@ -10,6 +10,7 @@ import { evaluateScopedLore } from "./evaluation";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -21,7 +22,7 @@ describe("scoped Lore activation", () => {
 	afterEach(() => database.close());
 
 	test("inherits Character uses, resolves scope before deduplication, and scans pending text", () => {
-		const character = createCharacter(database, { name: "Keeper", prompt, openings: [] });
+		const character = createCharacter(database, { name: "Keeper", prompt, sendAppearanceImages: true, openings: [] });
 		const book = importNativeLorebook(database, {
 			name: "World",
 			description: "",
@@ -41,8 +42,8 @@ describe("scoped Lore activation", () => {
 		const chat = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
-				{ sourceCharacterId: character.id, definition: { name: "Keeper", prompt, openings: [] } },
-				{ definition: { name: "Writer", prompt, openings: [] } },
+				{ sourceCharacterId: character.id, definition: { name: "Keeper", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 1, model: 0 },
 		});
@@ -88,7 +89,7 @@ describe("scoped Lore activation", () => {
 		});
 		const chat = createConversationWithHistory(database, {
 			name: "Story",
-			participants: ["Keeper", "Writer"].map((name) => ({ definition: { name, prompt, openings: [] } })),
+			participants: ["Keeper", "Writer"].map((name) => ({ definition: { name, prompt, sendAppearanceImages: true, openings: [] } })),
 			control: { human: 1, model: 0 },
 		});
 		executeConversationCommand(database, {

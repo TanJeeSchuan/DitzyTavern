@@ -25,6 +25,7 @@ import { GENERATION_PREVIEW_SESSION_TTL_MS } from "../workflows/generation-previ
 const prompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -35,8 +36,8 @@ const siblingPrompt = { ...prompt, systemInstruction: "Answer briefly." };
 const createChat = (database: Database) => createConversationWithHistory(database, {
 	name: "Preview Chat",
 	participants: [
-		{ definition: { name: "Writer", prompt, openings: [] } },
-		{ definition: { name: "Maren", prompt, openings: [] } },
+		{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+		{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 	],
 	control: { human: 0, model: 1 },
 });
@@ -131,8 +132,8 @@ describe("Prompt Plan inspection", () => {
 		const siblingUnavailable = createConversationWithHistory(module, {
 			name: "Imported Preview Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 			messages: [{
@@ -306,7 +307,7 @@ describe("Prompt Plan inspection", () => {
 		executeConversationCommand(module, {
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
-			action: { type: "add-participant", definition: { name: "Extra", prompt, openings: [] } },
+			action: { type: "add-participant", definition: { name: "Extra", prompt, sendAppearanceImages: true, openings: [] } },
 		});
 		const accepted = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
@@ -539,8 +540,8 @@ describe("Prompt Plan inspection", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Sibling Preview Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt: siblingPrompt, openings: ["Opening."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt: siblingPrompt, sendAppearanceImages: true, openings: ["Opening."] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -582,8 +583,8 @@ describe("Prompt Plan inspection", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Retryable Sibling Preview Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt: siblingPrompt, openings: ["Opening."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt: siblingPrompt, sendAppearanceImages: true, openings: ["Opening."] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -653,8 +654,8 @@ describe("Prompt Plan inspection", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Continuation Preview Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: ["Opening."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Opening."] } },
 			],
 			control: { human: 0, model: 1 },
 		});

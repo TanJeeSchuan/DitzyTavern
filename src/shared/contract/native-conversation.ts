@@ -16,6 +16,7 @@ export const newChatSeatSchema = Type.Union([
 		definition: Type.Object({
 			name: Type.String(),
 			prompt: promptChannels,
+			sendAppearanceImages: Type.Boolean(),
 			openings: Type.Array(Type.String()),
 			portrait: Type.Optional(portrait),
 		}),

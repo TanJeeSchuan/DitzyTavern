@@ -37,10 +37,12 @@ const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefi
 	prompt: {
 		systemInstruction: "System text.",
 		identity: "Identity text.",
+		appearance: "",
 		scenario: "",
 		exampleDialogue: "",
 		postHistoryInstruction: "",
 	},
+	sendAppearanceImages: true,
 	openings: [],
 	...overrides,
 });

@@ -18,10 +18,10 @@ const setup = () => {
 	const connections = createConnectionSettingsModule(database);
 	connections.createProfile({ expectedRevision: 0, profile: { ...blankConnectionProfileDraft, displayName: "Painter", apiFormat: "images", adapter: "openrouter", requestUrl: "https://example.com/images" } });
 	applyImageModelSettings(database, { type: "apply", expectedRevision: 0, profileId: connections.get().profiles[0]!.id, model: "painter" });
-	const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 	const chat = createConversationWithHistory(database, { name: "Painting", participants: [
-		{ definition: { name: "Writer", prompt, openings: [] } },
-		{ definition: { name: "Maren", prompt, openings: ["First scene", "Other scene"] } },
+		{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+		{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["First scene", "Other scene"] } },
 	], control: { human: 0, model: 1 } });
 	const stop = watchDatabaseChanges(database);
 	return { database, chat, [Symbol.dispose]: () => { stop(); processStateFor(database).dispose(); database.close(); } };

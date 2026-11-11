@@ -15,6 +15,7 @@ import type { PromptChannels } from "./contract/prompt-schema";
 export const promptChannelLabels = {
 	systemInstruction: "System Instruction",
 	identity: "Identity",
+	appearance: "Appearance",
 	scenario: "Scenario",
 	exampleDialogue: "Example Dialogue",
 	postHistoryInstruction: "Post-History Instruction",
@@ -28,6 +29,7 @@ export const promptChannelLabels = {
 const promptChannelOrderEntries = [
 	"systemInstruction",
 	"identity",
+	"appearance",
 	"scenario",
 	"exampleDialogue",
 	"postHistoryInstruction",
@@ -59,6 +61,7 @@ export const promptChannelFields: ReadonlyArray<{
 export const emptyPromptChannels = (): PromptChannels => ({
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",

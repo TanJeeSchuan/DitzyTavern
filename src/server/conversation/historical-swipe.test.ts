@@ -29,6 +29,7 @@ const prompt = (
 ): ParticipantDefinition["prompt"] => ({
 	systemInstruction: "",
 	identity: "I am {{self}}, speaking to {{other}}.",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -42,6 +43,7 @@ const adHoc = (
 ): ParticipantDefinition => ({
 	name,
 	prompt: prompt(promptOverrides),
+	sendAppearanceImages: true,
 	openings,
 });
 
