@@ -56,14 +56,14 @@ export function isModelAdapter(value: string): value is ModelAdapter {
 }
 
 const providerSettings = (options: ModelAdapterOptions) => ({
-		apiKey: options.credential,
-		baseURL: new URL(options.requestUrl).origin,
-		headers: options.headers,
-		// @approved
-		//  SAFETY: the AI SDK invokes the standard Fetch contract at this seam.
-		// SAFETY: ModelFetch has the same RequestInfo/RequestInit/Response contract
-		// as the AI SDK fetch hook; it only makes the fetch implementation injectable.
-		fetch: options.fetch as typeof fetch,
+	apiKey: options.credential,
+	baseURL: new URL(options.requestUrl).origin,
+	headers: options.headers,
+	// @approved
+	//  SAFETY: the AI SDK invokes the standard Fetch contract at this seam.
+	// SAFETY: ModelFetch has the same RequestInfo/RequestInit/Response contract
+	// as the AI SDK fetch hook; it only makes the fetch implementation injectable.
+	fetch: options.fetch as typeof fetch,
 });
 
 export function createImageModelAdapter(options: ModelAdapterOptions & { adapter: Exclude<ModelAdapter, "deepseek"> }) {
