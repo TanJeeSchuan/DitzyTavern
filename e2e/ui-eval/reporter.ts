@@ -3,11 +3,15 @@ import type { Reporter, TestCase, TestResult } from "@playwright/test/reporter";
 import { Value } from "@sinclair/typebox/value";
 import { Type } from "@sinclair/typebox";
 import { samplesSchema, type Sample } from "./probe";
+import { coverageSchema, type Coverage } from "./crawl";
 
 export default class UiEvalReporter implements Reporter {
 	private samples: Sample[] = [];
+	private coverage: Coverage[] = [];
 
 	onTestEnd(_test: TestCase, result: TestResult) {
+		const coverage = result.attachments.find((attachment) => attachment.name === "ui-eval-coverage.json")?.body;
+		if (coverage) this.coverage.push(...Value.Parse(coverageSchema, JSON.parse(coverage.toString())));
 		const repetitions = result.attachments.find((attachment) => attachment.name === "ui-eval-samples.json")?.body;
 		const log = result.attachments.find((attachment) => attachment.name === "ui-eval.json")?.body;
 		if (repetitions) this.samples.push(...Value.Parse(samplesSchema, JSON.parse(repetitions.toString())));
@@ -40,6 +44,21 @@ export default class UiEvalReporter implements Reporter {
 			lines.push(`| ${name} | ${group[0]!.budgetMs} | ${available.length} | ${median} | ${maximum} | ${censored} | ${budgetMisses} | ${unavailable} |`);
 		}
 		lines.push("", "The first repetition of Swipe, Stop and typing is excluded as warmup. The injected 500 ms stall is validation, not an app sample.", "");
+		if (this.coverage.length) {
+			const measured = this.coverage.filter((control) => control.samples > 0);
+			const unmeasured = this.coverage.filter((control) => control.samples === 0);
+			lines.push("## Crawl coverage", "",
+				`${this.coverage.length} controls discovered across ${new Set(this.coverage.map((control) => control.state)).size} states; ${measured.length} measured; ${unmeasured.length} unmeasured.`, "",
+				"The pilot covers preset drafts, Save and entry details. Other controls remain listed in coverage.md and coverage.json.", "");
+			const coverageLines = ["# Crawl coverage", "", "| State | Control | Contract | Samples | Initially disabled |", "| --- | --- | --- | ---: | --- |"];
+			for (const control of this.coverage) {
+				const name = `${control.role}: ${control.name || "(unnamed)"}`.replaceAll("|", "\\|");
+				coverageLines.push(`| ${control.state} | ${name} | ${control.contract ?? "unmeasured: no completion rule"} | ${control.samples} | ${control.initiallyDisabled} |`);
+			}
+			mkdirSync(".scratch/ui-eval", { recursive: true });
+			writeFileSync(".scratch/ui-eval/coverage.json", JSON.stringify(this.coverage, null, 2));
+			writeFileSync(".scratch/ui-eval/coverage.md", `${coverageLines.join("\n")}\n`);
+		}
 		mkdirSync(".scratch/ui-eval", { recursive: true });
 		writeFileSync(".scratch/ui-eval/samples.json", JSON.stringify(this.samples, null, 2));
 		writeFileSync(".scratch/ui-eval/summary.md", lines.join("\n"));

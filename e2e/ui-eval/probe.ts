@@ -94,7 +94,6 @@ export function installProbe() {
 				observing = false;
 				clearTimeout(timer);
 				cancelAnimationFrame(frame);
-				observer.disconnect();
 				onInput = () => {};
 				onStream = () => {};
 				afterFrame = () => {};
@@ -117,15 +116,14 @@ export function installProbe() {
 				return !measurement.result.ready || (!element.matches(":disabled") && document.querySelector('[aria-label="Message draft"][contenteditable="true"]') !== null);
 			};
 			const check = () => {
-				if (start === undefined || !ready() || frame) return;
+				if (!observing || start === undefined || frame) return;
 				frame = requestAnimationFrame(() => {
 					frame = 0;
-					afterFrame = () => { if (ready()) finish("observed"); };
+					if (!ready()) { check(); return; }
+					afterFrame = () => { if (ready()) finish("observed"); else check(); };
 					channel.port2.postMessage(null);
 				});
 			};
-			const observer = new MutationObserver(check);
-			observer.observe(document, { childList: true, characterData: true, attributes: true, subtree: true });
 			let timer = setTimeout(() => {
 				cleanup();
 				reject(new Error(`No browser origin observed for ${measurement.name}.`));

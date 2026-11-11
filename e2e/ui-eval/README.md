@@ -17,9 +17,17 @@ Budget misses are informational while collecting a baseline. The job fails for i
 
 Swipe, Stop and available typing each collect 20 samples after one warmup. Stalled cases run once each. The summary reports completed medians, completed maxima, timeout lower bounds, budget misses and unavailable scenarios. Do not interpret a median of completed samples without the timeout count.
 
+## Crawl Prompt Preset controls
+
+Run `bun run test:ui-eval --grep 'crawl Prompt Preset controls'` to run the pilot. It discovers visible controls through Playwright roles and accessible names in the Prompt Presets panel, then sorts stable keys built from the state, entry position and control identity. It opens discovered entry editors and inventories their controls one level deep.
+
+Each case resets the seeded database and reloads the page. Every discovered entry switch is exercised in both directions, with three samples per direction. The draft endpoint requires the new checked state and the panel's Unsaved changes status. Save has its own timing and verifies the persisted entry through the API. Entry details require populated content and usable controls, followed by an immediate identity check against the originating row. Opening the panel is also timed on every reset.
+
+The control inventory is attached even when a case fails. `coverage.json` and `coverage.md` list every discovered control, its completion rule and sample count. Controls outside the pilot's rules remain explicitly unmeasured. This is a bounded panel crawl, not exploration of every setting combination. New matching switches and entry editors are included automatically.
+
 ## Understand the clock
 
-The init script captures trusted click and keydown `event.timeStamp` values. A DOM observer checks the expected text or enabled controls. After that condition holds, a `requestAnimationFrame` followed by a MessageChannel callback records a render opportunity. Playwright locator polling is outside the measured endpoint.
+The init script captures trusted click and keydown `event.timeStamp` values. During a measurement, it checks the expected text or enabled controls on render frames so CSS visibility changes count even without another DOM mutation. After that condition holds, a MessageChannel callback records a render opportunity. Playwright locator polling is outside the measured endpoint.
 
 These values are presentation estimates. They do not prove that pixels reached a display. The probe checks visibility but does not measure text masks, wipe completion, physical input latency or display latency. Stream timing uses a cloned response reader, which can run at a different scheduling point than the application's reader. It separates provider waiting from client handling without claiming an exact network arrival timestamp.
 
