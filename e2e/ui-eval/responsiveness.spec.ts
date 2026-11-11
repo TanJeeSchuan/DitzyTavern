@@ -70,18 +70,19 @@ test("uncached Swipe text", async ({ page, request }) => {
 		const article = `[data-message-id="${message.id}"]`;
 		const direction = targetIndex === 3 ? "Next Swipe" : "Previous Swipe";
 		release = Promise.withResolvers<void>();
-		const requested = Promise.withResolvers<void>();
+		const requested = page.waitForRequest(`**/variants/${target.id}/text`);
 		await page.route(`**/variants/${target.id}/text`, async (route) => {
-			requested.resolve();
 			await release.promise;
 			await route.continue();
 		});
 		await page.goto("/");
 		await expect(page.locator(`${article} .prose`)).toContainText(`Take ${targetIndex === 3 ? 1 : 4}.`);
 		const next = page.locator(article).getByRole("button", { name: direction, exact: true });
-		await next.click();
-		await next.click();
-		await requested.promise;
+		for (const position of targetIndex === 3 ? [2, 3] : [3, 2]) {
+			await next.click();
+			await expect(page.locator(`${article} .swipe-count`)).toHaveText(`${position} of 5`);
+		}
+		await requested;
 		await page.evaluate(() => window.addEventListener("ui-eval-start", () => void window.releaseSwipe(), { once: true }));
 		const applied = page.waitForResponse((response) => {
 			if (!response.url().endsWith("/commands") || !response.ok()) return false;
