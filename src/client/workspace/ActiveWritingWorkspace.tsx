@@ -239,7 +239,7 @@ export function ActiveWritingWorkspace({
 	};
 
 	const composerEditorRef = useRef<ProseEditorHandle>(null);
-	const openPaint = (variantId: number, brief?: string) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", variantId, brief }));
+	const openPaint = (variantId: number, brief = "") => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", target: { variantId, brief } }));
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
 	// @approved
 	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
@@ -248,7 +248,7 @@ export function ActiveWritingWorkspace({
 
 	return (
 		<IllustrationActionsContext value={{
-			addToComposer: (hash) => {
+			addToComposer: !generation.assemblyAvailable ? null : (hash) => {
 				if (narrow) dispatchPanel({ type: "details-closed" });
 				requestAnimationFrame(() => composerEditorRef.current?.insertReference("Illustration", hash));
 			},
@@ -355,10 +355,10 @@ export function ActiveWritingWorkspace({
 			</CoveredLayer>
 
 			<CoveredLayer inert={narrow && newChatOpen}>
-			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintVariantId !== null && conversation !== null && (
+			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintTarget !== null && conversation !== null && (
 				<PaintPanel
-					key={`${conversation.id}:${panelState.paintVariantId}:${panelState.paintBrief}`}
-					conversationId={conversation.id} variantId={panelState.paintVariantId} initialBrief={panelState.paintBrief}
+					key={`${conversation.id}:${panelState.paintTarget.variantId}`}
+					conversationId={conversation.id} target={panelState.paintTarget}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}

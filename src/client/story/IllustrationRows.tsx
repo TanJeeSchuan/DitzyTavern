@@ -25,7 +25,7 @@ export function IllustrationRows({ conversationId, variantId }: { conversationId
 			</div>
 			<figcaption className="flex h-11 items-center justify-end gap-2 px-2">
 				{painting.kind === "illustration" && actions !== null && <>
-					<Button size="sm" variant="ghost" onClick={() => actions.addToComposer(painting.image.slice(6))}>Add to composer</Button>
+					<Button size="sm" variant="ghost" disabled={actions.addToComposer === null} onClick={() => actions.addToComposer?.(painting.image.slice(6))}>Add to composer</Button>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button size="icon-sm" variant="ghost" aria-label="Illustration actions" title="Illustration actions"><MoreHorizontal aria-hidden="true" /></Button>
