@@ -112,7 +112,7 @@ describe("OpenRouter Model Client", () => {
 		expect(request?.body.stream).toBe(true);
 	});
 
-	test("marks the end of history, and nothing else, as Claude's cache breakpoint", async () => {
+	const sentMessages = async (promptPlan: Parameters<typeof collectModelClientGeneration>[1]["promptPlan"]) => {
 		let messages: unknown;
 		const client = createModelClient({
 			profile,
@@ -122,9 +122,12 @@ describe("OpenRouter Model Client", () => {
 				return streamResponse();
 			},
 		});
+		await collectModelClientGeneration(client, { promptPlan, modelId: "anthropic/claude-sonnet-5.5", generationSettings });
+		return messages;
+	};
 
-		await collectModelClientGeneration(client, {
-			promptPlan: {
+	test("marks the end of history, and nothing else, as Claude's cache breakpoint", async () => {
+		expect(await sentMessages({
 				blocks: [
 					{ kind: "system-instruction", role: "system", content: "Answer." },
 					{ kind: "history", role: "human", speakerName: "Writer", content: "I knock." },
@@ -133,17 +136,26 @@ describe("OpenRouter Model Client", () => {
 					{ kind: "post-history-instruction", role: "system", content: "Stay in the scene." },
 				],
 				warnings: [], images: [],
-			},
-			modelId: "anthropic/claude-sonnet-5.5",
-			generationSettings,
-		});
-
-		expect(messages).toEqual([
+		})).toEqual([
 			{ role: "system", content: [{ type: "text", text: "Answer." }] },
 			{ role: "user", content: "I knock." },
 			{ role: "assistant", content: "Nobody answers." },
 			{ role: "user", content: [{ type: "text", text: "I try the handle.", cache_control: { type: "ephemeral" } }] },
 			{ role: "system", content: [{ type: "text", text: "Stay in the scene." }] },
+		]);
+	});
+
+	test("an assistant-prefill Continue of the only history message still carries the breakpoint", async () => {
+		expect(await sentMessages({
+			blocks: [
+				{ kind: "system-instruction", role: "system", content: "Answer." },
+				{ kind: "history", role: "model", speakerName: "Maren", content: "Nobody answers." },
+			],
+			warnings: [], images: [],
+			intent: { type: "continuation", strategy: "assistant-prefill", suffix: "\n" },
+		})).toEqual([
+			{ role: "system", content: [{ type: "text", text: "Answer." }] },
+			{ role: "assistant", content: "Nobody answers.\n", cache_control: { type: "ephemeral" } },
 		]);
 	});
 

@@ -166,7 +166,6 @@ export function toMessages(
 		push(providerRoleFor[block.role], renderBlock(blockIndex, block.content));
 	}
 	flushSystemImages();
-	if (lastHistoryMessage !== undefined) lastHistoryMessage.providerOptions = cacheBreakpoint;
 	// @approved
 	//  Continuation instructions are request intent, not Conversation history:
 	// a trailing system message, or a user message when Strict System
@@ -195,7 +194,9 @@ export function toMessages(
 			role: "assistant",
 			content: `${projectImageAnchors(prefix)}${continuationIntent.suffix}`,
 		});
+		lastHistoryMessage = messages.at(-1);
 	}
+	if (lastHistoryMessage !== undefined) lastHistoryMessage.providerOptions = cacheBreakpoint;
 	return messages;
 }
 
