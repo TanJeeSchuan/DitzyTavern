@@ -1,6 +1,6 @@
 # Illustration actions and lifetime
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: 01
 
@@ -29,10 +29,10 @@ A writer can use, refine and remove an Illustration, paint the current scene fro
 - [x] Test that an Illustration is copied by Fork, dropped by Trim Variants for an unselected Variant, deleted with its Variant, and that its picture and its Brief's references survive the orphan sweep and are swept once it is deleted.
 - [x] Test that deleting a Variant aborts its painting and stores nothing.
 - [x] e2e: paint from the composer, add the picture to the composer and send it; the next Generation's request carries the picture, and the one before it did not.
-- [ ] Verify manually with playwright-cli, including a picture arriving under the final Message and one arriving above the viewport. No UI tests.
+- [x] Verify manually with playwright-cli, including a picture arriving under the final Message and one arriving above the viewport. No UI tests.
 - [x] Run focused tests locally; let CI run typechecking and the full suite.
-- [ ] Run `/code-review` and resolve its findings.
-- [ ] Set this ticket to DONE and commit.
+- [x] Run `/code-review` and resolve its findings.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
