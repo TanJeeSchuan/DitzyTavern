@@ -17,6 +17,7 @@ import {
 	readConversation,
 	readSelectedPreset,
 	runPresetCommand,
+	appliedId,
 	selectPreset,
 	startGeneration,
 } from "./prompt-preset-test-fixtures";
@@ -57,15 +58,16 @@ describe("Native Prompt Preset interchange", () => {
 		expect(imported.status).toBe(200);
 		expect(imported.body).toMatchObject({
 			outcome: "applied",
-			preset: { id: 2, name: "Default", isDefault: false },
+			preset: { name: "Default", isDefault: false },
 		});
-		const roundTrip = await exportPreset(routes.library, 2);
+		const importedId = appliedId(imported);
+		const roundTrip = await exportPreset(routes.library, importedId);
 		expect(roundTrip).toEqual(native);
 
 		// Export is a stored recipe projection: it has references only, never the
 		// selected Chat's Participant names, resolved content or history entries.
 		const conversation = createChat(database);
-		await selectPreset(routes.conversations, conversation.id, conversation.revision, 2);
+		await selectPreset(routes.conversations, conversation.id, conversation.revision, importedId);
 		const resolved = await readSelectedPreset(routes.conversations, conversation.id);
 		expect(resolved?.slots.map((slot) => slot.reference)).toEqual([
 			"instruction",
@@ -87,7 +89,7 @@ describe("Native Prompt Preset interchange", () => {
 			],
 		});
 		expect(result.status).toBe(422);
-		expect(await listPresets(routes.library)).toHaveLength(1);
+		expect(await listPresets(routes.library)).toHaveLength(2);
 	});
 
 	test("rejects a reference to a Box that is not registered", async () => {
@@ -95,7 +97,7 @@ describe("Native Prompt Preset interchange", () => {
 		const result = await importPreset(routes.library, { name: "Unknown Box", slots: [{ reference: "box:nope", enabled: true, role: "system", content: "" }] });
 		expect(result.status).toBe(422);
 		expect(result.body).toMatchObject({ reason: "There is no Box for box:nope." });
-		expect(await listPresets(routes.library)).toHaveLength(1);
+		expect(await listPresets(routes.library)).toHaveLength(2);
 	});
 
 	test("imports as a new independent preset and invalid input leaves the library unchanged", async () => {
@@ -126,18 +128,20 @@ describe("Native Prompt Preset interchange", () => {
 		expect(invalid.status).toBe(422);
 		expect((await listPresets(routes.library)).map((preset) => preset.name)).toEqual([
 			"Default",
+			"Default (cache-saving)",
 			"Independent",
 		]);
 
+		const importedId = appliedId(imported);
 		const renamed = await runPresetCommand(routes.library, {
 			type: "rename",
-			presetId: 2,
+			presetId: importedId,
 			expectedRevision: 0,
 			name: "Independent copy",
 		});
 		expect(renamed.status).toBe(200);
 		expect((await exportPreset(routes.library, 1)).name).toBe("Default");
-		expect((await exportPreset(routes.library, 2)).name).toBe("Independent copy");
+		expect((await exportPreset(routes.library, importedId)).name).toBe("Independent copy");
 	});
 
 	test("an imported recipe drives the selected Conversation's resolved request", async () => {
@@ -164,7 +168,7 @@ describe("Native Prompt Preset interchange", () => {
 			],
 		});
 		expect(imported.status).toBe(200);
-		await selectPreset(routes.conversations, conversation.id, conversation.revision, 2);
+		await selectPreset(routes.conversations, conversation.id, conversation.revision, appliedId(imported));
 
 		const gate = gatedProvider();
 		const app = createConversationRoutes(database, { masterKey: key, fetch: gate.fetch });

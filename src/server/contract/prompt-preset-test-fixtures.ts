@@ -511,3 +511,7 @@ export const slotOf = (
 	reference: string,
 	occurrence = 0,
 ) => recipe.slots.filter((slot) => slot.reference === reference)[occurrence];
+
+// @approved
+// SAFETY: an applied create, duplicate or import outcome carries the new preset's summary.
+export const appliedId = (result: { body: unknown }) => (result.body as { preset: { id: number } }).preset.id;

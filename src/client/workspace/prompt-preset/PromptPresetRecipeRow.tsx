@@ -161,6 +161,7 @@ export function PromptPresetRecipeRow({
 	slot,
 	index,
 	slotCount,
+	historyIndex,
 	draft,
 	pending,
 	autoOpenEditor,
@@ -174,6 +175,7 @@ export function PromptPresetRecipeRow({
 	slot: ResolvedPromptPresetSlot;
 	index: number;
 	slotCount: number;
+	historyIndex: number;
 	draft: BlockDraft | undefined;
 	pending: boolean;
 	autoOpenEditor: boolean;
@@ -198,6 +200,9 @@ export function PromptPresetRecipeRow({
 	const roleDraft = draft?.kind === "role" ? draft : null;
 	const dirty = draft !== undefined && draftIsDirty(slot, draft);
 	const enabled = draft?.enabled ?? slot.enabled;
+	// @approved
+	//  Lore and Box items are rebuilt for every Generation, so above history they can change the prefix the provider cached.
+	const breaksCache = enabled && index < historyIndex && (slot.reference === "lore" || isBoxReference(slot.reference));
 	const closeAndDiscard = (): void => {
 		onDraftCancel(slot.id);
 		setEditing(false);
@@ -228,6 +233,7 @@ export function PromptPresetRecipeRow({
 				</button>
 				<h3 className={`min-w-0 truncate font-medium leading-5${enabled ? "" : " text-muted-foreground"}`}>{title}</h3>
 				{dirty && <span className="text-xs text-muted-foreground">Unsaved</span>}
+				{breaksCache && <span className="shrink-0 text-xs text-muted-foreground">Breaks cache</span>}
 			</div>
 			<div className="flex items-center gap-1">
 				<Button
@@ -306,6 +312,13 @@ export function PromptPresetRecipeRow({
 						)}
 					</div>
 				)}
+				{breaksCache && <div className="mt-5 flex flex-wrap items-center gap-3 rounded-md border border-border px-3 py-2 text-xs text-muted-foreground" role="note">
+					<p className="min-w-0 flex-1">{title} can change between Sends. Above Chat history, each change makes the provider reprocess the whole history at full price.</p>
+					<Button variant="outline" size="sm" disabled={pending} onClick={() => {
+						setEditing(false);
+						onOperation(() => movePromptPresetBlock(presetId, slot.id, historyIndex + 1));
+					}}>Move below Chat history</Button>
+				</div>}
 				</div>
 				<div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
 					<div className="flex items-center gap-0.5" role="group" aria-label={`${title} structure actions`}>

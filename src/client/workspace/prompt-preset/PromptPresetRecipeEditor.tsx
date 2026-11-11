@@ -96,6 +96,9 @@ export function PromptPresetRecipeEditor({
 	problem: string | null;
 } & RecipeOperationHandlers) {
 	const [orderedSlots, setOrderedSlots] = useState(preset.slots);
+	// @approved
+	//  The compiler places history at the first enabled history block.
+	const historyIndex = orderedSlots.findIndex((slot) => slot.reference === "history" && (drafts[slot.id]?.enabled ?? slot.enabled));
 	const [newInstructionEditorId, setNewInstructionEditorId] = useState<number | null>(null);
 	const slotListRef = useRef<HTMLOListElement>(null);
 	const previousRenderedRecipe = useRef({ presetId: preset.id, slotCount: preset.slots.length });
@@ -174,6 +177,7 @@ export function PromptPresetRecipeEditor({
 					slot={slot}
 					index={index}
 					slotCount={orderedSlots.length}
+					historyIndex={historyIndex}
 					draft={drafts[slot.id]}
 					pending={pending}
 					autoOpenEditor={newInstructionEditorId === slot.id}

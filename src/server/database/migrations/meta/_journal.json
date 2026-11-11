@@ -281,6 +281,13 @@
       "when": 1794296061866,
       "tag": "0039_clear_lore_activation_records",
       "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "6",
+      "when": 1794368000000,
+      "tag": "0040_cache_saving_default_preset",
+      "breakpoints": true
     }
   ]
 }
