@@ -112,6 +112,41 @@ describe("OpenRouter Model Client", () => {
 		expect(request?.body.stream).toBe(true);
 	});
 
+	test("marks the end of history, and nothing else, as Claude's cache breakpoint", async () => {
+		let messages: unknown;
+		const client = createModelClient({
+			profile,
+			secrets: { credential: "openrouter-secret", headers: {} },
+			fetch: async (_input, init) => {
+				messages = JSON.parse(String(init?.body)).messages;
+				return streamResponse();
+			},
+		});
+
+		await collectModelClientGeneration(client, {
+			promptPlan: {
+				blocks: [
+					{ kind: "system-instruction", role: "system", content: "Answer." },
+					{ kind: "history", role: "human", speakerName: "Writer", content: "I knock." },
+					{ kind: "history", role: "model", speakerName: "Maren", content: "Nobody answers." },
+					{ kind: "history", role: "human", speakerName: "Writer", content: "I try the handle." },
+					{ kind: "post-history-instruction", role: "system", content: "Stay in the scene." },
+				],
+				warnings: [], images: [],
+			},
+			modelId: "anthropic/claude-sonnet-5.5",
+			generationSettings,
+		});
+
+		expect(messages).toEqual([
+			{ role: "system", content: [{ type: "text", text: "Answer." }] },
+			{ role: "user", content: "I knock." },
+			{ role: "assistant", content: "Nobody answers." },
+			{ role: "user", content: [{ type: "text", text: "I try the handle.", cache_control: { type: "ephemeral" } }] },
+			{ role: "system", content: [{ type: "text", text: "Stay in the scene." }] },
+		]);
+	});
+
 	test("normalizes OpenRouter errors without leaking dedicated secrets", async () => {
 		const credential = "openrouter-error-secret-never-returned";
 		const headerValue = "openrouter-route-secret-never-returned";
