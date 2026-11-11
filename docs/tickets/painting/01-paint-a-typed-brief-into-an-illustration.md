@@ -1,6 +1,6 @@
 # Paint a typed Brief into an Illustration
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: None
 
@@ -34,8 +34,8 @@ A writer connects an Image Model, opens the Paint panel from a Message, types a 
 - [x] e2e: paint from a Message with a typed Brief and see the picture; swipe that Message away and back; a scripted failure shows the provider's message and Retry paints.
 - [x] Verify manually with playwright-cli. No UI tests.
 - [x] Run focused tests locally; let CI run typechecking and the full suite.
-- [ ] Run `/code-review` and resolve its findings.
-- [ ] Set this ticket to DONE and commit.
+- [x] Run `/code-review` and resolve its findings.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
