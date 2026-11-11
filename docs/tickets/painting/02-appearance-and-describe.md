@@ -1,6 +1,6 @@
 # Appearance and Describe
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: None
 
@@ -34,8 +34,8 @@ Overlaps with ticket 01 in Connection Settings and with ticket 04 in Prompt Pres
 - [x] Test through captured requests: the built-in preset sends Appearance after Identity, an empty one sends nothing, the switch off sends anchors without Images, and a Describe request carries the chosen pictures or the Portrait, and the Ask.
 - [x] Verify the editor, the switch and both Describe buttons manually with playwright-cli, in the Character editor and a Participant editor. No UI tests.
 - [x] Run focused tests locally; let CI run typechecking and the full suite.
-- [ ] Run `/code-review` and resolve its findings.
-- [ ] Set this ticket to DONE and commit.
+- [x] Run `/code-review` and resolve its findings.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
