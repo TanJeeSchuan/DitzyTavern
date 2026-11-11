@@ -108,3 +108,27 @@ test("a Chat starts square without stored settings and remembers the writer's sh
 	module.command(chat.id, { type: "set-aspect-ratio", aspectRatio: "9:16" });
 	expect(createPaintingModule(database).read(chat.id).aspectRatio).toBe("9:16");
 });
+
+test("concurrent paintings keep their starting positions when the later picture finishes first", async () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const first = Promise.withResolvers<Response>();
+	const second = Promise.withResolvers<Response>();
+	const module = createPaintingModule(database, { fetch: (_url, init) => JSON.parse(String(init?.body)).prompt === "First" ? first.promise : second.promise });
+	const variantId = chat.messages[0]!.variants[0]!.id;
+	module.command(chat.id, { type: "paint", variantId, brief: "First", aspectRatio: "9:16" });
+	module.command(chat.id, { type: "paint", variantId, brief: "Second", aspectRatio: "16:9" });
+	const ids = module.read(chat.id).paintings.map((painting) => painting.id);
+	const finish = async (reply: typeof first, brief: string) => {
+		const finished = Promise.withResolvers<void>();
+		const unsubscribe = subscribeDatabaseChanges(database, () => { if (module.read(chat.id).paintings.some((painting) => painting.kind === "illustration" && painting.brief === brief)) finished.resolve(); }, () => {});
+		reply.resolve(Response.json({ data: [{ b64_json: pngFixture().toString("base64") }] }));
+		await finished.promise;
+		unsubscribe();
+	};
+	await finish(second, "Second");
+	expect(module.read(chat.id).paintings.map((painting) => painting.id)).toEqual(ids);
+	await finish(first, "First");
+	expect(createPaintingModule(database).read(chat.id).paintings.map((painting) => painting.id)).toEqual(ids);
+	expect(module.read(chat.id).paintings.map((painting) => painting.brief)).toEqual(["First", "Second"]);
+});

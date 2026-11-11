@@ -190,7 +190,7 @@ The central story canvas, floating composer, and panels remain opaque and readab
 
 ### Painting
 
-The Paint panel uses the standard secondary panel frame and becomes a full-screen layer on narrow screens. Its Brief uses the shared image-capable editor, followed by Shape and Paint. Closing the panel leaves the painting running.
+The Paint panel uses the standard secondary panel frame and becomes a full-screen layer on narrow screens. Its Brief uses the shared image-capable editor, followed by Shape and Paint. Closing the panel leaves the painting running. The panel shows the same Illustration rows for its Variant, including progress and failures.
 
 An Illustration occupies its own row after its Message, as wide as the text column and capped at half the dynamic viewport height. Reserve the chosen aspect ratio from the start. A provisional row says "Painting…"; a failed row keeps the provider's message with Retry and Dismiss. The finished picture fits inside the same reserved row without cropping.
 

@@ -5,6 +5,7 @@ import { AppSelect } from "@/components/ui/select";
 import { Value } from "@sinclair/typebox/value";
 import { paintingAspectRatio, DEFAULT_PAINTING_ASPECT_RATIO } from "../shared/contract/painting";
 import { ProseEditor } from "./editor/ProseEditor";
+import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
 import { usePaintingCommand, useIllustrations } from "./painting";
 
@@ -27,6 +28,7 @@ export function PaintPanel({ conversationId, variantId, onClose }: { conversatio
 			<Button className="justify-self-start" disabled={pending || !brief.trim() || read.isPending || read.isError} onClick={() => void submit({ type: "paint", variantId, brief, aspectRatio })}>Paint</Button>
 			<p className="panel-note">Painting continues after you close this panel.</p>
 			{(error !== null || read.isError) && <p role="alert" className="text-sm text-destructive">{error ?? "Illustrations could not be loaded."}</p>}
+			<IllustrationRows conversationId={conversationId} variantId={variantId} />
 		</div>
 	</aside>;
 }

@@ -30,9 +30,9 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 			.where(and(inArray(messageVariantDataTable.message_variant_id, variantIds), eq(messageVariantDataTable.namespace, NAMESPACE))).all();
 		const paintings: Painting[] = stored.map(({ id, variantId, value }) => ({ kind: "illustration", id, variantId, ...Value.Parse<typeof illustration>(illustration, JSON.parse(value)) }));
 		for (const variantId of variantIds) for (const entry of provisional.forVariant(variantId)) paintings.push(entry.painting);
-		return { aspectRatio, paintings };
+		return { aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)) };
 	};
-	const start = (variantId: number, brief: string, aspectRatio: IllustrationsRead["aspectRatio"], id: string = crypto.randomUUID()) => {
+	const start = (variantId: number, brief: string, aspectRatio: IllustrationsRead["aspectRatio"], id: string = Bun.randomUUIDv7()) => {
 		const { profileId, model } = readImageModelSettings(database);
 		const connections = createConnectionSettingsModule(database, options);
 		const profile = connections.get().profiles.find((profile) => profile.id === profileId);
