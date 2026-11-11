@@ -186,6 +186,7 @@ describe("Native Conversation transport adapter", () => {
 		definition: {
 			name: string;
 			prompt: PromptChannels;
+				sendAppearanceImages: boolean;
 			openings: string[];
 		};
 	}

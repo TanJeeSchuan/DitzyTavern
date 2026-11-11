@@ -22,6 +22,7 @@ export type SeatDraft =
 			definition: {
 				name: string;
 				prompt: PromptChannels;
+				sendAppearanceImages: boolean;
 				openings: string[];
 			};
 	  };
