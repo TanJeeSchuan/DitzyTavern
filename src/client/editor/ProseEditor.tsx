@@ -2,15 +2,16 @@ import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
 import { Compartment, EditorSelection, EditorState, type Range, type SelectionRange, type TransactionSpec } from "@codemirror/state";
 import { Decoration, type DecorationSet, drawSelection, EditorView, keymap, ViewPlugin, WidgetType } from "@codemirror/view";
 import { ImagePlus } from "lucide-react";
-import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { type Ref, type ReactNode, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import { formatImageReference, parseImageReferences } from "../../shared/image-reference";
-import { useOpenImageAt } from "../ImageDialog";
+import { ImageDialogProvider, useOpenImageAt, type OpenedImage } from "../ImageDialog";
 import { imageAccept, imageSrc, uploadImage } from "../lib/image";
 
 export interface ProseEditorHandle {
 	focus: () => void;
 	insertReference: (name: string, hash: string) => void;
+	appendText: (text: string) => void;
 }
 
 class ImageChip extends WidgetType {
@@ -82,16 +83,7 @@ const editability = (disabled: boolean) => [EditorView.editable.of(!disabled), E
 const contentAttributes = (ariaLabel: string, placeholder: string) =>
 	EditorView.contentAttributes.of({ "aria-label": ariaLabel, "aria-placeholder": placeholder, "aria-multiline": "true", spellcheck: "true" });
 
-export function ProseEditor({
-	ref,
-	value,
-	onChange,
-	placeholder = "",
-	disabled = false,
-	ariaLabel,
-	className,
-	autoFocus = false,
-}: {
+type ProseEditorProps = {
 	ref?: Ref<ProseEditorHandle>;
 	value: string;
 	onChange: (value: string) => void;
@@ -100,11 +92,28 @@ export function ProseEditor({
 	ariaLabel: string;
 	className?: string;
 	autoFocus?: boolean;
-}) {
+	imageActions?: (image: OpenedImage) => ReactNode;
+};
+
+export function ProseEditor(props: ProseEditorProps) {
+	return props.imageActions === undefined ? <Editor {...props} /> : <ImageDialogProvider actions={props.imageActions}><Editor {...props} /></ImageDialogProvider>;
+}
+
+function Editor({
+	ref,
+	value,
+	onChange,
+	placeholder = "",
+	disabled = false,
+	ariaLabel,
+	className,
+	autoFocus = false,
+}: ProseEditorProps) {
 	const host = useRef<HTMLDivElement>(null);
 	const picker = useRef<HTMLInputElement>(null);
 	const view = useRef<EditorView | null>(null);
 	const pendingInsertions = useRef(new Set<{ range: SelectionRange }>());
+	const openedReference = useRef<{ range: SelectionRange; text: string } | null>(null);
 	const onChangeRef = useRef(onChange);
 	const openImageAt = useOpenImageAt();
 	const [error, setError] = useState<string | null>(null);
@@ -147,6 +156,11 @@ export function ProseEditor({
 
 	useImperativeHandle(ref, () => ({
 		focus: () => view.current?.focus(),
+		appendText: (text) => {
+			const editor = view.current;
+			if (editor === null || !editor.state.facet(EditorView.editable)) return;
+			editor.dispatch({ changes: { from: editor.state.doc.length, insert: `${editor.state.doc.length === 0 ? "" : "\n\n"}${text}` }, userEvent: "input" });
+		},
 		insertReference: (name, hash) => {
 			const editor = view.current;
 			if (editor === null || !editor.state.facet(EditorView.editable)) return;
@@ -177,6 +191,13 @@ export function ProseEditor({
 					settings.label.of(contentAttributes(ariaLabel, placeholder)),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) {
+							const reference = openedReference.current;
+							if (reference !== null) {
+								const from = update.changes.mapPos(reference.range.from, 1);
+								const to = update.changes.mapPos(reference.range.to, -1);
+								openedReference.current = from < to && update.state.doc.sliceString(from, to) === reference.text
+									? { ...reference, range: EditorSelection.range(from, to) } : null;
+							}
 							for (const pending of pendingInsertions.current) {
 								pending.range = !pending.range.empty && update.changes.touchesRange(pending.range.from, pending.range.to)
 									? EditorSelection.cursor(update.changes.mapPos(pending.range.to, 1))
@@ -249,8 +270,26 @@ export function ProseEditor({
 		});
 	}, [placeholder, disabled, ariaLabel]);
 
+	const openImage = (target: EventTarget) => {
+		const chip = target instanceof Element ? target.closest(".image-chip") : null;
+		const editor = view.current;
+		if (chip === null || editor === null) return openImageAt(target);
+		const position = editor.posAtDOM(chip);
+		const reference = parseImageReferences(editor.state.doc.toString()).find(({ start }) => start === position);
+		if (reference === undefined) return openImageAt(target);
+		openedReference.current = { range: EditorSelection.range(reference.start, reference.end), text: editor.state.doc.sliceString(reference.start, reference.end) };
+		openImageAt(target, {
+			onClose: () => { openedReference.current = null; },
+			insertAfter: (text) => {
+				const reference = openedReference.current;
+				if (view.current !== editor || !editor.state.facet(EditorView.editable) || reference === null) return false;
+				editor.dispatch({ changes: { from: reference.range.to, insert: `\n\n${text}\n\n` }, userEvent: "input" });
+				return true;
+			},
+		});
+	};
 	return (
-		<div className={cn("prose-editor", className)} data-disabled={disabled} onClick={(event) => openImageAt(event.target)}>
+		<div className={cn("prose-editor", className)} data-disabled={disabled} onClick={(event) => openImage(event.target)}>
 			<div ref={host} className="prose-editor-host" data-placeholder={value === "" ? placeholder : undefined} />
 			<button type="button" className="prose-editor-add" aria-label="Add an image" title="Add an image" disabled={disabled} onClick={() => picker.current?.click()}>
 				<ImagePlus aria-hidden="true" />

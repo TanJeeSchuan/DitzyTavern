@@ -1,4 +1,11 @@
 import type { PromptChannels } from "./contract/prompt-schema";
+import type { ParticipantDefinition } from "./contract/conversation-schema";
+import { parseImageReferences } from "./image-reference";
+
+export const appearanceImageHashes = ({ prompt, portrait }: Pick<ParticipantDefinition, "prompt" | "portrait">): string[] => {
+	const hashes = parseImageReferences(prompt.appearance).map(({ hash }) => hash);
+	return hashes.length > 0 ? hashes : portrait === undefined ? [] : [portrait.hash];
+};
 
 // @approved
 //  Shared Prompt channel vocabulary and presentation derivation, safe for

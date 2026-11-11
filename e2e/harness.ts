@@ -85,6 +85,7 @@ export const startE2eServer = async () => {
 		reset: () => call("reset"),
 		images: (...replies: ImageReply[]) => call("images", replies),
 		chat: (...replies: ChatReply[]) => call("chat", replies),
+		describe: (...replies: ChatReply[]) => call("describe", replies),
 		authoring: (...replies: AuthoringReply[]) => call("authoring", replies),
 		decisions: (...rules: DecisionRule[]) => call("decisions", rules),
 		memories: (...claims: MemoryClaim[]) => call("memories", claims),

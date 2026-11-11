@@ -1,4 +1,4 @@
-import type { ImageModelSettings } from "../../../shared/contract/image-model";
+import type { ModelSelectionSettings } from "../../../shared/contract/model-selection";
 import { ChevronRight, Copy, Ellipsis, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -16,8 +16,10 @@ const rowClass = "flex w-full min-w-0 flex-col gap-0.5 px-4 py-3 text-left";
 
 const listOf = (items: readonly string[], conjunction: "and" | "or") => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ${conjunction} ${items.at(-1)}`;
 
-export function ConnectionProfileList({ imageModel, onOpenImageModel, controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger, boxDecisions, onOpenBoxDecision, boxDelegates, defaultDelegate, onOpenBoxDelegate }: {
-	imageModel: SettingsPreview<ImageModelSettings>;
+export function ConnectionProfileList({ describingModel, onOpenDescribingModel, imageModel, onOpenImageModel, controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger, boxDecisions, onOpenBoxDecision, boxDelegates, defaultDelegate, onOpenBoxDelegate }: {
+	imageModel: SettingsPreview<ModelSelectionSettings>;
+	describingModel: SettingsPreview<ModelSelectionSettings>;
+	onOpenDescribingModel: () => void;
 	onOpenImageModel: () => void;
 	controller: ConnectionSettingsController;
 	settings: ConnectionSettings;
@@ -47,6 +49,12 @@ export function ConnectionProfileList({ imageModel, onOpenImageModel, controller
 					describe={(profile) => CONNECTION_ADAPTER_LABELS[profile.adapter]}
 					badge={(profile) => profile.id === activeProfileId ? "This chat" : null}
 					empty={<EmptyProfiles title="No connections yet">Add one to start generating. Chats and imports work without it.</EmptyProfiles>} />
+			</section>
+
+			<section aria-labelledby="describing-model-title">
+				<h3 id="describing-model-title">Describing model</h3>
+				<p>Describes pictures in Appearance throughout the app.</p>
+				<DecisionSummary preview={describingModel} name="Describing model" onOpen={onOpenDescribingModel} model={(settings) => settings.model} describe={() => "Describing model for every Definition"} />
 			</section>
 
 			<section aria-labelledby="image-models-title">
