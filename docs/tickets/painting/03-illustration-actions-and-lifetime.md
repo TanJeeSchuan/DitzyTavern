@@ -1,6 +1,6 @@
 # Illustration actions and lifetime
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: 01
 
@@ -32,7 +32,7 @@ A writer can use, refine and remove an Illustration, paint the current scene fro
 - [x] Verify manually with playwright-cli, including a picture arriving under the final Message and one arriving above the viewport. No UI tests.
 - [x] Run focused tests locally; let CI run typechecking and the full suite.
 - [x] Run `/code-review` and resolve its findings.
-- [ ] Set this ticket to DONE and commit.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 
