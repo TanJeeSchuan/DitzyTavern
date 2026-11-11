@@ -26,12 +26,12 @@ export default class UiEvalReporter implements Reporter {
 		for (const name of new Set(measured.map((sample) => sample.name))) {
 			const group = measured.filter((sample) => sample.name === name);
 			const available = group.filter((sample) => sample.outcome !== "unavailable");
-			const completed = group.filter((sample) => sample.outcome === "observed").map((sample) => sample.durationMs).sort((left, right) => left - right);
+			const completed = available.filter((sample) => sample.outcome === "observed").map((sample) => sample.durationMs).sort((left, right) => left - right);
 			const middle = Math.floor(completed.length / 2);
 			const lowerMiddle = Math.max(0, Math.ceil(completed.length / 2) - 1);
 			const median = completed.length === 0 ? "—" : ((completed[middle]! + completed[lowerMiddle]!) / 2).toFixed(1);
 			const maximum = completed.at(-1)?.toFixed(1) ?? "—";
-			const timeouts = group.filter((sample) => sample.outcome === "timed-out");
+			const timeouts = available.filter((sample) => sample.outcome === "timed-out");
 			const misses = available.filter((sample) => sample.durationMs > sample.budgetMs).length;
 			const lowerBound = Math.min(...timeouts.map((sample) => sample.durationMs)).toFixed(0);
 			const censored = timeouts.length ? `${timeouts.length} (≥${lowerBound} ms)` : "0";
