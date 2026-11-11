@@ -1,3 +1,4 @@
+import { isChatModelCall } from "./protocol";
 import type { Page } from "@playwright/test";
 import { test, expect, send, story } from "./fixtures";
 import { pngFixture } from "../src/server/image/image-fixtures";
@@ -66,7 +67,7 @@ test("painting reaches the story model only after Add to composer and Send", asy
 	await page.getByRole("button", { name: "Generate Variant" }).click();
 	await page.getByRole("button", { name: "Send exact plan" }).click();
 	await expect(story(page).getByText("I see your Illustration.")).toBeVisible();
-	const calls = (await llm.log()).calls.filter((call) => call.kind === "chat");
+	const calls = (await llm.log()).calls.filter(isChatModelCall);
 	expect(calls).toHaveLength(2);
 	expect(JSON.stringify(calls[0]!.body.messages)).not.toContain("image_url");
 	const sent = calls[1]!.body.messages.flatMap(({ content }) => Array.isArray(content) ? content : []);

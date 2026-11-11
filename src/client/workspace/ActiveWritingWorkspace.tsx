@@ -250,7 +250,7 @@ export function ActiveWritingWorkspace({
 		<IllustrationActionsContext value={{
 			addToComposer: (hash) => {
 				if (narrow) dispatchPanel({ type: "details-closed" });
-				composerEditorRef.current?.insertReference("Illustration", hash);
+				requestAnimationFrame(() => composerEditorRef.current?.insertReference("Illustration", hash));
 			},
 			editBrief: openPaint,
 		}}>
