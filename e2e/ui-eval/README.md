@@ -4,6 +4,10 @@ Run `bun run test:ui-eval`. The command uses the same remote executor as `test:e
 
 The suite runs serially against the production build, with normal motion and a desktop viewport. It uses the existing seeded database and scripted provider fixtures.
 
+Set `UI_EVAL_LATENCY_MS=100 bun run test:ui-eval` to emulate network latency. The setting is forwarded to the remote executor and printed in the report; it defaults to zero and accepts finite, nonnegative milliseconds. Chromium applies it only to browser `/api/` requests at the test server's origin, including its random port. Assets, fixture API calls and server-side provider calls are unaffected; bandwidth is unrestricted. The value is a minimum request-to-response-headers duration, not an extra delay added to server processing time. It delays stream connection setup, not every streamed chunk. This requires Chromium's CDP network emulation.
+
+For a focused comparison, run `UI_EVAL_LATENCY_MS=100 bun run test:ui-eval --grep 'crawl Prompt Preset controls'`. Draft toggles and already-loaded entry details should remain fast, while opening uncached panels and saving include network time. A separate validation case fetches real workspace data and checks a known 250 ms latency floor, regardless of the configured eval setting.
+
 Read `.scratch/ui-eval/summary.md` or the CI job summary. Raw samples are in `.scratch/ui-eval/samples.json`. CI uploads both the report and Playwright's test attachments as the `ui-eval` artifact.
 
 Budget misses are informational while collecting a baseline. The job fails for incorrect output, missing measurement origins, malformed observed SSE, or a probe that misses the injected stall. It does not mark missing text as a successful response: a timeout is an explicit budget miss with a lower bound, excluded from completed-sample statistics.

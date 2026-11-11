@@ -10,7 +10,7 @@ const commands = {
 };
 const reportDirectory = task === "ui-eval" ? "ui-eval" : "e2e-report";
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
-const command = [commands[task], ...args.map(quote)].join(" ");
+const command = [task === "ui-eval" ? `UI_EVAL_LATENCY_MS=${quote(process.env.UI_EVAL_LATENCY_MS ?? "0")}` : "", commands[task], ...args.map(quote)].filter(Boolean).join(" ");
 const bunVersion = packageManager.slice("bun@".length);
 const nodeVersion = engines.node;
 const image = "docker://gcr.io/flame-public/rbe-ubuntu24-04" +

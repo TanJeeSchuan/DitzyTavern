@@ -4,6 +4,7 @@ import { Value } from "@sinclair/typebox/value";
 import { Type } from "@sinclair/typebox";
 import { samplesSchema, type Sample } from "./probe";
 import { coverageSchema, type Coverage } from "./crawl";
+import { apiLatencyMs } from "./network";
 
 export default class UiEvalReporter implements Reporter {
 	private samples: Sample[] = [];
@@ -22,6 +23,7 @@ export default class UiEvalReporter implements Reporter {
 		const measured = this.samples.filter((sample) => !sample.warmup && !sample.name.startsWith("probe validation:"));
 		const lines = [
 			"# UI responsiveness eval", "",
+			`Browser /api/ response-header latency floor: ${apiLatencyMs} ms; bandwidth unrestricted.`, "",
 			"Budgets are informational during baseline collection. Functional assertions and probe validation fail the job.", "",
 			"Times end after a render opportunity, not confirmed pixel presentation. Timed-out samples are lower bounds and are excluded from completed-sample medians.", "",
 			"| Scenario | Budget ms | Samples | Completed median ms | Completed max ms | Timeouts | Budget misses | Unavailable |",

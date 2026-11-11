@@ -5,9 +5,11 @@ import { workspaceResponse } from "../../src/shared/contract/workspace";
 import { conversationPromptPreset } from "../../src/shared/contract/prompt-preset";
 import { installProbe, type Measurement, type Sample } from "./probe";
 import { discoverControls, type Coverage } from "./crawl";
+import { applyApiLatency } from "./network";
 
 test("crawl Prompt Preset controls", async ({ page, request, llm }, testInfo) => {
 	test.setTimeout(300_000);
+	await applyApiLatency(page, llm.url);
 	await page.addInitScript(installProbe);
 	const samples: Sample[] = [];
 	const coverage = new Map<string, Coverage>();

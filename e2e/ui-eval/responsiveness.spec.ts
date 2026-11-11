@@ -4,6 +4,7 @@ import { test, expect, story } from "../fixtures";
 import { workspaceResponse } from "../../src/shared/contract/workspace";
 import { chatHistoryPage, conversationSummary, conversationCommandBody } from "../../src/shared/contract/conversation-schema";
 import { installProbe, type Measurement } from "./probe";
+import { applyApiLatency } from "./network";
 
 const draft = '[aria-label="Message draft"]';
 const stop = 'button[aria-label="Stop Generation"]';
@@ -20,7 +21,8 @@ const measure = async (page: Page, measurement: Measurement, action: () => Promi
 	return page.evaluate(() => window.uiEval.result());
 };
 
-test.beforeEach(async ({ page }) => {
+test.beforeEach(async ({ page, llm }) => {
+	await applyApiLatency(page, llm.url);
 	await page.addInitScript(installProbe);
 	await page.addInitScript(() => localStorage.setItem("ditzytavern.inspect-prompt-plan-before-generating", "false"));
 });
