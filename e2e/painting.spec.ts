@@ -1,0 +1,43 @@
+import { test, expect, send, story } from "./fixtures";
+import { pngFixture } from "../src/server/image/image-fixtures";
+
+const picture = pngFixture({ width: 640, height: 480 }).toString("base64");
+
+test("paint a typed Brief, swipe away and back, then retry a provider refusal", async ({ page, llm }) => {
+	const settings = await (await page.request.get("/api/connection-settings")).json();
+	const { presets } = await (await page.request.get("/api/connection-settings/presets")).json();
+	const profile = presets.find((entry: { id: string }) => entry.id === "openrouter-images").profile;
+	const created = await (await page.request.post("/api/connection-settings/commands", { data: { type: "create-profile", expectedRevision: settings.revision, profile } })).json();
+	const profileId = created.settings.profiles.find((entry: { displayName: string }) => entry.displayName === profile.displayName).id;
+	await page.request.post("/api/image-model/commands", { data: { type: "apply", expectedRevision: 0, profileId, model: "e2e-painter" } });
+	await llm.chat({ chunks: ["A lantern beside the lake."] }, { chunks: ["A lantern inside the house."] });
+	await llm.images({ base64: picture }, { status: 400, error: "This Brief was refused by the painter." }, { base64: picture });
+	await page.goto("/");
+	await send(page, "Show me the lantern.");
+	const message = story(page).locator("article").last();
+	await expect(message.getByText("A lantern beside the lake.")).toBeVisible();
+	await message.hover();
+	await message.getByRole("button", { name: "Paint", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Paint", exact: true });
+	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("A coral lantern reflected in still water.");
+	await panel.getByRole("button", { name: "Paint", exact: true }).click();
+	await panel.getByRole("button", { name: "Close Paint" }).click();
+	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
+	await message.hover();
+	await message.getByRole("button", { name: "New Swipe", exact: true }).last().click();
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(message.getByText("A lantern inside the house.")).toBeVisible();
+	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(0);
+	await message.getByRole("button", { name: "Previous Swipe" }).click();
+	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
+	await message.hover();
+	await message.getByRole("button", { name: "Paint", exact: true }).click();
+	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("Another lantern.");
+	await panel.getByRole("button", { name: "Paint", exact: true }).click();
+	await panel.getByRole("button", { name: "Close Paint" }).click();
+	await expect(story(page).getByText("This Brief was refused by the painter.")).toBeVisible();
+	await story(page).getByRole("button", { name: "Retry", exact: true }).click();
+	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(2);
+	await page.reload();
+	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(2);
+});

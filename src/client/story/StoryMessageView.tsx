@@ -1,7 +1,10 @@
+import { IllustrationRows } from "./IllustrationRows";
+import type { Painting } from "../../shared/contract/painting";
 import { hasMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
 import {
 	Dices,
+	Paintbrush,
 	ChevronDown,
 	ChevronLeft,
 	ChevronRight,
@@ -43,6 +46,8 @@ import { prefetchNeighbourText, useVariantText, useVariantsText } from "./varian
 //  Memoized: while a reply streams, only the row whose text changed renders.
 export const StoryMessageView = memo(function StoryMessageView({
 	conversationId,
+	paintings,
+	onPaint,
 	message,
 	isLatest = false,
 	displayedVariantId,
@@ -71,6 +76,8 @@ export const StoryMessageView = memo(function StoryMessageView({
 	lens,
 }: {
 	conversationId: number;
+	paintings?: readonly Painting[];
+	onPaint?: (variantId: number) => void;
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
 	isLatest?: boolean;
@@ -215,6 +222,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	};
 
 	return (
+		<>
 		<article
 			className="story-message"
 			data-latest={isLatest}
@@ -257,6 +265,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 					</div>
 				</div>
 				<div className="advanced-actions" aria-label="Advanced Message actions">
+					{onPaint !== undefined && <button className="edit-action" type="button" disabled={generationActive || active === undefined} onClick={() => { if (active !== undefined) onPaint(active.id); }}><Paintbrush aria-hidden="true" /> Paint</button>}
 					{onSibling !== undefined && (
 						<button
 							className="edit-action"
@@ -422,6 +431,8 @@ export const StoryMessageView = memo(function StoryMessageView({
 				</div>
 			</footer>
 		</article>
+		<IllustrationRows key={visibleId} conversationId={conversationId} paintings={paintings?.filter((painting) => painting.variantId === visibleId) ?? []} />
+		</>
 	);
 });
 

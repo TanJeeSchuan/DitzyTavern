@@ -122,3 +122,8 @@ export const readExistingSources = (database: Database, conversationId: number, 
 			.where(and(eq(messageTable.conversation_id, conversationId), inArray(messageVariantTable.id, [...sources.variantIds]))).all().map(({ id }) => id),
 	};
 };
+
+export const readChatVariantIds = (database: Database, conversationId: number) => connectConversationDatabase(database)
+	.select({ id: messageVariantTable.id }).from(messageVariantTable)
+	.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
+	.where(eq(messageTable.conversation_id, conversationId)).all().map(({ id }) => id);

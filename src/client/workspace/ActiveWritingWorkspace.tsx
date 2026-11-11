@@ -1,3 +1,4 @@
+import { PaintPanel } from "../PaintPanel";
 import { boxIdOf, type BoxId } from "../../shared/contract/box";
 import { Toast } from "radix-ui";
 import { X } from "lucide-react";
@@ -320,6 +321,7 @@ export function ActiveWritingWorkspace({
 				}}
 				onOpenInspector={openBoxInspector}
 				onInspectVariant={openVariantDetails}
+				onPaint={(variantId) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", variantId }))}
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}
 			/>
@@ -341,6 +343,7 @@ export function ActiveWritingWorkspace({
 			</CoveredLayer>
 
 			<CoveredLayer inert={narrow && newChatOpen}>
+			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintVariantId !== null && conversation !== null && <PaintPanel key={`${conversation.id}:${panelState.paintVariantId}`} conversationId={conversation.id} variantId={panelState.paintVariantId} onClose={() => dispatchPanel({ type: "details-closed" })} />}
 			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
 					conversationId={Number(session.activeChatId)}
