@@ -143,3 +143,29 @@ for (const layout of [{ name: "desktop", viewport: { width: 1440, height: 900 } 
 		});
 	});
 }
+
+// @approved
+//  Providers cache a request's longest prefix they saw recently. Every Send
+// must start with the previous request up to its newest human message, or the
+// whole Chat is billed again at full input price.
+test("each Send's request starts with the previous request up to its newest human message", async ({ page, llm }) => {
+	const turns = [
+		["I climb the stairs.", "The landing creaks."],
+		["I knock twice.", "Nobody answers."],
+		["I try the handle.", "It turns easily."],
+		["I step inside.", "Dust hangs in the lamplight."],
+	] as const;
+	await llm.chat(...turns.map(([, reply]) => ({ chunks: [reply] })));
+	await page.goto("/");
+	for (const [sent, reply] of turns) {
+		await send(page, sent);
+		await expect(story(page).getByText(reply)).toBeVisible();
+	}
+	const requests = (await llm.log()).calls.filter(isChatModelCall).map(({ body }) => body.messages);
+	expect(requests).toHaveLength(turns.length);
+	for (const [index, [sent]] of turns.slice(0, -1).entries()) {
+		const stable = requests[index]!.slice(0, requests[index]!.findLastIndex(({ content }) => content.includes(sent)) + 1);
+		expect(stable.length, `request ${index + 1} holds "${sent}" after the preset's opening blocks`).toBeGreaterThan(1);
+		expect(requests[index + 1]!.slice(0, stable.length), `request ${index + 2} prefix`).toEqual(stable);
+	}
+});
