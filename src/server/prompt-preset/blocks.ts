@@ -207,7 +207,9 @@ const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: P
 	const identity = recipe.slots.find((slot) => slot.reference === identityReference);
 	const role = identityReference === null ? undefined
 		: identity?.reference === "human-identity" || identity?.reference === "model-identity" ? identity.role : defaultOutgoingRole(identityReference);
-	const inserted = insertOccurrence(db, recipe.id, ordered.length + 1, { reference, enabled: true, ...role === undefined ? {} : { role } });
+	const occurrence: Parameters<typeof insertOccurrence>[3] = { reference, enabled: true };
+	if (role !== undefined) occurrence.role = role;
+	const inserted = insertOccurrence(db, recipe.id, ordered.length + 1, occurrence);
 	if (!isBoxReference(reference)) return [...ordered, inserted];
 	const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
 	ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted);
