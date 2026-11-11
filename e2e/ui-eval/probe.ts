@@ -28,7 +28,6 @@ export type Measurement = {
 declare global {
 	interface Window {
 		uiEval: ReturnType<typeof installProbe>;
-		releaseSwipe: () => Promise<void>;
 	}
 }
 

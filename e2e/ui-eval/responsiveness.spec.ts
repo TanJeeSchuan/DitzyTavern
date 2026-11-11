@@ -10,6 +10,10 @@ const stop = 'button[aria-label="Stop Generation"]';
 const send = 'button[aria-label="Generate Variant"]';
 const repetitions = 20;
 
+declare global {
+	interface Window { pendingSwipeText: string[] }
+}
+
 const measure = async (page: Page, measurement: Measurement, action: () => Promise<void>) => {
 	await page.evaluate((config) => window.uiEval.arm(config), measurement);
 	await action();
@@ -62,19 +66,25 @@ test("uncached Swipe text", async ({ page, request }) => {
 	const history = Value.Parse(chatHistoryPage, await (await request.get(`${url}/history`)).json());
 	const message = history.messages.at(-1)!;
 	const collected = [];
-	let release = Promise.withResolvers<void>();
-	await page.exposeFunction("releaseSwipe", () => release.resolve());
+	await page.addInitScript((ids: number[]) => {
+		const gate = Promise.withResolvers<void>();
+		window.pendingSwipeText = [];
+		window.addEventListener("ui-eval-start", () => gate.resolve(), { once: true });
+		window.fetch = new Proxy(window.fetch, { async apply(target, _receiver, args: Parameters<typeof fetch>) {
+			const input = args[0];
+			const url = input instanceof Request ? input.url : String(input);
+			if (ids.some((id) => url.endsWith(`/variants/${id}/text`))) {
+				window.pendingSwipeText.push(url);
+				await gate.promise;
+			}
+			return target(...args);
+		} });
+	}, [message.variants[0]!.id, message.variants[3]!.id]);
 	for (let index = 0; index <= repetitions; index++) {
 		const targetIndex = index % 2 === 0 ? 3 : 0;
 		const target = message.variants[targetIndex]!;
 		const article = `[data-message-id="${message.id}"]`;
 		const direction = targetIndex === 3 ? "Next Swipe" : "Previous Swipe";
-		release = Promise.withResolvers<void>();
-		const requested = page.waitForRequest(`**/variants/${target.id}/text`);
-		await page.route(`**/variants/${target.id}/text`, async (route) => {
-			await release.promise;
-			await route.continue();
-		});
 		await page.goto("/");
 		await expect(page.locator(`${article} .prose`)).toContainText(`Take ${targetIndex === 3 ? 1 : 4}.`);
 		const next = page.locator(article).getByRole("button", { name: direction, exact: true });
@@ -82,8 +92,7 @@ test("uncached Swipe text", async ({ page, request }) => {
 			await next.click();
 			await expect(page.locator(`${article} .swipe-count`)).toHaveText(`${position} of 5`);
 		}
-		await requested;
-		await page.evaluate(() => window.addEventListener("ui-eval-start", () => void window.releaseSwipe(), { once: true }));
+		await page.waitForFunction((id) => window.pendingSwipeText.some((url) => url.endsWith(`/variants/${id}/text`)), target.id);
 		const applied = page.waitForResponse((response) => {
 			if (!response.url().endsWith("/commands") || !response.ok()) return false;
 			const { action } = Value.Parse(conversationCommandBody, response.request().postDataJSON());
@@ -95,7 +104,6 @@ test("uncached Swipe text", async ({ page, request }) => {
 			result: { selector: `${article} .prose`, text: `Take ${targetIndex + 1}.` },
 		}, () => next.click()));
 		await applied;
-		await page.unrouteAll({ behavior: "wait" });
 	}
 	// Navigation resets the browser probe; keep every repetition in the report.
 	await test.info().attach("ui-eval-samples.json", { body: JSON.stringify(collected), contentType: "application/json" });
