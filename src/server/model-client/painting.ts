@@ -25,8 +25,8 @@ export async function paintImage(input: {
 		if (image === undefined) throw new Error(`The Image "${name}" is missing.`);
 		return `data:${image.mediaType};base64,${Buffer.from(image.bytes).toString("base64")}`;
 	});
-	const requestUrl = profile.adapter === "openrouter" && profile.requestUrl.trim().endsWith("/")
-		? new URL("images", profile.requestUrl.trim()).toString()
+	const requestUrl = profile.requestUrl.trim().endsWith("/")
+		? new URL(profile.adapter === "openrouter" ? "images" : images.length > 0 ? "images/edits" : "images/generations", profile.requestUrl.trim()).toString()
 		: resolveRequestUrl(profile.requestUrl, "images");
 	const credential = secrets?.credential ?? null;
 	const headers = secrets?.headers ?? {};
@@ -44,6 +44,6 @@ export async function paintImage(input: {
 		: createOpenAICompatible({ ...providerOptions, name: "ditzytavern" }).imageModel(input.modelId);
 	if (profile.timeoutMs === null || profile.timeoutMs <= 0) throw new Error("An Images connection needs a positive timeout.");
 	const timeout = AbortSignal.timeout(profile.timeoutMs);
-	const result = await generateImage({ model, prompt: images.length === 0 ? projectImageAnchors(input.brief) : { text: projectImageAnchors(input.brief), images }, aspectRatio: input.aspectRatio, n: 1, maxRetries: 0, abortSignal: input.signal ? AbortSignal.any([input.signal, timeout]) : timeout });
+	const result = await generateImage({ model, prompt: images.length === 0 ? projectImageAnchors(input.brief) : { text: projectImageAnchors(input.brief), images }, ...profile.adapter === "openrouter" ? { aspectRatio: input.aspectRatio } : { providerOptions: { ditzytavern: { aspect_ratio: input.aspectRatio } } }, n: 1, maxRetries: 0, abortSignal: input.signal ? AbortSignal.any([input.signal, timeout]) : timeout });
 	return result.image.uint8Array;
 }

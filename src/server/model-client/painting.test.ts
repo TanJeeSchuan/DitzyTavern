@@ -27,3 +27,26 @@ test("painting sends anchors, ordered reference Images and the chosen shape to O
 	});
 	expect(Buffer.from(result)).toEqual(map);
 });
+
+test.each([false, true])("OpenAI-compatible painting sends aspect_ratio with reference Images: %s", async (reference) => {
+	const picture = pngFixture();
+	await paintImage({
+		profile: { ...blankConnectionProfileDraft, apiFormat: "images", requestUrl: "https://example.com/v1/" }, modelId: "painter", secrets: null,
+		brief: reference ? `Paint ${formatImageReference("map", "a".repeat(64))}` : "Paint a map", aspectRatio: "16:9",
+		loadImage: () => ({ bytes: picture, mediaType: "image/png" }),
+		fetch: async (url, init) => {
+			expect(String(url)).toBe(`https://example.com/v1/images/${reference ? "edits" : "generations"}`);
+			if (reference) {
+				const form = await new Request(String(url), init).formData();
+				expect(form.get("aspect_ratio")).toBe("16:9");
+				expect(form.get("prompt")).toBe("Paint [Image: map]");
+				const image = form.get("image");
+				expect(image).toBeInstanceOf(Blob);
+				if (!(image instanceof Blob)) throw new Error("Missing reference Image");
+				expect(Buffer.from(await image.arrayBuffer())).toEqual(picture);
+				expect(form.has("size")).toBe(false);
+			} else expect(JSON.parse(String(init?.body))).toEqual({ model: "painter", prompt: "Paint a map", n: 1, aspect_ratio: "16:9" });
+			return Response.json({ data: [{ b64_json: picture.toString("base64") }] });
+		},
+	});
+});
