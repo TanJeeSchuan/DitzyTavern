@@ -14,9 +14,16 @@ type UserPart =
 	| { type: "text"; text: string }
 	| { type: "file"; data: Uint8Array; mediaType: string };
 
-type ChatMessage =
+type ChatMessage = (
 	| { role: "system" | "assistant"; content: string }
-	| { role: "user"; content: string | UserPart[] };
+	| { role: "user"; content: string | UserPart[] }
+) & { providerOptions?: typeof cacheBreakpoint };
+
+// @approved
+//  Claude caches only up to a marked block. The end of history is the last
+// prefix the next Send repeats, so it carries the one breakpoint. OpenRouter
+// and the Anthropic provider both read this key; other providers ignore it.
+const cacheBreakpoint = { anthropic: { cacheControl: { type: "ephemeral" } } } as const;
 
 // @approved
 //  The plan keeps provider-neutral presentation roles; this adapter owns the
@@ -131,6 +138,7 @@ export function toMessages(
 		-1,
 	);
 	let lastModelHistoryContent: string | undefined;
+	let lastHistoryMessage: ChatMessage | undefined;
 	for (const [blockIndex, block] of input.promptPlan.blocks.entries()) {
 		if (block.kind === "history") {
 			const role = block.role;
@@ -146,6 +154,7 @@ export function toMessages(
 			}
 			if (block.content.length > 0) {
 				push(role === "model" ? "assistant" : "user", renderBlock(blockIndex, block.content));
+				lastHistoryMessage = messages.at(-1);
 			}
 			continue;
 		}
@@ -185,7 +194,9 @@ export function toMessages(
 			role: "assistant",
 			content: `${projectImageAnchors(prefix)}${continuationIntent.suffix}`,
 		});
+		lastHistoryMessage = messages.at(-1);
 	}
+	if (lastHistoryMessage !== undefined) lastHistoryMessage.providerOptions = cacheBreakpoint;
 	return messages;
 }
 

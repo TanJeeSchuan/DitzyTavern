@@ -371,7 +371,7 @@ describe("Generation Plan Compiler", () => {
 		const plan = compile({ intent, connection: { apiFormat: "chat-completions", systemPlacement: "strict" } });
 
 		expect(toMessages({ promptPlan: plan.promptPlan }, () => undefined).slice(-2)).toEqual([
-			{ role: "assistant", content: "The lamp turns above you." },
+			{ role: "assistant", content: "The lamp turns above you.", providerOptions: { anthropic: { cacheControl: { type: "ephemeral" } } } },
 			{ role: "user", content: "Carry the scene forward." },
 		]);
 	});
