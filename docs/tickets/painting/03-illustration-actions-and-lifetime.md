@@ -1,6 +1,6 @@
 # Illustration actions and lifetime
 
-Status: TODO
+Status: IN PROGRESS
 
 Blocked By: 01
 
@@ -19,15 +19,15 @@ A writer can use, refine and remove an Illustration, paint the current scene fro
 
 ## Work
 
-- [ ] Open an Illustration full size when pressed.
-- [ ] Add "Add to composer": it inserts an Image Reference into the composer, named "Illustration".
-- [ ] Add "Edit Brief and repaint": it opens the Paint panel on the Illustration's stored Brief.
-- [ ] Add "Delete": it removes the Illustration without changing the Conversation Revision.
-- [ ] Add a Paint button to the composer that opens the panel on the final Message. Disable it while the Chat has an Active Generation.
-- [ ] Abort a provisional painting when its Variant is removed, using the removed Variants the write observer reports.
+- [x] Open an Illustration full size when pressed.
+- [x] Add "Add to composer": it inserts an Image Reference into the composer, named "Illustration".
+- [x] Add "Edit Brief and repaint": it opens the Paint panel on the Illustration's stored Brief.
+- [x] Add "Delete": it removes the Illustration without changing the Conversation Revision.
+- [x] Add a Paint button to the composer that opens the panel on the final Message. Disable it while the Chat has an Active Generation.
+- [x] Abort a provisional painting when its Variant is removed, using the removed Variants the write observer reports.
 - [ ] Make the story viewport follow the bottom when a row is added under the final Message, as it does for a new Message.
-- [ ] Test that an Illustration is copied by Fork, dropped by Trim Variants for an unselected Variant, deleted with its Variant, and that its picture and its Brief's references survive the orphan sweep and are swept once it is deleted.
-- [ ] Test that deleting a Variant aborts its painting and stores nothing.
+- [x] Test that an Illustration is copied by Fork, dropped by Trim Variants for an unselected Variant, deleted with its Variant, and that its picture and its Brief's references survive the orphan sweep and are swept once it is deleted.
+- [x] Test that deleting a Variant aborts its painting and stores nothing.
 - [ ] e2e: paint from the composer, add the picture to the composer and send it; the next Generation's request carries the picture, and the one before it did not.
 - [ ] Verify manually with playwright-cli, including a picture arriving under the final Message and one arriving above the viewport. No UI tests.
 - [ ] Run focused tests locally; let CI run typechecking and the full suite.

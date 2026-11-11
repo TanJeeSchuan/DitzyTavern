@@ -1,3 +1,5 @@
+import type { RefObject } from "react";
+import type { ProseEditorHandle } from "../editor/ProseEditor";
 import { useIllustrations } from "../painting";
 import { isStoryReady } from "../story";
 import { useMemo, useRef, type Dispatch } from "react";
@@ -42,6 +44,7 @@ import { useStoryViewport } from "./useStoryViewport";
 // composer focus; panel coordination and generation remain with the
 // workspace, which composes the guarded openers passed in below.
 export function StoryStage({
+	composerEditorRef,
 	story,
 	dispatchStory,
 	conversation,
@@ -66,6 +69,7 @@ export function StoryStage({
 	onControlChange,
 	onFork,
 }: {
+	composerEditorRef: RefObject<ProseEditorHandle | null>;
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
 	conversation: ConversationSummary | null;
@@ -139,6 +143,7 @@ export function StoryStage({
 	const onLayerFocus = useLayerFocus(inert);
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
+	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(latestStoryMessage, story.preview, story.requestedSelections);
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
 	const lens = useMemo(() => conversation === null ? undefined : { conversation, open: (box: BoxId) => latest.current.boxWindows.open(box) }, [conversation]);
@@ -298,6 +303,9 @@ export function StoryStage({
 					onOpenConnections={onOpenConnections}
 				/>
 				<Composer
+					editorRef={composerEditorRef}
+					onPaint={finalVariantId === null ? undefined : () => onPaint(finalVariantId)}
+					paintDisabled={generation.isGenerating || (conversation?.activeGenerations.length ?? 0) > 0 || assemblyActive || previewMode}
 					draft={generation.draft}
 					moves={generation.moves}
 					onMovesChange={generation.setMoves}

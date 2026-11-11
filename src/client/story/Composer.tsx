@@ -1,11 +1,14 @@
-import { PenLine, Send, Square } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { Paintbrush, PenLine, Send, Square } from "lucide-react";
+import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode, type RefObject } from "react";
 import { ProseEditor, type ProseEditorHandle } from "../editor/ProseEditor";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
 import type { Store } from "../lib/store";
 
 export function Composer({
+	editorRef: externalEditorRef,
+	onPaint,
+	paintDisabled,
 	draft,
 	moves,
 	onMovesChange,
@@ -18,6 +21,9 @@ export function Composer({
 	stopPending = false,
 	writerName,
 }: {
+	editorRef?: RefObject<ProseEditorHandle | null>;
+	onPaint?: () => void;
+	paintDisabled?: boolean;
 	draft: Store<string>;
 	moves: BoxMoves;
 	onMovesChange: (moves: BoxMoves) => void;
@@ -30,7 +36,8 @@ export function Composer({
 	stopPending?: boolean;
 	writerName?: string;
 }) {
-	const editorRef = useRef<ProseEditorHandle>(null);
+	const localEditorRef = useRef<ProseEditorHandle>(null);
+	const editorRef = externalEditorRef ?? localEditorRef;
 	const formRef = useRef<HTMLFormElement>(null);
 	const [focused, setFocused] = useState(false);
 	// @approved
@@ -70,7 +77,11 @@ export function Composer({
 			}}
 		>
 			{controlSelectors !== undefined && (
-				<div className="composer-controls-row">{controlSelectors}</div>
+				<div className="composer-controls-row">
+					{controlSelectors}
+					<button className="icon-button" type="button" aria-label="Paint" title="Paint"
+						disabled={paintDisabled || onPaint === undefined} onClick={onPaint}><Paintbrush aria-hidden="true" /></button>
+				</div>
 			)}
 			<MoveChips moves={moves} onChange={onMovesChange} disabled={!canWrite} />
 			<ProseEditor

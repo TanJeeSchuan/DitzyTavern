@@ -1,3 +1,5 @@
+import { IllustrationActionsContext } from "../painting";
+import type { ProseEditorHandle } from "../editor/ProseEditor";
 import { PaintPanel } from "../PaintPanel";
 import { boxIdOf, type BoxId } from "../../shared/contract/box";
 import { Toast } from "radix-ui";
@@ -236,6 +238,8 @@ export function ActiveWritingWorkspace({
 		});
 	};
 
+	const composerEditorRef = useRef<ProseEditorHandle>(null);
+	const openPaint = (variantId: number, brief?: string) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", variantId, brief }));
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
 	// @approved
 	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
@@ -243,6 +247,13 @@ export function ActiveWritingWorkspace({
 	const covered = narrow && (panelState.primaryPanel !== null || panelState.detailsSurface !== null || assemblyActive || newChatOpen);
 
 	return (
+		<IllustrationActionsContext value={{
+			addToComposer: (hash) => {
+				if (narrow) dispatchPanel({ type: "details-closed" });
+				composerEditorRef.current?.insertReference("Illustration", hash);
+			},
+			editBrief: openPaint,
+		}}>
 		<ChatPins.Provider value={conversation ?? noPins}>
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
@@ -289,6 +300,7 @@ export function ActiveWritingWorkspace({
 			</CoveredLayer>
 
 			<StoryStage
+				composerEditorRef={composerEditorRef}
 				story={story}
 				dispatchStory={dispatchStory}
 				conversation={conversation}
@@ -321,7 +333,7 @@ export function ActiveWritingWorkspace({
 				}}
 				onOpenInspector={openBoxInspector}
 				onInspectVariant={openVariantDetails}
-				onPaint={(variantId) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", variantId }))}
+				onPaint={openPaint}
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}
 			/>
@@ -343,7 +355,13 @@ export function ActiveWritingWorkspace({
 			</CoveredLayer>
 
 			<CoveredLayer inert={narrow && newChatOpen}>
-			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintVariantId !== null && conversation !== null && <PaintPanel key={`${conversation.id}:${panelState.paintVariantId}`} conversationId={conversation.id} variantId={panelState.paintVariantId} onClose={() => dispatchPanel({ type: "details-closed" })} />}
+			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintVariantId !== null && conversation !== null && (
+				<PaintPanel
+					key={`${conversation.id}:${panelState.paintVariantId}:${panelState.paintBrief}`}
+					conversationId={conversation.id} variantId={panelState.paintVariantId} initialBrief={panelState.paintBrief}
+					onClose={() => dispatchPanel({ type: "details-closed" })}
+				/>
+			)}
 			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
 					conversationId={Number(session.activeChatId)}
@@ -414,5 +432,6 @@ export function ActiveWritingWorkspace({
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
 		</Toast.Provider>
 		</ChatPins.Provider>
+		</IllustrationActionsContext>
 	);
 }

@@ -10,6 +10,7 @@ import { initializeConnectionSecretKey } from "../src/server/connection-secrets"
 import { registerWireFormats } from "../src/shared/contract/wire-formats";
 import { builtInBoxes, loadBoxes } from "../src/server/box/registry";
 import type { ModelFetch } from "../src/server/model-client";
+import { imageLoader } from "../src/server/image";
 import { toMessages } from "../src/server/model-client/chat-messages";
 import { Value } from "@sinclair/typebox/value";
 import type { AuthoringReply, ChatModelCall, DecisionModelCall, ModelCall } from "./protocol";
@@ -107,6 +108,7 @@ const extraction = (call: ChatModelCall) => {
 	const [system] = call.body.messages;
 	if (memoryClaims === undefined || system === undefined) return refuse(call);
 	const prompt = system.content;
+	if (Array.isArray(prompt)) throw new Error("Memory extraction requires a text instruction.");
 	const { source } = JSON.parse(prompt.slice(prompt.indexOf("{", prompt.indexOf("Captured source and reference context:"))));
 	const candidates = memoryClaims.filter((memory) => source.content.includes(memory.excerpt)).map(({ excerpt, ...memory }) => ({ ...memory, evidence: [{ messageId: source.messageId, excerpt }] }));
 	return completion([JSON.stringify({ candidates })], call.body.stream === true);
@@ -186,7 +188,7 @@ const fakeFetch: ModelFetch = async (input, init) => {
 	} else if (url.endsWith("/chat/completions") && Value.Check(describeCallBody, raw) && raw.messages[0].content === DESCRIBE_INSTRUCTION) {
 		call = { kind: "describe", url, headers, body: raw };
 	} else if (url.endsWith("/chat/completions") && Value.Check(chatCompletionCallBody, raw)) {
-		call = { kind: raw.messages[0]?.content.startsWith("Extract durable, attributed story Memories") === true ? "extraction" : "chat", url, headers, body: raw };
+		call = { kind: raw.messages[0]?.content.toString().startsWith("Extract durable, attributed story Memories") === true ? "extraction" : "chat", url, headers, body: raw };
 	} else {
 		call = { kind: "unknown", url, headers, body: raw };
 	}
@@ -293,7 +295,12 @@ const unsentPlans = async () => {
 	const unsent: string[] = [];
 	for (const { id, conversation_id } of generations) {
 		const details = await (await current!.app.handle(new Request(`http://localhost/api/conversations/${conversation_id}/generations/${id}/inspection`))).json();
-		const messages = toMessages({ promptPlan: details.promptPlan }, () => undefined).map(({ providerOptions: _openAICompatibleDropsIt, ...message }) => message);
+		const messages = toMessages({ promptPlan: details.promptPlan }, imageLoader(current!.database)).map(({ role, content }) => ({
+			role,
+			content: Array.isArray(content) ? content.map((part) => part.type === "file"
+				? { type: "image_url", image_url: { url: `data:${part.mediaType};base64,${Buffer.from(part.data).toString("base64")}` } }
+				: part) : content,
+		}));
 		const captured = JSON.stringify([details.modelId, messages]);
 		if (!sent.includes(captured)) unsent.push(`Generation ${id}: ${captured}`);
 	}

@@ -27,7 +27,12 @@ export type MemoryClaim = { claim: string; attribution: string; people: string[]
 // Provider request bodies the fake answers. The fake decodes each intercepted
 // call with these schemas before handing it to its kind-specific reply, so no
 // unparsed provider JSON reaches the reply logic or the call log.
-const chatCompletionMessage = Type.Object({ role: Type.String(), content: Type.String() });
+const imageContent = Type.Array(Type.Union([
+	Type.Object({ type: Type.Literal("text"), text: Type.String() }),
+	Type.Object({ type: Type.Literal("image_url"), image_url: Type.Object({ url: Type.String() }) }),
+]));
+const textMessage = Type.Object({ role: Type.String(), content: Type.String() });
+const chatCompletionMessage = Type.Object({ role: Type.String(), content: Type.Union([Type.String(), imageContent]) });
 export const chatCompletionCallBody = Type.Object({
 	model: Type.String(),
 	// @approved
@@ -38,10 +43,7 @@ export const chatCompletionCallBody = Type.Object({
 });
 export const describeCallBody = Type.Object({
 	...chatCompletionCallBody.properties,
-	messages: Type.Tuple([chatCompletionMessage, Type.Object({ role: Type.String(), content: Type.Array(Type.Union([
-		Type.Object({ type: Type.Literal("text"), text: Type.String() }),
-		Type.Object({ type: Type.Literal("image_url"), image_url: Type.Object({ url: Type.String() }) }),
-	])) })]),
+	messages: Type.Tuple([textMessage, Type.Object({ role: Type.String(), content: imageContent })]),
 });
 export type DescribeModelCall = { kind: "describe"; url: string; headers: Record<string, string>; body: Static<typeof describeCallBody> };
 export type ChatCompletionCallBody = Static<typeof chatCompletionCallBody>;

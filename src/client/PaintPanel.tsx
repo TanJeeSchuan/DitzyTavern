@@ -9,8 +9,8 @@ import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
 import { usePaintingCommand, useIllustrations } from "./painting";
 
-export function PaintPanel({ conversationId, variantId, onClose }: { conversationId: number; variantId: number; onClose: () => void }) {
-	const [brief, setBrief] = useState("");
+export function PaintPanel({ conversationId, variantId, initialBrief, onClose }: { conversationId: number; variantId: number; initialBrief: string; onClose: () => void }) {
+	const [brief, setBrief] = useState(initialBrief);
 	const { submit, pending, error } = usePaintingCommand(conversationId);
 	const read = useIllustrations(conversationId);
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;

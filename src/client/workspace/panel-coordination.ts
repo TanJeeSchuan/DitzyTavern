@@ -11,6 +11,7 @@ export interface PanelCoordinationState {
 	detailsSurface: DetailsSurface | null;
 	generationDetailsTarget: GenerationDetailsTarget | null;
 	paintVariantId: number | null;
+	paintBrief: string;
 	boxFocus: { messageId: number } | null;
 }
 
@@ -21,7 +22,7 @@ export type PanelCoordinationAction =
 	| { type: "inspector-opened"; inspector: SplitInspector }
 	| { type: "inspector-closed" }
 	| { type: "chat-info-opened" }
-	| { type: "paint-opened"; variantId: number }
+	| { type: "paint-opened"; variantId: number; brief?: string }
 	| { type: "generation-details-opened"; target: GenerationDetailsTarget }
 	| { type: "macro-variables-opened" }
 	| { type: "box-inspector-opened"; box: string; focus: { messageId: number } | null }
@@ -35,6 +36,7 @@ export const createPanelCoordinationState = (): PanelCoordinationState => ({
 	detailsSurface: null,
 	generationDetailsTarget: null,
 	paintVariantId: null,
+	paintBrief: "",
 	boxFocus: null,
 });
 
@@ -45,6 +47,7 @@ const dropFocusData = (state: PanelCoordinationState): PanelCoordinationState =>
 	...state,
 	generationDetailsTarget: null,
 	paintVariantId: null,
+	paintBrief: "",
 	boxFocus: null,
 });
 
@@ -95,7 +98,7 @@ export function reducePanelCoordination(
 		case "inspector-closed":
 			return { ...state, inspector: null };
 		case "paint-opened":
-			return { ...openDetailSurface(state, "paint", preview), paintVariantId: action.variantId };
+			return { ...openDetailSurface(state, "paint", preview), paintVariantId: action.variantId, paintBrief: action.brief ?? "" };
 		case "chat-info-opened":
 			return openDetailSurface(state, "chat-info", preview);
 		case "generation-details-opened":
