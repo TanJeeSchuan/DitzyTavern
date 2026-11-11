@@ -92,3 +92,16 @@ export const firstCall = <Call extends ModelCall>(calls: readonly ModelCall[], a
 	if (call === undefined) throw new Error("The fake received no matching model call.");
 	return call;
 };
+
+export const isImageRequest = (url: string) => /\/images(?:\/(?:generations|edits))?$/.test(new URL(url).pathname);
+
+export async function readModelRequestBody(url: string, init?: RequestInit): Promise<unknown> {
+	if (!init?.body) return undefined;
+	if (!new URL(url).pathname.endsWith("/images/edits")) return JSON.parse(String(init.body));
+	const form = await new Request(url, init).formData();
+	const references = await Promise.all([...form.entries()].filter(([key, value]) => (key === "image" || key === "image[]") && value instanceof Blob).map(async ([, value]) => {
+		if (!(value instanceof Blob)) throw new Error("Expected an Image file.");
+		return { type: "image_url", image_url: { url: `data:${value.type};base64,${Buffer.from(await value.arrayBuffer()).toString("base64")}` } };
+	}));
+	return { model: form.get("model"), prompt: form.get("prompt"), n: Number(form.get("n")), aspect_ratio: form.get("aspect_ratio"), input_references: references };
+}

@@ -15,6 +15,8 @@ import type { AuthoringReply, ChatModelCall, DecisionModelCall, ModelCall } from
 import {
 	authoringCallBody,
 	imageCallBody,
+	isImageRequest,
+	readModelRequestBody,
 	type ImageReply,
 	chatCompletionCallBody,
 	decisionCallBody,
@@ -165,11 +167,11 @@ const embed = (text: string) => {
 
 const fakeFetch: ModelFetch = async (input, init) => {
 	const url = String(input);
-	const raw: unknown = init?.body ? JSON.parse(String(init.body)) : undefined;
+	const raw = await readModelRequestBody(url, init);
 	const headers = Object.fromEntries(new Headers(init?.headers));
 	const path = new URL(url).pathname;
 	let call: ModelCall;
-	if (path.endsWith("/images") && Value.Check(imageCallBody, raw)) {
+	if (isImageRequest(url) && Value.Check(imageCallBody, raw)) {
 		call = { kind: "image", url, headers, body: raw };
 	} else if (path.endsWith("/systemone") && Value.Check(decisionCallBody, raw)) {
 		call = { kind: "decision", url, headers, body: raw };
