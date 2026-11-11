@@ -33,11 +33,11 @@ export async function paintImage(input: {
 	const providerOptions = {
 		apiKey: credential ?? "",
 		baseURL: new URL(requestUrl).origin,
-		fetch: async (_url: RequestInfo | URL, init?: RequestInit) => {
+		fetch: Object.assign(async (_url: RequestInfo | URL, init?: RequestInit) => {
 			const response = await (input.fetch ?? fetch)(requestUrl, { ...init, headers: authenticatedHeaders(init?.headers, credential, headers), redirect: "error" });
 			if (response.ok) return response;
 			return new Response(await readProviderDiagnostic(response, [credential ?? "", ...Object.values(headers)]), { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "text/plain" } });
-		},
+		}, { preconnect: fetch.preconnect }),
 	};
 	const model = profile.adapter === "openrouter"
 		? createOpenRouter(providerOptions).imageModel(input.modelId)
