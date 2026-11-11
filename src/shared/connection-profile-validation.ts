@@ -61,12 +61,13 @@ export function sharedConnectionHeaderNamesValidationError(
 export function sharedConnectionProfileDraftValidationError(
 	draft: ConnectionProfileDraftPayload,
 ): string | null {
-	if (draft.apiFormat !== "chat-completions" && draft.apiFormat !== "embeddings" && draft.apiFormat !== "system-one") {
-		return "Only the Chat Completions, Embeddings and System One API Formats are available.";
+	if (draft.apiFormat !== "chat-completions" && draft.apiFormat !== "embeddings" && draft.apiFormat !== "system-one" && draft.apiFormat !== "images") {
+		return "Only the Chat Completions, Images, Embeddings and System One API Formats are available.";
 	}
 	if (draft.apiFormat !== "chat-completions" && !(draft.timeoutMs !== null && draft.timeoutMs > 0)) {
-		return `An ${draft.apiFormat === "embeddings" ? "Embeddings" : "System One"} connection needs a positive timeout.`;
+		return `An ${draft.apiFormat === "embeddings" ? "Embeddings" : draft.apiFormat === "images" ? "Images" : "System One"} connection needs a positive timeout.`;
 	}
+	if (draft.apiFormat === "images" && draft.adapter === "deepseek") return "Images needs the OpenRouter or OpenAI-compatible adapter.";
 	return (
 		connectionProfileUrlValidationError(draft.requestUrl, "request URL") ??
 		connectionProfileUrlValidationError(draft.modelsUrl, "Models URL") ??

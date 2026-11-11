@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs
 import { dirname, join } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import type { AuthoringReply, ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } from "./protocol";
+import type { AuthoringReply, ImageReply, ChatReply, DecisionRule, MemoryClaim, ModelCall, UpdateScenario } from "./protocol";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -75,7 +75,7 @@ export const startE2eServer = async () => {
 	const first = await launch();
 	const url = first.url;
 	let child = first.child;
-	const call = async (path: string, body?: AuthoringReply[] | ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | number[] | string | UpdateScenario) => (await fetch(`${url}/__e2e/${path}`, {
+	const call = async (path: string, body?: ImageReply[] | AuthoringReply[] | ChatReply[] | DecisionRule[] | MemoryClaim[] | string[][] | string[] | number[] | string | UpdateScenario) => (await fetch(`${url}/__e2e/${path}`, {
 		method: "POST",
 		headers: { "content-type": "application/json" },
 		body: JSON.stringify(body ?? {}),
@@ -83,6 +83,7 @@ export const startE2eServer = async () => {
 	return {
 		url,
 		reset: () => call("reset"),
+		images: (...replies: ImageReply[]) => call("images", replies),
 		chat: (...replies: ChatReply[]) => call("chat", replies),
 		authoring: (...replies: AuthoringReply[]) => call("authoring", replies),
 		decisions: (...rules: DecisionRule[]) => call("decisions", rules),

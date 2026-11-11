@@ -6,6 +6,11 @@ import type { BuildMetadata } from "../src/server/build-metadata";
 export type RegistryReply = { buildNumber: number; revision: string; hold?: boolean } | { status: number };
 export type UpdateScenario = { build: BuildMetadata; automaticChecks?: boolean; replies: RegistryReply[] };
 
+export type ImageReply = ({ base64: string } | { status: number; error: string }) & { hold?: boolean };
+
+export const imageCallBody = Type.Object({ model: Type.String(), prompt: Type.String(), n: Type.Literal(1), aspect_ratio: Type.String(), input_references: Type.Optional(Type.Array(Type.Object({ type: Type.Literal("image_url"), image_url: Type.Object({ url: Type.String() }) }))) });
+export type ImageModelCall = { kind: "image"; url: string; headers: Record<string, string>; body: Static<typeof imageCallBody> };
+
 export type ChatReply =
 	| { chunks: string[]; hold?: boolean; truncate?: boolean; repeat?: boolean }
 	| { status: number; error: string; hold?: boolean; repeat?: boolean };
@@ -75,7 +80,7 @@ export type DecisionModelCall = { kind: "decision"; url: string; headers: Record
 export type EmbeddingsModelCall = { kind: "embeddings"; url: string; headers: Record<string, string>; body: EmbeddingsCallBody };
 export type UncategorizedModelCall = { kind: "models" | "unknown"; url: string; headers: Record<string, string>; body: unknown };
 export type AuthoringModelCall = { kind: "authoring"; url: string; headers: Record<string, string>; body: AuthoringCallBody };
-export type ModelCall = ChatModelCall | DecisionModelCall | EmbeddingsModelCall | AuthoringModelCall | UncategorizedModelCall;
+export type ModelCall = ImageModelCall | ChatModelCall | DecisionModelCall | EmbeddingsModelCall | AuthoringModelCall | UncategorizedModelCall;
 
 /** @approved Narrow logged calls by their decoded kind; the raw `kind` string on an old log entry is untyped. */
 export const isChatModelCall = (call: ModelCall): call is ChatModelCall => call.kind === "chat";

@@ -6,6 +6,7 @@ import { getWorkspace } from "../database/workspace";
 import { createChatImportRoutes } from "./chat-import";
 import { createCharacterLibraryRoutes } from "./character-library";
 import { createConnectionSettingsRoutes } from "./connection-settings";
+import { createImageModelRoutes } from "./image-model";
 import { createImageRoutes } from "./image";
 import { createConversationRoutes } from "./conversation";
 import { createNativeConversationRoutes } from "./native-conversation";
@@ -51,6 +52,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	.use(createChangeRoutes(database))
 	.use(createCharacterLibraryRoutes(database))
 	.use(createImageRoutes(database))
+	.use(createImageModelRoutes(database))
 	.use(createNativeConversationRoutes(database))
 	.use(createConversationRoutes(database, options))
 	.use(createPromptPresetRoutes(database))

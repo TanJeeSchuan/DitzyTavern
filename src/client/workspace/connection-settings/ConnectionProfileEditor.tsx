@@ -102,12 +102,13 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 							className="field-input"
 							value={draft.apiFormat}
 							onValueChange={(value) => updateDraft({
-								apiFormat: value === "system-one" || value === "embeddings" ? value : "chat-completions",
+								apiFormat: value === "images" || value === "system-one" || value === "embeddings" ? value : "chat-completions",
 								timeoutMs: value === "system-one" ? 15000 : value === "embeddings" ? 5000 : 120000,
 							})}
 							options={[
 								{ value: "chat-completions", label: "Chat Completions" },
 								{ value: "embeddings", label: "Embeddings" },
+								{ value: "images", label: "Images" },
 								{ value: "system-one", label: "System One" },
 							]}
 						/>
@@ -163,6 +164,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						<Field label="Custom headers" helper="Saved values are never shown. Replace or remove them individually.">
 							<HeaderEditor data={headerEditorData} onChange={setHeaderEditorData} />
 						</Field>
+						{draft.apiFormat === "images" && <Field htmlFor="image-connection-adapter" label="AI SDK adapter"><AppSelect id="image-connection-adapter" className="field-input" value={draft.adapter} onValueChange={(value) => updateDraft({ adapter: value === "openrouter" ? value : "openai-compatible" })} options={[{ value: "openrouter", label: "OpenRouter" }, { value: "openai-compatible", label: "OpenAI compatible" }]} /></Field>}
 						{!requiresTimeout && <>
 						<Field htmlFor="connection-model-backend" label="Model backend">
 							<AppSelect

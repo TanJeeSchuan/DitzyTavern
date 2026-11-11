@@ -1,6 +1,6 @@
 # Paint a typed Brief into an Illustration
 
-Status: TODO
+Status: IN PROGRESS
 
 Blocked By: None
 
@@ -21,10 +21,10 @@ A writer connects an Image Model, opens the Paint panel from a Message, types a 
 
 ## Work
 
-- [ ] Add the `images` API Format to Connection Profiles, with model discovery, and a Connection Preset for OpenRouter's Image API.
-- [ ] Add the app-wide Image Model selection, stored under a host namespace, and edit it in Connection Settings with the existing profile-and-model picker.
+- [x] Add the `images` API Format to Connection Profiles, with model discovery, and a Connection Preset for OpenRouter's Image API.
+- [x] Add the app-wide Image Model selection, stored under a host namespace, and edit it in Connection Settings with the existing profile-and-model picker.
 - [ ] Paint through the Model Client with the AI SDK's `generateImage` and the adapter's image model. Send the Brief's text with each Image Reference as its Image Anchor, the referenced Images in order, and the aspect ratio. Store the result through the existing Image ingest; a media type it rejects fails the painting.
-- [ ] Give the e2e `llm` fake scripted image replies. An unscripted painting fails the test.
+- [x] Give the e2e `llm` fake scripted image replies. An unscripted painting fails the test.
 - [ ] Hold provisional paintings in server memory by Variant. Announce each start, finish and failure through the change feed. One press starts one painting of one picture. A failure keeps the provider's message until the writer retries or dismisses it. A restart drops them all.
 - [ ] Store a finished painting as one per-Variant data row holding the picture as `image:<hash>`, the Brief text, the Image Model and the shape. Writing it changes no Conversation Revision and reports no touched Variant.
 - [ ] Add the per-Chat Illustrations read: Illustrations, provisional paintings and failures by Variant, following the change feed.
