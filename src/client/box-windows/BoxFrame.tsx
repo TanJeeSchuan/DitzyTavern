@@ -13,6 +13,8 @@ import { boxFrameRoute } from "../../shared/box-frame";
 import type { ConversationSummary } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import { api } from "../lib/eden";
+import { requestOutcome } from "../lib/request-outcome";
+import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { encodeImage } from "../lib/image";
 import { useSaveGuard } from "../SaveGuard";
 import { BoxFailure } from "./BoxBoundary";
@@ -178,7 +180,15 @@ function BoxFrame(props: FrameProps) {
 			{ type: "commit-box", box, ...latest.current.props.version !== undefined && { version: latest.current.props.version }, ...action },
 			{ notices: { conflict: "The Chat changed since this window read it." }, onConflict: () => { conflict = true; } },
 		);
-		if (applied) return { outcome: "applied" } as const;
+		if (applied) {
+			const current = await requestOutcome(api.api.conversations({ id: conversationId }).boxes({ box }).get(), sandboxedRead, notFoundOutcome);
+			if (current.outcome !== "available") return { ...refused("Its saved state could not be read."), current: null };
+			const { props } = latest.current;
+			// A guest may discard its draft on acknowledgement, so deliver the saved read first on the same port.
+			const moves = props.staging === null ? null : props.staging.moves[box] ?? noMoves;
+			port?.postMessage({ type: "read", read: current.value.view, view: { moves, disabled: props.disabled, stale: false, snapshot: current.value.snapshot } } satisfies AppToFrame);
+			return { outcome: "applied" } as const;
+		}
 		const current = await latest.current.read.refetch();
 		return { outcome: conflict ? "conflict" : "refused", reason, current: current.data ?? null } as const;
 	};

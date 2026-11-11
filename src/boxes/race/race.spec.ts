@@ -97,7 +97,19 @@ test("New race replaces a running race whose Auto draft is invalid", async ({ pa
 	const ui = page.getByRole("dialog", { name: "Race", exact: true }).frameLocator("iframe");
 	await ui.getByRole("spinbutton", { name: "Distance (m)" }).fill("400");
 	await ui.getByRole("button", { name: "Fill field" }).click();
-	await ui.getByRole("button", { name: "Start race" }).click();
+	const readStarted = Promise.withResolvers<void>();
+	const releaseRead = Promise.withResolvers<void>();
+	await page.route("**/api/conversations/*/boxes/race", async (route) => {
+		const response = await route.fetch();
+		readStarted.resolve();
+		await releaseRead.promise;
+		await route.fulfill({ response });
+	});
+	try {
+		await ui.getByRole("button", { name: "Start race" }).click();
+		await readStarted.promise;
+		await expect(ui.getByRole("radio", { name: "Until…" })).toBeDisabled();
+	} finally { releaseRead.resolve(); }
 	await ui.getByRole("radio", { name: "Until…" }).click();
 	await ui.getByRole("button", { name: "New race" }).click();
 	await expect(ui.getByRole("button", { name: "Start race" })).toBeVisible();
