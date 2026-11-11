@@ -6,7 +6,7 @@ import { ConflictBanner } from "../ConflictBanner";
 import { ProfileModelPicker } from "../ProfileModelPicker";
 import { SaveFooter } from "../SaveFooter";
 import { useNavigationRequest, useSaveGuard } from "../SaveGuard";
-import type { ModelSelectionSettings } from "../../shared/contract/model-selection";
+import { modelSelectionConnectionLabels, type ModelSelectionApiFormat, type ModelSelectionSettings } from "../../shared/contract/model-selection";
 import type { SettingsDraft } from "./DecisionSettingsEditor";
 
 export function ModelSelectionSettingsEditor({ editor, onBack, label, description, apiFormat }: {
@@ -14,9 +14,10 @@ export function ModelSelectionSettingsEditor({ editor, onBack, label, descriptio
 	onBack: () => void;
 	label: string;
 	description: string;
-	apiFormat: "images" | "chat-completions";
+	apiFormat: ModelSelectionApiFormat;
 }) {
 	const title = useId();
+	const connectionLabel = modelSelectionConnectionLabels[apiFormat];
 	const navigate = useNavigationRequest();
 	useSaveGuard({ dirty: editor.dirty, saving: editor.pending, save: editor.save, discard: editor.discard });
 	const { draft } = editor;
@@ -31,8 +32,8 @@ export function ModelSelectionSettingsEditor({ editor, onBack, label, descriptio
 					{!editor.loading && <Button variant="outline" onClick={editor.reload}>Try again</Button>}
 				</> : <>
 					{editor.conflict && <ConflictBanner message={`The ${label} changed elsewhere. Review your selection before saving again.`} onKeepMine={editor.keepMine} onLoadSaved={editor.discard} />}
-					<Field label={label} helper={`${apiFormat === "images" ? "Images" : "Chat Completions"} connections only.`}>
-						<ProfileModelPicker apiFormat={apiFormat} label={label} emptyLabel={`Add a ${apiFormat === "images" ? "Images" : "Chat Completions"} connection in Connections.`} selected={draft.profileId === null ? null : { connectionProfileId: draft.profileId, modelId: draft.model }} onSelect={(profile, model) => editor.update({ profileId: profile.id, model })} />
+					<Field label={label} helper={`${connectionLabel} connections only.`}>
+						<ProfileModelPicker apiFormat={apiFormat} label={label} emptyLabel={`Add a ${connectionLabel} connection in Connections.`} selected={draft.profileId === null ? null : { connectionProfileId: draft.profileId, modelId: draft.model }} onSelect={(profile, model) => editor.update({ profileId: profile.id, model })} />
 					</Field>
 					{draft.profileId !== null && <Button className="mt-3" size="sm" variant="outline" onClick={() => editor.update({ profileId: null, model: "" })}>Turn off</Button>}
 				</>}

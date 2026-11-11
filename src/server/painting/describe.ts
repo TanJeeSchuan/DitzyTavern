@@ -1,6 +1,7 @@
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
-import type { DescribeRequest } from "../../shared/contract/describe";
+import { DESCRIBE_INSTRUCTION, type DescribeRequest } from "../../shared/contract/describe";
 import { formatImageReference } from "../../shared/image-reference";
 import { InvalidSettingsError } from "../revisioned-settings";
 import { imageLoader, imageLookup } from "../image";
@@ -17,12 +18,12 @@ export const describeImages = async (database: Database, { hashes, ask }: Descri
 	const lookup = imageLookup(database);
 	if (hashes.some((hash) => lookup(hash) === undefined)) throw new InvalidSettingsError("An Image is no longer available.");
 	const promptPlan = resolvePromptImages({ blocks: [
-		{ kind: "instruction", role: "system", content: "Describe the character's face, hair, eyes, build, clothing and distinguishing marks. Describe only their appearance, nothing about personality." },
+		{ kind: "instruction", role: "system", content: DESCRIBE_INSTRUCTION },
 		{ kind: "instruction", role: "human", content: [...hashes.map((hash, index) => formatImageReference(`Picture ${index + 1}`, hash)), ask ?? ""].filter(Boolean).join("\n\n") },
 	], warnings: [] }, { lookup, sendImages: true, placement: "every" });
 	const client = createModelClient({ profile, secrets: connections.getProfileSecrets(profile.id), loadImage: imageLoader(database), fetch: options.fetch });
 	const result = await collectModelClientGeneration(client, { promptPlan, modelId: model, signal, generationSettings: {
-		temperature: null, topP: null, frequencyPenalty: null, presencePenalty: null, contextLimit: 32_768, responseBudget: 1024, requestOverrides: {},
+		...DEFAULT_CONVERSATION_GENERATION_SETTINGS, requestOverrides: {},
 	} });
 	return { text: result.content };
 };

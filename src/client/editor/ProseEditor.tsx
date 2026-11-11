@@ -1,4 +1,4 @@
-import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { defaultKeymap, history, historyKeymap, isolateHistory } from "@codemirror/commands";
 import { Compartment, EditorSelection, EditorState, type Range, type SelectionRange, type TransactionSpec } from "@codemirror/state";
 import { Decoration, type DecorationSet, drawSelection, EditorView, keymap, ViewPlugin, WidgetType } from "@codemirror/view";
 import { ImagePlus } from "lucide-react";
@@ -113,7 +113,7 @@ function Editor({
 	const picker = useRef<HTMLInputElement>(null);
 	const view = useRef<EditorView | null>(null);
 	const pendingInsertions = useRef(new Set<{ range: SelectionRange }>());
-	const openedReference = useRef<{ range: SelectionRange; text: string } | null>(null);
+	const openedReferences = useRef(new Set<{ range: SelectionRange; text: string }>());
 	const onChangeRef = useRef(onChange);
 	const openImageAt = useOpenImageAt();
 	const [error, setError] = useState<string | null>(null);
@@ -159,7 +159,7 @@ function Editor({
 		appendText: (text) => {
 			const editor = view.current;
 			if (editor === null || !editor.state.facet(EditorView.editable)) return;
-			editor.dispatch({ changes: { from: editor.state.doc.length, insert: `${editor.state.doc.length === 0 ? "" : "\n\n"}${text}` }, userEvent: "input" });
+			editor.dispatch({ changes: { from: editor.state.doc.length, insert: `${editor.state.doc.length === 0 ? "" : "\n\n"}${text}` }, annotations: isolateHistory.of("full"), userEvent: "input" });
 		},
 		insertReference: (name, hash) => {
 			const editor = view.current;
@@ -191,12 +191,11 @@ function Editor({
 					settings.label.of(contentAttributes(ariaLabel, placeholder)),
 					EditorView.updateListener.of((update) => {
 						if (update.docChanged) {
-							const reference = openedReference.current;
-							if (reference !== null) {
+							for (const reference of openedReferences.current) {
 								const from = update.changes.mapPos(reference.range.from, 1);
 								const to = update.changes.mapPos(reference.range.to, -1);
-								openedReference.current = from < to && update.state.doc.sliceString(from, to) === reference.text
-									? { ...reference, range: EditorSelection.range(from, to) } : null;
+								if (from < to && update.state.doc.sliceString(from, to) === reference.text) reference.range = EditorSelection.range(from, to);
+								else openedReferences.current.delete(reference);
 							}
 							for (const pending of pendingInsertions.current) {
 								pending.range = !pending.range.empty && update.changes.touchesRange(pending.range.from, pending.range.to)
@@ -277,13 +276,13 @@ function Editor({
 		const position = editor.posAtDOM(chip);
 		const reference = parseImageReferences(editor.state.doc.toString()).find(({ start }) => start === position);
 		if (reference === undefined) return openImageAt(target);
-		openedReference.current = { range: EditorSelection.range(reference.start, reference.end), text: editor.state.doc.sliceString(reference.start, reference.end) };
+		const tracked = [...openedReferences.current].find(({ range }) => range.from === reference.start && range.to === reference.end)
+			?? { range: EditorSelection.range(reference.start, reference.end), text: editor.state.doc.sliceString(reference.start, reference.end) };
+		openedReferences.current.add(tracked);
 		openImageAt(target, {
-			onClose: () => { openedReference.current = null; },
 			insertAfter: (text) => {
-				const reference = openedReference.current;
-				if (view.current !== editor || !editor.state.facet(EditorView.editable) || reference === null) return false;
-				editor.dispatch({ changes: { from: reference.range.to, insert: `\n\n${text}\n\n` }, userEvent: "input" });
+				if (view.current !== editor || !editor.state.facet(EditorView.editable) || !openedReferences.current.has(tracked)) return false;
+				editor.dispatch({ changes: { from: tracked.range.to, insert: `\n\n${text}\n\n` }, annotations: isolateHistory.of("full"), userEvent: "input" });
 				return true;
 			},
 		});

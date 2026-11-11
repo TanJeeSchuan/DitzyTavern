@@ -35,7 +35,7 @@ export const submittableDefinition = (draft: ParticipantDefinition): Participant
 	({ ...draft, openings: draft.openings.filter((opening) => opening.trim() !== "") });
 
 const primaryChannels = [
-	["identity", "Appearance, personality, voice…"],
+	["identity", "Personality, voice, history…"],
 	["appearance", "Face, hair, eyes, build, clothing…"],
 	["scenario", "Where and how the story begins…"],
 ] as const satisfies readonly (readonly [keyof PromptChannels, string])[];
@@ -77,7 +77,7 @@ export function DefinitionEditor({
 	const setChannel = (key: keyof PromptChannels, value: string) => onDraftChange({ ...draft, prompt: { ...draft.prompt, [key]: value } });
 	const setPortrait = (portrait: PortraitImage | undefined) => onDraftChange({ ...draft, portrait });
 	const setOpenings = (openings: string[]) => onDraftChange({ ...draft, openings });
-	const channel = (key: keyof PromptChannels, placeholder?: string) => key === "appearance" ? <AppearanceField key={key} draft={draft} onDraftChange={onDraftChange} /> : (
+	const channel = (key: keyof PromptChannels, placeholder?: string) => key === "appearance" ? <AppearanceField key={key} draft={draft} placeholder={placeholder} onDraftChange={onDraftChange} /> : (
 		<div key={key} className="flex flex-col gap-1.5">
 			<div className="flex items-center justify-between text-xs font-medium text-muted-foreground">
 				<span>{promptChannelLabels[key]}</span>

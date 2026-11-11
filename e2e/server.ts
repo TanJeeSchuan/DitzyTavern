@@ -1,3 +1,4 @@
+import { DESCRIBE_INSTRUCTION } from "../src/shared/contract/describe";
 import type { Database } from "bun:sqlite";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -182,7 +183,7 @@ const fakeFetch: ModelFetch = async (input, init) => {
 		call = { kind: "models", url, headers, body: raw };
 	} else if (url.endsWith("/embeddings") && Value.Check(embeddingsCallBody, raw)) {
 		call = { kind: "embeddings", url, headers, body: raw };
-	} else if (url.endsWith("/chat/completions") && Value.Check(describeCallBody, raw) && raw.messages[0].content.startsWith("Describe the character's face")) {
+	} else if (url.endsWith("/chat/completions") && Value.Check(describeCallBody, raw) && raw.messages[0].content === DESCRIBE_INSTRUCTION) {
 		call = { kind: "describe", url, headers, body: raw };
 	} else if (url.endsWith("/chat/completions") && Value.Check(chatCompletionCallBody, raw)) {
 		call = { kind: raw.messages[0]?.content.startsWith("Extract durable, attributed story Memories") === true ? "extraction" : "chat", url, headers, body: raw };
