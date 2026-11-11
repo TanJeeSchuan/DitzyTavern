@@ -16,7 +16,7 @@ const NAMESPACE = "painting";
 
 export const createPaintingModule = (database: Database, options: ConnectionSettingsModuleOptions & { fetch?: ModelFetch } = {}) => {
 	const db = drizzle(database);
-	const provisional = processStateFor(database).paintings.byVariant;
+	const provisional = processStateFor(database).paintings;
 	const variants = (conversationId: number) => readChatVariantIds(database, conversationId);
 	const requireChat = (conversationId: number) => {
 		if (readConversationRevision(database, conversationId) === undefined) throw new ConversationNotFoundError(conversationId);
@@ -29,7 +29,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		const stored = variantIds.length === 0 ? [] : db.select({ id: messageVariantDataTable.key, variantId: messageVariantDataTable.message_variant_id, value: messageVariantDataTable.value }).from(messageVariantDataTable)
 			.where(and(inArray(messageVariantDataTable.message_variant_id, variantIds), eq(messageVariantDataTable.namespace, NAMESPACE))).all();
 		const paintings: Painting[] = stored.map(({ id, variantId, value }) => ({ kind: "illustration", id, variantId, ...Value.Parse<typeof illustration>(illustration, JSON.parse(value)) }));
-		for (const variantId of variantIds) for (const entry of provisional.get(variantId)?.values() ?? []) paintings.push(entry.painting);
+		for (const variantId of variantIds) for (const entry of provisional.forVariant(variantId)) paintings.push(entry.painting);
 		return { aspectRatio, paintings };
 	};
 	const start = (variantId: number, brief: string, aspectRatio: IllustrationsRead["aspectRatio"], id: string = crypto.randomUUID()) => {
@@ -40,9 +40,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		const secrets = connections.getProfileSecrets(profile.id);
 		const controller = new AbortController();
 		const painting = { kind: "painting", id, variantId, brief, aspectRatio, imageModel: { profileId, model } } as const;
-		const entries = provisional.get(variantId) ?? new Map();
-		provisional.set(variantId, entries);
-		entries.set(id, { painting, controller });
+		provisional.set(variantId, id, { painting, controller });
 		announceChange(database);
 		void (async () => {
 			try {
@@ -53,11 +51,10 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 					storeImage(database, image);
 					db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: NAMESPACE, key: id, value: JSON.stringify({ image: `image:${image.hash}`, brief, imageModel: painting.imageModel, aspectRatio }) }).run();
 				}).immediate();
-				entries.delete(id);
-				if (entries.size === 0) provisional.delete(variantId);
+				provisional.remove(variantId, id);
 			} catch (error) {
 				if (controller.signal.aborted) return;
-				entries.set(id, { controller, painting: { ...painting, kind: "failed", message: error instanceof Error ? error.message : "Painting failed." } });
+				provisional.set(variantId, id, { controller, painting: { ...painting, kind: "failed", message: error instanceof Error ? error.message : "Painting failed." } });
 			}
 			if (!controller.signal.aborted) announceChange(database);
 		})();
@@ -75,13 +72,11 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 			start(command.variantId, command.brief, command.aspectRatio);
 			return;
 		}
-		const entries = provisional.get(command.variantId);
-		const failed = entries?.get(command.id)?.painting;
+		const failed = provisional.get(command.variantId, command.id)?.painting;
 		if (failed?.kind !== "failed") throw new InvalidConversationCommandError("The failed painting is no longer available.");
 		if (command.type === "retry") start(failed.variantId, failed.brief, failed.aspectRatio, failed.id);
 		else {
-			entries?.delete(command.id);
-			if (entries?.size === 0) provisional.delete(command.variantId);
+			provisional.remove(command.variantId, command.id);
 			announceChange(database);
 		}
 	};

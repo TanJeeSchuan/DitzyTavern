@@ -6,8 +6,9 @@ export const paintingAspectRatio = Type.Union([Type.Literal("9:16"), Type.Litera
 export const paintingSettings = Type.Object({ aspectRatio: paintingAspectRatio });
 export type PaintingAspectRatio = Static<typeof paintingAspectRatio>;
 export const DEFAULT_PAINTING_ASPECT_RATIO: PaintingAspectRatio = "1:1";
-export const illustration = Type.Object({ image: Type.String({ pattern: "^image:[0-9a-f]{64}$" }), brief: Type.String(), imageModel: imageModelSelection, aspectRatio: paintingAspectRatio });
-const paintingBase = Type.Object({ id: Type.String(), variantId: Type.Integer(), brief: Type.String(), imageModel: imageModelSelection, aspectRatio: paintingAspectRatio });
+const paintingInput = Type.Object({ brief: Type.String(), imageModel: imageModelSelection, aspectRatio: paintingAspectRatio });
+export const illustration = Type.Composite([paintingInput, Type.Object({ image: Type.String({ pattern: "^image:[0-9a-f]{64}$" }) })]);
+const paintingBase = Type.Composite([paintingInput, Type.Object({ id: Type.String(), variantId: Type.Integer() })]);
 export const painting = Type.Union([
 	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("painting") })]),
 	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("failed"), message: Type.String() })]),

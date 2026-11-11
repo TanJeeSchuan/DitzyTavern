@@ -1,5 +1,4 @@
 import { IllustrationRows } from "./IllustrationRows";
-import type { Painting } from "../../shared/contract/painting";
 import { hasMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
 import {
@@ -46,7 +45,6 @@ import { prefetchNeighbourText, useVariantText, useVariantsText } from "./varian
 //  Memoized: while a reply streams, only the row whose text changed renders.
 export const StoryMessageView = memo(function StoryMessageView({
 	conversationId,
-	paintings,
 	onPaint,
 	message,
 	isLatest = false,
@@ -76,7 +74,6 @@ export const StoryMessageView = memo(function StoryMessageView({
 	lens,
 }: {
 	conversationId: number;
-	paintings?: readonly Painting[];
 	onPaint?: (variantId: number) => void;
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
@@ -431,7 +428,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 				</div>
 			</footer>
 		</article>
-		<IllustrationRows key={visibleId} conversationId={conversationId} paintings={paintings?.filter((painting) => painting.variantId === visibleId) ?? []} />
+		{visibleId !== null && <IllustrationRows key={visibleId} conversationId={conversationId} variantId={visibleId} />}
 		</>
 	);
 });

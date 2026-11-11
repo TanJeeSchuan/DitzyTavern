@@ -193,7 +193,7 @@ export function StoryStage({
 							</button>
 						</div>
 					)}
-					{illustrations.isError && <p role="alert">Illustrations could not be loaded.</p>}
+					{illustrations.isError && <p role="alert" className="text-sm text-destructive">Illustrations could not be loaded. <button className="edit-action" onClick={() => void illustrations.refetch()}>Try again</button></p>}
 					{story.messages.length === 0 && story.status !== "loading-first" && <EmptyChat />}
 					{storyConversationId !== null && story.messages.map((persisted) => [shownMessage(story, persisted), hasRequestedSwipe(story, persisted.id)] as const).map(([message, swiping]) => (
 						<StoryMessageView
@@ -201,7 +201,6 @@ export function StoryStage({
 							conversationId={storyConversationId}
 							message={message}
 							onPaint={rows.paint}
-							paintings={illustrations.data?.paintings}
 							lens={lens}
 							swipeBrowsing={swipeBrowsing}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}

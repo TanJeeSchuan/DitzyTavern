@@ -57,8 +57,9 @@ test("an Illustration lands on its original Variant after a swipe without a Conv
 	const image = imageLoader(database)(painting.image.slice(6));
 	expect(image?.mediaType).toBe("image/png");
 	expect(image?.bytes.includes(Buffer.from("private metadata"))).toBe(false);
-	expect(JSON.stringify(await plans())).not.toContain("Private painted scene");
-	expect(JSON.stringify(await plans())).not.toContain(painting.image.slice(6));
+	const finishedPlans = JSON.stringify(await plans());
+	expect(finishedPlans).not.toContain("Private painted scene");
+	expect(finishedPlans).not.toContain(painting.image.slice(6));
 });
 
 
