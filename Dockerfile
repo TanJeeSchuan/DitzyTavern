@@ -14,7 +14,7 @@ WORKDIR /app
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production --ignore-scripts
 
-FROM oven/bun:1.4.4 AS runtime
+FROM oven/bun:1.4.4-slim AS runtime
 ARG DISTRIBUTION=custom
 ARG BUILD_NUMBER
 ARG SOURCE_REVISION
