@@ -53,13 +53,14 @@ export async function createApp(options: AppOptions) {
 	const authoring = createAuthoring(database, options.authoring);
 	await authoring.sweep();
 	// @approved
-	//  Hashed assets are cached for a day. The host chunks keep their names
-	// across builds, as Box client modules do, so a browser revalidates them
-	// rather than run a stale one against a newer host. The Box routes serve
-	// the Box client modules.
+	//  Hashed assets are immutable: a new build gives them new names. The host
+	// chunks keep their names across builds, as Box client modules do, so a
+	// browser revalidates them rather than run a stale one against a newer
+	// host. The Box routes serve the Box client modules.
 	const app = createContract(database, options, artifactDirectory, updates, authoring)
 		.get("/", ({ request }) => serveIndex(request))
-		.use(await staticPlugin({ assets: "dist", prefix: "/", indexHTML: true, alwaysStatic: true, ignorePatterns: [/[\\/]dist[\\/](?:host|boxes)[\\/]/] }))
+		.use(await staticPlugin({ assets: "dist", prefix: "/", indexHTML: true, alwaysStatic: true, ignorePatterns: [/[\\/]dist[\\/](?:assets|host|boxes)[\\/]/] }))
+		.use(await staticPlugin({ assets: "dist/assets", prefix: "/assets", alwaysStatic: true, directive: "immutable", maxAge: 31536000 }))
 		.use(await staticPlugin({ assets: "dist/host", prefix: "/host", alwaysStatic: true, directive: "no-cache", maxAge: null }))
 		.onError(({ code, path, request }) => {
 			if (code === "NOT_FOUND" && !path.startsWith("/api/") && !/\.\w+$/.test(path)) return serveIndex(request);
