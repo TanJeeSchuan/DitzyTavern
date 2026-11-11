@@ -16,7 +16,7 @@ export function PaintPanel({ conversationId, variantId, onClose }: { conversatio
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;
 	return <aside className="details-panel" data-open="true" aria-label="Paint">
 		<PanelHeader title="Paint" onClose={onClose} />
-		<div className="panel-body grid content-start gap-5">
+		<div className="panel-body grid auto-rows-max content-start gap-5">
 			<Field label="Brief" helper="Describe the picture. Insert pictures to use as references.">
 				<ProseEditor className="prose-editor-field" ariaLabel="Brief" value={brief} onChange={setBrief} autoFocus />
 			</Field>
@@ -28,7 +28,7 @@ export function PaintPanel({ conversationId, variantId, onClose }: { conversatio
 			<Button className="justify-self-start" disabled={pending || !brief.trim() || read.isPending || read.isError} onClick={() => void submit({ type: "paint", variantId, brief, aspectRatio })}>Paint</Button>
 			<p className="panel-note">Painting continues after you close this panel.</p>
 			{(error !== null || read.isError) && <p role="alert" className="text-sm text-destructive">{error ?? "Illustrations could not be loaded."}</p>}
-			<IllustrationRows conversationId={conversationId} variantId={variantId} />
+			<div><IllustrationRows conversationId={conversationId} variantId={variantId} /></div>
 		</div>
 	</aside>;
 }
