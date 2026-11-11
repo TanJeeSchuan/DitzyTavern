@@ -231,6 +231,10 @@ _Avoid_: image generation preset, Brief template
 The Prompt Preset slot that tells a model how to write a Brief. It is sent only when a Brief is being written and never in a Generation; a Prompt Preset holding one can serve as a Paint Preset.
 _Avoid_: image prompt template, Continuation instruction
 
+**Cast Appearance Block**:
+A Referenced Prompt Block holding the Appearance of each Cast member in the scene being painted, whether or not they hold a Control seat. It is sent only when a Brief is being written.
+_Avoid_: character sheet, reference block
+
 **Illustration**:
 An Image painted for a moment in a Chat. It belongs to the Variant it was painted from and shows with it, after that Message; it is not a Message. While it is being painted it is provisional: nothing else in the Chat treats it as existing. It never enters a Prompt Plan; the writer who wants a model to see it places an Image Reference to it in text.
 _Avoid_: generated image, attachment
