@@ -73,23 +73,34 @@ const refuse = (call: ModelCall) => {
 	return Response.json({ error: { message: `Unscripted e2e ${call.kind} call.` } }, { status: 500 });
 };
 
-const sse = (chunks: readonly string[], hold: boolean, truncate: boolean) => new Response(new ReadableStream({
-	async pull(controller) {
-		const encoder = new TextEncoder();
-		const send = (delta: { content?: string }, finish: string | null) => controller.enqueue(encoder.encode(`data: ${JSON.stringify({ id: "e2e", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`));
-		for (const content of chunks) send({ content }, null);
-		if (hold) await held.promise;
-		try {
+const sse = (chunks: readonly string[], hold: boolean, truncate: boolean, delayMs: number) => {
+	let canceled = false;
+	const released = held.promise;
+	return new Response(new ReadableStream({
+		async pull(controller) {
+			const encoder = new TextEncoder();
+			const send = (delta: { content?: string }, finish: string | null) => {
+				const choices = [{ index: 0, delta, finish_reason: finish }];
+				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ id: "e2e", choices })}\n\n`));
+			};
+			for (const content of chunks) {
+				if (delayMs > 0) await Bun.sleep(delayMs);
+				if (canceled) return;
+				send({ content }, null);
+			}
+			if (hold) await released;
+			if (canceled) return;
 			if (!truncate) {
 				send({}, "stop");
 				controller.enqueue(encoder.encode("data: [DONE]\n\n"));
 			}
 			controller.close();
-		} catch {}
-	},
-}), { headers: { "content-type": "text/event-stream" } });
+		},
+		cancel() { canceled = true; },
+	}), { headers: { "content-type": "text/event-stream" } });
+};
 
-const completion = (chunks: readonly string[], stream: boolean, hold = false, truncate = false) => stream ? sse(chunks, hold, truncate) : Response.json({
+const completion = (chunks: readonly string[], stream: boolean, hold = false, truncate = false, delayMs = 0) => stream ? sse(chunks, hold, truncate, delayMs) : Response.json({
 	id: "e2e", object: "chat.completion", created: 0, model: "e2e-model",
 	choices: [{ index: 0, message: { role: "assistant", content: chunks.join("") }, finish_reason: "stop" }],
 });
@@ -109,7 +120,7 @@ const chat = async (call: ChatModelCall) => {
 	if (!reply.repeat) chatReplies.shift();
 	if ("status" in reply && reply.hold) await held.promise;
 	if ("status" in reply) return Response.json({ error: { message: reply.error } }, { status: reply.status });
-	return completion(reply.chunks, call.body.stream === true, reply.hold, reply.truncate);
+	return completion(reply.chunks, call.body.stream === true, reply.hold, reply.truncate, reply.delayMs);
 };
 
 const decisions = async (call: DecisionModelCall) => {

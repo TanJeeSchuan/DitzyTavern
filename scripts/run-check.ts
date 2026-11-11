@@ -1,12 +1,14 @@
 import { engines, packageManager } from "../package.json";
 
 const [task, ...args] = process.argv.slice(2);
-if (task !== "check" && task !== "e2e") throw new Error("Expected check or e2e.");
+if (task !== "check" && task !== "e2e" && task !== "ui-eval") throw new Error("Expected check, e2e or ui-eval.");
 
 const commands = {
 	check: "bun run lint && bun run lint:rules && bun run typecheck && bun run typecheck:tools && bun run test && bun run test:e2e:harness",
 	e2e: "bunx --no-install playwright test",
+	"ui-eval": "bunx --no-install playwright test --config=e2e/ui-eval.config.ts",
 };
+const reportDirectory = task === "ui-eval" ? "ui-eval" : "e2e-report";
 const quote = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
 const command = [commands[task], ...args.map(quote)].join(" ");
 const bunVersion = packageManager.slice("bun@".length);
@@ -25,7 +27,7 @@ if [[ ! -x "$HOME/.bun/bin/bun" ]] || [[ "$(bun --version)" != "${bunVersion}" ]
 fi
 bun install --frozen-lockfile
 ${task === "check" ? "bun run build\n" : `bunx --no-install playwright install --with-deps chromium
-trap 'if [[ -d .scratch/e2e-report ]]; then tar -czf "$BUILDBUDDY_ARTIFACTS_DIRECTORY/playwright-report.tar.gz" -C .scratch e2e-report; fi' EXIT
+trap 'if [[ -d .scratch/${reportDirectory} ]]; then tar -czf "$BUILDBUDDY_ARTIFACTS_DIRECTORY/playwright-report.tar.gz" -C .scratch ${reportDirectory}; fi' EXIT
 `}${command}`;
 
 const remote = !process.env.LOCAL && Bun.spawnSync(["git", "config", "--get", "buildbuddy.api-key"]).exitCode === 0;
