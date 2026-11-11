@@ -27,6 +27,10 @@ _Avoid_: party, members
 The Image that visually represents a Definition, together with the focal point that stays visible whatever the shape of the frame showing it. A Portrait never enters a Prompt Plan; showing it to a model takes an Image Reference.
 _Avoid_: avatar, profile picture
 
+**Appearance**:
+The part of a Definition's Prompt that says and shows how its owner looks: description text with Image References placed in it. A Brief depicting that owner draws on it. The writer types the description or has a model describe a picture on request. The Definition says whether models receive its Images or only their Image Anchors.
+_Avoid_: reference images, character images, gallery
+
 ## Generation
 
 **Generation**:
@@ -206,6 +210,30 @@ _Avoid_: alt text, caption, image description
 **Text-only Model**:
 A model that a Connection Profile marks as unable to receive Images. Generations using it send each Image Anchor without its Image. The writer applies the mark, usually after a Generation containing Images fails; it is never inferred from a provider error.
 _Avoid_: non-vision model, image fallback
+
+**Image Model**:
+A model that paints an Image from a Brief instead of writing text. Generation and Prompt keep meaning writing only.
+_Avoid_: image generator, image generation model, generating an image
+
+**Brief**:
+The text and Images handed to an Image Model for one painting. The writer types it, or a model writes it from the writer's Ask and the writer may edit it. It is not a Prompt Plan and is never Conversation history.
+_Avoid_: image prompt, Prompt, Prompt Plan
+
+**Ask**:
+The writer's own words steering a picture action: what to paint, or what to describe about a picture. Left empty when painting, it means the scene at the Message the writer is painting from.
+_Avoid_: prompt, request, instruction
+
+**Paint Preset**:
+The Prompt Preset a Chat uses when a model writes a Brief, chosen apart from the one its Generations use. Every Chat starts on the built-in one.
+_Avoid_: image generation preset, Brief template
+
+**Brief instruction**:
+The Prompt Preset slot that tells a model how to write a Brief. It is sent only when a Brief is being written and never in a Generation; a Prompt Preset holding one can serve as a Paint Preset.
+_Avoid_: image prompt template, Continuation instruction
+
+**Illustration**:
+An Image painted for a moment in a Chat. It belongs to the Variant it was painted from and shows with it, after that Message; it is not a Message. While it is being painted it is provisional: nothing else in the Chat treats it as existing. It never enters a Prompt Plan; the writer who wants a model to see it places an Image Reference to it in text.
+_Avoid_: generated image, attachment
 
 ## Decisions
 
