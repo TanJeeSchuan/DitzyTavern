@@ -204,3 +204,29 @@ test("the sandboxed Race upgrade clears the Race's old records, Writer overrides
 		await rm(folder, { recursive: true, force: true });
 	}
 });
+
+test.each(["enabled", "disabled", "removed"] as const)("the cache-saving copy of Default moves Lore and Memory below history only when history is enabled (history %s)", async (history) => {
+	const database = new Database(":memory:");
+	const folder = await mkdtemp(join(tmpdir(), "ditzy-upgrade-"));
+	try {
+		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
+		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 39) }));
+		initializeDatabase(database, folder);
+		if (history === "disabled") database.exec("UPDATE prompt_preset_block SET enabled = 0 WHERE reference = 'history'");
+		if (history === "removed") database.exec("DELETE FROM prompt_preset_block WHERE reference = 'history'");
+		const order = (name: string) => database.query<{ reference: string }, [string]>(
+			"SELECT b.reference FROM prompt_preset_block b JOIN prompt_preset p ON p.id = b.preset_id WHERE p.name = ? ORDER BY b.position",
+		).all(name).map((row) => row.reference);
+		const before = order("Default");
+
+		database.exec(await Bun.file(new URL("./migrations/0040_cache_saving_default_preset.sql", import.meta.url)).text());
+		expect(order("Default")).toEqual(before);
+		expect(order("Default (cache-saving)")).toEqual(history !== "enabled" ? before : [
+			"model-system-instruction", "human-identity", "model-identity", "model-scenario", "model-example-dialogue",
+			"history", "lore", "box:memory", "model-post-history-instruction",
+		]);
+	} finally {
+		database.close();
+		await rm(folder, { recursive: true, force: true });
+	}
+});
