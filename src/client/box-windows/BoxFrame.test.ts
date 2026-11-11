@@ -2,7 +2,7 @@ import { expect, test } from "bun:test";
 import { join } from "node:path";
 import { assertChecked } from "../../shared/contract/box-descriptor";
 import { sandboxedDescriptor, sandboxedDescriptorFile } from "../../shared/contract/box-sandboxed";
-import { oneAtATime, stagedMoves } from "./BoxFrame";
+import { completeFrameCommit, oneAtATime, stagedMoves } from "./BoxFrame";
 
 const file: unknown = await Bun.file(join(import.meta.dir, "../../../e2e/fixtures/boxes/tip-jar-sandboxed/descriptor.json")).json();
 assertChecked(sandboxedDescriptorFile, file, "The sandboxed Tip Jar's descriptor.json");
@@ -36,4 +36,36 @@ test("an upload asked for while another is in flight is refused, and the next on
 	expect(await first).toBe("uploaded 1");
 	expect(await upload(4)).toBe("uploaded 4");
 	expect(started).toEqual([1, 4]);
+});
+
+
+test("an applied frame commit delivers its saved read before acknowledging the guest", async () => {
+	const read = Promise.withResolvers<{ snapshot: number; status: null; view: { saved: boolean } }>();
+	const delivered: string[] = [];
+	const result = completeFrameCommit(true, { outcome: "refused", reason: "" }, read.promise, (current) => {
+		expect(current).toEqual({ snapshot: 2, status: null, view: { saved: true } });
+		delivered.push("read");
+	}).then((outcome) => { delivered.push("reply"); return outcome; });
+	await Promise.resolve();
+	expect(delivered).toEqual([]);
+	read.resolve({ snapshot: 2, status: null, view: { saved: true } });
+	expect(await result).toEqual({ outcome: "applied" });
+	expect(delivered).toEqual(["read", "reply"]);
+});
+
+test("an applied frame commit remains applied when its follow-up read fails or the Chat disappears", async () => {
+	for (const read of [() => Promise.reject(new Error("read failed")), () => Promise.resolve(null)]) {
+		const delivered: unknown[] = [];
+		expect(await completeFrameCommit(true, { outcome: "refused", reason: "" }, read(), (current) => delivered.push(current))).toEqual({ outcome: "applied" });
+		expect(delivered).toEqual([]);
+	}
+});
+
+test("a frame commit that did not land returns its refusal and current read without delivering an applied read", async () => {
+	const current = { snapshot: 3, status: null, view: { saved: false } };
+	for (const outcome of ["conflict", "refused"] as const) {
+		const delivered: unknown[] = [];
+		expect(await completeFrameCommit(false, { outcome, reason: "changed" }, Promise.resolve(current), (read) => delivered.push(read))).toEqual({ outcome, reason: "changed", current });
+		expect(delivered).toEqual([]);
+	}
 });

@@ -7,7 +7,7 @@ import { followsChanges } from "./server-changes";
 
 export const illustrationsKey = (conversationId: number | null) => ["illustrations", conversationId] as const;
 export const useIllustrations = (conversationId: number | null, variantId?: number) => useQuery({
-	queryKey: illustrationsKey(conversationId), enabled: conversationId !== null, meta: followsChanges,
+	queryKey: illustrationsKey(conversationId), enabled: conversationId !== null, meta: followsChanges, refetchOnMount: variantId === undefined,
 	select: (read: IllustrationsRead) => variantId === undefined ? read : { ...read, paintings: read.paintings.filter((painting) => painting.variantId === variantId) },
 	queryFn: () => {
 		if (conversationId === null) throw new Error("No Chat selected.");

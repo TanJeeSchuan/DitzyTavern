@@ -1,5 +1,5 @@
 /* eslint-disable anti-slop/no-unknown-parameters, anti-slop/no-runtime-typeof -- Moves, commits and files a guest sends arrive as whatever it posted, which the frame's host code checks. */
-import { Type } from "@sinclair/typebox";
+import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { useQuery } from "@tanstack/react-query";
 import { Box, Coins, Dices, Drama, Flag, Gauge, Heart, Map, Scroll, Sparkles, Star, type LucideIcon } from "lucide-react";
@@ -13,8 +13,6 @@ import { boxFrameRoute } from "../../shared/box-frame";
 import type { ConversationSummary } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import { api } from "../lib/eden";
-import { requestOutcome } from "../lib/request-outcome";
-import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { encodeImage } from "../lib/image";
 import { useSaveGuard } from "../SaveGuard";
 import { BoxFailure } from "./BoxBoundary";
@@ -22,7 +20,7 @@ import type { AppToFrame, FrameToApp } from "./frame-protocol";
 import { delegateLens } from "./lens";
 import { digestWindow } from "./PassageTimeline";
 import type { BoxClientDefinition, MoveStaging } from "./registry";
-import { useBoxRead } from "./useBoxRead";
+import { loadBoxRead, useBoxRead } from "./useBoxRead";
 
 /** @approved The icon each name a sandboxed Box may give in its descriptor stands for. */
 const icons = {
@@ -71,6 +69,14 @@ export const oneAtATime = <Input, Output>(task: (input: Input) => Promise<Output
 
 const useSandboxedRead = (conversation: ConversationSummary, box: BoxId) => useBoxRead(conversation, box, sandboxedRead);
 const refused = (reason: string) => ({ outcome: "refused", reason } as const);
+
+type FrameRead = Static<typeof sandboxedRead>;
+export async function completeFrameCommit(applied: boolean, refusal: { outcome: "conflict" | "refused"; reason: string }, read: Promise<FrameRead | null>, deliver: (read: FrameRead) => void) {
+	const current = await read.catch(() => null);
+	if (!applied) return { ...refusal, current };
+	if (current !== null) deliver(current);
+	return { outcome: "applied" } as const;
+}
 
 type FrameProps = { box: BoxId; version: string | undefined; descriptor: BoxDescriptor; conversation: ConversationSummary; disabled: boolean; staging: MoveStaging | null; onConversationChange: (conversation: ConversationSummary) => void };
 
@@ -128,10 +134,15 @@ function BoxFrame(props: FrameProps) {
 	useEffect(() => {
 		if (ui.data !== undefined) port?.postMessage({ type: "start", ...ui.data } satisfies AppToFrame);
 	}, [port, ui.data]);
+	const deliverRead = (data: FrameRead, stale: boolean) => {
+		const { props } = latest.current;
+		const moves = props.staging === null ? null : props.staging.moves[box] ?? noMoves;
+		port?.postMessage({ type: "read", read: data.view, view: { moves, disabled: props.disabled, stale, snapshot: data.snapshot } } satisfies AppToFrame);
+	};
 	useEffect(() => {
 		const data = read.data;
 		if (ui.data === undefined || data === undefined || data === null) return;
-		port?.postMessage({ type: "read", read: data.view, view: { moves: staged, disabled: props.disabled, stale: read.isPlaceholderData, snapshot: data.snapshot } } satisfies AppToFrame);
+		deliverRead(data, read.isPlaceholderData);
 	}, [port, ui.data, read.data, read.isPlaceholderData, staged, props.disabled]);
 	useSaveGuard({
 		dirty,
@@ -180,17 +191,8 @@ function BoxFrame(props: FrameProps) {
 			{ type: "commit-box", box, ...latest.current.props.version !== undefined && { version: latest.current.props.version }, ...action },
 			{ notices: { conflict: "The Chat changed since this window read it." }, onConflict: () => { conflict = true; } },
 		);
-		if (applied) {
-			const current = await requestOutcome(api.api.conversations({ id: conversationId }).boxes({ box }).get(), sandboxedRead, notFoundOutcome);
-			if (current.outcome !== "available") return { ...refused("Its saved state could not be read."), current: null };
-			const { props } = latest.current;
-			// A guest may discard its draft on acknowledgement, so deliver the saved read first on the same port.
-			const moves = props.staging === null ? null : props.staging.moves[box] ?? noMoves;
-			port?.postMessage({ type: "read", read: current.value.view, view: { moves, disabled: props.disabled, stale: false, snapshot: current.value.snapshot } } satisfies AppToFrame);
-			return { outcome: "applied" } as const;
-		}
-		const current = await latest.current.read.refetch();
-		return { outcome: conflict ? "conflict" : "refused", reason, current: current.data ?? null } as const;
+		return completeFrameCommit(applied, { outcome: conflict ? "conflict" : "refused", reason },
+			loadBoxRead(conversationId, box, sandboxedRead), (current) => deliverRead(current, false));
 	};
 	const upload = useRef(oneAtATime(async ({ file, frameToken }: { file: unknown; frameToken: string | undefined }) => {
 		if (!(file instanceof Blob)) return refused("It uploaded something that is not a file.");
