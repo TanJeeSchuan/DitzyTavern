@@ -70,7 +70,7 @@ export const emptyPromptChannels = (): PromptChannels => ({
 });
 
 export const appearanceImageHashes = ({ prompt, portrait }: Pick<ParticipantDefinition, "prompt" | "portrait">): string[] => {
-	const hashes = [...new Set(parseImageReferences(prompt.appearance).map(({ hash }) => hash))];
+	const hashes = parseImageReferences(prompt.appearance).map(({ hash }) => hash);
 	return hashes.length > 0 ? hashes : portrait === undefined ? [] : [portrait.hash];
 };
 

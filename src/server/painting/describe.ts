@@ -9,7 +9,8 @@ import { resolvePromptImages } from "../prompt-compiler/images";
 import { collectModelClientGeneration, createModelClient, type ModelFetch } from "../model-client";
 import { readDescribingModelSettings } from "./describing-model-settings";
 
-export const describeImages = async (database: Database, { hashes, ask }: DescribeRequest, options: ConnectionSettingsModuleOptions & { fetch?: ModelFetch }, signal: AbortSignal) => {
+export const describeImages = async (database: Database, { hashes: requestedHashes, ask }: DescribeRequest, options: ConnectionSettingsModuleOptions & { fetch?: ModelFetch }, signal: AbortSignal) => {
+	const hashes = [...new Set(requestedHashes)];
 	const { profileId, model } = readDescribingModelSettings(database);
 	const connections = createConnectionSettingsModule(database, options);
 	const profile = connections.get().profiles.find((profile) => profile.id === profileId);

@@ -81,7 +81,7 @@ test("the app-wide describing model selection is revisioned independently of the
 	expect(readImageModelSettings(database)).toEqual({ revision: 0, profileId: null, model: "" });
 });
 
-test("Describe sends only the chosen hashes when the Ask contains an Image Reference", async () => {
+test("Describe sends each chosen Image once and keeps Ask References as Anchors", async () => {
 	using database = openObservedDatabase();
 	const connections = createConnectionSettingsModule(database, { masterKey: key });
 	connections.createProfile({ expectedRevision: 0, profile, credential: "describe-secret" });
@@ -92,7 +92,7 @@ test("Describe sends only the chosen hashes when the Ask contains an Image Refer
 	let captured: unknown;
 	const app = createDescribeRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
 	const response = await app.handle(new Request("http://localhost/api/describe", {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hashes: [chosen.hash], ask: `Describe the coat. ${formatImageReference("Other", other.hash)}` }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hashes: [chosen.hash, chosen.hash], ask: `Describe the coat. ${formatImageReference("Other", other.hash)}` }),
 	}));
 	expect(response.status).toBe(200);
 	expect(captured).toMatchObject({ messages: [
