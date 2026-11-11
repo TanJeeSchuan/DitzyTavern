@@ -2,7 +2,7 @@ import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import { DESCRIBE_INSTRUCTION, type DescribeRequest } from "../../shared/contract/describe";
-import { formatImageReference } from "../../shared/image-reference";
+import { formatImageReference, projectImageAnchors } from "../../shared/image-reference";
 import { InvalidSettingsError } from "../revisioned-settings";
 import { imageLoader, imageLookup } from "../image";
 import { resolvePromptImages } from "../prompt-compiler/images";
@@ -19,7 +19,7 @@ export const describeImages = async (database: Database, { hashes, ask }: Descri
 	if (hashes.some((hash) => lookup(hash) === undefined)) throw new InvalidSettingsError("An Image is no longer available.");
 	const promptPlan = resolvePromptImages({ blocks: [
 		{ kind: "instruction", role: "system", content: DESCRIBE_INSTRUCTION },
-		{ kind: "instruction", role: "human", content: [...hashes.map((hash, index) => formatImageReference(`Picture ${index + 1}`, hash)), ask ?? ""].filter(Boolean).join("\n\n") },
+		{ kind: "instruction", role: "human", content: [...hashes.map((hash, index) => formatImageReference(`Picture ${index + 1}`, hash)), projectImageAnchors(ask ?? "")].filter(Boolean).join("\n\n") },
 	], warnings: [] }, { lookup, sendImages: true, placement: "every" });
 	const client = createModelClient({ profile, secrets: connections.getProfileSecrets(profile.id), loadImage: imageLoader(database), fetch: options.fetch });
 	const result = await collectModelClientGeneration(client, { promptPlan, modelId: model, signal, generationSettings: {

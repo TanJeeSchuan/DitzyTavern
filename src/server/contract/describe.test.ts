@@ -80,3 +80,27 @@ test("the app-wide describing model selection is revisioned independently of the
 	expect((await save(0)).status).toBe(409);
 	expect(readImageModelSettings(database)).toEqual({ revision: 0, profileId: null, model: "" });
 });
+
+test("Describe sends only the chosen hashes when the Ask contains an Image Reference", async () => {
+	using database = openObservedDatabase();
+	const connections = createConnectionSettingsModule(database, { masterKey: key });
+	connections.createProfile({ expectedRevision: 0, profile, credential: "describe-secret" });
+	applyDescribingModelSettings(database, { type: "apply", expectedRevision: 0, profileId: connections.get().profiles[0]!.id, model: "describing-model" });
+	const chosenBytes = pngFixture({ width: 20 });
+	const chosen = await uploadImage(database, chosenBytes);
+	const other = await uploadImage(database, pngFixture({ width: 21 }));
+	let captured: unknown;
+	const app = createDescribeRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+	const response = await app.handle(new Request("http://localhost/api/describe", {
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hashes: [chosen.hash], ask: `Describe the coat. ${formatImageReference("Other", other.hash)}` }),
+	}));
+	expect(response.status).toBe(200);
+	expect(captured).toMatchObject({ messages: [
+		{ role: "system", content: "Describe the character's face, hair, eyes, build, clothing and distinguishing marks. Describe only their appearance, nothing about personality." },
+		{ role: "user", content: [
+			{ type: "text", text: "[Image: Picture 1]" },
+			{ type: "image_url", image_url: { url: `data:image/png;base64,${Buffer.from(chosenBytes).toString("base64")}` } },
+			{ type: "text", text: "\n\nDescribe the coat. [Image: Other]" },
+		] },
+	] });
+});
