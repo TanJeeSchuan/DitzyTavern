@@ -39,6 +39,6 @@ Overlaps with ticket 01 in Connection Settings and with ticket 04 in Prompt Pres
 
 ## Acceptance
 
-- No existing Chat's Prompt Plan changes until an Appearance is filled in.
+- No existing Chat's Prompt Plan changes until an Appearance is filled in, except that a `{{pick}}` in a slot after the new blocks of the built-in story preset may choose again once.
 - The Portrait reaches a model through Appearance only when the writer inserts it or presses Describe with no Appearance pictures.
 - Changing a Character's Appearance or switch never changes a Participant it seeded.
