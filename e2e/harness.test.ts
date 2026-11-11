@@ -6,7 +6,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { setTimeout as delay } from "node:timers/promises";
 import { test } from "node:test";
 import { startE2eServer } from "./harness.ts";
-import { isChatModelCall, isImageRequest, readModelRequestBody } from "./protocol.ts";
+import { isChatModelCall, isImageRequest, readImageRequestBody } from "./protocol.ts";
 import type { ConnectionSettingsCommandPayload, ConnectionTestDraftPayload } from "../src/shared/contract/connection-settings.ts";
 import type { MemorySettingsCommand } from "../src/boxes/memory/contract.ts";
 import type { BoxDecisionSettingsCommand } from "../src/shared/contract/box.ts";
@@ -125,7 +125,7 @@ test("the image fake recognizes OpenRouter and compatible generation/edit reques
 	for (const path of ["images", "images/generations"]) {
 		const url = `https://example.com/v1/${path}`;
 		assert.equal(isImageRequest(url), true);
-		assert.deepEqual(await readModelRequestBody(url, { method: "POST", body: JSON.stringify(body) }), body);
+		assert.deepEqual(await readImageRequestBody(url, { method: "POST", body: JSON.stringify(body) }), body);
 	}
 	const url = "https://example.com/v1/images/edits";
 	assert.equal(isImageRequest(url), true);
@@ -134,8 +134,14 @@ test("the image fake recognizes OpenRouter and compatible generation/edit reques
 	form.append("image[]", new Blob(["first"], { type: "image/png" }), "map.png");
 	form.append("image[]", new Blob(["second"], { type: "image/jpeg" }), "coat.jpg");
 	const request = new Request(url, { method: "POST", body: form });
-	assert.deepEqual(await readModelRequestBody(url, { method: "POST", headers: request.headers, body: await request.arrayBuffer() }), { ...body, input_references: [
+	assert.deepEqual(await readImageRequestBody(url, { method: "POST", headers: request.headers, body: await request.arrayBuffer() }), { ...body, input_references: [
 		{ type: "image_url", image_url: { url: "data:image/png;base64,Zmlyc3Q=" } },
 		{ type: "image_url", image_url: { url: "data:image/jpeg;base64,c2Vjb25k" } },
 	] });
+});
+
+test("the image fake rejects malformed image bodies at its boundary", async () => {
+	const url = "https://example.com/v1/images/generations";
+	await assert.rejects(readImageRequestBody(url, { method: "POST", body: JSON.stringify({ model: "painter", prompt: "A map", n: 2, aspect_ratio: "1:1" }) }));
+	await assert.rejects(readImageRequestBody(url));
 });

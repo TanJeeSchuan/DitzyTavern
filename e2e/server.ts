@@ -16,7 +16,7 @@ import {
 	authoringCallBody,
 	imageCallBody,
 	isImageRequest,
-	readModelRequestBody,
+	readImageRequestBody,
 	type ImageReply,
 	chatCompletionCallBody,
 	decisionCallBody,
@@ -167,7 +167,7 @@ const embed = (text: string) => {
 
 const fakeFetch: ModelFetch = async (input, init) => {
 	const url = String(input);
-	const raw = await readModelRequestBody(url, init);
+	const raw: unknown = isImageRequest(url) ? await readImageRequestBody(url, init) : init?.body ? JSON.parse(String(init.body)) : undefined;
 	const headers = Object.fromEntries(new Headers(init?.headers));
 	const path = new URL(url).pathname;
 	let call: ModelCall;
