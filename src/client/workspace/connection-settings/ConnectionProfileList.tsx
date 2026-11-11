@@ -52,10 +52,10 @@ export function ConnectionProfileList({ imageModel, onOpenImageModel, controller
 			<section aria-labelledby="image-models-title">
 				<div className="flex items-center justify-between gap-3">
 					<h3 id="image-models-title">Image Models</h3>
-					<PresetMenu controller={controller} apiFormat="images" label="Add Image Model connection" />
+					<PresetMenu controller={controller} apiFormat="images" label="Add Images connection" />
 				</div>
 				<p>Paint Illustrations from a Brief.</p>
-				<ProfileRows label="Image Model connections" profiles={settings.profiles.filter((profile) => profile.apiFormat === "images")} controller={controller} describe={(profile) => CONNECTION_ADAPTER_LABELS[profile.adapter]} badge={() => null} empty={<EmptyProfiles title="No Image Models yet">Add an Images connection, then choose an Image Model.</EmptyProfiles>} />
+				<ProfileRows label="Images connections" profiles={settings.profiles.filter((profile) => profile.apiFormat === "images")} controller={controller} describe={(profile) => CONNECTION_ADAPTER_LABELS[profile.adapter]} badge={() => null} empty={<EmptyProfiles title="No Images connections yet">Add an Images connection, then choose an Image Model.</EmptyProfiles>} />
 				<div className="mt-3"><DecisionSummary preview={imageModel} name="Image Model" onOpen={onOpenImageModel} model={(settings) => settings.model} describe={() => "Image Model for every Chat"} /></div>
 			</section>
 

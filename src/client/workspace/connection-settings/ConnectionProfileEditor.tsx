@@ -134,7 +134,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						onRemove={() => void controller.resetCredential()}
 						placeholder="Enter API key"
 					/>
-					<Field htmlFor={`connection-model-${selectedProfileId ?? "new"}`} label="Default model" helper="Saved as the default model and used for connection tests.">
+					<Field htmlFor={`connection-model-${selectedProfileId ?? "new"}`} label="Default model" helper={draft.apiFormat === "images" ? "Saved as the default model." : "Saved as the default model and used for connection tests."}>
 						<ModelCombobox
 							id={`connection-model-${selectedProfileId ?? "new"}`}
 							value={testModelId}
@@ -145,13 +145,13 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 							onRefresh={() => void controller.refreshModels()}
 						/>
 					</Field>
-					<div className="grid justify-items-start gap-2">
+					{draft.apiFormat !== "images" && <div className="grid justify-items-start gap-2">
 						<Button type="button" size="sm" variant="outline" disabled={testPending || !controller.canSave} onClick={() => void controller.testDraft()}>
 							<Zap aria-hidden="true" /> {testPending ? "Testing…" : "Test connection"}
 						</Button>
 						{testResult !== null && <TestOutcome result={testResult} />}
 						<small className="text-xs text-muted-foreground">Sends one real request, which the provider may bill. Doesn’t save.</small>
-					</div>
+					</div>}
 				</div>
 
 				<details className="group mt-8 border-t border-border pt-4">

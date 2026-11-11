@@ -1,4 +1,3 @@
-import { paintImage } from "./painting";
 import { Value } from "@sinclair/typebox/value";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import { generateText } from "ai";
@@ -54,12 +53,6 @@ export async function testConnection(
 	const modelId = input.modelId.trim();
 	if (modelId.length === 0) {
 		return failure("endpoint", "A model ID is required to test the Connection Profile.");
-	}
-	if (input.profile.apiFormat === "images") {
-		try {
-			await paintImage({ ...input, profile: { ...input.profile, timeoutMs: Math.min(input.profile.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS, options.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS) }, secrets: input.secrets ?? null, brief: "A plain coral circle on white.", aspectRatio: "1:1", loadImage: () => undefined, fetch: options.fetch });
-			return { outcome: "success", message: "Connection succeeded. The Image Model painted one picture." };
-		} catch (error) { return failure("endpoint", error instanceof Error ? error.message : "The Image Model test failed."); }
 	}
 	if (input.profile.apiFormat === "embeddings") return testEmbeddings(input.profile, modelId, input.secrets ?? null, options);
 	if (input.profile.apiFormat === "system-one") {

@@ -317,3 +317,10 @@ describe("Model Test Connection", () => {
 		expect(result.outcome).toBe("success");
 	});
 });
+
+test("Test Connection refuses Images profiles without calling the provider", async () => {
+	let calls = 0;
+	const result = await testConnection({ profile: { ...profile, apiFormat: "images", adapter: "openrouter" }, modelId: "painter" }, { fetch: async () => { calls++; return Response.json({}); } });
+	expect(calls).toBe(0);
+	expect(result).toMatchObject({ outcome: "failure", kind: "adapter-unavailable" });
+});

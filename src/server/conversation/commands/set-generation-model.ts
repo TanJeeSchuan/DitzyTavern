@@ -27,6 +27,7 @@ export function setGenerationModel(
 	if (modelId.length === 0) throw new InvalidConversationCommandError("A model ID is required.");
 	const apiFormat = readProfileApiFormat(db, input.connectionProfileId);
 	if (apiFormat === undefined) throw new InvalidConversationCommandError("The selected Connection Profile is unavailable.");
+	if (apiFormat === "images") throw new InvalidConversationCommandError("An Images connection cannot write Messages. Choose a chat model.");
 	if (apiFormat === "embeddings") throw new InvalidConversationCommandError("An Embeddings connection cannot write Messages. Choose a chat model.");
 	if (apiFormat === "system-one") throw new InvalidConversationCommandError("A System One connection cannot write Messages. Choose a chat model.");
 	const existing = readConversationGenerationSettingsFromConnection(db, input.conversationId);

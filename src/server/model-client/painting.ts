@@ -36,9 +36,9 @@ export async function paintImage(input: {
 		},
 	});
 	const timeout = AbortSignal.timeout(profile.timeoutMs);
-	const shape = profile.adapter === "openrouter" ? { aspectRatio: input.aspectRatio } : { providerOptions: { "ditzytavern-openai-compatible": { aspect_ratio: input.aspectRatio } } };
+	const aspectRatioOptions = profile.adapter === "openrouter" ? { aspectRatio: input.aspectRatio } : { providerOptions: { "ditzytavern-openai-compatible": { aspect_ratio: input.aspectRatio } } };
 	const prompt = images.length === 0 ? projectImageAnchors(input.brief) : { text: projectImageAnchors(input.brief), images };
 	const abortSignal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
-	const result = await generateImage({ model, prompt, ...shape, n: 1, maxRetries: 0, abortSignal });
+	const result = await generateImage({ model, prompt, ...aspectRatioOptions, n: 1, maxRetries: 0, abortSignal });
 	return result.image.uint8Array;
 }
