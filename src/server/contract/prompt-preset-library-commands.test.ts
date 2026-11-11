@@ -38,7 +38,7 @@ describe("Prompt Preset library transport", () => {
 		const presets = await listPresets(app);
 
 		expect(presets).toEqual([
-			{ id: 1, name: "Default", revision: 0, isDefault: true, conversationCount: 2 },
+			{ id: 1, name: "Default", revision: 1, isDefault: true, conversationCount: 2 },
 			cacheSaving,
 		]);
 	});
@@ -134,7 +134,7 @@ describe("Prompt Preset library transport", () => {
 		const applied = await runPresetCommand(routes.library, {
 			type: "duplicate",
 			presetId: 1,
-			expectedRevision: 0,
+			expectedRevision: 1,
 			name: "Copy of Default",
 		});
 		expect(applied.status).toBe(200);
@@ -154,7 +154,9 @@ describe("Prompt Preset library transport", () => {
 		expect(resolved?.slots.map((slot) => slot.reference)).toEqual([
 			"model-system-instruction",
 			"human-identity",
+			"human-appearance",
 			"model-identity",
+			"model-appearance",
 			"model-scenario",
 			"model-example-dialogue",
 			"lore",
@@ -205,7 +207,7 @@ describe("Prompt Preset library transport", () => {
 		const deleted = await runPresetCommand(app, {
 			type: "delete",
 			presetId: 1,
-			expectedRevision: 0,
+			expectedRevision: 1,
 			expectedConversationCount: 0,
 		});
 		expect(deleted.status).toBe(409);
@@ -251,7 +253,7 @@ describe("Prompt Preset library transport", () => {
 		expect(afterC?.id).toBe(1);
 		const after = await listPresets(routes.library);
 		expect(after).toEqual([
-			{ id: 1, name: "Default", revision: 0, isDefault: true, conversationCount: 3 },
+			{ id: 1, name: "Default", revision: 1, isDefault: true, conversationCount: 3 },
 			cacheSaving,
 		]);
 	});
