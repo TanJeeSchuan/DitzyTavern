@@ -1,7 +1,7 @@
 import { Paintbrush } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RefObject } from "react";
-import type { ProseEditorHandle } from "../editor/ProseEditor";
+import type { ComposerHandle } from "../story/Composer";
 import { useIllustrations } from "../painting";
 import { isStoryReady } from "../story";
 import { useMemo, useRef, type Dispatch } from "react";
@@ -46,7 +46,7 @@ import { useStoryViewport } from "./useStoryViewport";
 // composer focus; panel coordination and generation remain with the
 // workspace, which composes the guarded openers passed in below.
 export function StoryStage({
-	composerEditorRef,
+	composerRef,
 	story,
 	dispatchStory,
 	conversation,
@@ -72,7 +72,7 @@ export function StoryStage({
 	onControlChange,
 	onFork,
 }: {
-	composerEditorRef: RefObject<ProseEditorHandle | null>;
+	composerRef: RefObject<ComposerHandle | null>;
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
 	conversation: ConversationSummary | null;
@@ -311,7 +311,7 @@ export function StoryStage({
 					onOpenConnections={onOpenConnections}
 				/>
 				<Composer
-					editorRef={composerEditorRef}
+					ref={composerRef}
 					draft={generation.draft}
 					moves={generation.moves}
 					onMovesChange={generation.setMoves}

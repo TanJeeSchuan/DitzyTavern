@@ -1,5 +1,5 @@
 import { IllustrationActionsContext } from "../painting";
-import type { ProseEditorHandle } from "../editor/ProseEditor";
+import type { ComposerHandle } from "../story/Composer";
 import { PaintPanel } from "../PaintPanel";
 import { boxIdOf, type BoxId } from "../../shared/contract/box";
 import { Toast } from "radix-ui";
@@ -239,7 +239,7 @@ export function ActiveWritingWorkspace({
 		});
 	};
 
-	const composerEditorRef = useRef<ProseEditorHandle>(null);
+	const composerRef = useRef<ComposerHandle>(null);
 	const openPaint = (variantId: number, brief = "") => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", target: { variantId, brief, requestId: crypto.randomUUID() } }));
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
 	// @approved
@@ -251,7 +251,7 @@ export function ActiveWritingWorkspace({
 		<IllustrationActionsContext value={{
 			addToComposer: !generation.assemblyAvailable ? null : (hash) => {
 				if (narrow) dispatchPanel({ type: "details-closed" });
-				requestAnimationFrame(() => composerEditorRef.current?.insertReference("Illustration", hash));
+				composerRef.current?.insertReference("Illustration", hash);
 			},
 			editBrief: openPaint,
 		}}>
@@ -301,7 +301,7 @@ export function ActiveWritingWorkspace({
 			</CoveredLayer>
 
 			<StoryStage
-				composerEditorRef={composerEditorRef}
+				composerRef={composerRef}
 				story={story}
 				dispatchStory={dispatchStory}
 				conversation={conversation}

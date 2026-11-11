@@ -50,7 +50,7 @@ test("paint a typed Brief, swipe away and back, then retry a provider refusal", 
 
 test("painting reaches the story model only after Add to composer and Send", async ({ page, llm }) => {
 	await selectImageModel(page);
-	await llm.chat({ chunks: ["The lantern lights the lake."] }, { chunks: ["I see your Illustration."] });
+	await llm.chat({ chunks: ["The lantern lights the lake.\n\n" + "The water reflects the hills as the lantern sways in the wind. ".repeat(40)] }, { chunks: ["I see your Illustration."] });
 	await llm.images({ base64: picture });
 	await page.goto("/");
 	await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
