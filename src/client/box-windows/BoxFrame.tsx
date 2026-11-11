@@ -71,9 +71,11 @@ const useSandboxedRead = (conversation: ConversationSummary, box: BoxId) => useB
 const refused = (reason: string) => ({ outcome: "refused", reason } as const);
 
 type FrameRead = Static<typeof sandboxedRead>;
-export async function completeFrameCommit(applied: boolean, refusal: { outcome: "conflict" | "refused"; reason: string }, read: Promise<FrameRead | null>, deliver: (read: FrameRead) => void) {
+export const newestFrameRead = (previous: FrameRead | undefined, incoming: FrameRead): FrameRead =>
+	previous !== undefined && previous.snapshot > incoming.snapshot ? previous : incoming;
+export async function completeFrameCommit(refusal: { outcome: "conflict" | "refused"; reason: string } | null, read: Promise<FrameRead | null>, deliver: (read: FrameRead) => void) {
 	const current = await read.catch(() => null);
-	if (!applied) return { ...refusal, current };
+	if (refusal !== null) return { ...refusal, current };
 	if (current !== null) deliver(current);
 	return { outcome: "applied" } as const;
 }
@@ -90,7 +92,9 @@ type FrameProps = { box: BoxId; version: string | undefined; descriptor: BoxDesc
 // for, the app does for this Box and Chat only: staged Moves replace this
 // Box's own under its schema, count and enabled rules; a commit runs as
 // `commit-box` at the snapshot it names, and one that does not land answers
-// with the current read; an upload, one at a time, is stored and granted to
+// with the current read (or null if unavailable). A landed commit delivers
+// its refreshed read before acknowledgement unless that read fails or times
+// out, as docs/box-system/sandboxed.md specifies. An upload is stored and granted to
 // this Box; and its unsaved work joins the window's save guard. A Worker
 // failure shows in the window. Tearing the frame down closes its token. A
 // versioned Box's frame runs one version: its token, its commits and its
@@ -101,6 +105,7 @@ function BoxFrame(props: FrameProps) {
 	const frame = useRef<HTMLIFrameElement>(null);
 	const [token, setToken] = useState<string>();
 	const [port, setPort] = useState<MessagePort>();
+	const delivered = useRef<{ port: MessagePort | undefined; read: FrameRead | undefined }>({ port: undefined, read: undefined });
 	const [failure, setFailure] = useState<string>();
 	const [dirty, setDirty] = useState(false);
 	const ui = useQuery({ queryKey: [box, "ui", version ?? null], queryFn: async () => ({ ui: await uiFile(box, version, "ui.js"), css: await uiFile(box, version, "ui.css") }), staleTime: Infinity });
@@ -130,14 +135,20 @@ function BoxFrame(props: FrameProps) {
 		frame.current?.contentWindow?.postMessage(null, "*", [channel.port2]);
 		setPort(channel.port1);
 	};
-	useEffect(() => () => port?.close(), [port]);
+	useEffect(() => {
+		delivered.current = { port, read: undefined };
+		return () => port?.close();
+	}, [port]);
 	useEffect(() => {
 		if (ui.data !== undefined) port?.postMessage({ type: "start", ...ui.data } satisfies AppToFrame);
 	}, [port, ui.data]);
-	const deliverRead = (data: FrameRead, stale: boolean) => {
+	const deliverRead = (incoming: FrameRead, stale: boolean) => {
+		if (port === undefined || delivered.current.port !== port) return;
+		const data = newestFrameRead(delivered.current.read, incoming);
+		delivered.current.read = data;
 		const { props } = latest.current;
 		const moves = props.staging === null ? null : props.staging.moves[box] ?? noMoves;
-		port?.postMessage({ type: "read", read: data.view, view: { moves, disabled: props.disabled, stale, snapshot: data.snapshot } } satisfies AppToFrame);
+		port?.postMessage({ type: "read", read: data.view, view: { moves, disabled: props.disabled, stale: data === incoming && stale, snapshot: data.snapshot } } satisfies AppToFrame);
 	};
 	useEffect(() => {
 		const data = read.data;
@@ -191,8 +202,8 @@ function BoxFrame(props: FrameProps) {
 			{ type: "commit-box", box, ...latest.current.props.version !== undefined && { version: latest.current.props.version }, ...action },
 			{ notices: { conflict: "The Chat changed since this window read it." }, onConflict: () => { conflict = true; } },
 		);
-		return completeFrameCommit(applied, { outcome: conflict ? "conflict" : "refused", reason },
-			loadBoxRead(conversationId, box, sandboxedRead), (current) => deliverRead(current, false));
+		return completeFrameCommit(applied ? null : { outcome: conflict ? "conflict" : "refused", reason },
+			loadBoxRead(conversationId, box, sandboxedRead, AbortSignal.timeout(SAVE_ANSWER_MS / 2)), (current) => deliverRead(current, false));
 	};
 	const upload = useRef(oneAtATime(async ({ file, frameToken }: { file: unknown; frameToken: string | undefined }) => {
 		if (!(file instanceof Blob)) return refused("It uploaded something that is not a file.");
