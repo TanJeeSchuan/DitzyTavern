@@ -72,7 +72,7 @@ Admit whole entries within both the Lore Allowance and available prompt space. S
 
 When no Lore block is enabled, no lore matching or Jev work contributes to Generation. The independent match tester remains available for saved entries in the open Lorebook. If books are attached, explain why lore is inactive and offer the appropriate add or enable action.
 
-New Default recipes include Lore immediately before history. Existing saved recipes acquire it explicitly through Add Lore Block; do not silently change their authored order. Blank custom presets remain authored recipes to which the user can add the slot.
+New Default recipes include Lore immediately before history. Existing saved recipes acquire it explicitly through Add Lore Block; do not silently change their authored order. Blank custom presets remain authored recipes to which the user can add the slot. The library also ships "Default (cache-saving)", a copy of Default with Lore and Memory after history, so lore and recall that change between Sends never make the provider reprocess the whole history. The preset editor labels an enabled Lore or Box block above history "Breaks cache" and offers to move it below history.
 
 ## Inspection and permanent evidence
 

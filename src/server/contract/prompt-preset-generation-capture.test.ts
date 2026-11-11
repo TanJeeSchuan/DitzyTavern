@@ -19,6 +19,7 @@ import {
 	readPreset,
 	readSelectedPreset,
 	runPresetCommand,
+	appliedId,
 	selectPreset,
 	saveBlockRole,
 	slotOf,
@@ -135,14 +136,14 @@ describe("Prompt Preset selection around an Active Generation", () => {
 		// prompt-preset transport tests do: the duplicate loses its Example
 		// Dialogue slot, so the two selections assemble distinguishable
 		// requests.
-		await runPresetCommand(routes.library, {
+		const copyId = appliedId(await runPresetCommand(routes.library, {
 			type: "duplicate",
 			presetId: 1,
 			expectedRevision: 0,
 			name: "Copy of Default",
-		});
+		}));
 		database.exec(
-			"UPDATE prompt_preset_block SET enabled = 0 WHERE preset_id = 2 AND reference = 'model-example-dialogue'",
+			`UPDATE prompt_preset_block SET enabled = 0 WHERE preset_id = ${copyId} AND reference = 'model-example-dialogue'`,
 		);
 		const gate = gatedProvider();
 		const app = createConversationRoutes(database, { masterKey: key, fetch: gate.fetch });
@@ -173,10 +174,10 @@ describe("Prompt Preset selection around an Active Generation", () => {
 		// While that attempt runs, the Chat switches to the copy: the switch
 		// commits durably even with an Active Generation present.
 		const summary = await readConversation(app, conversation.id);
-		const switched = await selectPreset(app, conversation.id, summary.revision, 2);
+		const switched = await selectPreset(app, conversation.id, summary.revision, copyId);
 		expect(switched.status).toBe(200);
 		const switchedRead = await readSelectedPreset(app, conversation.id);
-		expect(switchedRead?.id).toBe(2);
+		expect(switchedRead?.id).toBe(copyId);
 
 		// The completed request describes the Default assembly it captured, not
 		// the mid-flight switch, and the active inspection agrees.
@@ -246,16 +247,16 @@ describe("Prompt Preset selection around an Active Generation", () => {
 		// Stand-in recipe difference, exactly like the established transport
 		// tests: the copy loses its Example Dialogue slot, so the captured
 		// request and the reassigned Default request are distinguishable.
-		await runPresetCommand(routes.library, {
+		const copyId = appliedId(await runPresetCommand(routes.library, {
 			type: "duplicate",
 			presetId: 1,
 			expectedRevision: 0,
 			name: "Copy of Default",
-		});
+		}));
 		database.exec(
-			"UPDATE prompt_preset_block SET enabled = 0 WHERE preset_id = 2 AND reference = 'model-example-dialogue'",
+			`UPDATE prompt_preset_block SET enabled = 0 WHERE preset_id = ${copyId} AND reference = 'model-example-dialogue'`,
 		);
-		await selectPreset(routes.conversations, conversation.id, conversation.revision, 2);
+		await selectPreset(routes.conversations, conversation.id, conversation.revision, copyId);
 
 		const gate = gatedProvider();
 		const app = createConversationRoutes(database, { masterKey: key, fetch: gate.fetch });
@@ -289,14 +290,14 @@ describe("Prompt Preset selection around an Active Generation", () => {
 		// authoritative operation, while the attempt keeps running.
 		const deleted = await runPresetCommand(routes.library, {
 			type: "delete",
-			presetId: 2,
+			presetId: copyId,
 			expectedRevision: 0,
 			expectedConversationCount: 1,
 		});
 		expect(deleted.status).toBe(200);
 		expect(deleted.body).toEqual({
 			outcome: "deleted",
-			result: { presetId: 2, reassignedConversationCount: 1 },
+			result: { presetId: copyId, reassignedConversationCount: 1 },
 		});
 		const reassigned = await readSelectedPreset(app, conversation.id);
 		expect(reassigned?.id).toBe(1);
@@ -363,8 +364,8 @@ describe("Prompt Preset selection around an Active Generation", () => {
 			profile,
 			credential: "preset-secret",
 		});
-		await runPresetCommand(routes.library, { type: "create", name: "Blank" });
-		await selectPreset(routes.conversations, conversation.id, conversation.revision, 2);
+		const blankId = appliedId(await runPresetCommand(routes.library, { type: "create", name: "Blank" }));
+		await selectPreset(routes.conversations, conversation.id, conversation.revision, blankId);
 
 		// A recipe without slots reaches the structural request rules with an
 		// empty plan: acceptance commits, the captured plan stays empty, and no
@@ -388,7 +389,7 @@ describe("Prompt Preset selection around an Active Generation", () => {
 		// zero-output policy removes it; the Chat keeps its valid Default
 		// selection for later attempts.
 		const settled = await readSelectedPreset(app, conversation.id);
-		expect(settled?.id).toBe(2);
+		expect(settled?.id).toBe(blankId);
 		expect(gate.requests).toHaveLength(0);
 	});
 });
