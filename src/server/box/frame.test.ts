@@ -7,8 +7,10 @@ import { createConversationWithHistory, insertBox } from "../test-fixtures/conve
 import { BOX_IMAGE_BYTES, BOX_IMAGE_COUNT, boxFrameImage, closeBoxFrame, openBoxFrame, uploadBoxFrameImage } from "./frame";
 
 const definition = (name: string, hash?: string) => ({
-	name, prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
-	sendAppearanceImages: true, openings: [],
+	name,
+	prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+	sendAppearanceImages: true,
+	openings: [],
 	...hash !== undefined && { portrait: { hash, focalX: 0.5, focalY: 0.5 } },
 });
 const frameIn = (database: Database) => {

@@ -573,8 +573,7 @@ describe("Macro expansion", () => {
 
 	test("warns about a macro that changes between requests only when its block comes before history", () => {
 		const prompt = (scenario: string, postHistoryInstruction: string) => ({
-			systemInstruction: "", identity: "",
-			appearance: "", scenario, exampleDialogue: "", postHistoryInstruction,
+			systemInstruction: "", identity: "", appearance: "", scenario, exampleDialogue: "", postHistoryInstruction,
 		});
 		const plan = compilePrompt(source({
 			model: { name: "Maren Voss", prompt: prompt("It is {{time}}. {{random}} stays.", "Roll {{roll::1d6}}."), sendAppearanceImages: true },
