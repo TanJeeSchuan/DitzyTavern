@@ -71,9 +71,7 @@ export function Composer({
 			}}
 		>
 			{controlSelectors !== undefined && (
-				<div className="composer-controls-row">
-					{controlSelectors}
-				</div>
+				<div className="composer-controls-row">{controlSelectors}</div>
 			)}
 			<MoveChips moves={moves} onChange={onMovesChange} disabled={!canWrite} />
 			<ProseEditor

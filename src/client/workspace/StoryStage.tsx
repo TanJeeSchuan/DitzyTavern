@@ -147,6 +147,10 @@ export function StoryStage({
 	const onLayerFocus = useLayerFocus(inert);
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
+	const paintDisabledReason = generationRunning ? "Wait for the Generation to finish before painting."
+		: assemblyActive ? "Close the Prompt Plan preview to paint."
+			: previewMode ? "Confirm or cancel the Swipe preview to paint."
+				: undefined;
 	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(latestStoryMessage, story.preview, story.requestedSelections);
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
@@ -330,7 +334,7 @@ export function StoryStage({
 							onControlChange={onControlChange}
 						>
 							<Button type="button" variant="ghost" size="icon-sm" className="pointer-coarse:h-8" aria-label="Paint"
-								title={generationRunning ? "Wait for the Generation to finish before painting." : finalVariantId === null ? "Load the final Message to paint." : "Paint"}
+								title={paintDisabledReason ?? (finalVariantId === null ? "Load the final Message to paint." : "Paint")}
 								disabled={generationRunning || assemblyActive || previewMode || finalVariantId === null}
 								onClick={() => { if (finalVariantId !== null) onPaint(finalVariantId); }}><Paintbrush aria-hidden="true" /></Button>
 						</ComposerControlSelectors>

@@ -53,14 +53,15 @@ test("painting reaches the story model only after Add to composer and Send", asy
 	await llm.chat({ chunks: ["The lantern lights the lake."] }, { chunks: ["I see your Illustration."] });
 	await llm.images({ base64: picture });
 	await page.goto("/");
-	await send(page, "Look across the lake.");
-	await expect(story(page).getByText("The lantern lights the lake.")).toBeVisible();
 	await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
 	const panel = page.getByRole("complementary", { name: "Paint", exact: true });
 	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("A lantern on a moonlit lake.");
 	await panel.getByRole("button", { name: "Paint", exact: true }).click();
 	await panel.getByRole("button", { name: "Close Paint" }).click();
 	const illustration = story(page).getByRole("figure", { name: "Illustration", exact: true });
+	await expect(illustration.getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
+	await send(page, "Look across the lake.");
+	await expect(story(page).getByText("The lantern lights the lake.")).toBeVisible();
 	await illustration.getByRole("button", { name: "Add to composer", exact: true }).click();
 	await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("Illustration");
 	await page.getByRole("button", { name: "Generate Variant" }).click();
