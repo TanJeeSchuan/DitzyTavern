@@ -20,6 +20,7 @@ import { ModelSelector } from "./ModelSelector";
 // only Cast Participants can be referenced.
 
 interface ComposerControlSelectorsProps {
+	children?: ReactNode;
 	onOpenPanel: (panel: PromptBoxReference) => void;
 	onOpenWindow: (box: BoxId) => void;
 	conversation: ConversationSummary;
@@ -30,6 +31,7 @@ interface ComposerControlSelectorsProps {
 }
 
 export function ComposerControlSelectors({
+	children,
 	onOpenPanel,
 	onOpenWindow,
 	conversation,
@@ -123,6 +125,7 @@ export function ComposerControlSelectors({
 
 	return (
 		<div className="composer-controls">
+			{children}
 			{launchers.map(({ box, label, icon, open }) => <Button key={box} type="button" variant="ghost" size="icon-sm" className="pointer-coarse:h-8" aria-label={label} title={label} disabled={disabled} onClick={open}><BoxIcon box={box} icon={icon} /></Button>)}
 			{seatSelect("human", "Writing as", <UserRound aria-hidden="true" />)}
 			<ModelSelector

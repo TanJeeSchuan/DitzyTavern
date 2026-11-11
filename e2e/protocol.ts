@@ -48,6 +48,9 @@ export const describeCallBody = Type.Object({
 export type DescribeModelCall = { kind: "describe"; url: string; headers: Record<string, string>; body: Static<typeof describeCallBody> };
 export type ChatCompletionCallBody = Static<typeof chatCompletionCallBody>;
 
+export const messageText = ({ content }: ChatCompletionCallBody["messages"][number]): string =>
+	Array.isArray(content) ? content.map((part) => part.type === "text" ? part.text : "").join("") : content;
+
 export const decisionCallBody = Type.Object({
 	model: Type.String(),
 	state: Type.Unknown(),

@@ -48,7 +48,6 @@ test("paint a typed Brief, swipe away and back, then retry a provider refusal", 
 	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(2);
 });
 
-
 test("painting reaches the story model only after Add to composer and Send", async ({ page, llm }) => {
 	await selectImageModel(page);
 	await llm.chat({ chunks: ["The lantern lights the lake."] }, { chunks: ["I see your Illustration."] });

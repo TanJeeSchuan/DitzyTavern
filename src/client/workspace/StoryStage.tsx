@@ -1,3 +1,5 @@
+import { Paintbrush } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import type { RefObject } from "react";
 import type { ProseEditorHandle } from "../editor/ProseEditor";
 import { useIllustrations } from "../painting";
@@ -65,6 +67,7 @@ export function StoryStage({
 	onOpenInspector,
 	onInspectVariant,
 	onPaint,
+	generationRunning,
 	onOpenGenerationDetails,
 	onControlChange,
 	onFork,
@@ -89,6 +92,7 @@ export function StoryStage({
 	onOpenVariables: () => void;
 	onOpenInspector: (box: string, focus: { messageId: number } | null) => void;
 	onPaint: (variantId: number) => void;
+	generationRunning: boolean;
 	onInspectVariant: (messageId: number, variantId: number) => void;
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
@@ -304,8 +308,6 @@ export function StoryStage({
 				/>
 				<Composer
 					editorRef={composerEditorRef}
-					onPaint={finalVariantId === null ? undefined : () => onPaint(finalVariantId)}
-					paintDisabled={generation.isGenerating || (conversation?.activeGenerations.length ?? 0) > 0 || assemblyActive || previewMode}
 					draft={generation.draft}
 					moves={generation.moves}
 					onMovesChange={generation.setMoves}
@@ -326,7 +328,12 @@ export function StoryStage({
 							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
 							onConversationChange={session.setConversation}
 							onControlChange={onControlChange}
-						/>
+						>
+							<Button type="button" variant="ghost" size="icon-sm" className="pointer-coarse:h-8" aria-label="Paint"
+								title={generationRunning ? "Wait for the Generation to finish before painting." : finalVariantId === null ? "Load the final Message to paint." : "Paint"}
+								disabled={generationRunning || assemblyActive || previewMode || finalVariantId === null}
+								onClick={() => { if (finalVariantId !== null) onPaint(finalVariantId); }}><Paintbrush aria-hidden="true" /></Button>
+						</ComposerControlSelectors>
 					) : null}
 				/>
 			</div>

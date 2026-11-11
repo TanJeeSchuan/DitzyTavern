@@ -8,14 +8,14 @@ import { shutdownApplication } from "./application/shutdown";
 import { sweepOrphanedImages } from "./image";
 import { recoverActiveGenerations } from "./workflows/generation-recovery";
 import { createUpdateChecker, type UpdateCheckerOptions } from "./updates";
-import { prepareBoxDigests, startBoxDigests } from "./box/digest";
+import { startBoxDigests } from "./box/digest";
 import { loadChatVersions } from "./box/registry";
 import { bootIndex } from "./boot-index";
 import { revalidatedText } from "./contract/content-validators";
 import { watchDatabaseChanges } from "./database/changes";
 import { appPagePolicy } from "../shared/box-frame";
 import { createAuthoring, type AuthoringFolders } from "./authoring";
-import { processStateFor } from "./application/process-state";
+import { prepareConversationEffects } from "./application/conversation-effects";
 
 export interface AppOptions extends ConversationRouteOptions {
 	database: Database;
@@ -30,13 +30,7 @@ export async function createApp(options: AppOptions) {
 	//  The application layer consumes Conversation's reported changes: Box
 	// digest changes are prepared inside the Conversation transaction
 	// and published synchronously after it commits.
-	observeConversationWrites(database, (database, change) => {
-		const publish = prepareBoxDigests(database, change);
-		return () => {
-			processStateFor(database).paintings.abortVariants(change.removedVariantIds);
-			publish();
-		};
-	});
+	observeConversationWrites(database, prepareConversationEffects);
 	const stopBoxDigests = startBoxDigests(database, { fetch });
 	const stopChanges = watchDatabaseChanges(database);
 	// @approved

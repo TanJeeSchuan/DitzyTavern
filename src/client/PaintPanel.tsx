@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { AppSelect } from "@/components/ui/select";
@@ -12,7 +12,6 @@ import { usePaintingCommand, useIllustrations, type PaintTarget } from "./painti
 export function PaintPanel({ conversationId, target, onClose }: { conversationId: number; target: PaintTarget; onClose: () => void }) {
 	const { variantId } = target;
 	const [brief, setBrief] = useState(target.brief);
-	useLayoutEffect(() => setBrief(target.brief), [target]);
 	const { submit, pending, error } = usePaintingCommand(conversationId);
 	const read = useIllustrations(conversationId);
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;

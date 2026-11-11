@@ -1,3 +1,4 @@
+import { prepareConversationEffects } from "../application/conversation-effects";
 import { createGenerationPreviewAsync } from "../workflows/generation-preview";
 import { expect, test } from "bun:test";
 import { createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
@@ -63,7 +64,6 @@ test("an Illustration lands on its original Variant after a swipe without a Conv
 	expect(finishedPlans).not.toContain("Private painted scene");
 	expect(finishedPlans).not.toContain(painting.image.slice(6));
 });
-
 
 test("provider failures persist until retry or dismissal; restarting drops provisional paintings", async () => {
 	using fixture = setup();
@@ -135,11 +135,10 @@ test("concurrent paintings keep their starting positions when the later picture 
 	expect(module.read(chat.id).paintings.map((painting) => painting.brief)).toEqual(["First", "Second"]);
 });
 
-
-test("deleting a Variant aborts its painting and a late provider reply stores nothing", async () => {
+test("deleting a Variant aborts only its painting and discards a late provider reply", async () => {
 	using fixture = setup();
 	const { database, chat } = fixture;
-	observeConversationWrites(database, (_database, change) => () => processStateFor(database).paintings.abortVariants(change.removedVariantIds));
+	observeConversationWrites(database, prepareConversationEffects);
 	const reply = Promise.withResolvers<Response>();
 	const started = Promise.withResolvers<AbortSignal>();
 	const module = createPaintingModule(database, { fetch: (_url, init) => {
@@ -155,12 +154,11 @@ test("deleting a Variant aborts its painting and a late provider reply stores no
 	expect(signal.aborted).toBe(true);
 	expect([...processStateFor(database).paintings.forVariant(variantId)]).toEqual([]);
 	reply.resolve(Response.json({ data: [{ b64_json: pngFixture().toString("base64") }] }));
-	await Bun.sleep(30);
-	expect(module.read(chat.id).paintings).toEqual([]);
-	expect(database.query("SELECT * FROM message_variant_data WHERE namespace = 'painting'").all()).toEqual([]);
-	expect(database.query("SELECT * FROM image").all()).toEqual([]);
+	await paintAndWait(fixture, message.variants[1]!.id, "Surviving scene");
+	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "illustration", brief: "Surviving scene" }]);
+	expect(database.query("SELECT * FROM message_variant_data WHERE namespace = 'painting' AND message_variant_id = ?").all(variantId)).toEqual([]);
+	expect(database.query("SELECT * FROM image").all()).toHaveLength(1);
 });
-
 
 const paintAndWait = async (fixture: ReturnType<typeof setup>, variantId: number, brief: string) => {
 	const module = createPaintingModule(fixture.database, { fetch: async () => Response.json({ data: [{ b64_json: pngFixture({ width: 320 }).toString("base64") }] }) });
@@ -185,7 +183,6 @@ test("Delete removes only its Illustration without a Conversation Revision or to
 	observeConversationWrites(database, () => { writes++; return () => {}; });
 	module.command(chat.id, { type: "delete", variantId, id: first.id });
 	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "illustration", brief: "Keep this picture" }]);
-	expect(module.read(chat.id).paintings).toHaveLength(1);
 	expect(readConversationSummary(database, chat.id)?.revision).toBe(chat.revision);
 	expect(writes).toBe(0);
 });

@@ -18,6 +18,7 @@ import {
 	authoringCallBody,
 	imageCallBody,
 	isImageRequest,
+	messageText,
 	readImageRequestBody,
 	type ImageReply,
 	describeCallBody,
@@ -107,8 +108,7 @@ const completion = (chunks: readonly string[], stream: boolean, hold = false, tr
 const extraction = (call: ChatModelCall) => {
 	const [system] = call.body.messages;
 	if (memoryClaims === undefined || system === undefined) return refuse(call);
-	const prompt = system.content;
-	if (Array.isArray(prompt)) throw new Error("Memory extraction requires a text instruction.");
+	const prompt = messageText(system);
 	const { source } = JSON.parse(prompt.slice(prompt.indexOf("{", prompt.indexOf("Captured source and reference context:"))));
 	const candidates = memoryClaims.filter((memory) => source.content.includes(memory.excerpt)).map(({ excerpt, ...memory }) => ({ ...memory, evidence: [{ messageId: source.messageId, excerpt }] }));
 	return completion([JSON.stringify({ candidates })], call.body.stream === true);
@@ -188,7 +188,7 @@ const fakeFetch: ModelFetch = async (input, init) => {
 	} else if (url.endsWith("/chat/completions") && Value.Check(describeCallBody, raw) && raw.messages[0].content === DESCRIBE_INSTRUCTION) {
 		call = { kind: "describe", url, headers, body: raw };
 	} else if (url.endsWith("/chat/completions") && Value.Check(chatCompletionCallBody, raw)) {
-		call = { kind: raw.messages[0]?.content.toString().startsWith("Extract durable, attributed story Memories") === true ? "extraction" : "chat", url, headers, body: raw };
+		call = { kind: raw.messages[0] !== undefined && messageText(raw.messages[0]).startsWith("Extract durable, attributed story Memories") ? "extraction" : "chat", url, headers, body: raw };
 	} else {
 		call = { kind: "unknown", url, headers, body: raw };
 	}

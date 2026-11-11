@@ -178,6 +178,7 @@ export function ActiveWritingWorkspace({
 	};
 
 	const conversation = session.conversation;
+	const generationRunning = generation.isGenerating || (conversation?.activeGenerations.length ?? 0) > 0;
 	const fork = async (name: string, trimVariants: boolean): Promise<string | null> => {
 		if (conversation === null || forkAt === null) return "The Chat is not available.";
 		let error: string | null = null;
@@ -239,7 +240,7 @@ export function ActiveWritingWorkspace({
 	};
 
 	const composerEditorRef = useRef<ProseEditorHandle>(null);
-	const openPaint = (variantId: number, brief = "") => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", target: { variantId, brief } }));
+	const openPaint = (variantId: number, brief = "") => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", target: { variantId, brief, requestId: crypto.randomUUID() } }));
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
 	// @approved
 	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
@@ -334,6 +335,7 @@ export function ActiveWritingWorkspace({
 				onOpenInspector={openBoxInspector}
 				onInspectVariant={openVariantDetails}
 				onPaint={openPaint}
+				generationRunning={generationRunning}
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}
 			/>
@@ -357,7 +359,7 @@ export function ActiveWritingWorkspace({
 			<CoveredLayer inert={narrow && newChatOpen}>
 			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintTarget !== null && conversation !== null && (
 				<PaintPanel
-					key={`${conversation.id}:${panelState.paintTarget.variantId}`}
+					key={`${conversation.id}:${panelState.paintTarget.requestId}`}
 					conversationId={conversation.id} target={panelState.paintTarget}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
@@ -427,7 +429,7 @@ export function ActiveWritingWorkspace({
 			<Toast.Description className="workspace-toast-description">{forkNotice}</Toast.Description>
 			<Toast.Close className="icon-button" aria-label="Dismiss Fork notice"><X aria-hidden="true" /></Toast.Close>
 		</Toast.Root>}
-		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generation.isGenerating || conversation.activeGenerations.length > 0} onClose={() => setForkAt(null)} onFork={fork} />}
+		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generationRunning} onClose={() => setForkAt(null)} onFork={fork} />}
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
 		</Toast.Provider>

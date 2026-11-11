@@ -1,3 +1,4 @@
+import { messageText } from "./protocol";
 import { test, expect, send, story } from "./fixtures";
 import { firstCall, isChatModelCall } from "./protocol";
 
@@ -164,7 +165,7 @@ test("each Send's request starts with the previous request up to its newest huma
 	const requests = (await llm.log()).calls.filter(isChatModelCall).map(({ body }) => body.messages);
 	expect(requests).toHaveLength(turns.length);
 	for (const [index, [sent]] of turns.slice(0, -1).entries()) {
-		const stable = requests[index]!.slice(0, requests[index]!.findLastIndex(({ content }) => !Array.isArray(content) && content.includes(sent)) + 1);
+		const stable = requests[index]!.slice(0, requests[index]!.findLastIndex((message) => messageText(message).includes(sent)) + 1);
 		expect(stable.length, `request ${index + 1} holds "${sent}" after the preset's opening blocks`).toBeGreaterThan(1);
 		expect(requests[index + 1]!.slice(0, stable.length), `request ${index + 2} prefix`).toEqual(stable);
 	}

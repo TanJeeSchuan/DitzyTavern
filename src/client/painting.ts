@@ -32,8 +32,7 @@ export function usePaintingCommand(conversationId: number) {
 	return { submit, pending, error };
 }
 
-
-export type PaintTarget = { variantId: number; brief: string };
+export type PaintTarget = { variantId: number; brief: string; requestId: string };
 
 export const IllustrationActionsContext = createContext<{
 	addToComposer: ((hash: string) => void) | null;

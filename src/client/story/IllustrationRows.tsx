@@ -9,13 +9,13 @@ import { imageSrc } from "../lib/image";
 export function IllustrationRows({ conversationId, variantId }: { conversationId: number; variantId: number }) {
 	const { data } = useIllustrations(conversationId, variantId);
 	const { submit, pending, error } = usePaintingCommand(conversationId);
-	const actions = useContext(IllustrationActionsContext);
+	const actions = useContext(IllustrationActionsContext)!;
 	const openImageAt = useOpenImageAt();
 	return <>
-		{data?.paintings.map((painting) => <figure key={painting.id} className="my-5 w-full overflow-hidden rounded-xl border border-border bg-muted/30" aria-label="Illustration" style={{ overflowAnchor: "none" }}>
-			<div className="relative grid w-full overflow-hidden" style={{ aspectRatio: painting.aspectRatio.replace(":", "/"), maxHeight: "calc(50dvh - 2.75rem)" }}>
+		{data?.paintings.map((painting) => <figure key={painting.id} className="illustration-row my-5 w-full overflow-hidden rounded-xl border border-border bg-muted/30" aria-label="Illustration">
+			<div className="illustration-picture relative grid w-full overflow-hidden" style={{ aspectRatio: painting.aspectRatio.replace(":", "/") }}>
 				{painting.kind === "illustration"
-					? <button type="button" className="absolute inset-0 cursor-zoom-in rounded-t-xl focus-visible:outline-2 focus-visible:outline-primary focus-visible:-outline-offset-2 hover:ring-1 hover:ring-inset hover:ring-primary"
+					? <button type="button" className="absolute inset-0 cursor-zoom-in rounded-t-xl focus-visible:outline-none"
 						aria-label="Open Illustration full size"
 						data-image-hash={painting.image.slice(6)} data-image-name="Illustration" onClick={(event) => openImageAt(event.currentTarget)}>
 						<img src={imageSrc(painting.image.slice(6))} alt="Illustration" className="h-full w-full object-contain" />
@@ -23,8 +23,8 @@ export function IllustrationRows({ conversationId, variantId }: { conversationId
 					: painting.kind === "painting" ? <p className="place-self-center text-sm text-muted-foreground" role="status">Painting…</p>
 						: <p role="alert" className="place-self-center max-h-full overflow-auto p-4 text-sm text-destructive">{painting.message}</p>}
 			</div>
-			<figcaption className="flex h-11 items-center justify-end gap-2 px-2">
-				{painting.kind === "illustration" && actions !== null && <>
+			<figcaption className="illustration-actions flex items-center justify-end gap-2 px-2">
+				{painting.kind === "illustration" && <>
 					<Button size="sm" variant="ghost" disabled={actions.addToComposer === null} onClick={() => actions.addToComposer?.(painting.image.slice(6))}>Add to composer</Button>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>

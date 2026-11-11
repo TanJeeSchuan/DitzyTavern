@@ -25,12 +25,12 @@ A writer can use, refine and remove an Illustration, paint the current scene fro
 - [x] Add "Delete": it removes the Illustration without changing the Conversation Revision.
 - [x] Add a Paint button to the composer that opens the panel on the final Message. Disable it while the Chat has an Active Generation.
 - [x] Abort a provisional painting when its Variant is removed, using the removed Variants the write observer reports.
-- [ ] Make the story viewport follow the bottom when a row is added under the final Message, as it does for a new Message.
+- [x] Make the story viewport follow the bottom when a row is added under the final Message, as it does for a new Message.
 - [x] Test that an Illustration is copied by Fork, dropped by Trim Variants for an unselected Variant, deleted with its Variant, and that its picture and its Brief's references survive the orphan sweep and are swept once it is deleted.
 - [x] Test that deleting a Variant aborts its painting and stores nothing.
-- [ ] e2e: paint from the composer, add the picture to the composer and send it; the next Generation's request carries the picture, and the one before it did not.
+- [x] e2e: paint from the composer, add the picture to the composer and send it; the next Generation's request carries the picture, and the one before it did not.
 - [ ] Verify manually with playwright-cli, including a picture arriving under the final Message and one arriving above the viewport. No UI tests.
-- [ ] Run focused tests locally; let CI run typechecking and the full suite.
+- [x] Run focused tests locally; let CI run typechecking and the full suite.
 - [ ] Run `/code-review` and resolve its findings.
 - [ ] Set this ticket to DONE and commit.
 
