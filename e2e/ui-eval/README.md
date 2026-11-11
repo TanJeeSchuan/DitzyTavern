@@ -13,9 +13,9 @@ Budget misses are informational while collecting a baseline. The job fails for i
 - Stalled streaming sends a short sentence, CJK text, or a short second paragraph, then holds the provider open. Timing starts when the browser probe receives the matching content or state snapshot. The endpoint is the expected plain text mounted in active prose. Each case observes for 1500 ms against a 400 ms budget. Stop then verifies that the withheld content survives.
 - Swipe uses five Variants containing long Markdown. Each repetition reloads the page to clear browser query caches. The target is three Swipes away. Its text fetch remains pending through adjacent prefetch and is released when the measured click reaches the browser. This includes the browser-to-test-process release overhead. The expected destination text must mount in the message's prose.
 - Stop runs against a held reply. The endpoint requires an enabled Generate Variant button and an editable composer. The text flushed after Stop does not count as a failure.
-- Typing sends real key presses while provider chunks arrive every 80 ms. The suite verifies that multiple arrivals overlap the typing samples. The target is 50 ms per key. Swipe and Stop use 400 ms.
+- Typing checks whether the composer is editable while provider chunks arrive every 80 ms. The app currently disables it during generation, so the report marks this scenario unavailable with zero latency samples. When typing is available, it sends real keys and verifies that multiple arrivals overlap the samples. The target is 50 ms per key. Swipe and Stop use 400 ms.
 
-Swipe, Stop and typing each collect 20 samples after one warmup. Stalled cases run once each. The summary reports completed medians, completed maxima, timeout lower bounds and budget misses. Do not interpret a median of completed samples without the timeout count.
+Swipe, Stop and available typing each collect 20 samples after one warmup. Stalled cases run once each. The summary reports completed medians, completed maxima, timeout lower bounds, budget misses and unavailable scenarios. Do not interpret a median of completed samples without the timeout count.
 
 ## Understand the clock
 

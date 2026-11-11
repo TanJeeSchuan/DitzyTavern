@@ -1,16 +1,20 @@
 import { Type, type Static } from "@sinclair/typebox";
 import type { GenerationEvent, GenerationStatePayload } from "../../src/shared/contract/generation-events";
 
-export const samplesSchema = Type.Array(Type.Object({
+const sampleLabels = {
 	name: Type.String(),
 	budgetMs: Type.Number(),
+	warmup: Type.Boolean(),
+};
+export const samplesSchema = Type.Array(Type.Union([Type.Object({
+	...sampleLabels,
 	durationMs: Type.Number(),
 	startedAtMs: Type.Number(),
 	endedAtMs: Type.Number(),
 	outcome: Type.Union([Type.Literal("observed"), Type.Literal("timed-out")]),
-	warmup: Type.Boolean(),
-}));
+}), Type.Object({ ...sampleLabels, outcome: Type.Literal("unavailable"), reason: Type.String() })]));
 export type Sample = Static<typeof samplesSchema>[number];
+type TimedSample = Exclude<Sample, { outcome: "unavailable" }>;
 
 export type Measurement = {
 	name: string;
@@ -38,7 +42,7 @@ export function installProbe() {
 	const errors: string[] = [];
 	let onInput = (_event: Event) => {};
 	let onStream = (_text: string) => {};
-	let pending: Promise<Sample>;
+	let pending: Promise<TimedSample>;
 	let observing = false;
 	const channel = new MessageChannel();
 	let afterFrame = () => {};
@@ -46,8 +50,8 @@ export function installProbe() {
 	for (const name of ["click", "keydown"]) document.addEventListener(name, (event) => onInput(event), true);
 
 	const realFetch = window.fetch;
-	window.fetch = async (...args) => {
-		const response = await realFetch(...args);
+	window.fetch = new Proxy(realFetch, { async apply(target, _receiver, args: Parameters<typeof fetch>) {
+		const response = await target(...args);
 		if (!response.url.match(/\/generations\/\d+\/events/) || response.body === null) return response;
 		const reader = response.clone().body!.getReader();
 		void (async () => {
@@ -79,12 +83,12 @@ export function installProbe() {
 			} finally { reader.releaseLock(); }
 		})();
 		return response;
-	};
+	} });
 
 	const arm = (measurement: Measurement) => {
 		if (observing) throw new Error("A measurement is already active.");
 		observing = true;
-		pending = new Promise<Sample>((resolve, reject) => {
+		pending = new Promise<TimedSample>((resolve, reject) => {
 			let start: number | undefined;
 			let frame = 0;
 			const cleanup = () => {
@@ -96,7 +100,7 @@ export function installProbe() {
 				onStream = () => {};
 				afterFrame = () => {};
 			};
-			const finish = (outcome: Sample["outcome"]) => {
+			const finish = (outcome: TimedSample["outcome"]) => {
 				if (!observing || start === undefined) return;
 				const end = performance.now();
 				const sample = {
@@ -142,5 +146,9 @@ export function installProbe() {
 			};
 		});
 	};
-	return window.uiEval = { arm, result: () => pending, read: () => ({ samples, arrivals, errors }) };
+	const unavailable = (sample: Pick<Extract<Sample, { outcome: "unavailable" }>, "name" | "budgetMs" | "reason">) =>
+		samples.push({ ...sample, outcome: "unavailable", warmup: false });
+	const probe = { arm, unavailable, result: () => pending, read: () => ({ samples, arrivals, errors }) };
+	window.uiEval = probe;
+	return probe;
 }

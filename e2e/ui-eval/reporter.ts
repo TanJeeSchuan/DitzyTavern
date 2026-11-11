@@ -20,21 +20,24 @@ export default class UiEvalReporter implements Reporter {
 			"# UI responsiveness eval", "",
 			"Budgets are informational during baseline collection. Functional assertions and probe validation fail the job.", "",
 			"Times end after a render opportunity, not confirmed pixel presentation. Timed-out samples are lower bounds and are excluded from completed-sample medians.", "",
-			"| Scenario | Budget ms | Samples | Completed median ms | Completed max ms | Timeouts | Budget misses |",
-			"| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
+			"| Scenario | Budget ms | Samples | Completed median ms | Completed max ms | Timeouts | Budget misses | Unavailable |",
+			"| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |",
 		];
 		for (const name of new Set(measured.map((sample) => sample.name))) {
 			const group = measured.filter((sample) => sample.name === name);
+			const available = group.filter((sample) => sample.outcome !== "unavailable");
 			const completed = group.filter((sample) => sample.outcome === "observed").map((sample) => sample.durationMs).sort((left, right) => left - right);
 			const middle = Math.floor(completed.length / 2);
 			const lowerMiddle = Math.max(0, Math.ceil(completed.length / 2) - 1);
 			const median = completed.length === 0 ? "—" : ((completed[middle]! + completed[lowerMiddle]!) / 2).toFixed(1);
 			const maximum = completed.at(-1)?.toFixed(1) ?? "—";
 			const timeouts = group.filter((sample) => sample.outcome === "timed-out");
-			const misses = group.filter((sample) => sample.durationMs > sample.budgetMs).length;
+			const misses = available.filter((sample) => sample.durationMs > sample.budgetMs).length;
 			const lowerBound = Math.min(...timeouts.map((sample) => sample.durationMs)).toFixed(0);
 			const censored = timeouts.length ? `${timeouts.length} (≥${lowerBound} ms)` : "0";
-			lines.push(`| ${name} | ${group[0]!.budgetMs} | ${group.length} | ${median} | ${maximum} | ${censored} | ${misses}/${group.length} |`);
+			const budgetMisses = available.length ? `${misses}/${available.length}` : "—";
+			const unavailable = group.filter((sample) => sample.outcome === "unavailable").map((sample) => sample.reason).join(" ");
+			lines.push(`| ${name} | ${group[0]!.budgetMs} | ${available.length} | ${median} | ${maximum} | ${censored} | ${budgetMisses} | ${unavailable} |`);
 		}
 		lines.push("", "The first repetition of Swipe, Stop and typing is excluded as warmup. The injected 500 ms stall is validation, not an app sample.", "");
 		mkdirSync(".scratch/ui-eval", { recursive: true });

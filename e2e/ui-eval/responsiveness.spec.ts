@@ -122,6 +122,15 @@ test("typing while chunks arrive", async ({ page, llm }) => {
 	await page.locator(draft).fill("Continue.");
 	await page.locator(send).click();
 	await expect(story(page).getByText("The lantern flickers 0.", { exact: true })).toBeVisible();
+	if (await page.locator(draft).getAttribute("contenteditable") === "false") {
+		await page.evaluate(() => window.uiEval.unavailable({
+			name: "typing while chunks arrive", budgetMs: 50, reason: "The composer is disabled during generation.",
+		}));
+		await page.locator(stop).click();
+		await expect(page.locator(send)).toBeEnabled();
+		return;
+	}
+	await expect(page.locator(draft)).toHaveAttribute("contenteditable", "true");
 	await page.locator(draft).focus();
 	const arrivals = await page.evaluate(() => window.uiEval.read().arrivals.length);
 	for (let index = 0; index <= repetitions; index++) {
