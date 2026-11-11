@@ -32,10 +32,11 @@ function AskForm({ ask, onAsk, pending, onDescribe }: { ask: string; onAsk: (ask
 	</form>;
 }
 
-function PictureDescribe({ image, state, onDescribe }: { image: OpenedImage; state: DescribeState; onDescribe: (hashes: string[], ask: string, insert: (text: string) => boolean) => void }) {
+function PictureDescribe({ image, pending, onDescribe }: { image: OpenedImage; pending: boolean; onDescribe: (hashes: string[], ask: string, insert: (text: string) => boolean, feedback: (state: DescribeState) => void) => void }) {
+	const [state, setState] = useState<DescribeState>({ kind: "idle" });
 	const [ask, setAsk] = useState("");
 	return <div className="grid gap-2">
-		<AskForm ask={ask} onAsk={setAsk} pending={state.kind === "describing"} onDescribe={() => onDescribe([image.hash], ask, (text) => image.insertAfter?.(text) === true)} />
+		<AskForm ask={ask} onAsk={setAsk} pending={pending} onDescribe={() => onDescribe([image.hash], ask, (text) => image.insertAfter?.(text) === true, setState)} />
 		<DescribeFeedback state={state} />
 	</div>;
 }
@@ -47,18 +48,19 @@ export function AppearanceField({ draft, placeholder, onDraftChange }: { draft: 
 	const [open, setOpen] = useState(false);
 	const [ask, setAsk] = useState("");
 	useEffect(() => () => controller.current?.abort(), []);
-	const describe = async (hashes: string[], ask: string, insert: (text: string) => boolean) => {
+	const describe = async (hashes: string[], ask: string, insert: (text: string) => boolean, feedback?: (state: DescribeState) => void) => {
+		const report = (state: DescribeState) => { setState(state); feedback?.(state); };
 		if (controller.current !== null) return;
 		setOpen(false);
-		if (hashes.length === 0) return setState({ kind: "error", message: "Add a picture to Appearance or a Portrait before describing." });
+		if (hashes.length === 0) return report({ kind: "error", message: "Add a picture to Appearance or a Portrait before describing." });
 		const request = new AbortController();
 		controller.current = request;
-		setState({ kind: "describing" });
+		report({ kind: "describing" });
 		try {
 			const result = await requestOutcome(api.api.describe.post({ hashes, ask }, { fetch: { signal: request.signal } }), description, invalidOutcome);
 			if (request.signal.aborted) return;
-			if (result.outcome !== "available") return setState({ kind: "error", message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : SERVER_UNREACHABLE_NOTICE });
-			setState(insert(result.value.text) ? { kind: "added" } : { kind: "error", message: "The picture's Reference was removed. Describe it again after restoring it." });
+			if (result.outcome !== "available") return report({ kind: "error", message: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : SERVER_UNREACHABLE_NOTICE });
+			report(insert(result.value.text) ? { kind: "added" } : { kind: "error", message: "The picture's Reference was removed. Describe it again after restoring it." });
 		} finally {
 			controller.current = null;
 		}
@@ -82,8 +84,11 @@ export function AppearanceField({ draft, placeholder, onDraftChange }: { draft: 
 			</div>
 		</div>
 		<ProseEditor ref={editor} className="prose-editor-field" ariaLabel="Appearance" value={draft.prompt.appearance} placeholder={placeholder}
-			onChange={(appearance) => onDraftChange({ ...draft, prompt: { ...draft.prompt, appearance } })}
-			imageActions={(image) => <PictureDescribe key={image.hash} image={image} state={state} onDescribe={(hashes, ask, insert) => void describe(hashes, ask, insert)} />} />
+			onChange={(appearance) => {
+				if (state.kind !== "describing") setState({ kind: "idle" });
+				onDraftChange({ ...draft, prompt: { ...draft.prompt, appearance } });
+			}}
+			imageActions={(image) => <PictureDescribe key={image.hash} image={image} pending={state.kind === "describing"} onDescribe={(hashes, ask, insert, feedback) => void describe(hashes, ask, insert, feedback)} />} />
 		<label className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
 			Send Appearance Images
 			<Switch checked={draft.sendAppearanceImages} onCheckedChange={(sendAppearanceImages) => onDraftChange({ ...draft, sendAppearanceImages })} />

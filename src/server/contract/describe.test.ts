@@ -14,7 +14,7 @@ import { description } from "../../shared/contract/describe";
 import { captureModelFetch, key, profile } from "./prompt-preset-test-fixtures";
 
 for (const useAppearance of [true, false]) {
-	test(`Describe sends ${useAppearance ? "every Appearance picture instead of the Portrait" : "the Portrait when Appearance has no pictures"} and the Ask`, async () => {
+	test(`Describe sends ${useAppearance ? "each distinct Appearance picture once in first-Reference order" : "the Portrait when Appearance has no pictures"} and the Ask`, async () => {
 		using database = openObservedDatabase();
 		const connections = createConnectionSettingsModule(database, { masterKey: key });
 		connections.createProfile({ expectedRevision: 0, profile, credential: "describe-secret" });
@@ -23,7 +23,7 @@ for (const useAppearance of [true, false]) {
 		const bytes = [pngFixture({ width: 10 }), pngFixture({ width: 11 }), pngFixture({ width: 12 })];
 		const pictures = await Promise.all(bytes.map((bytes) => uploadImage(database, bytes)));
 		const definition = {
-			prompt: { ...emptyPromptChannels(), appearance: useAppearance ? `Existing description. ${formatImageReference("Face", pictures[0]!.hash)} ${formatImageReference("Clothing", pictures[1]!.hash)}` : "Existing description." },
+			prompt: { ...emptyPromptChannels(), appearance: useAppearance ? `Existing description. ${formatImageReference("Face", pictures[0]!.hash)} ${formatImageReference("Clothing", pictures[1]!.hash)} Again ${formatImageReference("Face again", pictures[0]!.hash)}` : "Existing description." },
 			portrait: { hash: pictures[2]!.hash, focalX: 0.5, focalY: 0.5 },
 		};
 		let captured: unknown;
@@ -45,6 +45,10 @@ for (const useAppearance of [true, false]) {
 				{ type: "text", text: "\n\nFocus on clothing." },
 			] },
 		] });
+		if (useAppearance) {
+			const firstPictureOccurrences = JSON.stringify(captured).split(`data:image/png;base64,${Buffer.from(bytes[0]!).toString("base64")}`).length - 1;
+			expect(firstPictureOccurrences).toBe(1);
+		}
 	});
 }
 
