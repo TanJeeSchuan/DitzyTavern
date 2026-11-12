@@ -1,9 +1,8 @@
 import { executeConversationCommand } from "../conversation";
 import { importNativePromptPreset } from "../prompt-preset";
-import { withProfile, conversationApp, captureModelFetch, startGeneration, completeGeneration } from "./prompt-preset-test-fixtures";
+import { withProfile, conversationApp, captureModelFetch, startGeneration, completeGeneration, createChat, recipeRoutes, readStoredRecipe, duplicateBlock } from "./prompt-preset-test-fixtures";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { openObservedDatabase } from "../test-fixtures/conversation";
-import { createChat, recipeRoutes, readStoredRecipe, duplicateBlock } from "./prompt-preset-test-fixtures";
 
 let database: ReturnType<typeof openObservedDatabase>;
 beforeEach(() => { database = openObservedDatabase(); });

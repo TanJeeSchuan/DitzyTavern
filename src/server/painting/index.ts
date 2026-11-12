@@ -12,7 +12,7 @@ import { imageLoader, ingestImage, storeImage } from "../image";
 import { announceChange } from "../database/changes";
 import { processStateFor } from "../application/process-state";
 
-import { readPaintPresetSettings, commandPaintPreset } from "../prompt-preset/paint";
+import { readPaintPresetSettings, commandPaintPreset } from "../conversation";
 
 const NAMESPACE = "painting";
 

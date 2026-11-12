@@ -11,8 +11,8 @@ import {
 	DialogTitle,
 } from "@/components/ui/dialog";
 import { validateMacroText } from "../../../shared/prompt-macro-engine";
-import { isBoxSlot, isSingleUseReference, type PromptOutgoingRole, type ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
-import { boxIdOf, boxMetadata, isBoxReference, type PromptBoxReference } from "../../../shared/contract/box";
+import { isBoxSlot, isAuthoredTextSlot, isSingleUseReference, type PromptAuthoredTextReference, type PromptOutgoingRole, type ResolvedPromptPresetSlot } from "../../../shared/contract/prompt-preset";
+import { boxIdOf, boxMetadata, isBoxReference } from "../../../shared/contract/box";
 import {
 	duplicatePromptPresetBlock,
 	movePromptPresetBlock,
@@ -77,7 +77,7 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 	return boxMetadata(boxIdOf(slot.reference)).block ?? { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
 };
 
-type TextSlot = Extract<ResolvedPromptPresetSlot, { reference: "instruction" | "brief-instruction" }> | Extract<ResolvedPromptPresetSlot, { reference: PromptBoxReference }>;
+type TextSlot = Extract<ResolvedPromptPresetSlot, { reference: PromptAuthoredTextReference }>;
 type TextFields = { name?: string; content: string; role: PromptOutgoingRole };
 
 // @approved
@@ -196,7 +196,7 @@ export function PromptPresetRecipeRow({
 		disabled: pending,
 	});
 	const title = slotTitle(slot.reference === "instruction" && draft?.kind === "content" ? { ...slot, name: draft.name ?? slot.name } : slot);
-	const referenceCopy = slot.reference === "instruction" || slot.reference === "brief-instruction" ? null : referenceBlockCopy(slot, title);
+	const referenceCopy = isAuthoredTextSlot(slot) && !isBoxSlot(slot) ? null : referenceBlockCopy(slot, title);
 	const roleDraft = draft?.kind === "role" ? draft : null;
 	const dirty = draft !== undefined && draftIsDirty(slot, draft);
 	const enabled = draft?.enabled ?? slot.enabled;
@@ -271,20 +271,12 @@ export function PromptPresetRecipeRow({
 					)}
 				</DialogHeader>
 				<div className="min-h-0 overflow-y-auto pr-1">
-				{slot.reference === "instruction" || slot.reference === "brief-instruction" ? (
-					<TextFieldEditor
-						slot={slot}
-						title={title}
-						draft={draft}
-						disabled={pending}
-						onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
-					/>
-				) : isBoxSlot(slot) ? (
+				{isAuthoredTextSlot(slot) ? (
 					<div className="flex flex-col gap-5">
-						<dl>
+						{isBoxSlot(slot) && <dl>
 							<dt className="text-xs text-muted-foreground">Source</dt>
 							<dd className="mt-1 text-sm font-medium">{referenceCopy?.source}</dd>
-						</dl>
+						</dl>}
 						<TextFieldEditor
 							slot={slot}
 							title={title}

@@ -39,7 +39,7 @@ export function PromptPresetLibrarySection({
 				<Select value={String(selectedId)} disabled={pending} onValueChange={(value) => onSelect(Number(value))}>
 					<SelectTrigger className="w-full font-medium" aria-labelledby="chat-preset-label"><SelectValue /></SelectTrigger>
 					<SelectContent>
-						{presets.map((preset) => <SelectItem key={preset.id} value={String(preset.id)}>{preset.name}{preset.isDefault ? " (built-in)" : ""}</SelectItem>)}
+						{presets.map((preset) => <SelectItem key={preset.id} value={String(preset.id)}>{preset.name}{preset.isBuiltIn ? " (built-in)" : ""}</SelectItem>)}
 					</SelectContent>
 				</Select>
 			</div>

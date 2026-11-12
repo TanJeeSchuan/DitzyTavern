@@ -20,7 +20,7 @@ import {
 import { Value } from "@sinclair/typebox/value";
 import { isUnknownBoxReference } from "../../shared/contract/box";
 import {
-	DefaultPromptPresetNotRemovableError,
+	BuiltInPromptPresetNotRemovableError,
 	InvalidPromptPresetCommandError,
 	PromptPresetDeletionImpactChangedError,
 	PromptPresetNotFoundError,
@@ -82,7 +82,7 @@ const summaryOf = (
 	id: preset.id,
 	name: preset.name,
 	revision: preset.revision,
-	isDefault: preset.is_default || preset.is_default_paint,
+	isBuiltIn: preset.is_default || preset.is_default_paint,
 	conversationCount,
 });
 
@@ -92,9 +92,9 @@ const listPresetSummaries = (db: PromptPresetDatabase): PromptPresetSummary[] =>
 		.from(promptPresetTable)
 		.orderBy(asc(promptPresetTable.id))
 		.all();
-	const selections = db.select().from(conversationPromptPresetTable).all();
-	const totals = new Map<number, number>();
-	for (const selection of selections) for (const id of new Set([selection.prompt_preset_id, selection.paint_preset_id])) totals.set(id, (totals.get(id) ?? 0) + 1);
+	const selections = db.select({ presetId: conversationPromptPresetTable.prompt_preset_id, conversationId: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable)
+		.union(db.select({ presetId: conversationPromptPresetTable.paint_preset_id, conversationId: conversationPromptPresetTable.conversation_id }).from(conversationPromptPresetTable)).as("selections");
+	const totals = new Map(db.select({ presetId: selections.presetId, total: count() }).from(selections).groupBy(selections.presetId).all().map(({ presetId, total }) => [presetId, total]));
 	return presets.map((preset) => summaryOf(preset, totals.get(preset.id) ?? 0));
 };
 
@@ -239,7 +239,7 @@ export function executePromptPresetCommand(
 		guardRevision("preset", command.expectedRevision, preset, () => preset);
 
 		if (command.type === "delete") {
-			if (preset.isDefault) throw new DefaultPromptPresetNotRemovableError();
+			if (preset.isBuiltIn) throw new BuiltInPromptPresetNotRemovableError();
 			// @approved
 			//  The confirmed deletion impact is compared against the
 			// authoritative count in the same transaction that reassigns selections,

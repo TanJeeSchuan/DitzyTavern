@@ -9,6 +9,7 @@ export {
 	readConversationPromptPresetRecipeFromConnection,
 	readDefaultPromptPresetId,
 	readPromptPresetRecipe,
+	requirePaintPresetRecipe,
 	selectConversationPromptPreset,
 	selectDefaultPromptPreset,
 } from "./recipe";
@@ -36,7 +37,7 @@ export {
 	setPromptPresetBlockEnabled,
 } from "./blocks";
 export {
-	DefaultPromptPresetNotRemovableError,
+	BuiltInPromptPresetNotRemovableError,
 	InvalidPromptPresetCommandError,
 	PromptPresetDeletionImpactChangedError,
 	PromptPresetNotFoundError,

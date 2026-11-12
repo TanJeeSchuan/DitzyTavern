@@ -21,7 +21,7 @@ describe("domain error presentation", () => {
 	});
 
 	test("presents a nested deletion-impact union with its authoritative preset", () => {
-		const preset = { id: 9, name: "Changed", revision: 2, isDefault: false, conversationCount: 3 };
+		const preset = { id: 9, name: "Changed", revision: 2, isBuiltIn: false, conversationCount: 3 };
 		const error = new PromptPresetDeletionImpactChangedError(1, preset);
 		const result = presentDomainError(error, { 409: promptPresetCommandConflict });
 		expect(result).toMatchObject({ code: 409, response: {

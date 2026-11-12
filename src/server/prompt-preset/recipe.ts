@@ -7,14 +7,15 @@ import {
 	promptPresetTable,
 } from "../database/schema";
 import {
-	isBoxSlot,
+	isAuthoredTextSlot,
+	hasEnabledBriefInstruction,
 	type PromptOutgoingRole,
 	type PromptPresetRecipe,
 	type ReferencedDefinitionBlock,
 	type PromptLoreReference,
 } from "../../shared/contract/prompt-preset";
 import type { PromptBoxReference } from "../../shared/contract/box";
-import { PromptPresetNotFoundError } from "./errors";
+import { InvalidPromptPresetCommandError, PromptPresetNotFoundError } from "./errors";
 
 const connect = (database: Database) => drizzle(database);
 export type PromptPresetDatabase = ReturnType<typeof connect>;
@@ -80,7 +81,7 @@ export const readDefaultPaintPresetId = (db: PromptPresetDatabase): number => {
 	return row.id;
 };
 
-/** @approved Records a new Conversation's initial selection of the Default preset. */
+/** @approved Records a new Chat's initial story and Paint selections on their respective built-in presets. */
 export const selectDefaultPromptPreset = (
 	db: PromptPresetDatabase,
 	conversationId: number,
@@ -139,7 +140,7 @@ const toRecipeSlots = (
 				content: slot.content,
 			};
 		}
-		if (slot.reference === "brief-instruction" || isBoxSlot(slot)) return { id: slot.id, reference: slot.reference, enabled: slot.enabled, role: slot.role, content: slot.content };
+		if (isAuthoredTextSlot(slot)) return { id: slot.id, reference: slot.reference, enabled: slot.enabled, role: slot.role, content: slot.content };
 		return {
 			id: slot.id,
 			reference: slot.reference,
@@ -207,4 +208,10 @@ export const readConversationPromptPresetRecipeFromConnection = (
 		.get();
 	if (selection === undefined) return undefined;
 	return presetRecipeOf(readPromptPresetHeader(db, selection.prompt_preset_id), db);
+};
+
+export const requirePaintPresetRecipe = (database: Database, presetId: number): PromptPresetRecipe => {
+	const recipe = readPromptPresetRecipe(database, presetId);
+	if (!recipe || !hasEnabledBriefInstruction(recipe.slots)) throw new InvalidPromptPresetCommandError("Choose a Paint Preset with an enabled Brief instruction.");
+	return recipe;
 };

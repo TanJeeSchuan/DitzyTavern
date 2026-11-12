@@ -58,7 +58,7 @@ describe("Native Prompt Preset interchange", () => {
 		expect(imported.status).toBe(200);
 		expect(imported.body).toMatchObject({
 			outcome: "applied",
-			preset: { name: "Default", isDefault: false },
+			preset: { name: "Default", isBuiltIn: false },
 		});
 		const importedId = appliedId(imported);
 		const roundTrip = await exportPreset(routes.library, importedId);

@@ -15,6 +15,8 @@ export const painting = Type.Union([
 	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("illustration"), image: illustration.properties.image })]),
 ]);
 export type Painting = Static<typeof painting>;
+export const DEFAULT_BRIEF_MESSAGE_COUNT = 5;
+
 export const paintPresetSettings = Type.Object({
 	paintPresetId: Type.Integer(),
 	briefMessageCount: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),

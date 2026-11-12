@@ -16,6 +16,7 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { DEFAULT_BRIEF_MESSAGE_COUNT } from "../../shared/contract/painting";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import type { ConnectionProfileDraftPayload } from "../../shared/contract/connection-settings";
 import type { LoreAttachmentScope } from "../../shared/contract/lorebook";
@@ -313,7 +314,7 @@ export const conversationPromptPresetTable = sqliteTable(
 			.primaryKey()
 			.references(() => conversationTable.id, { onDelete: "cascade" }),
 		paint_preset_id: int().notNull().references(() => promptPresetTable.id),
-		brief_message_count: int().default(5),
+		brief_message_count: int().default(DEFAULT_BRIEF_MESSAGE_COUNT),
 		prompt_preset_id: int()
 			.notNull()
 			.references(() => promptPresetTable.id),

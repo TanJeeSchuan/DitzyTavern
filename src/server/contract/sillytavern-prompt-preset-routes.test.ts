@@ -188,7 +188,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			const imported = await postImport(app, source);
 			expect(imported.status).toBe(200);
 			const applied = requireApplied(imported.body);
-			expect(applied.preset.isDefault).toBe(false);
+			expect(applied.preset.isBuiltIn).toBe(false);
 			expect(applied.preset.conversationCount).toBe(0);
 		}
 		const listed = await app.handle(new Request("http://localhost/api/prompt-presets"));

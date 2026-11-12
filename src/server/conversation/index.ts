@@ -151,3 +151,5 @@ export { forkConversation } from "./commands/fork-conversation";
 export { checkBoxValuesInChats } from "./box-values";
 
 export { generationGate } from "./generation-gate";
+
+export { readPaintPresetSelection, readPaintPresetSettings, commandPaintPreset } from "./paint-preset";
