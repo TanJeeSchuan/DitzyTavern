@@ -49,4 +49,3 @@ export type {
 	PromptPresetSlot,
 	ReferencedDefinitionBlock,
 } from "../../shared/contract/prompt-preset";
-

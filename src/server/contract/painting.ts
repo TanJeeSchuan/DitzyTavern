@@ -23,8 +23,9 @@ export const createPaintingRoutes = (database: Database, options: ConversationRo
 					try {
 						if (!first.done) yield sse({ data: first.value });
 						for await (const event of events) yield sse({ data: event });
-					} catch {
-						yield sse({ data: { type: "failed", kind: "transport", message: "The Brief stream could not finish. Try again." } });
+					} catch (error) {
+						const failure = error instanceof ModelClientGenerationError || error instanceof ModelClientTransportError ? error : { kind: "transport", message: "The Brief stream could not finish. Try again." };
+						yield sse({ data: { type: "failed", kind: failure.kind, message: failure.message } });
 					} finally { await events.return(); }
 				})();
 			} catch (error) {

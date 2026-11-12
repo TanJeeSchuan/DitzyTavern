@@ -12,7 +12,6 @@ import { imageLoader, ingestImage, storeImage } from "../image";
 import { announceChange } from "../database/changes";
 import { processStateFor } from "../application/process-state";
 
-
 const NAMESPACE = "painting";
 
 export const createPaintingModule = (database: Database, options: ConnectionSettingsModuleOptions & { fetch?: ModelFetch } = {}) => {

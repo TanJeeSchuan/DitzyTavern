@@ -128,7 +128,6 @@ test("the ordinary preset editor reads a Paint Preset without changing the story
 	} finally { database.close(); }
 });
 
-
 test("a provider rejection before streaming returns its Brief error", async () => {
 	const database = openObservedDatabase();
 	try {
@@ -189,5 +188,31 @@ test("a Brief pins its target Variant after a swipe and reads only its own prese
 		expect(requests[1]!.messages[0]).toEqual({ role: "user", content: "Before: ; local: ink." });
 		expect(requireSnapshot(database, chat.id)).toEqual(before);
 		expect(database.query("SELECT * FROM message_variant_data").all()).toEqual(rows);
+	} finally { database.close(); }
+});
+
+
+test("a Brief preserves a provider failure after content has started streaming", async () => {
+	const database = openObservedDatabase();
+	try {
+		const chat = createConversationWithHistory(database, { name: "Scene", participants: [
+			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
+			{ definition: { name: "Maren", prompt: modelPrompt, sendAppearanceImages: true, openings: ["A scene"] } },
+		], control: { human: 0, model: 1 } });
+		withProfile(database);
+		const chunks = [
+			{ id: "brief", choices: [{ index: 0, delta: { content: "A lantern" }, finish_reason: null }] },
+			{ error: { message: "The provider stopped this Brief." } },
+		];
+		const routes = createPaintingRoutes(database, { masterKey: key, fetch: async () => new Response(
+			chunks.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join(""), { headers: { "content-type": "text/event-stream" } },
+		) });
+		const response = await routes.handle(new Request(`http://localhost/api/conversations/${chat.id}/brief`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variantId: chat.messages[0]!.variants[0]!.id, ask: "Describe this." }),
+		}));
+		expect(response.status).toBe(200);
+		const frames = (await response.text()).split("\n").filter((line) => line.startsWith("data: ")).map((line) => JSON.parse(line.slice(6)));
+		expect(frames).toContainEqual({ type: "content", text: "A lantern" });
+		expect(frames).toContainEqual({ type: "failed", kind: "provider", message: expect.stringContaining("The provider stopped this Brief.") });
 	} finally { database.close(); }
 });

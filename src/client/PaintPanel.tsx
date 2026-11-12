@@ -1,3 +1,4 @@
+import { Pencil } from "lucide-react";
 import type { ConversationSummary } from "./conversation";
 import { PromptPresetPanel } from "./workspace/PromptPresetPanel";
 import { useId, useState } from "react";
@@ -26,6 +27,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 	const { submit, pending, error } = usePaintingCommand(conversationId);
 	const read = useIllustrations(conversationId);
 	const selection = read.data;
+	const writablePreset = selection?.paintPresets.some((preset) => preset.id === selection.paintPresetId) ?? false;
 	const settingsDisabled = pending || writing.pending || read.isPending || read.isError;
 	const saveMessageCount = (count: number) => count === selection?.briefMessageCount ? Promise.resolve(true) : submit({ type: "set-brief-message-count", briefMessageCount: count });
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;
@@ -51,7 +53,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 						onValueChange={(value) => void submit({ type: "select-paint-preset", paintPresetId: Number(value) })} />
 				</Field>
 				<Button type="button" variant="ghost" className="justify-self-start px-0" disabled={settingsDisabled || !selection}
-					onClick={() => { if (selection) setEditingPreset(selection.paintPresetId); }}>Edit Paint Preset</Button>
+					onClick={() => { if (selection) setEditingPreset(selection.paintPresetId); }}><Pencil aria-hidden="true" />Edit Paint Preset</Button>
 				<Field label="Messages" htmlFor="brief-message-count">
 					<div className="flex items-center gap-3">
 						<Input key={String(selection?.briefMessageCount)} id="brief-message-count" name="messages" type="number" required min={1} step={1}
@@ -69,10 +71,10 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 					</div>
 				</Field>
 				<div className="flex flex-wrap items-center gap-3" aria-live="polite">
-					<Button type="submit" disabled={settingsDisabled || !selection?.paintPresets.some((preset) => preset.id === selection.paintPresetId)}>{writing.pending ? "Writing Brief…" : "Write Brief"}</Button>
+					<Button type="submit" disabled={settingsDisabled || !writablePreset}>{writing.pending ? "Writing Brief…" : "Write Brief"}</Button>
 					{writing.pending && <Button type="button" variant="ghost" onClick={writing.stop}>Stop</Button>}
 				</div>
-				{selection && !selection.paintPresets.some((preset) => preset.id === selection.paintPresetId) && <p className="panel-note">Choose a Paint Preset with an enabled Brief instruction to write a Brief.</p>}
+				{selection && !writablePreset && <p className="panel-note">Choose a Paint Preset with an enabled Brief instruction to write a Brief.</p>}
 				{writing.error && <p role="alert" className="text-sm text-destructive">{writing.error}</p>}
 			</form>
 			<Field label="Brief" helper="Describe the picture. Insert pictures to use as references.">
