@@ -26,6 +26,7 @@ const addableReferences = (): PromptBlockReference[] => [
 	"model-example-dialogue",
 	"history",
 	"model-post-history-instruction",
+	"cast-appearance",
 	"lore",
 	"brief-instruction",
 	...[...installedBoxes().keys()].map(boxReference),

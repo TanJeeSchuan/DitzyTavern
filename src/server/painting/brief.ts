@@ -12,6 +12,7 @@ import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
 import { deriveMacroState } from "../prompt-macros";
 import { imageLoader } from "../image";
 import { promptImageResolutionFor } from "../workflows/prompt-image-resolution";
+import { namesCastMember } from "../../shared/painting-brief";
 import type { BriefRequest } from "../../shared/contract/painting";
 
 export async function* writeBrief(database: Database, conversationId: number, request: BriefRequest,
@@ -43,7 +44,10 @@ export async function* writeBrief(database: Database, conversationId: number, re
 		const lore = hasEnabledLoreSlot(recipe) ? evaluateScopedLore({ database, conversationId,
 			messages: messages.map((message) => ({ id: message.id, content: message.variant.content })), connectionSettings: options,
 		}) : noLoreEvaluation();
-		return { human, model, settings, connection, recipe, context, lore,
+		const scene = [...messages.map((message) => message.variant.content), request.ask].join("\n");
+		const authors = new Set(messages.map((message) => message.author?.participantId));
+		const castAppearance = chat.cast.filter((participant) => authors.has(participant.id) || namesCastMember(scene, participant.name));
+		return { human, model, castAppearance, settings, connection, recipe, context, lore,
 			ask: request.ask.trim() ? request.ask : "Describe the scene in the last Message above.",
 			attempt: createAttemptEnvironment({ self: human.name, other: model.name, conversationId, promptPresetId: preset.id, now: new Date(), variables, timeZone: request.timeZone, locale: request.locale }),
 			client: createModelClient({ profile, secrets: connections.getProfileSecrets(profile.id), loadImage: imageLoader(database), fetch: options.fetch }),

@@ -159,6 +159,7 @@ export const compileGenerationPlan = (
 			alwaysRender,
 			human: input.human,
 			model: input.model,
+			castAppearance: input.castAppearance,
 			context,
 			trailingMessages: input.trailingMessages,
 			recipe: input.recipe,

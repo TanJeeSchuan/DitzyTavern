@@ -224,6 +224,17 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 
 	for (const [slotIndex, slot] of input.recipe.entries()) {
 		if (!slot.enabled || slot.reference === "brief-instruction") continue;
+		if (slot.reference === "cast-appearance") {
+			for (const [index, owner] of (input.castAppearance ?? []).entries()) {
+				const start = blocks.length;
+				expandInto({ blocks, warnings, block: { kind: "appearance" }, role: planRoleFor[slot.role],
+					text: owner.prompt.appearance, context: { self: owner.name, other: owner === input.model ? input.human.name : input.model.name },
+					blockLabel: `Appearance (${owner.name})`, macroEnvironment, macroAttemptState,
+					cacheKey: `slot:${slotIndex}:cast:${index}`, beforeHistory: slotIndex < historySlot });
+				for (const block of blocks.slice(start)) block.content = `${owner.name}\n${owner.sendAppearanceImages ? block.content : projectImageAnchors(block.content)}`;
+			}
+			continue;
+		}
 		if (slot.reference === "history") {
 			historyStart ??= blocks.length;
 			for (const entry of input.context ?? []) {

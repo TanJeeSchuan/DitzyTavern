@@ -42,7 +42,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 				event.preventDefault();
 				const count = new FormData(event.currentTarget).get("messages");
 				if (count !== null && !await saveMessageCount(Number(count))) return;
-				await writing.write({ variantId, ask });
+				await writing.write({ variantId, ask }, brief, conversation.cast);
 			}}>
 				<Field label="Ask" helper="Leave empty to describe the scene at this Message.">
 					<ProseEditor className="prose-editor-field" ariaLabel="Ask" value={ask} onChange={setAsk} disabled={writing.pending} />

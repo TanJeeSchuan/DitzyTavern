@@ -34,15 +34,18 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 export const promptBriefInstructionReference = Type.Literal("brief-instruction");
 export type PromptBriefInstructionReference = Static<typeof promptBriefInstructionReference>;
 
+export const promptCastAppearanceReference = Type.Literal("cast-appearance");
+export type PromptCastAppearanceReference = Static<typeof promptCastAppearanceReference>;
+
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 
 /** @approved Whether a preset may hold at most one block of `reference`: Lore, Brief instruction, and each Box's, loaded or not. */
-export const isSingleUseReference = (reference: string): reference is PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference =>
-	reference === "brief-instruction" || reference === "lore" || boxIdOf(reference) !== undefined;
+export const isSingleUseReference = (reference: string): reference is PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference | PromptCastAppearanceReference =>
+	reference === "cast-appearance" || reference === "brief-instruction" || reference === "lore" || boxIdOf(reference) !== undefined;
 /** @approved A single-use block's label; a block whose Box is not loaded shows its reference. */
-export const singleUseReferenceLabel = (reference: PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference): string =>
-	reference === "brief-instruction" ? "Brief instruction" : reference === "lore" ? "Lore" : isBoxReference(reference) ? boxMetadata(boxIdOf(reference)).label : reference;
+export const singleUseReferenceLabel = (reference: PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference | PromptCastAppearanceReference): string =>
+	reference === "cast-appearance" ? "Cast Appearance" : reference === "brief-instruction" ? "Brief instruction" : reference === "lore" ? "Lore" : isBoxReference(reference) ? boxMetadata(boxIdOf(reference)).label : reference;
 /** @approved The first single-use reference `references` repeats, which a preset refuses. */
 export const repeatedSingleUseReference = (references: readonly string[]) => {
 	const singleUse = references.filter(isSingleUseReference);
@@ -77,14 +80,16 @@ const fixedOutgoingRoles = {
 	"model-post-history-instruction": "system",
 	lore: "system",
 	"brief-instruction": "user",
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBriefInstructionReference, PromptOutgoingRole>;
-export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference): PromptOutgoingRole =>
+	"cast-appearance": "system",
+} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBriefInstructionReference | PromptCastAppearanceReference, PromptOutgoingRole>;
+export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference | PromptCastAppearanceReference): PromptOutgoingRole =>
 	isBoxReference(reference) ? boxDescriptor(boxIdOf(reference)).role : fixedOutgoingRoles[reference];
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,
 	Type.Literal("history"),
 	promptLoreReference,
+	promptCastAppearanceReference,
 	promptBriefInstructionReference,
 	promptBoxReference,
 ]);
@@ -127,7 +132,7 @@ export const promptPresetSlot = Type.Union([
 		role: promptOutgoingRole,
 	}),
 	Type.Object({
-		reference: promptLoreReference,
+		reference: Type.Union([promptLoreReference, promptCastAppearanceReference]),
 		enabled: Type.Boolean(),
 		role: promptOutgoingRole,
 	}),
@@ -240,7 +245,7 @@ export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 export const resolvedPromptPresetSlot = Type.Union([
 	Type.Composite([Type.Object({ id: Type.Integer() }), briefInstructionSlot]),
 	Type.Object({ id: Type.Integer(), reference: promptBoxReference, enabled: Type.Boolean(), role: promptOutgoingRole, content: Type.String() }),
-	Type.Object({ id: Type.Integer(), reference: promptLoreReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
+	Type.Object({ id: Type.Integer(), reference: Type.Union([promptLoreReference, promptCastAppearanceReference]), enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({
 		id: Type.Integer(),
 		reference: referencedDefinitionBlock,

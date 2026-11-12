@@ -23,7 +23,7 @@ const fixedSlotLabels = {
 	history: "Chat history",
 	"model-post-history-instruction": "Post-History Instruction",
 	instruction: "Instruction",
-} satisfies Record<Exclude<PromptPresetBlockReference, "lore" | "brief-instruction" | `box:${string}`>, string>;
+} satisfies Record<Exclude<PromptPresetBlockReference, "lore" | "brief-instruction" | "cast-appearance" | `box:${string}`>, string>;
 export const slotLabel = (reference: PromptPresetBlockReference): string =>
 	isSingleUseReference(reference) ? singleUseReferenceLabel(reference) : fixedSlotLabels[reference];
 

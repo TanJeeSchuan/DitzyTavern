@@ -3,6 +3,8 @@ import { createParser } from "eventsource-parser";
 import { decodeWirePayload } from "./lib/wire-decode";
 import { generationEvent } from "../shared/contract/generation-events";
 import { clientFormattingContext } from "./lib/formatting-context";
+import { keptBriefReferences, appendBriefReferences } from "../shared/painting-brief";
+import type { ConversationSummary } from "../shared/contract/conversation-schema";
 import { briefErrors, type BriefRequest } from "../shared/contract/painting";
 
 export function useWriteBrief(conversationId: number, onText: (text: string) => void) {
@@ -10,8 +12,11 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	useEffect(() => () => { controller.current?.abort(); }, [conversationId]);
-	const write = async (request: BriefRequest) => {
+	const write = async (request: BriefRequest, previousBrief: string, cast: ConversationSummary["cast"]) => {
 		if (controller.current) return;
+		const kept = keptBriefReferences(previousBrief, cast);
+		let text = previousBrief;
+		let receivedContent = false;
 		const active = new AbortController();
 		controller.current = active;
 		setPending(true);
@@ -25,14 +30,13 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 				throw new Error(failure && "reason" in failure ? failure.reason : failure?.outcome === "not-found" ? "The Chat is no longer available." : "The Brief request could not start. Try again.");
 			}
 			if (!response.body) throw new Error("The Brief request could not start. Try again.");
-			let text = "";
 			let finished = false;
 			const parser = createParser({ onEvent: ({ data }) => {
 				const event = decodeWirePayload(generationEvent, JSON.parse(data));
 				if (event === null) throw new Error("The Brief stream returned an invalid response. Try again.");
 				if (event.type === "failed") throw new Error(event.message);
 				if (event.type === "finished") finished = true;
-				if (event.type === "content") { text += event.text; onText(text); }
+				if (event.type === "content") { text = (receivedContent ? text : "") + event.text; receivedContent = true; onText(text); }
 			} });
 			const reader = response.body.getReader();
 			const decoder = new TextDecoder();
@@ -47,6 +51,7 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 		} catch (error) {
 			if (!active.signal.aborted) setError(error instanceof Error ? error.message : "The Brief could not be written.");
 		} finally {
+			onText(appendBriefReferences(text, cast, kept));
 			active.abort();
 			controller.current = null;
 			setPending(false);
