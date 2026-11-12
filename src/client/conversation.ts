@@ -145,9 +145,10 @@ export async function loadConversationGenerationSettings(
 export async function loadConversationPromptPreset(
 	conversationId: number,
 	signal?: AbortSignal,
+	presetId?: number,
 ): Promise<ConversationPromptPreset | null> {
 	return foundOrNull(await requestOutcome(
-		api.api.conversations({ id: conversationId })["prompt-preset"].get({ fetch: { signal } }),
+		api.api.conversations({ id: conversationId })["prompt-preset"].get({ query: { presetId }, fetch: { signal } }),
 		conversationPromptPreset,
 		notFoundOutcome,
 	));

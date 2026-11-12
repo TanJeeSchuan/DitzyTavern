@@ -1,3 +1,5 @@
+import type { ConversationSummary } from "./conversation";
+import { PromptPresetPanel } from "./workspace/PromptPresetPanel";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,7 +14,9 @@ import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
 import { usePaintingCommand, useIllustrations, type PaintTarget } from "./painting";
 
-export function PaintPanel({ conversationId, target, onClose }: { conversationId: number; target: PaintTarget; onClose: () => void }) {
+export function PaintPanel({ conversation, onConversationChange, target, onClose }: { conversation: ConversationSummary; onConversationChange: (conversation: ConversationSummary | null) => void; target: PaintTarget; onClose: () => void }) {
+	const conversationId = conversation.id;
+	const [editingPreset, setEditingPreset] = useState<number | null>(null);
 	const { variantId } = target;
 	const [brief, setBrief] = useState(target.brief);
 	const [ask, setAsk] = useState("");
@@ -22,6 +26,10 @@ export function PaintPanel({ conversationId, target, onClose }: { conversationId
 	const selection = read.data;
 	const settingsDisabled = pending || writing.pending || read.isPending || read.isError;
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;
+	if (editingPreset !== null) return <aside className="details-panel" data-open="true" aria-label="Paint Preset">
+		<PromptPresetPanel conversation={conversation} onConversationChange={onConversationChange} presetId={editingPreset}
+			onClose={() => { setEditingPreset(null); void read.refetch(); }} />
+	</aside>;
 	return <aside className="details-panel" data-open="true" aria-label="Paint">
 		<PanelHeader title="Paint" onClose={onClose} />
 		<div className="panel-body grid auto-rows-max content-start gap-5">
@@ -39,6 +47,8 @@ export function PaintPanel({ conversationId, target, onClose }: { conversationId
 						emptyLabel="Choose a Paint Preset" options={selection?.paintPresets.map((preset) => ({ value: String(preset.id), label: preset.name })) ?? []}
 						onValueChange={(value) => void submit({ type: "select-paint-preset", paintPresetId: Number(value) })} />
 				</Field>
+				<Button type="button" variant="ghost" className="justify-self-start" disabled={settingsDisabled || !selection}
+					onClick={() => { if (selection) setEditingPreset(selection.paintPresetId); }}>Edit Paint Preset</Button>
 				<Field label="Messages" htmlFor="brief-message-count">
 					<div className="flex items-center gap-3">
 						<Input key={String(selection?.briefMessageCount)} id="brief-message-count" name="messages" type="number" required min={1} step={1}

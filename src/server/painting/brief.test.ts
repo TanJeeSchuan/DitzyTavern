@@ -6,7 +6,7 @@ import { pngFixture } from "../image/image-fixtures";
 import { uploadImage } from "../image";
 import { expect, test, setSystemTime } from "bun:test";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
-import { createChat, withProfile, captureModelFetch, key, type CapturedRequest } from "../contract/prompt-preset-test-fixtures";
+import { createChat, conversationApp, withProfile, captureModelFetch, key, type CapturedRequest } from "../contract/prompt-preset-test-fixtures";
 import { importNativePromptPreset } from "../prompt-preset";
 import { createPaintingModule } from ".";
 import { writeBrief } from "./brief";
@@ -98,5 +98,27 @@ test("a Brief request rejects unavailable Chats and invalid targets before strea
 		}));
 		expect((await write(-1)).status).toBe(404);
 		expect((await write(chat.id)).status).toBe(422);
+	} finally { database.close(); }
+});
+
+
+test("the ordinary preset editor reads a Paint Preset without changing the story selection", async () => {
+	const database = openObservedDatabase();
+	try {
+		const chat = createChat(database);
+		const preset = importNativePromptPreset(database, { name: "Charcoal", slots: [
+			{ reference: "brief-instruction", enabled: true, role: "user", content: "Use charcoal." },
+			{ reference: "model-identity", enabled: true, role: "assistant" },
+		] });
+		const app = conversationApp(database);
+		const url = `http://localhost/api/conversations/${chat.id}/prompt-preset`;
+		const before = await (await app.handle(new Request(url))).json();
+		const response = await app.handle(new Request(`${url}?presetId=${preset.id}`));
+		expect(response.status).toBe(200);
+		const read = await response.json();
+		expect(read.id).toBe(preset.id);
+		expect(read.slots).toContainEqual(expect.objectContaining({ reference: "model-identity", sourceName: "Maren" }));
+		expect(await (await app.handle(new Request(url))).json()).toEqual(before);
+		expect((await app.handle(new Request(`${url}?presetId=999999`))).status).toBe(404);
 	} finally { database.close(); }
 });

@@ -15,18 +15,19 @@ import { usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
 // stay as block drafts until the panel footer saves them. Focused import review and unsaved-edit choices
 // remain dialogs above the panel.
 export function PromptPresetPanel({
-	conversation,
+	conversation, presetId,
 	onConversationChange,
 	onClose,
 	mutationsDisabled = false,
 }: {
 	conversation: ConversationSummary | null;
+	presetId?: number;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
 	onClose: () => void;
 	mutationsDisabled?: boolean;
 }) {
 	const editor = usePromptPresetEditor({
-		conversation,
+		conversation, presetId,
 		onConversationChange,
 		onClose,
 	});
@@ -36,7 +37,7 @@ export function PromptPresetPanel({
 	return (
 		<>
 			<PanelHeader
-				title="Prompt Presets"
+				title={presetId === undefined ? "Prompt Presets" : "Paint Preset"}
 				onClose={editor.requestClose}
 			/>
 			<div
@@ -64,7 +65,7 @@ export function PromptPresetPanel({
 				)}
 				{ready !== null && (
 					<>
-						<PromptPresetLibrarySection
+						{presetId === undefined ? <PromptPresetLibrarySection
 							presets={ready.presets}
 							selectedId={ready.selected.id}
 							pending={editor.busy}
@@ -78,7 +79,7 @@ export function PromptPresetPanel({
 							onExport={(presetId, name) =>
 								void editor.exportSelectedPreset(presetId, name)
 							}
-						/>
+						/> : <h3 className="font-medium">{ready.selected.name}</h3>}
 						<PromptPresetRecipeEditor
 							preset={ready.selected}
 							drafts={editor.drafts}

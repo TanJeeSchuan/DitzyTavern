@@ -13,15 +13,16 @@ import { usePromptPresetRecipe } from "./usePromptPresetRecipe";
  * ordering lives in one place instead of in every handler.
  */
 export function usePromptPresetEditor({
-	conversation,
+	conversation, presetId,
 	onConversationChange,
 	onClose,
 }: {
 	conversation: ConversationSummary | null;
+	presetId?: number;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
 	onClose: () => void;
 }) {
-	const runtime = usePromptPresetEditorRuntime({ conversation });
+	const runtime = usePromptPresetEditorRuntime({ conversation, presetId });
 	const library = usePromptPresetLibrary({ runtime, conversation, onConversationChange });
 	const recipe = usePromptPresetRecipe({ runtime, conversation });
 	const leave = usePromptPresetLeave({

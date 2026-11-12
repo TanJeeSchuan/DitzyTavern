@@ -403,12 +403,13 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/prompt-preset",
-			({ params }) => {
-				const preset = readConversationPromptPreset(database, params.id);
+			({ params, query }) => {
+				const preset = readConversationPromptPreset(database, params.id, query.presetId);
 				return preset ?? notFoundResponse();
 			},
 			{
 				params: conversationIdParams,
+				query: t.Object({ presetId: t.Optional(t.Numeric({ minimum: 1 })) }),
 				response: {
 					200: conversationPromptPreset,
 					404: notFoundOutcome,

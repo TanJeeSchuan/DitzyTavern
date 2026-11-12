@@ -358,11 +358,11 @@ export function ActiveWritingWorkspace({
 
 			<CoveredLayer inert={narrow && newChatOpen}>
 			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintTarget !== null && conversation !== null && (
-				<PaintPanel
+				<SaveGuardContext.Provider value={saveNavigation.registerSaveGuard}><PaintPanel
 					key={`${conversation.id}:${panelState.paintTarget.requestId}`}
-					conversationId={conversation.id} target={panelState.paintTarget}
+					conversation={conversation} onConversationChange={session.setConversation} target={panelState.paintTarget}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
-				/>
+				/></SaveGuardContext.Provider>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel

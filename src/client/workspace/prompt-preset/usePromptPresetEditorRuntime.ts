@@ -46,19 +46,20 @@ export interface PromptPresetEditorRuntime {
 }
 
 export function usePromptPresetEditorRuntime({
-	conversation,
+	conversation, presetId,
 }: {
 	conversation: ConversationSummary | null;
+	presetId?: number;
 }): PromptPresetEditorRuntime {
 	const client = useQueryClient();
 	const recipeOptions = queryOptions({
-		queryKey: ["prompt-preset-editor", conversation?.id ?? null, conversation?.revision ?? null] as const,
+		queryKey: ["prompt-preset-editor", conversation?.id ?? null, conversation?.revision ?? null, presetId] as const,
 		staleTime: Infinity,
 		refetchOnReconnect: false,
 		queryFn: conversation === null ? skipToken : async ({ signal }: { signal: AbortSignal }) => {
 			await Promise.resolve();
 			signal.throwIfAborted();
-			return loadConversationPromptPreset(conversation.id, signal);
+			return loadConversationPromptPreset(conversation.id, signal, presetId);
 		},
 	});
 	const libraryOptions = queryOptions({
@@ -72,7 +73,7 @@ export function usePromptPresetEditorRuntime({
 	});
 	const recipeQuery = useQuery(recipeOptions);
 	const libraryQuery = useQuery(libraryOptions);
-	const sessionKey = `conversation:${conversation?.id ?? "none"}`;
+	const sessionKey = `conversation:${conversation?.id ?? "none"}:preset:${presetId ?? "story"}`;
 	const [state, setState] = useState(() =>
 		createPromptPresetEditorState(sessionKey, conversation?.revision ?? null));
 
@@ -227,7 +228,7 @@ export function usePromptPresetEditorRuntime({
 			});
 		}
 		void load(isCancelled, false);
-	}, [conversation?.id, conversation?.revision]);
+	}, [conversation?.id, conversation?.revision, presetId]);
 
 	return { state, current, ready, dirty, dirtyCount, dispatch, load, loadRecipe, runOperation, ownsOperation };
 }
