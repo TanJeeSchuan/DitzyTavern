@@ -98,7 +98,7 @@ export const selectDefaultPromptPreset = (
 //  Applies one Conversation's authoritative selection of a shared
 // preset. The selection is a reference to the library entry: validation
 // reads the live library row inside the caller's transaction, so a preset
-// deleted concurrently can never become the stored target, and the upsert
+// deleted concurrently can never become the stored target, and the update
 // keeps the exactly-one-selection invariant the creation seam established.
 export const selectConversationPromptPreset = (
 	db: PromptPresetDatabase,

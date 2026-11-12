@@ -114,7 +114,7 @@ const TextFieldEditor = ({
 			/>
 		</label>}
 		<label className="flex flex-col gap-1 text-xs text-muted-foreground">
-			<span>{slot.reference === "instruction" ? "Instruction text" : "Instructions"}</span>
+			<span>{slot.reference === "brief-instruction" ? "Brief instruction text" : slot.reference === "instruction" ? "Instruction text" : "Instructions"}</span>
 			<textarea
 				className={textInputClass}
 				rows={8}
@@ -259,8 +259,8 @@ export function PromptPresetRecipeRow({
 				<DialogHeader>
 					{referenceCopy === null ? (
 						<>
-							<DialogTitle>Edit prompt block</DialogTitle>
-							<DialogDescription>Choose Save in the panel footer to apply these edits.</DialogDescription>
+							<DialogTitle>{slot.reference === "brief-instruction" ? "Brief instruction" : "Edit prompt block"}</DialogTitle>
+							<DialogDescription>{slot.reference === "brief-instruction" ? "Sent only when writing a Brief. " : ""}Choose Save in the panel footer to apply these edits.</DialogDescription>
 						</>
 					) : (
 						<>

@@ -34,7 +34,7 @@ export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 
-/** @approved Whether a preset may hold at most one block of `reference`: Lore, and each Box's, loaded or not. */
+/** @approved Whether a preset may hold at most one block of `reference`: Lore, Brief instruction, and each Box's, loaded or not. */
 export const isSingleUseReference = (reference: string): reference is PromptLoreReference | PromptBoxReference | "brief-instruction" =>
 	reference === "brief-instruction" || reference === "lore" || boxIdOf(reference) !== undefined;
 /** @approved A single-use block's label; a block whose Box is not loaded shows its reference. */

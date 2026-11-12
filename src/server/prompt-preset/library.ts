@@ -214,7 +214,7 @@ export const importSillyTavernPromptPreset = (
 // while duplicating writes an independent preset without touching the guarded
 // source. Block patches are occurrence-addressed and travel the recipe route,
 // so every command this executor accepts is revision-guarded. Confirmed
-// deletion reassigns every Conversation that selected the preset to Default in
+// deletion reassigns story selections to Default and Paint selections to Default (Paint) in
 // the same transaction before the preset row (and its blocks) goes away, so no
 // selection is ever left dangling.
 type PromptPresetCommandResult =

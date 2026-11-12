@@ -1,3 +1,6 @@
+import { executeConversationCommand } from "../conversation";
+import { importNativePromptPreset } from "../prompt-preset";
+import { withProfile, conversationApp, captureModelFetch, startGeneration, completeGeneration } from "./prompt-preset-test-fixtures";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { createChat, recipeRoutes, readStoredRecipe, duplicateBlock } from "./prompt-preset-test-fixtures";
@@ -25,11 +28,7 @@ test("a Brief instruction saves authored text and role and refuses a second occu
 	expect((await duplicateBlock(database, 1, slot.id)).status).toBe(422);
 });
 
-
 test("a Generation skips an enabled Brief instruction on its story preset", async () => {
-	const { withProfile, conversationApp, captureModelFetch, startGeneration, completeGeneration } = await import("./prompt-preset-test-fixtures");
-	const { importNativePromptPreset } = await import("../prompt-preset");
-	const { executeConversationCommand } = await import("../conversation");
 	const chat = createChat(database);
 	withProfile(database);
 	const preset = importNativePromptPreset(database, { name: "Both", slots: [

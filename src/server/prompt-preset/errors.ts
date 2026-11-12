@@ -44,7 +44,7 @@ export class PromptPresetDeletionImpactChangedError extends Error {
 }
 
 // @approved
-//  The Default preset stays available as the nondeletable destination
+//  Built-in presets stay available as the nondeletable destination
 // of new Conversations and preset deletions, so removing it is refused no
 // matter which revision the caller saw.
 export class DefaultPromptPresetNotRemovableError extends Error {
@@ -52,7 +52,7 @@ export class DefaultPromptPresetNotRemovableError extends Error {
 	readonly details = { reason: this.message };
 
 	constructor() {
-		super("The Default Prompt Preset cannot be deleted.");
+		super("Built-in Prompt Presets cannot be deleted.");
 		this.name = "DefaultPromptPresetNotRemovableError";
 	}
 }

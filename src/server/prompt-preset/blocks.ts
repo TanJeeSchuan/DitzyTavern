@@ -73,7 +73,7 @@ const validateBlockPatches = (
 		}
 		if (patch.type === "content" && !(occurrence.reference === "instruction" ? patch.name !== undefined : (occurrence.reference === "brief-instruction" || isBoxReference(occurrence.reference)) && patch.name === undefined)) {
 			throw new InvalidPromptPresetOperationError(
-				"An authored instruction saves a name and text, a Box block saves only its instructions, and other referenced blocks stay read-only here.",
+				"An authored instruction saves a name and text, a Brief instruction or Box block saves only its instructions, and other referenced blocks stay read-only here.",
 			);
 		}
 	}
