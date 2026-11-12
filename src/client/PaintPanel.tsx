@@ -24,7 +24,12 @@ export function PaintPanel({ conversationId, target, onClose }: { conversationId
 	return <aside className="details-panel" data-open="true" aria-label="Paint">
 		<PanelHeader title="Paint" onClose={onClose} />
 		<div className="panel-body grid auto-rows-max content-start gap-5">
-			<form className="grid gap-4" aria-label="Write Brief" onSubmit={(event) => { event.preventDefault(); void writing.write({ variantId, ask }); }}>
+			<form className="grid gap-4" aria-label="Write Brief" onSubmit={async (event) => {
+				event.preventDefault();
+				const count = new FormData(event.currentTarget).get("messages");
+				if (count !== null && Number(count) !== selection?.briefMessageCount && !await submit({ type: "set-brief-message-count", briefMessageCount: Number(count) })) return;
+				await writing.write({ variantId, ask });
+			}}>
 				<Field label="Ask" helper="Leave empty to describe the scene at this Message.">
 					<ProseEditor className="prose-editor-field" ariaLabel="Ask" value={ask} onChange={setAsk} disabled={writing.pending} />
 				</Field>
@@ -38,6 +43,7 @@ export function PaintPanel({ conversationId, target, onClose }: { conversationId
 						<input key={String(selection?.briefMessageCount)} id="brief-message-count" name="messages" type="number" min={1} step={1}
 							className="field-input min-w-0 flex-1" defaultValue={selection?.briefMessageCount ?? ""} disabled={settingsDisabled || selection?.briefMessageCount === null}
 							onBlur={(event) => {
+								if (event.relatedTarget instanceof HTMLButtonElement && event.relatedTarget.type === "submit") return;
 								const count = event.currentTarget.valueAsNumber;
 								if (Number.isSafeInteger(count) && count > 0) void submit({ type: "set-brief-message-count", briefMessageCount: count });
 								else event.currentTarget.value = String(selection?.briefMessageCount ?? 5);

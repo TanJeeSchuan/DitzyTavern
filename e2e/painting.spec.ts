@@ -89,7 +89,8 @@ test("write a Brief from an Ask on an older Message, edit it and paint", async (
 	await older.getByRole("button", { name: "Paint", exact: true }).click();
 	const panel = page.getByRole("complementary", { name: "Paint", exact: true });
 	await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("Focus on the reflection.");
-	await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
+	await panel.getByRole("spinbutton", { name: "Messages", exact: true }).fill("2");
+	await panel.getByRole("spinbutton", { name: "Messages", exact: true }).press("Enter");
 	await expect(panel.getByRole("textbox", { name: "Brief", exact: true })).toHaveText("A green lantern reflected under a stone bridge.");
 	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("A red lantern reflected under a stone bridge.");
 	await panel.getByRole("button", { name: "Paint", exact: true }).click();
@@ -98,4 +99,5 @@ test("write a Brief from an Ask on an older Message, edit it and paint", async (
 	expect(calls.at(-1)!.body.messages.at(-1)).toMatchObject({ role: "user", content: "Focus on the reflection." });
 	expect(JSON.stringify(calls.at(-1)!.body.messages)).toContain("A lantern beside the bridge.");
 	expect(JSON.stringify(calls.at(-1)!.body.messages)).not.toContain("Later, the bridge is empty.");
+	expect(JSON.stringify(calls.at(-1)!.body.messages)).not.toContain("You arrive as she pins a third map over the first two.");
 });

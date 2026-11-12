@@ -27,6 +27,7 @@ export function usePaintingCommand(conversationId: number) {
 			const result = await commandPainting(conversationId, command);
 			if (result.outcome === "available") await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
 			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The painting could not be updated. Try again.");
+			return result.outcome === "available";
 		} finally { setPending(false); }
 	};
 	return { submit, pending, error };
