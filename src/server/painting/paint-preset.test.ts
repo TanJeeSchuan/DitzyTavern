@@ -17,7 +17,7 @@ test("Paint Preset selection starts on Default (Paint), copies on Fork, and dele
 		const initial = paintings.read(chat.id);
 		expect(initial).toMatchObject({ briefMessageCount: 5, paintPresets: [{ id: initial.paintPresetId, name: "Default (Paint)" }] });
 		const builtIn = listPromptPresets(database).find((preset) => preset.id === initial.paintPresetId)!;
-		expect(() => executePromptPresetCommand(database, { type: "delete", presetId: builtIn.id, expectedRevision: builtIn.revision, expectedConversationCount: 1 })).toThrow("Default");
+		expect(() => executePromptPresetCommand(database, { type: "delete", presetId: builtIn.id, expectedRevision: builtIn.revision, expectedConversationCount: 1 })).toThrow("Built-in Prompt Presets cannot be deleted.");
 		const preset = importNativePromptPreset(database, { name: "Charcoal", slots: [{ reference: "brief-instruction", enabled: true, role: "system", content: "Use charcoal." }] });
 		paintings.command(chat.id, { type: "select-paint-preset", paintPresetId: preset.id });
 		paintings.command(chat.id, { type: "set-brief-message-count", briefMessageCount: null });
