@@ -153,7 +153,7 @@ function PromptPlan({ plan: { blocks } }: { plan: CapturedPromptPlan }) {
 			{blocks.length === 0 ? <p className="panel-note">No Prompt Plan blocks are available.</p> : (
 				<ol>
 					{blocks.map(({ kind, content }, index) =>
-						<li key={index}><span>{isSingleUseReference(kind) ? singleUseReferenceLabel(kind) : kind}</span><p>{projectImageAnchors(content)}</p></li>)}
+						<li key={index}><span>{isSingleUseReference(kind) ? singleUseReferenceLabel(kind) : kind === "message" ? "Message" : kind}</span><p>{projectImageAnchors(content)}</p></li>)}
 				</ol>
 			)}
 		</details>

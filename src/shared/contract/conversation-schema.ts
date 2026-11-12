@@ -39,7 +39,7 @@ const promptHistoryRole = Type.Union([
 //  Definition-sourced plan blocks carry the provider-neutral presentation
 // role their recipe slot chose; history blocks carry the authorship roles of
 // their own Messages. The Model Client owns the translation into provider
-// vocabulary. Every Definition-sourced kind has the same fields, so the kind
+// vocabulary. Authored blocks and appended literal messages share these fields, so the kind
 // is a label union rather than a discriminated set of identical shapes.
 const promptDefinitionRole = Type.Union([
 	Type.Literal("system"),
@@ -47,7 +47,7 @@ const promptDefinitionRole = Type.Union([
 	Type.Literal("model"),
 ]);
 
-const promptDefinitionBlockKind = Type.Union([
+const promptTextBlockKind = Type.Union([
 	Type.Literal("message"),
 	Type.Literal("system-instruction"),
 	Type.Literal("identity"),
@@ -67,7 +67,7 @@ const promptDefinitionBlockKind = Type.Union([
 
 const promptBlock = Type.Union([
 	Type.Object({
-		kind: promptDefinitionBlockKind,
+		kind: promptTextBlockKind,
 		role: promptDefinitionRole,
 		content: Type.String(),
 		// @approved
