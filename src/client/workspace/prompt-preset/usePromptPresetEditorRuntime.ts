@@ -183,7 +183,8 @@ export function usePromptPresetEditorRuntime({
 	// response handling as the broad refresh, including authoritative absence and last-view
 	// preservation on network failure.
 	const loadRecipe = async (isCancelled?: () => boolean): Promise<EditorLoadResult> => {
-		const selectedRead = await readSelectedRecipe(isCancelled);
+		await client.invalidateQueries({ queryKey: ["prompt-preset-editor"] });
+		const selectedRead = await readSelectedRecipe(isCancelled, false);
 		if (selectedRead.status !== "ready") return selectedRead.status;
 		dispatch({
 			type: "recipe-adopted",
