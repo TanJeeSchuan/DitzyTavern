@@ -129,7 +129,7 @@ test("rewrite a Brief, keep a gallery Reference, recompute Cast Appearance and p
 		} } });
 		expect(added.ok()).toBe(true);
 	}
-	await llm.chat({ chunks: ["Old in a red cloak."] }, { chunks: ["Iris standing at the bridge."] });
+	await llm.chat({ chunks: [`Old in a red cloak. ![Red cloak](image:${old.hash}) ![Duplicate](image:${old.hash})`] }, { chunks: ["Iris standing at the bridge."] });
 	await llm.images({ base64: picture });
 	await page.goto("/");
 	await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
