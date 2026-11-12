@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationPromptPresetTable, promptPresetBlockTable, promptPresetTable } from "../database/schema";
+import { runConversationTransaction } from "./commands/transaction";
 import { ConversationNotFoundError } from "./errors";
 import { requirePaintPresetRecipe } from "../prompt-preset";
 import type { PaintPresetSettings, PaintPresetCommand } from "../../shared/contract/painting";
@@ -16,13 +17,12 @@ export const readPaintPresetSettings = (database: Database, conversationId: numb
 };
 
 export const commandPaintPreset = (database: Database, conversationId: number, command: PaintPresetCommand): void => {
-	const db = drizzle(database);
-	database.transaction(() => {
+	runConversationTransaction(database, (db) => {
 		if (command.type === "select-paint-preset") requirePaintPresetRecipe(database, command.paintPresetId);
 		db.update(conversationPromptPresetTable)
 			.set(command.type === "select-paint-preset" ? { paint_preset_id: command.paintPresetId } : { brief_message_count: command.briefMessageCount })
 			.where(eq(conversationPromptPresetTable.conversation_id, conversationId)).run();
-	}).immediate();
+	});
 };
 
 export const readPaintPresetSelection = (database: Database, conversationId: number): Pick<PaintPresetSettings, "paintPresetId" | "briefMessageCount"> => {

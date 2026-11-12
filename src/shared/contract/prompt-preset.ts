@@ -115,7 +115,8 @@ const briefInstructionSlot = Type.Object({ reference: promptBriefInstructionRefe
 // Definition slot carries its required outgoing role; history carries no
 // slot-owned role because its entries keep the roles of their own Messages;
 // a Box block carries its editable instructions, rendered before the Box's
-// items; and an authored instruction carries its editable name, text, and role.
+// items; an authored instruction carries its editable name, text, and role;
+// and a Brief instruction carries text and a role that Generations skip.
 // Enablement lives on the slot so a disabled slot keeps its place in the
 // order instead of disappearing from it.
 export const promptPresetSlot = Type.Union([
