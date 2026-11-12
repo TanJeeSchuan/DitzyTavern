@@ -51,7 +51,7 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 		} catch (error) {
 			if (!active.signal.aborted) setError(error instanceof Error ? error.message : "The Brief could not be written.");
 		} finally {
-			onText(appendBriefReferences(text, cast, kept));
+			onText(receivedContent ? appendBriefReferences(text, cast, kept) : previousBrief);
 			active.abort();
 			controller.current = null;
 			setPending(false);
