@@ -1,3 +1,4 @@
+import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
 import { isActive } from "../database/is-active";
 import { loadMessageRows, toDataEntry } from "./message-rows";
 // @approved
@@ -175,3 +176,11 @@ export const readSelectedVariantIdsFromConnection = (db: ConversationDatabase, c
 	.orderBy(asc(messageTable.position))
 	.all()
 	.map(({ id }) => id);
+
+export const readSelectedHistoryThroughVariant = (db: ConversationDatabase, conversationId: number, variantId: number) => {
+	const target = db.select({ position: messageTable.position }).from(messageTable)
+		.innerJoin(messageVariantTable, eq(messageVariantTable.message_id, messageTable.id))
+		.where(and(eq(messageTable.conversation_id, conversationId), eq(messageVariantTable.id, variantId))).get();
+	if (!target) throw new InvalidConversationCommandError("The Message is no longer available.");
+	return readSelectedHistoryFromConnection(db, conversationId, { position: target.position, conversationDataNamespace: MACRO_DATA_NAMESPACE });
+};

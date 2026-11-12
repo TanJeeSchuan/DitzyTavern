@@ -74,3 +74,28 @@ test("painting reaches the story model only after Add to composer and Send", asy
 	expect(sent.filter((part) => part.type === "image_url")).toEqual([{ type: "image_url", image_url: { url: `data:image/png;base64,${picture}` } }]);
 	expect(sent).toContainEqual({ type: "text", text: expect.stringContaining("[Image: Illustration]") });
 });
+
+test("write a Brief from an Ask on an older Message, edit it and paint", async ({ page, llm }) => {
+	await selectImageModel(page);
+	await llm.chat({ chunks: ["A lantern beside the bridge."] }, { chunks: ["Later, the bridge is empty."] }, { chunks: ["A green lantern", " reflected under a stone bridge."] });
+	await llm.images({ base64: picture });
+	await page.goto("/");
+	await send(page, "Visit the bridge.");
+	await expect(story(page).getByText("A lantern beside the bridge.")).toBeVisible();
+	await send(page, "Leave the bridge.");
+	await expect(story(page).getByText("Later, the bridge is empty.")).toBeVisible();
+	const older = story(page).locator("article").filter({ hasText: "A lantern beside the bridge." });
+	await older.hover();
+	await older.getByRole("button", { name: "Paint", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Paint", exact: true });
+	await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("Focus on the reflection.");
+	await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
+	await expect(panel.getByRole("textbox", { name: "Brief", exact: true })).toHaveText("A green lantern reflected under a stone bridge.");
+	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("A red lantern reflected under a stone bridge.");
+	await panel.getByRole("button", { name: "Paint", exact: true }).click();
+	await expect(panel.getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
+	const calls = (await llm.log()).calls.filter(isChatModelCall);
+	expect(calls.at(-1)!.body.messages.at(-1)).toMatchObject({ role: "user", content: "Focus on the reflection." });
+	expect(JSON.stringify(calls.at(-1)!.body.messages)).toContain("A lantern beside the bridge.");
+	expect(JSON.stringify(calls.at(-1)!.body.messages)).not.toContain("Later, the bridge is empty.");
+});

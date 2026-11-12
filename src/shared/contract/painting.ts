@@ -41,3 +41,6 @@ export const paintingCommand = Type.Union([
 export type PaintingCommand = Static<typeof paintingCommand>;
 export const paintingAccepted = Type.Object({ outcome: Type.Literal("accepted") });
 export const paintingErrors = Type.Union([invalidOutcome, notFoundOutcome]);
+
+export const briefRequest = Type.Object({ variantId: Type.Integer(), ask: Type.String() });
+export type BriefRequest = Static<typeof briefRequest>;
