@@ -240,7 +240,7 @@ export function ActiveWritingWorkspace({
 	});
 
 	const composerRef = useRef<ComposerHandle>(null);
-	const openPaint = (variantId: number, brief = "") => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", target: { variantId, brief, requestId: crypto.randomUUID() } }));
+	const openPaint = (variantId: number, brief = "", ask = "") => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", target: { variantId, brief, ask, requestId: crypto.randomUUID() } }));
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
 	// @approved
 	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
@@ -249,9 +249,9 @@ export function ActiveWritingWorkspace({
 
 	return (
 		<IllustrationActionsContext value={{
-			addToComposer: !generation.assemblyAvailable ? null : (hash) => {
+			addToComposer: !generation.assemblyAvailable ? null : (name, hash) => {
 				if (narrow) dispatchPanel({ type: "details-closed" });
-				composerRef.current?.insertReference("Illustration", hash);
+				composerRef.current?.insertReference(name, hash);
 			},
 			editBrief: openPaint,
 		}}>

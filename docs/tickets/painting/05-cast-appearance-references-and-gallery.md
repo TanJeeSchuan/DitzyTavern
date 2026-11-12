@@ -23,11 +23,11 @@ The Brief writer reads how every Cast member in the scene looks, the painting ge
 - [x] Migrate "Default (Paint)" to hold the block before Lore.
 - [x] Read a Definition's Appearance References as Image Anchors in a Brief request when its switch is off.
 - [x] After a model writes a Brief, append every Appearance Reference of each Cast member whose name appears in it and whose switch is on, with no cap. The writer can remove any of them.
-- [ ] Add the gallery read: without duplicates, the Chat's Illustrations from every Variant, the Image References in every Variant of its Messages, and the Cast's Portraits and Appearance References.
-- [ ] Show the gallery as a strip in the Paint panel. Each picture has "Add to composer" and "Use as reference", which insert an Image Reference into the composer or the Brief.
-- [ ] Name an Illustration added to the composer with the first words of the Ask it was painted from, or "Illustration" when there was none. Store the Ask with the Illustration.
+- [x] Add the gallery read: without duplicates, the Chat's Illustrations from every Variant, the Image References in every Variant of its Messages, and the Cast's Portraits and Appearance References.
+- [x] Show the gallery as a strip in the Paint panel. Each picture has "Add to composer" and "Use as reference", which insert an Image Reference into the composer or the Brief.
+- [x] Name an Illustration added to the composer with the first words of the Ask it was painted from, or "Illustration" when there was none. Store the Ask with the Illustration.
 - [x] Test through captured requests: a Brief request carries the Appearance of an unseated Cast member named in the Messages read, sends anchors without Images for a Definition whose switch is off, and a Generation on a preset holding the block never sends it.
-- [ ] Test that the gallery read returns one entry for a picture used several times and includes an Illustration under an unselected Variant.
+- [x] Test that the gallery read returns one entry for a picture used several times and includes an Illustration under an unselected Variant.
 - [ ] e2e: write a Brief naming a third Cast member, see their Appearance pictures added as references, remove one, add a gallery picture as a reference, and paint; the Image Model request carries exactly those Images.
 - [ ] Verify manually with playwright-cli. No UI tests.
 - [ ] Run focused tests locally; let CI run typechecking and the full suite.

@@ -103,7 +103,7 @@ test("a Brief request rejects unavailable Chats and invalid targets before strea
 		const invalid = await write(chat.id);
 		expect(invalid.status).toBe(422);
 		expect(await invalid.json()).toEqual({ outcome: "invalid", reason: "This reply was deleted; reopen Paint" });
-		expect(() => createPaintingModule(database).command(chat.id, { type: "paint", variantId: -1, brief: "A scene", aspectRatio: "1:1" })).toThrow("This reply was deleted; reopen Paint");
+		expect(() => createPaintingModule(database).command(chat.id, { type: "paint", ask: "", variantId: -1, brief: "A scene", aspectRatio: "1:1" })).toThrow("This reply was deleted; reopen Paint");
 	} finally { database.close(); }
 });
 

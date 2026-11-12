@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, sse, status } from "elysia";
-import { briefRequest, illustrationsRead, paintingCommand, paintingAccepted } from "../../shared/contract/painting";
+import { briefRequest, galleryRead, illustrationsRead, paintingCommand, paintingAccepted } from "../../shared/contract/painting";
 import { conversationIdParams } from "../../shared/contract/conversation-schema";
 import { invalidOutcome, notFoundOutcome, notPlayableOutcome } from "../../shared/contract/outcomes";
 import { ModelClientGenerationError, ModelClientTransportError } from "../model-client";
@@ -33,6 +33,10 @@ export const createPaintingRoutes = (database: Database, options: ConversationRo
 				return presentDomainError(error, briefResponse);
 			}
 		}, { params: conversationIdParams, body: briefRequest, response: briefResponse })
+		.get("/api/conversations/:id/gallery", ({ params }) => {
+			try { return paintings.gallery(params.id); }
+			catch (error) { return presentDomainError(error, { 404: notFoundOutcome }); }
+		}, { params: conversationIdParams, response: { 200: galleryRead, 404: notFoundOutcome } })
 		.get("/api/conversations/:id/illustrations", ({ params }) => {
 			try { return paintings.read(params.id); }
 			catch (error) { return presentDomainError(error, readResponse); }

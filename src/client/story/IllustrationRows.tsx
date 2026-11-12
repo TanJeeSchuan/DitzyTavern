@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { IllustrationActionsContext, useIllustrations, usePaintingCommand } from "../painting";
 import { useOpenImageAt } from "../ImageDialog";
+import { illustrationName } from "../../shared/painting-brief";
 import { imageSrc } from "../lib/image";
 
 export function IllustrationRows({ conversationId, variantId }: { conversationId: number; variantId: number }) {
@@ -25,13 +26,13 @@ export function IllustrationRows({ conversationId, variantId }: { conversationId
 			</div>
 			<figcaption className="illustration-actions flex items-center justify-end gap-2 px-2">
 				{painting.kind === "illustration" && <>
-					<Button size="sm" variant="ghost" disabled={actions.addToComposer === null} onClick={() => actions.addToComposer?.(painting.image.slice(6))}>Add to composer</Button>
+					<Button size="sm" variant="ghost" disabled={actions.addToComposer === null} onClick={() => actions.addToComposer?.(illustrationName(painting.ask), painting.image.slice(6))}>Add to composer</Button>
 					<DropdownMenu>
 						<DropdownMenuTrigger asChild>
 							<Button size="icon-sm" variant="ghost" aria-label="Illustration actions" title="Illustration actions"><MoreHorizontal aria-hidden="true" /></Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-auto">
-							<DropdownMenuItem onSelect={() => actions.editBrief(variantId, painting.brief)}>Edit Brief and repaint</DropdownMenuItem>
+							<DropdownMenuItem onSelect={() => actions.editBrief(variantId, painting.brief, painting.ask)}>Edit Brief and repaint</DropdownMenuItem>
 							<DropdownMenuItem variant="destructive" disabled={pending} onSelect={() => void submit({ type: "delete", id: painting.id, variantId })}>Delete</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>

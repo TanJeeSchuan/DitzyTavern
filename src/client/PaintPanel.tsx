@@ -1,7 +1,7 @@
 import { Pencil } from "lucide-react";
 import type { ConversationSummary } from "./conversation";
 import { PromptPresetPanel } from "./workspace/PromptPresetPanel";
-import { useId, useState } from "react";
+import { useId, useRef, useState } from "react";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,8 @@ import { Value } from "@sinclair/typebox/value";
 import { paintingAspectRatio, DEFAULT_PAINTING_ASPECT_RATIO, DEFAULT_BRIEF_MESSAGE_COUNT } from "../shared/contract/painting";
 import { Switch } from "@/components/ui/switch";
 import { useWriteBrief } from "./brief";
-import { ProseEditor } from "./editor/ProseEditor";
+import { PaintGallery } from "./PaintGallery";
+import { ProseEditor, type ProseEditorHandle } from "./editor/ProseEditor";
 import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
 import { usePaintingCommand, useIllustrations, type PaintTarget } from "./painting";
@@ -22,7 +23,8 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 	const [editingPreset, setEditingPreset] = useState<number | null>(null);
 	const { variantId } = target;
 	const [brief, setBrief] = useState(target.brief);
-	const [ask, setAsk] = useState("");
+	const [ask, setAsk] = useState(target.ask);
+	const briefEditor = useRef<ProseEditorHandle>(null);
 	const writing = useWriteBrief(conversationId, setBrief);
 	const { submit, pending, error } = usePaintingCommand(conversationId);
 	const read = useIllustrations(conversationId);
@@ -78,14 +80,15 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 				{writing.error && <p role="alert" className="text-sm text-destructive">{writing.error}</p>}
 			</form>
 			<Field label="Brief" helper="Describe the picture. Insert pictures to use as references.">
-				<ProseEditor className="prose-editor-field" ariaLabel="Brief" autoFocus={Boolean(target.brief)} value={brief} onChange={setBrief} disabled={writing.pending} />
+				<ProseEditor className="prose-editor-field" ref={briefEditor} ariaLabel="Brief" autoFocus={Boolean(target.brief)} value={brief} onChange={setBrief} disabled={writing.pending} />
 			</Field>
+			<PaintGallery conversationId={conversationId} disabled={writing.pending} onReference={(name, hash) => briefEditor.current?.insertReference(name, hash)} />
 			<Field label="Shape" htmlFor="painting-aspect-ratio">
 				<AppSelect id="painting-aspect-ratio" className="field-input" value={aspectRatio} disabled={pending || read.isPending || read.isError}
 					onValueChange={(value) => { if (Value.Check(paintingAspectRatio, value)) void submit({ type: "set-aspect-ratio", aspectRatio: value }); }}
 					options={[{ value: "9:16", label: "Tall · 9:16" }, { value: "3:4", label: "Portrait · 3:4" }, { value: "1:1", label: "Square · 1:1" }, { value: "4:3", label: "Landscape · 4:3" }, { value: "16:9", label: "Wide · 16:9" }]} />
 			</Field>
-			<Button className="justify-self-start" disabled={pending || writing.pending || !brief.trim() || read.isPending || read.isError} onClick={() => void submit({ type: "paint", variantId, brief, aspectRatio })}>Paint</Button>
+			<Button className="justify-self-start" disabled={pending || writing.pending || !brief.trim() || read.isPending || read.isError} onClick={() => void submit({ type: "paint", variantId, brief, ask, aspectRatio })}>Paint</Button>
 			<p className="panel-note">Painting continues after you close this panel.</p>
 			{(error !== null || read.isError) && <p role="alert" className="text-sm text-destructive">{error ?? "Illustrations could not be loaded."}</p>}
 			<div><IllustrationRows conversationId={conversationId} variantId={variantId} /></div>

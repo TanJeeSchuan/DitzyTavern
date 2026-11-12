@@ -47,3 +47,20 @@ test("0043 adds Cast Appearance immediately before Lore in an edited Default (Pa
 		expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
 	} finally { database.close(); await rm(folder, { recursive: true, force: true }); }
 });
+
+test("0044 upgrades stored Illustrations to an empty Ask", async () => {
+	await mkdir(".scratch", { recursive: true });
+	const folder = await mkdtemp(join(process.cwd(), ".scratch/ask-upgrade-"));
+	const database = new Database(":memory:");
+	try {
+		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
+		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 43) }));
+		initializeDatabase(database, folder);
+		database.exec(`INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES (1, 'Existing', '', '');
+			INSERT INTO messages (id, conversation_id, position, timestamp) VALUES (1, 1, 1, '');
+			INSERT INTO message_variant (id, message_id, position, content, timestamp) VALUES (1, 1, 1, 'Scene', '');
+			INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (1, 'painting', 'old', '{"brief":"A bridge","aspectRatio":"1:1"}');`);
+		initializeDatabase(database);
+		expect(database.query("SELECT value FROM message_variant_data").get()).toEqual({ value: '{"brief":"A bridge","aspectRatio":"1:1","ask":""}' });
+	} finally { database.close(); await rm(folder, { recursive: true, force: true }); }
+});
