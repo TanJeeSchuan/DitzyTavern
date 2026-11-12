@@ -29,7 +29,7 @@ import {
 	type GenerationCoordinatorOptions,
 } from "../application/generation-coordinator";
 
-import { conversationPromptPreset } from "../../shared/contract/prompt-preset";
+import { conversationPromptPreset, conversationPromptPresetQuery } from "../../shared/contract/prompt-preset";
 import {
 	addCharacterToCast,
 	generationRuntimeFor,
@@ -409,7 +409,7 @@ export const createConversationRoutes = (
 			},
 			{
 				params: conversationIdParams,
-				query: t.Object({ presetId: t.Optional(t.Numeric({ minimum: 1 })) }),
+				query: conversationPromptPresetQuery,
 				response: {
 					200: conversationPromptPreset,
 					404: notFoundOutcome,

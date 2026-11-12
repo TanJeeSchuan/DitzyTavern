@@ -271,6 +271,8 @@ export const resolvedPromptPresetSlot = Type.Union([
 ]);
 export type ResolvedPromptPresetSlot = Static<typeof resolvedPromptPresetSlot>;
 
+export const conversationPromptPresetQuery = Type.Object({ presetId: Type.Optional(numericWire) });
+
 export const conversationPromptPreset = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),

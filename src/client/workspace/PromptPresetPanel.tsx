@@ -38,6 +38,7 @@ export function PromptPresetPanel({
 		<>
 			<PanelHeader
 				title={presetId === undefined ? "Prompt Presets" : "Paint Preset"}
+				backLabel={presetId === undefined ? "Back to Chat" : "Back to Paint"}
 				onClose={editor.requestClose}
 			/>
 			<div
