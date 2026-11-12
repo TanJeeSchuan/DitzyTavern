@@ -320,7 +320,7 @@ export function StoryStage({
 					isGenerating={generation.isGenerating}
 					canWrite={generation.assemblyAvailable}
 					atLatest={viewport.atLatest}
-					onSubmit={(event) => { event.preventDefault(); navigate(() => generation.submitMessage(event)); }}
+					onSubmit={(event) => { event.preventDefault(); if (generation.canSubmit()) navigate(() => generation.submitMessage(event)); }}
 					onCancel={generation.cancelGeneration}
 					stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
 					writerName={humanParticipant?.duplicateLabel}
