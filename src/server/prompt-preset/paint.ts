@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationPromptPresetTable, promptPresetBlockTable, promptPresetTable } from "../database/schema";
 import { ConversationNotFoundError, InvalidConversationCommandError } from "../conversation";
@@ -13,14 +13,13 @@ export const readPaintPresetSettings = (database: Database, conversationId: numb
 	if (!selection) throw new ConversationNotFoundError(conversationId);
 	const presets = db.select({ id: promptPresetTable.id, name: promptPresetTable.name }).from(promptPresetTable)
 		.innerJoin(promptPresetBlockTable, eq(promptPresetBlockTable.preset_id, promptPresetTable.id))
-		.where(and(eq(promptPresetBlockTable.reference, "brief-instruction"), eq(promptPresetBlockTable.enabled, true))).all();
+		.where(and(eq(promptPresetBlockTable.reference, "brief-instruction"), eq(promptPresetBlockTable.enabled, true))).orderBy(asc(promptPresetTable.id)).all();
 	return { paintPresetId: selection.paint_preset_id, briefMessageCount: selection.brief_message_count, paintPresets: presets };
 };
 
 export const commandPaintPreset = (database: Database, conversationId: number, command: PaintPresetCommand): void => {
 	const db = drizzle(database);
 	database.transaction(() => {
-		readPaintPresetSettings(database, conversationId);
 		if (command.type === "select-paint-preset") {
 			const recipe = readPromptPresetRecipe(database, command.paintPresetId);
 			if (!recipe || !hasEnabledBriefInstruction(recipe.slots)) throw new InvalidConversationCommandError("Choose a Paint Preset with an enabled Brief instruction.");

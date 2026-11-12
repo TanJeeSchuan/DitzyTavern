@@ -18,6 +18,7 @@ test("a Brief instruction saves authored text and role and refuses a second occu
 	expect((await add()).status).toBe(200);
 	const slot = readStoredRecipe(database, 1).slots.find((slot) => slot.reference === "brief-instruction");
 	if (!slot) throw new Error("Brief instruction missing");
+	expect(slot).toMatchObject({ role: "user" });
 	const saved = await app.handle(new Request("http://localhost/api/prompt-presets/1/blocks/patches", {
 		method: "POST", headers: { "content-type": "application/json" },
 		body: JSON.stringify({ patches: [{ occurrenceId: slot.id, type: "content", content: "Describe the scene in charcoal.", role: "user" }] }),

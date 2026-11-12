@@ -73,7 +73,7 @@ const fixedOutgoingRoles = {
 	"model-example-dialogue": "user",
 	"model-post-history-instruction": "system",
 	lore: "system",
-	"brief-instruction": "system",
+	"brief-instruction": "user",
 } as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | "brief-instruction", PromptOutgoingRole>;
 export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference | "brief-instruction"): PromptOutgoingRole =>
 	isBoxReference(reference) ? boxDescriptor(boxIdOf(reference)).role : fixedOutgoingRoles[reference];
