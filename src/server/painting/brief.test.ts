@@ -244,5 +244,9 @@ test("a Brief reads unseated Cast Appearance by name or authorship and sends onl
 		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint the bridge." },
 			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
 		expect(JSON.stringify(requests[1]!.messages)).toContain("Nora\\nA blue scarf.");
+		database.query("UPDATE participant_prompt SET send_appearance_images = 1 WHERE participant_id = ?").run(chat.cast.find((participant) => participant.name === "Iris")!.id);
+		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint the bridge." },
+			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+		expect(JSON.stringify(requests[2]!.messages)).toContain(`data:image/png;base64,${pngFixture().toString("base64")}`);
 	} finally { database.close(); }
 });

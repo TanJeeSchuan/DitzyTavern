@@ -5,7 +5,7 @@ import { formatImageReference, parseImageReferences, projectImageAnchors, saniti
 type Cast = ConversationSummary["cast"];
 
 export const keptBriefReferences = (brief: string, cast: Cast): ImageReference[] => {
-	const appearance = new Set(cast.flatMap((participant) => parseImageReferences(participant.prompt.appearance).map(({ hash }) => hash)));
+	const appearance = new Set(cast.filter((participant) => participant.sendAppearanceImages).flatMap((participant) => parseImageReferences(participant.prompt.appearance).map(({ hash }) => hash)));
 	return parseImageReferences(brief).filter(({ hash }) => !appearance.has(hash));
 };
 

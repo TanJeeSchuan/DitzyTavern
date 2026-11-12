@@ -22,9 +22,9 @@ export function PaintGallery({ conversationId, disabled, onReference }: {
 				: read.data.length === 0 ? <p className="panel-note">Pictures from this Chat and its Cast appear here.</p>
 					: <ul className="flex gap-3 overflow-x-auto p-1" role="list">
 						{read.data.map(({ hash, name }) => <li key={hash} className="grid w-36 shrink-0 content-start gap-1">
-							<button type="button" className="h-24 w-full cursor-zoom-in overflow-hidden rounded-lg border border-border bg-muted/30 hover:border-primary focus-visible:outline-2 focus-visible:outline-ring"
+							<button type="button" className="prose-image paint-gallery-thumbnail"
 								aria-label={`Open ${name} full size`} data-image-hash={hash} data-image-name={name} onClick={(event) => openImageAt(event.currentTarget)}>
-								<img src={imageSrc(hash)} alt={name} loading="lazy" className="h-full w-full object-contain" />
+								<img src={imageSrc(hash)} alt={name} loading="lazy" />
 							</button>
 							<p className="truncate text-xs text-muted-foreground" title={name}>{name}</p>
 							<Button size="sm" variant="ghost" className="justify-start px-1" aria-label={`Use as reference: ${name}`} disabled={disabled} onClick={() => onReference(name, hash)}>Use as reference</Button>

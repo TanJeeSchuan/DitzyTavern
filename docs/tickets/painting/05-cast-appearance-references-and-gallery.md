@@ -1,6 +1,6 @@
 # Cast Appearance, references and gallery
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: 02, 03, 04
 
@@ -31,8 +31,8 @@ The Brief writer reads how every Cast member in the scene looks, the painting ge
 - [x] e2e: write a Brief naming a third Cast member, see their Appearance pictures added as references, remove one, add a gallery picture as a reference, and paint; the Image Model request carries exactly those Images.
 - [x] Verify manually with playwright-cli. No UI tests.
 - [x] Run focused tests locally; let CI run typechecking and the full suite.
-- [ ] Run `/code-review` and resolve its findings.
-- [ ] Set this ticket to DONE and commit.
+- [x] Run `/code-review` and resolve its findings.
+- [x] Set this ticket to DONE and commit.
 
 ## Acceptance
 

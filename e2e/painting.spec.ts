@@ -119,16 +119,18 @@ test.describe("Brief References", () => {
 		const face = await upload(48);
 		const coat = await upload(56);
 		const gallery = await upload(64);
+		const quiet = await upload(72);
 		const { activeChatId } = await (await page.request.get("/api/workspace")).json();
 		const url = `/api/conversations/${activeChatId}`;
 		const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 		for (const [name, appearance, portrait] of [
 			["Iris", `Silver hair. ![Face](image:${face.hash}) ![Coat](image:${coat.hash})`, { hash: gallery.hash, focalX: 0.5, focalY: 0.5 }],
 			["Old", `Red cloak. ![Red cloak](image:${old.hash})`, undefined],
+			["Quiet", `Hidden hood. ![Quiet picture](image:${quiet.hash})`, undefined],
 		] as const) {
 			const { revision } = await (await page.request.get(url)).json();
 			const added = await page.request.post(`${url}/commands`, { data: { expectedRevision: revision, action: {
-				type: "add-participant", definition: { name, prompt: { ...prompt, appearance }, sendAppearanceImages: true, openings: [], portrait },
+				type: "add-participant", definition: { name, prompt: { ...prompt, appearance }, sendAppearanceImages: name !== "Quiet", openings: [], portrait },
 			} } });
 			expect(added.ok()).toBe(true);
 		}
@@ -142,20 +144,21 @@ test.describe("Brief References", () => {
 		const brief = panel.getByRole("textbox", { name: "Brief", exact: true });
 		await expect(brief.locator(".image-chip")).toHaveText(["Red cloak"]);
 		await panel.getByRole("button", { name: "Use as reference: Iris Portrait", exact: true }).click();
+		await panel.getByRole("button", { name: "Use as reference: Quiet picture", exact: true }).click();
 		await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
-		await expect(brief.locator(".image-chip")).toHaveText(["Face", "Coat", "Iris Portrait"]);
+		await expect(brief.locator(".image-chip")).toHaveText(["Face", "Coat", "Iris Portrait", "Quiet picture"]);
 		await brief.press("ControlOrMeta+Home");
 		await brief.press("ArrowDown");
 		await brief.press("ArrowDown");
 		await brief.press("Home");
 		await brief.press("Delete");
-		await expect(brief.locator(".image-chip")).toHaveText(["Coat", "Iris Portrait"]);
+		await expect(brief.locator(".image-chip")).toHaveText(["Coat", "Iris Portrait", "Quiet picture"]);
 		await panel.getByRole("button", { name: "Paint", exact: true }).click();
 		await expect(panel.getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
 		const sent = (await llm.log()).calls.find((call) => call.kind === "image");
-		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toContain(`data:image/png;base64,${gallery.base64}`);
+		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toEqual(expect.arrayContaining([gallery, quiet].map(({ base64 }) => `data:image/png;base64,${base64}`)));
 		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).not.toContain(`data:image/png;base64,${old.base64}`);
-		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toEqual([coat, gallery].map(({ base64 }) => `data:image/png;base64,${base64}`));
+		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toEqual([coat, gallery, quiet].map(({ base64 }) => `data:image/png;base64,${base64}`));
 		await panel.getByRole("button", { name: "Add to composer", exact: true }).click();
 		await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("Paint Iris at the bridge in");
 		const unchanged = await brief.innerText();
