@@ -37,7 +37,8 @@ export function PromptPresetPanel({
 	return (
 		<>
 			<PanelHeader
-				title={presetId === undefined ? "Prompt Presets" : "Paint Preset"}
+				title={presetId === undefined ? "Prompt Presets" : "Paint / Paint Preset"}
+				nested={presetId !== undefined}
 				backLabel={presetId === undefined ? "Back to Chat" : "Back to Paint"}
 				onClose={editor.requestClose}
 			/>
@@ -80,7 +81,7 @@ export function PromptPresetPanel({
 							onExport={(presetId, name) =>
 								void editor.exportSelectedPreset(presetId, name)
 							}
-						/> : <h3 className="font-medium">{ready.selected.name}</h3>}
+						/> : <p className="font-medium">{ready.selected.name}</p>}
 						<PromptPresetRecipeEditor
 							preset={ready.selected}
 							drafts={editor.drafts}

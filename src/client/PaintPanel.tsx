@@ -1,12 +1,13 @@
 import type { ConversationSummary } from "./conversation";
 import { PromptPresetPanel } from "./workspace/PromptPresetPanel";
-import { useState } from "react";
+import { useId, useState } from "react";
+import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { AppSelect } from "@/components/ui/select";
 import { Value } from "@sinclair/typebox/value";
-import { paintingAspectRatio, DEFAULT_PAINTING_ASPECT_RATIO } from "../shared/contract/painting";
+import { paintingAspectRatio, DEFAULT_PAINTING_ASPECT_RATIO, DEFAULT_BRIEF_MESSAGE_COUNT } from "../shared/contract/painting";
 import { Switch } from "@/components/ui/switch";
 import { useWriteBrief } from "./brief";
 import { ProseEditor } from "./editor/ProseEditor";
@@ -15,6 +16,7 @@ import { PanelHeader } from "./PanelHeader";
 import { usePaintingCommand, useIllustrations, type PaintTarget } from "./painting";
 
 export function PaintPanel({ conversation, onConversationChange, target, onClose }: { conversation: ConversationSummary; onConversationChange: (conversation: ConversationSummary | null) => void; target: PaintTarget; onClose: () => void }) {
+	const allMessagesId = useId();
 	const conversationId = conversation.id;
 	const [editingPreset, setEditingPreset] = useState<number | null>(null);
 	const { variantId } = target;
@@ -25,6 +27,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 	const read = useIllustrations(conversationId);
 	const selection = read.data;
 	const settingsDisabled = pending || writing.pending || read.isPending || read.isError;
+	const saveMessageCount = (count: number) => count === selection?.briefMessageCount ? Promise.resolve(true) : submit({ type: "set-brief-message-count", briefMessageCount: count });
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;
 	if (editingPreset !== null) return <aside className="details-panel" data-open="true" aria-label="Paint Preset">
 		<PromptPresetPanel conversation={conversation} onConversationChange={onConversationChange} presetId={editingPreset}
@@ -36,7 +39,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 			<form className="grid gap-4" aria-label="Write Brief" onSubmit={async (event) => {
 				event.preventDefault();
 				const count = new FormData(event.currentTarget).get("messages");
-				if (count !== null && Number(count) !== selection?.briefMessageCount && !await submit({ type: "set-brief-message-count", briefMessageCount: Number(count) })) return;
+				if (count !== null && !await saveMessageCount(Number(count))) return;
 				await writing.write({ variantId, ask });
 			}}>
 				<Field label="Ask" helper="Leave empty to describe the scene at this Message.">
@@ -47,7 +50,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 						emptyLabel="Choose a Paint Preset" options={selection?.paintPresets.map((preset) => ({ value: String(preset.id), label: preset.name })) ?? []}
 						onValueChange={(value) => void submit({ type: "select-paint-preset", paintPresetId: Number(value) })} />
 				</Field>
-				<Button type="button" variant="ghost" className="justify-self-start" disabled={settingsDisabled || !selection}
+				<Button type="button" variant="ghost" className="justify-self-start px-0" disabled={settingsDisabled || !selection}
 					onClick={() => { if (selection) setEditingPreset(selection.paintPresetId); }}>Edit Paint Preset</Button>
 				<Field label="Messages" htmlFor="brief-message-count">
 					<div className="flex items-center gap-3">
@@ -57,12 +60,12 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 								if (event.relatedTarget instanceof HTMLButtonElement && (event.relatedTarget.type === "submit" || event.relatedTarget.getAttribute("role") === "switch")) return;
 								const count = event.currentTarget.valueAsNumber;
 								if (Number.isSafeInteger(count) && count > 0) {
-									if (count !== selection?.briefMessageCount) void submit({ type: "set-brief-message-count", briefMessageCount: count });
+									void saveMessageCount(count);
 								}
-								else event.currentTarget.value = String(selection?.briefMessageCount ?? 5);
+								else event.currentTarget.value = String(selection?.briefMessageCount ?? DEFAULT_BRIEF_MESSAGE_COUNT);
 							}} />
-						<label className="flex items-center gap-2 text-sm"><Switch checked={selection?.briefMessageCount === null} disabled={settingsDisabled}
-							onCheckedChange={(all) => void submit({ type: "set-brief-message-count", briefMessageCount: all ? null : 5 })} />All</label>
+						<div className="flex items-center gap-2"><Switch id={allMessagesId} checked={selection?.briefMessageCount === null} disabled={settingsDisabled}
+							onCheckedChange={(all) => void submit({ type: "set-brief-message-count", briefMessageCount: all ? null : DEFAULT_BRIEF_MESSAGE_COUNT })} /><Label htmlFor={allMessagesId}>All</Label></div>
 					</div>
 				</Field>
 				<div className="flex flex-wrap items-center gap-3" aria-live="polite">

@@ -1,8 +1,9 @@
 import type { Database } from "bun:sqlite";
-import { Elysia, sse } from "elysia";
+import { Elysia, sse, status } from "elysia";
 import { briefRequest, illustrationsRead, paintingCommand, paintingAccepted } from "../../shared/contract/painting";
 import { conversationIdParams } from "../../shared/contract/conversation-schema";
 import { invalidOutcome, notFoundOutcome, notPlayableOutcome } from "../../shared/contract/outcomes";
+import { ModelClientGenerationError, ModelClientTransportError } from "../model-client";
 import { writeBrief } from "../painting/brief";
 import { createPaintingModule } from "../painting";
 import type { ConversationRouteOptions } from "./conversation";
@@ -26,7 +27,10 @@ export const createPaintingRoutes = (database: Database, options: ConversationRo
 						yield sse({ data: { type: "failed", kind: "transport", message: "The Brief stream could not finish. Try again." } });
 					} finally { await events.return(); }
 				})();
-			} catch (error) { return presentDomainError(error, briefResponse); }
+			} catch (error) {
+				if (error instanceof ModelClientGenerationError || error instanceof ModelClientTransportError) return status(422, { outcome: "invalid" as const, reason: error.message });
+				return presentDomainError(error, briefResponse);
+			}
 		}, { params: conversationIdParams, body: briefRequest, response: briefResponse })
 		.get("/api/conversations/:id/illustrations", ({ params }) => {
 			try { return paintings.read(params.id); }

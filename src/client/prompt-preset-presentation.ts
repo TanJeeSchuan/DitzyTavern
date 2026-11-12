@@ -116,3 +116,6 @@ export function presetDeletionResultNotice(
 			: `Selections using it in ${result.reassignedConversationCount} Chats reset to their built-in presets.`;
 	return `Deleted "${name}". ${moved}`;
 }
+
+export const promptPlanBlockLabel = (kind: string): string =>
+	isSingleUseReference(kind) ? singleUseReferenceLabel(kind) : kind === "message" ? "Message" : kind;

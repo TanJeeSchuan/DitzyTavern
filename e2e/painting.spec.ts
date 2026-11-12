@@ -98,6 +98,7 @@ test("write a Brief from an Ask on an older Message, edit it and paint", async (
 	const calls = (await llm.log()).calls.filter(isChatModelCall);
 	expect(calls.at(-1)!.body.messages.at(-1)).toMatchObject({ role: "user", content: "Focus on the reflection." });
 	expect(JSON.stringify(calls.at(-1)!.body.messages)).toContain("A lantern beside the bridge.");
+	expect(JSON.stringify(calls.at(-1)!.body.messages)).toContain("Write a short description of the scene for an image model.");
 	expect(JSON.stringify(calls.at(-1)!.body.messages)).not.toContain("Later, the bridge is empty.");
 	expect(JSON.stringify(calls.at(-1)!.body.messages)).not.toContain("You arrive as she pins a third map over the first two.");
 	expect((await llm.log()).calls.find((call) => call.kind === "image")?.body).toMatchObject({ prompt: "A red lantern reflected under a stone bridge." });

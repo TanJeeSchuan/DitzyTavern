@@ -1,13 +1,12 @@
 import type { Database } from "bun:sqlite";
 import { authorRoleOf, ConversationNotFoundError, ConversationNotPlayableError, InvalidConversationCommandError,
-	readConversationSummaryFromConnection, readConversationGenerationSettingsFromConnection, readSelectedHistoryThroughVariant,
-	readVariantData, runConversationReadTransaction } from "../conversation";
+	readConversationSummaryFromConnection, readConversationGenerationSettingsFromConnection, readHistoryThroughVariant,
+	readVariantData, readPaintPresetSelection, runConversationReadTransaction } from "../conversation";
 import { createConnectionSettingsModule, connectionSnapshotOf, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import { assertGenerationPlan, compileGenerationPlan } from "../generation-plan";
 import { createModelClient, projectModelClientGenerationSettings, type ModelFetch } from "../model-client";
-import { readPromptPresetRecipe } from "../prompt-preset";
-import { readPaintPresetSettings } from "../prompt-preset";
-import { hasEnabledBriefInstruction, hasEnabledLoreSlot, type PromptPresetSlot } from "../../shared/contract/prompt-preset";
+import { requirePaintPresetRecipe } from "../prompt-preset";
+import { hasEnabledLoreSlot, type PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import { evaluateScopedLore, evaluateScopedLoreAsync, noLoreEvaluation } from "../lorebook/evaluation";
 import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
 import { deriveMacroState } from "../prompt-macros";
@@ -23,11 +22,11 @@ export async function* writeBrief(database: Database, conversationId: number, re
 		const human = chat.cast.find((participant) => participant.id === chat.control.humanParticipantId);
 		const model = chat.cast.find((participant) => participant.id === chat.control.modelParticipantId);
 		if (!human || !model || human.id === model.id) throw new ConversationNotPlayableError(conversationId);
-		const selection = readPaintPresetSettings(database, conversationId);
-		const preset = readPromptPresetRecipe(database, selection.paintPresetId);
-		if (!preset || !hasEnabledBriefInstruction(preset.slots)) throw new InvalidConversationCommandError("Choose a Paint Preset with an enabled Brief instruction.");
-		const selected = readSelectedHistoryThroughVariant(db, conversationId, request.variantId)!;
-		const messages = selection.briefMessageCount === null ? selected.messages : selected.messages.slice(-selection.briefMessageCount);
+		const selection = readPaintPresetSelection(database, conversationId);
+		const preset = requirePaintPresetRecipe(database, selection.paintPresetId);
+		const selected = readHistoryThroughVariant(db, conversationId, request.variantId);
+		const history = selected.messages.flatMap((message) => message.variant === null ? [] : [{ ...message, variant: message.variant }]);
+		const messages = selection.briefMessageCount === null ? history : history.slice(-selection.briefMessageCount);
 		const settings = readConversationGenerationSettingsFromConnection(db, conversationId);
 		if (!settings) throw new ConversationNotFoundError(conversationId);
 		const connections = createConnectionSettingsModule(database, options);
@@ -39,13 +38,13 @@ export async function* writeBrief(database: Database, conversationId: number, re
 		const variantData = readVariantData(db, variantIds, ["macroWrites"]);
 		const variables = deriveMacroState({ initialData: selected.initialData, presetId: preset.id, selectedVariants: selected.messages.map(({ variant }) => ({ selected: variant !== null, macroWrites: variant === null ? [] : variantData.get(variant.id)?.macroWrites ?? [] })) });
 		const recipe: PromptPresetSlot[] = preset.slots.map((slot) => slot.reference === "brief-instruction" ? { ...slot, reference: "instruction", name: "Brief instruction" } : slot);
-		const context = messages.flatMap((message) => message.variant === null ? [] : [{ kind: "message" as const,
-			speakerName: message.author?.capturedName ?? null, content: message.variant.content, role: authorRoleOf(message, chat.control) }]);
+		const context = messages.map((message) => ({ kind: "message" as const,
+			speakerName: message.author?.capturedName ?? null, content: message.variant.content, role: authorRoleOf(message, chat.control) }));
 		const lore = hasEnabledLoreSlot(recipe) ? evaluateScopedLore({ database, conversationId,
-			messages: messages.flatMap((message) => message.variant === null ? [] : [{ id: message.id, content: message.variant.content }]), connectionSettings: options,
+			messages: messages.map((message) => ({ id: message.id, content: message.variant.content })), connectionSettings: options,
 		}) : noLoreEvaluation();
 		return { human, model, settings, connection, recipe, context, lore,
-			ask: request.ask.trim() ? request.ask : `Describe the scene at Message ${selected.position}, the final Message in the supplied history.`,
+			ask: request.ask.trim() ? request.ask : "Describe the scene in the last Message above.",
 			attempt: createAttemptEnvironment({ self: human.name, other: model.name, conversationId, promptPresetId: preset.id, now: new Date(), variables, timeZone: request.timeZone, locale: request.locale }),
 			client: createModelClient({ profile, secrets: connections.getProfileSecrets(profile.id), loadImage: imageLoader(database), fetch: options.fetch }),
 		};

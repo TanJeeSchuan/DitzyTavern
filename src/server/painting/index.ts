@@ -68,7 +68,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 				.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value: JSON.stringify({ aspectRatio: command.aspectRatio }) } }).run();
 			return;
 		}
-		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("The Variant is no longer available.");
+		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint");
 		if (command.type === "delete") {
 			db.delete(messageVariantDataTable).where(and(eq(messageVariantDataTable.message_variant_id, command.variantId), eq(messageVariantDataTable.namespace, NAMESPACE), eq(messageVariantDataTable.key, command.id))).run();
 			return;
