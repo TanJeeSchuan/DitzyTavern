@@ -1,8 +1,8 @@
 import { prepareConversationEffects } from "../application/conversation-effects";
 import { createGenerationPreviewAsync } from "../workflows/generation-preview";
 import { expect, test } from "bun:test";
-import { createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
-import { executeConversationCommand, readConversationSummary, observeConversationWrites } from "../conversation";
+import { createConversationWithHistory, openObservedDatabase, checkpointFromStart } from "../test-fixtures/conversation";
+import { executeConversationCommand, readConversationSummary, observeConversationWrites, acceptConversationContinuationGeneration } from "../conversation";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
@@ -230,7 +230,7 @@ test("the gallery includes every Variant, Cast Portraits and Appearance, without
 	const portrait = await uploadImage(database, pngFixture({ width: 32, height: 16 }));
 	const appearance = await uploadImage(database, pngFixture({ width: 40, height: 16 }));
 	const message = chat.messages[0]!;
-	database.query("UPDATE message_variant SET content = ? WHERE id = ?").run(formatImageReference("Repeated", repeated.hash).repeat(2), message.variants[0]!.id);
+	database.query("UPDATE message_variant SET content = ? WHERE id = ?").run(formatImageReference("Repeated", repeated.hash) + formatImageReference("Later name", repeated.hash), message.variants[0]!.id);
 	database.query("UPDATE message_variant SET content = ? WHERE id = ?").run(formatImageReference("Other Swipe", unselected.hash), message.variants[1]!.id);
 	database.query("UPDATE participant_prompt SET portrait_hash = ?, portrait_focal_x = 0.5, portrait_focal_y = 0.5 WHERE participant_id = ?").run(portrait.hash, chat.control.modelParticipantId);
 	database.query("UPDATE participant_prompt SET appearance = ?, send_appearance_images = 0 WHERE participant_id = ?").run(formatImageReference("Appearance", appearance.hash), chat.control.modelParticipantId);
@@ -243,4 +243,23 @@ test("the gallery includes every Variant, Cast Portraits and Appearance, without
 		{ hash: repeated.hash, name: "Repeated" }, { hash: unselected.hash, name: "Other Swipe" },
 		{ hash: portrait.hash, name: "Maren Portrait" }, { hash: appearance.hash, name: "Appearance" },
 	]);
+});
+
+
+test("the gallery includes live Image References while a Generation is active", async () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const image = await uploadImage(database, pngFixture({ width: 72, height: 32 }));
+	const opening = chat.messages[0]!;
+	const active = acceptConversationContinuationGeneration(database, {
+		generationIntent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
+		seed: "gallery-generation", conversationId: chat.id, expectedRevision: chat.revision, timestamp: "2026-11-12T00:00:00Z",
+		precedingMessageId: opening.id, precedingVariantId: opening.variants[0]!.id,
+		humanParticipantId: chat.control.humanParticipantId!, modelParticipantId: chat.control.modelParticipantId!,
+		capturedHumanName: "Writer", capturedModelName: "Maren", modelId: "fixture-model",
+		promptPlan: { blocks: [], warnings: [], images: [] },
+		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+	});
+	checkpointFromStart(database, { conversationId: chat.id, generationId: active.generationId, content: formatImageReference("Live picture", image.hash) });
+	expect(createPaintingModule(database).gallery(chat.id)).toEqual([{ hash: image.hash, name: "Live picture" }]);
 });

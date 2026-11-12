@@ -48,7 +48,7 @@ test("a Generation skips Brief instruction and Cast Appearance on its story pres
 });
 
 
-test("Cast Appearance is a single-use reference with an editable role", async () => {
+test("Cast Appearance starts with a system role and refuses a second occurrence", async () => {
 	createChat(database);
 	const app = recipeRoutes(database);
 	const add = () => app.handle(new Request("http://localhost/api/prompt-presets/1/blocks", {

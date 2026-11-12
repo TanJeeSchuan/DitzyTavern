@@ -71,7 +71,7 @@ export interface CompileGenerationPlanInput {
 	readonly boxes: BoxResults;
 	readonly human: CompilePromptDefinition;
 	readonly model: CompilePromptDefinition;
-	readonly castAppearance?: readonly CompilePromptDefinition[];
+	readonly castAppearance?: readonly (CompilePromptDefinition & { otherName: string })[];
 	readonly context: readonly PromptContextEntry[];
 	readonly trailingMessages?: readonly LiteralPromptMessage[];
 	// The selected Prompt Preset's ordered recipe, captured with the rest of

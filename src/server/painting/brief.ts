@@ -46,7 +46,8 @@ export async function* writeBrief(database: Database, conversationId: number, re
 		}) : noLoreEvaluation();
 		const scene = [...messages.map((message) => message.variant.content), request.ask].join("\n");
 		const authors = new Set(messages.map((message) => message.author?.participantId));
-		const castAppearance = chat.cast.filter((participant) => authors.has(participant.id) || literalMatches(scene, participant.name, false, true));
+		const castAppearance = chat.cast.filter((participant) => authors.has(participant.id) || literalMatches(scene, participant.name, false, true))
+			.map((participant) => ({ ...participant, otherName: participant.id === model.id ? human.name : model.name }));
 		return { human, model, castAppearance, settings, connection, recipe, context, lore,
 			ask: request.ask.trim() ? request.ask : "Describe the scene in the last Message above.",
 			attempt: createAttemptEnvironment({ self: human.name, other: model.name, conversationId, promptPresetId: preset.id, now: new Date(), variables, timeZone: request.timeZone, locale: request.locale }),

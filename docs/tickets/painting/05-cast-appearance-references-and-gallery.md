@@ -28,9 +28,9 @@ The Brief writer reads how every Cast member in the scene looks, the painting ge
 - [x] Name an Illustration added to the composer with the first words of the Ask it was painted from, or "Illustration" when there was none. Store the Ask with the Illustration.
 - [x] Test through captured requests: a Brief request carries the Appearance of an unseated Cast member named in the Messages read, sends anchors without Images for a Definition whose switch is off, and a Generation on a preset holding the block never sends it.
 - [x] Test that the gallery read returns one entry for a picture used several times and includes an Illustration under an unselected Variant.
-- [ ] e2e: write a Brief naming a third Cast member, see their Appearance pictures added as references, remove one, add a gallery picture as a reference, and paint; the Image Model request carries exactly those Images.
-- [ ] Verify manually with playwright-cli. No UI tests.
-- [ ] Run focused tests locally; let CI run typechecking and the full suite.
+- [x] e2e: write a Brief naming a third Cast member, see their Appearance pictures added as references, remove one, add a gallery picture as a reference, and paint; the Image Model request carries exactly those Images.
+- [x] Verify manually with playwright-cli. No UI tests.
+- [x] Run focused tests locally; let CI run typechecking and the full suite.
 - [ ] Run `/code-review` and resolve its findings.
 - [ ] Set this ticket to DONE and commit.
 

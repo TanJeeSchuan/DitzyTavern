@@ -94,13 +94,15 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		if (!chat) throw new ConversationNotFoundError(conversationId);
 		const images: GalleryRead = [
 			...read(conversationId).paintings.flatMap((painting) => painting.kind === "illustration" ? [{ hash: painting.image.slice(6), name: illustrationName(painting.ask) }] : []),
-			...readChatVariants(database, conversationId).flatMap(({ content }) => parseImageReferences(content)),
+			...readChatVariants(database, conversationId, { includeActive: true }).flatMap(({ content }) => parseImageReferences(content)),
 			...chat.cast.flatMap((participant) => [
 				...(participant.portrait ? [{ hash: participant.portrait.hash, name: `${participant.name} Portrait` }] : []),
 				...parseImageReferences(participant.prompt.appearance),
 			]),
 		];
-		return [...new Map(images.map(({ hash, name }) => [hash, { hash, name }])).values()];
+		const firstByHash = new Map<string, GalleryRead[number]>();
+		for (const { hash, name } of images) if (!firstByHash.has(hash)) firstByHash.set(hash, { hash, name });
+		return [...firstByHash.values()];
 	};
 	return { read, command, gallery };
 };
