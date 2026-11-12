@@ -105,6 +105,9 @@ test("write a Brief from an Ask on an older Message, edit it and paint", async (
 	expect((await llm.log()).calls.find((call) => call.kind === "image")?.body).toMatchObject({ prompt: "A red lantern reflected under a stone bridge." });
 });
 
+test.describe("Brief References", () => {
+	test.use({ allowedBrowserErrors: /status of 422/ });
+
 test("rewrite a Brief, keep a gallery Reference, recompute Cast Appearance and paint exactly the edited References", async ({ page, llm }) => {
 	await selectImageModel(page);
 	const upload = async (width: number) => {
@@ -155,4 +158,17 @@ test("rewrite a Brief, keep a gallery Reference, recompute Cast Appearance and p
 	expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toEqual([coat, gallery].map(({ base64 }) => `data:image/png;base64,${base64}`));
 	await panel.getByRole("button", { name: "Add to composer", exact: true }).click();
 	await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("Paint Iris at the bridge in");
+	const unchanged = await brief.innerText();
+	await llm.chat({ status: 429, error: "Brief quota exceeded" });
+	await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
+	await expect(panel.getByRole("alert")).toBeVisible();
+	expect(await brief.innerText()).toBe(unchanged);
+	await llm.chat({ chunks: [], hold: true });
+	await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
+	await panel.getByRole("button", { name: "Stop", exact: true }).click();
+	await expect(panel.getByRole("button", { name: "Write Brief", exact: true })).toBeEnabled();
+	expect(await brief.innerText()).toBe(unchanged);
+	await llm.release();
+});
+
 });
