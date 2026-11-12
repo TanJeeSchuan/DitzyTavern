@@ -71,7 +71,7 @@ const validateBlockPatches = (
 				"The history slot has no outgoing role of its own; its entries keep their Message roles.",
 			);
 		}
-		if (patch.type === "content" && !(occurrence.reference === "instruction" ? patch.name !== undefined : isBoxReference(occurrence.reference) && patch.name === undefined)) {
+		if (patch.type === "content" && !(occurrence.reference === "instruction" ? patch.name !== undefined : (occurrence.reference === "brief-instruction" || isBoxReference(occurrence.reference)) && patch.name === undefined)) {
 			throw new InvalidPromptPresetOperationError(
 				"An authored instruction saves a name and text, a Box block saves only its instructions, and other referenced blocks stay read-only here.",
 			);
@@ -141,6 +141,7 @@ const insertOccurrence = (
 			role,
 			name: reference === "instruction" ? occurrence.name : null,
 			content: reference === "instruction" ? occurrence.content
+				: reference === "brief-instruction" ? occurrence.content ?? ""
 				: isBoxReference(reference) ? occurrence.content ?? boxMetadata(boxIdOf(reference)).instructions
 				: null,
 		})

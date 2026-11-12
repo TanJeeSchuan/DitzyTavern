@@ -77,7 +77,7 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 	return boxMetadata(boxIdOf(slot.reference)).block ?? { description: `Uses the ${title} Box when it is enabled in this Chat.`, source: "This Chat" };
 };
 
-type TextSlot = Extract<ResolvedPromptPresetSlot, { reference: "instruction" }> | Extract<ResolvedPromptPresetSlot, { reference: PromptBoxReference }>;
+type TextSlot = Extract<ResolvedPromptPresetSlot, { reference: "instruction" | "brief-instruction" }> | Extract<ResolvedPromptPresetSlot, { reference: PromptBoxReference }>;
 type TextFields = { name?: string; content: string; role: PromptOutgoingRole };
 
 // @approved
@@ -196,7 +196,7 @@ export function PromptPresetRecipeRow({
 		disabled: pending,
 	});
 	const title = slotTitle(slot.reference === "instruction" && draft?.kind === "content" ? { ...slot, name: draft.name ?? slot.name } : slot);
-	const referenceCopy = slot.reference === "instruction" ? null : referenceBlockCopy(slot, title);
+	const referenceCopy = slot.reference === "instruction" || slot.reference === "brief-instruction" ? null : referenceBlockCopy(slot, title);
 	const roleDraft = draft?.kind === "role" ? draft : null;
 	const dirty = draft !== undefined && draftIsDirty(slot, draft);
 	const enabled = draft?.enabled ?? slot.enabled;
@@ -271,7 +271,7 @@ export function PromptPresetRecipeRow({
 					)}
 				</DialogHeader>
 				<div className="min-h-0 overflow-y-auto pr-1">
-				{slot.reference === "instruction" ? (
+				{slot.reference === "instruction" || slot.reference === "brief-instruction" ? (
 					<TextFieldEditor
 						slot={slot}
 						title={title}

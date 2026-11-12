@@ -45,7 +45,7 @@ const projectPromptPreset = (
 				entryCount: historyEntryCount,
 			};
 		}
-		if (slot.reference === "instruction" || isBoxSlot(slot)) return slot;
+		if (slot.reference === "instruction" || slot.reference === "brief-instruction" || isBoxSlot(slot)) return slot;
 		if (isSingleUseReference(slot.reference)) return { ...slot, reference: slot.reference };
 		const referenced = referencedDefinitionBlocks[slot.reference];
 		const owner = owners[referenced.owner];

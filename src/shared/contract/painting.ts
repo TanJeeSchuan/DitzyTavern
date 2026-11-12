@@ -15,9 +15,21 @@ export const painting = Type.Union([
 	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("illustration"), image: illustration.properties.image })]),
 ]);
 export type Painting = Static<typeof painting>;
-export const illustrationsRead = Type.Object({ aspectRatio: paintingAspectRatio, paintings: Type.Array(painting) });
+export const paintPresetSettings = Type.Object({
+	paintPresetId: Type.Integer(),
+	briefMessageCount: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+	paintPresets: Type.Array(Type.Object({ id: Type.Integer(), name: Type.String() })),
+});
+export type PaintPresetSettings = Static<typeof paintPresetSettings>;
+export const paintPresetCommand = Type.Union([
+	Type.Object({ type: Type.Literal("select-paint-preset"), paintPresetId: Type.Integer() }),
+	Type.Object({ type: Type.Literal("set-brief-message-count"), briefMessageCount: paintPresetSettings.properties.briefMessageCount }),
+]);
+export type PaintPresetCommand = Static<typeof paintPresetCommand>;
+export const illustrationsRead = Type.Object({ ...paintPresetSettings.properties, aspectRatio: paintingAspectRatio, paintings: Type.Array(painting) });
 export type IllustrationsRead = Static<typeof illustrationsRead>;
 export const paintingCommand = Type.Union([
+	paintPresetCommand,
 	Type.Object({ type: Type.Literal("paint"), variantId: Type.Integer(), brief: Type.String({ minLength: 1 }), aspectRatio: paintingAspectRatio }),
 	Type.Object({ type: Type.Literal("retry"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("dismiss"), variantId: Type.Integer(), id: Type.String() }),

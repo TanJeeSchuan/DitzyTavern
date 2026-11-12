@@ -23,7 +23,7 @@ const fixedSlotLabels = {
 	history: "Chat history",
 	"model-post-history-instruction": "Post-History Instruction",
 	instruction: "Instruction",
-} satisfies Record<Exclude<PromptPresetBlockReference, "lore" | `box:${string}`>, string>;
+} satisfies Record<Exclude<PromptPresetBlockReference, "lore" | "brief-instruction" | `box:${string}`>, string>;
 export const slotLabel = (reference: PromptPresetBlockReference): string =>
 	isSingleUseReference(reference) ? singleUseReferenceLabel(reference) : fixedSlotLabels[reference];
 
@@ -86,7 +86,7 @@ export function presetDeletionConfirmationCopy(
 	return {
 		title,
 		impact:
-			`${affectedConversationsLabel(conversationCount)}. Deleting this preset removes it from the Library and moves every affected Chat to the Default preset. Nothing else in those Chats changes.`,
+			`${affectedConversationsLabel(conversationCount)}. Deleting this preset removes it from the Library and moves every affected Chat to Default for story writing and Default (Paint) for painting. Nothing else in those Chats changes.`,
 		confirmLabel: "Yes, delete preset",
 	};
 }
@@ -114,7 +114,7 @@ export function presetDeletionResultNotice(
 	const moved = result.reassignedConversationCount === 0
 		? "No Chat was using it."
 		: result.reassignedConversationCount === 1
-			? "1 Chat moved to the Default preset."
-			: `${result.reassignedConversationCount} Chats moved to the Default preset.`;
+			? "1 Chat moved to its built-in presets."
+			: `${result.reassignedConversationCount} Chats moved to their built-in presets.`;
 	return `Deleted "${name}". ${moved}`;
 }

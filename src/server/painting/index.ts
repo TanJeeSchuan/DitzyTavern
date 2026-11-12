@@ -12,6 +12,8 @@ import { imageLoader, ingestImage, storeImage } from "../image";
 import { announceChange } from "../database/changes";
 import { processStateFor } from "../application/process-state";
 
+import { readPaintPresetSettings, commandPaintPreset } from "../prompt-preset/paint";
+
 const NAMESPACE = "painting";
 
 export const createPaintingModule = (database: Database, options: ConnectionSettingsModuleOptions & { fetch?: ModelFetch } = {}) => {
@@ -30,7 +32,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 			.where(and(inArray(messageVariantDataTable.message_variant_id, variantIds), eq(messageVariantDataTable.namespace, NAMESPACE))).all();
 		const paintings: Painting[] = stored.map(({ id, variantId, value }) => ({ kind: "illustration", id, variantId, ...Value.Parse<typeof illustration>(illustration, JSON.parse(value)) }));
 		for (const variantId of variantIds) for (const entry of provisional.forVariant(variantId)) paintings.push(entry.painting);
-		return { aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)) };
+		return { ...readPaintPresetSettings(database, conversationId), aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)) };
 	};
 	const start = (variantId: number, brief: string, aspectRatio: IllustrationsRead["aspectRatio"], id: string = Bun.randomUUIDv7()) => {
 		const { profileId, model } = readImageModelSettings(database);
@@ -61,6 +63,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	};
 	const command = (conversationId: number, command: PaintingCommand) => {
 		requireChat(conversationId);
+		if (command.type === "select-paint-preset" || command.type === "set-brief-message-count") return commandPaintPreset(database, conversationId, command);
 		if (command.type === "set-aspect-ratio") {
 			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: NAMESPACE, key: "aspect-ratio", value: JSON.stringify({ aspectRatio: command.aspectRatio }) })
 				.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value: JSON.stringify({ aspectRatio: command.aspectRatio }) } }).run();

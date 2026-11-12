@@ -223,7 +223,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	>;
 
 	for (const [slotIndex, slot] of input.recipe.entries()) {
-		if (!slot.enabled) continue;
+		if (!slot.enabled || slot.reference === "brief-instruction") continue;
 		if (slot.reference === "history") {
 			historyStart ??= blocks.length;
 			for (const entry of input.context ?? []) {

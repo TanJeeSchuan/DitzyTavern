@@ -65,6 +65,7 @@ export const promptPresetTable = sqliteTable(
 		id: int().primaryKey({ autoIncrement: true }),
 		name: text().notNull(),
 		is_default: int({ mode: "boolean" }).notNull().default(false),
+		is_default_paint: int({ mode: "boolean" }).notNull().default(false),
 		// @approved
 		//  Optimistic-concurrency revision following the Character
 		// Library convention: every authoritative library command carries the
@@ -73,6 +74,7 @@ export const promptPresetTable = sqliteTable(
 		revision: int().notNull().default(0),
 	},
 	(table) => [
+		uniqueIndex("prompt_preset_single_default_paint").on(table.is_default_paint).where(sql`${table.is_default_paint} = 1`),
 		uniqueIndex("prompt_preset_single_default")
 			.on(table.is_default)
 			.where(sql`${table.is_default} = 1`),
@@ -112,6 +114,7 @@ export const promptPresetBlockTable = sqliteTable(
 		uniqueIndex("prompt_preset_single_lore_block")
 			.on(table.preset_id)
 			.where(sql`${table.reference} = 'lore'`),
+		uniqueIndex("prompt_preset_single_brief_instruction").on(table.preset_id).where(sql`${table.reference} = 'brief-instruction'`),
 		uniqueIndex("prompt_preset_single_box_block").on(table.preset_id, table.reference).where(sql`${table.reference} LIKE 'box:%'`),
 		check(
 			"prompt_preset_block_shape_check",
@@ -148,7 +151,7 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.name} IS NULL
 				AND ${table.content} IS NULL
 			) OR (
-				${table.reference} LIKE 'box:%'
+				(${table.reference} LIKE 'box:%' OR ${table.reference} = 'brief-instruction')
 				AND ${table.role} IS NOT NULL
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL
@@ -309,11 +312,15 @@ export const conversationPromptPresetTable = sqliteTable(
 		conversation_id: int()
 			.primaryKey()
 			.references(() => conversationTable.id, { onDelete: "cascade" }),
+		paint_preset_id: int().notNull().references(() => promptPresetTable.id),
+		brief_message_count: int().default(5),
 		prompt_preset_id: int()
 			.notNull()
 			.references(() => promptPresetTable.id),
 	},
 	(table) => [
+		check("brief_message_count_positive", sql`${table.brief_message_count} IS NULL OR ${table.brief_message_count} > 0`),
+		index("conversation_paint_preset_id_index").on(table.paint_preset_id),
 		index("conversation_prompt_preset_prompt_preset_id_index").on(
 			table.prompt_preset_id,
 		),

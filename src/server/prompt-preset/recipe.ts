@@ -32,6 +32,7 @@ type StoredPromptPresetBlock = {
 } & (
 	| { reference: "history"; role: null; name: null; content: null }
 	| { reference: PromptLoreReference; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: "brief-instruction"; role: PromptOutgoingRole; name: null; content: string }
 	| { reference: PromptBoxReference; role: PromptOutgoingRole; name: null; content: string }
 	| { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string }
 	| {
@@ -73,6 +74,12 @@ export const readDefaultPromptPresetId = (db: PromptPresetDatabase): number => {
 	return row.id;
 };
 
+export const readDefaultPaintPresetId = (db: PromptPresetDatabase): number => {
+	const row = db.select({ id: promptPresetTable.id }).from(promptPresetTable).where(eq(promptPresetTable.is_default_paint, true)).get();
+	if (row === undefined) throw new Error("The Default (Paint) preset is missing from the preset library.");
+	return row.id;
+};
+
 /** @approved Records a new Conversation's initial selection of the Default preset. */
 export const selectDefaultPromptPreset = (
 	db: PromptPresetDatabase,
@@ -82,6 +89,7 @@ export const selectDefaultPromptPreset = (
 		.values({
 			conversation_id: conversationId,
 			prompt_preset_id: readDefaultPromptPresetId(db),
+			paint_preset_id: readDefaultPaintPresetId(db),
 		})
 		.run();
 };
@@ -102,15 +110,9 @@ export const selectConversationPromptPreset = (
 		.where(eq(promptPresetTable.id, promptPresetId))
 		.get();
 	if (preset === undefined) throw new PromptPresetNotFoundError(promptPresetId);
-	db.insert(conversationPromptPresetTable)
-		.values({
-			conversation_id: conversationId,
-			prompt_preset_id: promptPresetId,
-		})
-		.onConflictDoUpdate({
-			target: conversationPromptPresetTable.conversation_id,
-			set: { prompt_preset_id: promptPresetId },
-		})
+	db.update(conversationPromptPresetTable)
+		.set({ prompt_preset_id: promptPresetId })
+		.where(eq(conversationPromptPresetTable.conversation_id, conversationId))
 		.run();
 };
 
@@ -137,7 +139,7 @@ const toRecipeSlots = (
 				content: slot.content,
 			};
 		}
-		if (isBoxSlot(slot)) return { id: slot.id, reference: slot.reference, enabled: slot.enabled, role: slot.role, content: slot.content };
+		if (slot.reference === "brief-instruction" || isBoxSlot(slot)) return { id: slot.id, reference: slot.reference, enabled: slot.enabled, role: slot.role, content: slot.content };
 		return {
 			id: slot.id,
 			reference: slot.reference,

@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { asc, count, eq } from "drizzle-orm";
+import { asc, count, eq, or } from "drizzle-orm";
 import {
 	conversationPromptPresetTable,
 	promptPresetBlockTable,
@@ -28,6 +28,7 @@ import {
 import { guardRevision } from "../revision";
 import {
 	readDefaultPromptPresetId,
+	readDefaultPaintPresetId,
 	readPromptPresetRecipe,
 	promptPresetBlockSelection,
 	type PromptPresetDatabase,
@@ -71,16 +72,17 @@ const presetHeaderSelection = {
 	name: promptPresetTable.name,
 	revision: promptPresetTable.revision,
 	is_default: promptPresetTable.is_default,
+	is_default_paint: promptPresetTable.is_default_paint,
 };
 
 const summaryOf = (
-	preset: { id: number; name: string; revision: number; is_default: boolean },
+	preset: { id: number; name: string; revision: number; is_default: boolean; is_default_paint: boolean },
 	conversationCount: number,
 ): PromptPresetSummary => ({
 	id: preset.id,
 	name: preset.name,
 	revision: preset.revision,
-	isDefault: preset.is_default,
+	isDefault: preset.is_default || preset.is_default_paint,
 	conversationCount,
 });
 
@@ -90,15 +92,9 @@ const listPresetSummaries = (db: PromptPresetDatabase): PromptPresetSummary[] =>
 		.from(promptPresetTable)
 		.orderBy(asc(promptPresetTable.id))
 		.all();
-	const selections = db
-		.select({
-			presetId: conversationPromptPresetTable.prompt_preset_id,
-			total: count(),
-		})
-		.from(conversationPromptPresetTable)
-		.groupBy(conversationPromptPresetTable.prompt_preset_id)
-		.all();
-	const totals = new Map(selections.map((entry) => [entry.presetId, entry.total]));
+	const selections = db.select().from(conversationPromptPresetTable).all();
+	const totals = new Map<number, number>();
+	for (const selection of selections) for (const id of new Set([selection.prompt_preset_id, selection.paint_preset_id])) totals.set(id, (totals.get(id) ?? 0) + 1);
 	return presets.map((preset) => summaryOf(preset, totals.get(preset.id) ?? 0));
 };
 
@@ -116,7 +112,7 @@ const requireSummary = (db: PromptPresetDatabase, presetId: number): PromptPrese
 	const selection = db
 		.select({ total: count() })
 		.from(conversationPromptPresetTable)
-		.where(eq(conversationPromptPresetTable.prompt_preset_id, presetId))
+		.where(or(eq(conversationPromptPresetTable.prompt_preset_id, presetId), eq(conversationPromptPresetTable.paint_preset_id, presetId)))
 		.get();
 	return summaryOf(preset, selection?.total ?? 0);
 };
@@ -261,12 +257,16 @@ export function executePromptPresetCommand(
 				.where(eq(conversationPromptPresetTable.prompt_preset_id, preset.id))
 				.returning({ conversation_id: conversationPromptPresetTable.conversation_id })
 				.all();
+			const painting = db.update(conversationPromptPresetTable)
+				.set({ paint_preset_id: readDefaultPaintPresetId(db) })
+				.where(eq(conversationPromptPresetTable.paint_preset_id, preset.id))
+				.returning({ conversation_id: conversationPromptPresetTable.conversation_id }).all();
 			db.delete(promptPresetTable).where(eq(promptPresetTable.id, preset.id)).run();
 			return {
 				kind: "deleted",
 				result: {
 					presetId: preset.id,
-					reassignedConversationCount: reassigned.length,
+					reassignedConversationCount: new Set([...reassigned, ...painting].map((row) => row.conversation_id)).size,
 				},
 			};
 		}
