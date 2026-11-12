@@ -423,7 +423,7 @@ export function ActiveWritingWorkspace({
 		<GenerationErrorToast
 			error={generation.generationError}
 			imageModel={generation.generationImageModel}
-			retry={generation.retryGeneration}
+			retry={generation.retryGeneration === null ? null : () => saveNavigation.requestNavigation(() => generation.retryGeneration?.())}
 			acknowledge={generation.acknowledgeGenerationError}
 		/>
 		<ControlChangeToaster ref={controlToaster} />

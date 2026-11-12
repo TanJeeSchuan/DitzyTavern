@@ -1,3 +1,4 @@
+import { useNavigationRequest } from "../SaveGuard";
 import { Paintbrush } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RefObject } from "react";
@@ -98,6 +99,7 @@ export function StoryStage({
 	onControlChange: (text: string) => void;
 	onFork: (at: { through: number; variantId?: number } | { rewind: number }) => void;
 }) {
+	const navigate = useNavigationRequest();
 	const readyStory = isStoryReady(story) ? story : null;
 	const storyConversationId = "conversationId" in story ? story.conversationId : null;
 	const illustrations = useIllustrations(storyConversationId);
@@ -120,24 +122,24 @@ export function StoryStage({
 	//  Message rows are memoized, so a streamed event re-renders only the row
 	// whose text changed. Their handlers keep one identity across renders and
 	// call the latest render's.
-	const latest = useRef({ generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint });
-	latest.current = { generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint };
+	const latest = useRef({ navigate, generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint });
+	latest.current = { navigate, generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint };
 	const rows = useMemo(() => ({
 		paint: (variantId: number) => latest.current.onPaint(variantId),
-		continueMessage: (messageId: number) => latest.current.generation.continueMessage(messageId),
-		regenerate: (messageId: number) => {
+		continueMessage: (messageId: number) => latest.current.navigate(() => latest.current.generation.continueMessage(messageId)),
+		regenerate: (messageId: number) => latest.current.navigate(() => {
 			latest.current.viewport.followLatest(messageId);
 			latest.current.generation.regenerateResponse(messageId);
-		},
-		sibling: (messageId: number) => {
+		}),
+		sibling: (messageId: number) => latest.current.navigate(() => {
 			latest.current.viewport.followLatest(messageId);
 			latest.current.generation.siblingMessage(messageId);
-		},
-		reroll: (messageId: number) => latest.current.generation.siblingMessage(messageId, true),
+		}),
+		reroll: (messageId: number) => latest.current.navigate(() => latest.current.generation.siblingMessage(messageId, true)),
 		inspect: (messageId: number, variantId: number) => latest.current.onInspectVariant(messageId, variantId),
 		openInspector: (box: string, focus: { messageId: number }) => latest.current.onOpenInspector(box, focus),
-		moveSwipe: (messageId: number, direction: -1 | 1) => void latest.current.storyActions.changeSwipe(messageId, direction),
-		selectVariant: (messageId: number, variantId: number) => void latest.current.storyActions.selectSwipe(messageId, variantId),
+		moveSwipe: (messageId: number, direction: -1 | 1) => latest.current.navigate(() => void latest.current.storyActions.changeSwipe(messageId, direction)),
+		selectVariant: (messageId: number, variantId: number) => latest.current.navigate(() => void latest.current.storyActions.selectSwipe(messageId, variantId)),
 		edit: (messageId: number, content: string, asNew: boolean) => latest.current.storyActions.editStoryMessage(messageId, content, asNew),
 		fork: (messageId: number) => latest.current.onFork({ through: messageId }),
 		rewind: (messageId: number) => latest.current.onFork({ rewind: messageId }),
@@ -318,7 +320,7 @@ export function StoryStage({
 					isGenerating={generation.isGenerating}
 					canWrite={generation.assemblyAvailable}
 					atLatest={viewport.atLatest}
-					onSubmit={generation.submitMessage}
+					onSubmit={(event) => { event.preventDefault(); navigate(() => generation.submitMessage(event)); }}
 					onCancel={generation.cancelGeneration}
 					stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
 					writerName={humanParticipant?.duplicateLabel}
