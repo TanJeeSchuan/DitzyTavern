@@ -75,9 +75,8 @@ interface PresetDeletionConfirmationCopy {
 }
 
 // @approved
-// The confirmation names exactly what deletion does: the affected
-//  Conversations move to the Default preset in the same operation, and
-// the Default preset itself can never be deleted.
+// Deletion resets affected story selections to Default and Paint selections
+// to Default (Paint) in the same operation. Neither built-in can be deleted.
 export function presetDeletionConfirmationCopy(
 	name: string,
 	conversationCount: number,
@@ -105,8 +104,7 @@ export function presetDeletionImpactChangedNotice(
 // @approved
 // Success notice after a confirmed deletion. The typed result carries the
 //  derived reassignment, so the wording matches what the server
-// actually did: affected Chats landed on the Default preset, and nothing
-// else in them changed.
+// actually did: affected selections reset to their respective built-in presets.
 export function presetDeletionResultNotice(
 	name: string,
 	result: { reassignedConversationCount: number },

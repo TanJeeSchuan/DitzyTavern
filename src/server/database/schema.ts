@@ -58,8 +58,8 @@ export interface PortraitColumnRow {
 // @approved
 //  The shared Prompt Preset library. A preset is an ordered assembly recipe
 // only: Generation Settings and text-processing scripts are deliberately not
-// part of it. Exactly one row is the Default preset, which every Conversation
-// selects until it selects another.
+// part of it. Chats start with Default for stories and Default (Paint) for
+// painting, each identified by its own unique built-in marker.
 export const promptPresetTable = sqliteTable(
 	"prompt_preset",
 	{
@@ -303,10 +303,9 @@ export const conversationTable = sqliteTable("conversation", {
 }, (table) => [check("conversation_fork_link_check", sql`${table.forked_from_conversation_id} IS NOT NULL OR ${table.forked_from_message_id} IS NULL`)]);
 
 // @approved
-//  The Conversation's own selection from the shared preset library. The
-// preset is referenced, never copied: saved edits reach every Conversation
-// that selected it. Every Conversation has exactly one row, written at
-// creation, so no read has to invent a selection.
+//  Each Chat holds its story and Paint selections plus its Brief Messages
+// count (NULL means All) in one row, written at creation. Presets are referenced,
+// never copied: saved edits reach every Chat that selected them.
 export const conversationPromptPresetTable = sqliteTable(
 	"conversation_prompt_preset",
 	{
