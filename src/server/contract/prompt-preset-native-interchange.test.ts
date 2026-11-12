@@ -89,7 +89,7 @@ describe("Native Prompt Preset interchange", () => {
 			],
 		});
 		expect(result.status).toBe(422);
-		expect(await listPresets(routes.library)).toHaveLength(2);
+		expect(await listPresets(routes.library)).toHaveLength(3);
 	});
 
 	test("rejects a reference to a Box that is not registered", async () => {
@@ -97,7 +97,7 @@ describe("Native Prompt Preset interchange", () => {
 		const result = await importPreset(routes.library, { name: "Unknown Box", slots: [{ reference: "box:nope", enabled: true, role: "system", content: "" }] });
 		expect(result.status).toBe(422);
 		expect(result.body).toMatchObject({ reason: "There is no Box for box:nope." });
-		expect(await listPresets(routes.library)).toHaveLength(2);
+		expect(await listPresets(routes.library)).toHaveLength(3);
 	});
 
 	test("imports as a new independent preset and invalid input leaves the library unchanged", async () => {
@@ -129,6 +129,7 @@ describe("Native Prompt Preset interchange", () => {
 		expect((await listPresets(routes.library)).map((preset) => preset.name)).toEqual([
 			"Default",
 			"Default (cache-saving)",
+			"Default (Paint)",
 			"Independent",
 		]);
 

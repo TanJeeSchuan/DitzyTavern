@@ -195,7 +195,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		// @approved
 		//  SAFETY: the list route's payload is the authoritative library read.
 		const payload = await listed.json() as { presets: { name: string }[] };
-		expect(payload.presets).toHaveLength(4);
+		expect(payload.presets).toHaveLength(5);
 	});
 
 	test("requires an explicit unfamiliar-list choice and keeps conflicting toggles", async () => {

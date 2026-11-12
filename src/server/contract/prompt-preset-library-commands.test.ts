@@ -40,6 +40,7 @@ describe("Prompt Preset library transport", () => {
 		expect(presets).toEqual([
 			{ id: 1, name: "Default", revision: 1, isDefault: true, conversationCount: 2 },
 			cacheSaving,
+			{ id: 3, name: "Default (Paint)", revision: 0, isDefault: true, conversationCount: 2 },
 		]);
 	});
 
@@ -73,6 +74,7 @@ describe("Prompt Preset library transport", () => {
 		expect(presets.map((preset) => [preset.name, preset.conversationCount])).toEqual([
 			["Default", 0],
 			["Default (cache-saving)", 0],
+			["Default (Paint)", 1],
 			["Blank", 1],
 		]);
 	});
@@ -195,7 +197,7 @@ describe("Prompt Preset library transport", () => {
 		expect(deleted.status).toBe(200);
 
 		const presets = await listPresets(app);
-		expect(presets.map((preset) => preset.name)).toEqual(["Default", "Default (cache-saving)", "Duplicate"]);
+		expect(presets.map((preset) => preset.name)).toEqual(["Default", "Default (cache-saving)", "Default (Paint)", "Duplicate"]);
 		expect(presets.find((preset) => preset.name === "Duplicate")).toMatchObject({
 			revision: 0,
 			conversationCount: 0,
@@ -215,7 +217,7 @@ describe("Prompt Preset library transport", () => {
 		expect(deleted.body).toMatchObject({ outcome: "not-removable" });
 
 		const presets = await listPresets(app);
-		expect(presets.map((preset) => preset.id)).toEqual([1, 2]);
+		expect(presets.map((preset) => preset.id)).toEqual([1, 2, 3]);
 	});
 
 	test("reports the affected Conversation count and reassigns exactly those Chats to Default", async () => {
@@ -255,6 +257,7 @@ describe("Prompt Preset library transport", () => {
 		expect(after).toEqual([
 			{ id: 1, name: "Default", revision: 1, isDefault: true, conversationCount: 3 },
 			cacheSaving,
+			{ id: 3, name: "Default (Paint)", revision: 0, isDefault: true, conversationCount: 3 },
 		]);
 	});
 
@@ -308,7 +311,7 @@ describe("Prompt Preset library transport", () => {
 		});
 
 		expect((await readSelectedPreset(routes.conversations, conversation.id))?.id).toBe(storyId);
-		expect((await listPresets(routes.library)).map((preset) => preset.id)).toEqual([1, 2, storyId]);
+		expect((await listPresets(routes.library)).map((preset) => preset.id)).toEqual([1, 2, 3, storyId]);
 	});
 
 	test("conflicts a deletion when the affected-Conversation count decreased without a revision change", async () => {
@@ -340,7 +343,7 @@ describe("Prompt Preset library transport", () => {
 
 		expect((await readSelectedPreset(routes.conversations, chatA.id))?.id).toBe(1);
 		expect((await readSelectedPreset(routes.conversations, chatB.id))?.id).toBe(storyId);
-		expect((await listPresets(routes.library)).map((preset) => preset.id)).toEqual([1, 2, storyId]);
+		expect((await listPresets(routes.library)).map((preset) => preset.id)).toEqual([1, 2, 3, storyId]);
 	});
 
 	test("selects independently for each Conversation and survives a fresh read", async () => {
