@@ -22,6 +22,7 @@ import type {
 	PromptImageResolution,
 	PromptBudgetResult,
 	PromptContextEntry,
+	LiteralPromptMessage,
 	PromptPlan,
 	PromptLoreEntry,
 	TokenEstimator,
@@ -71,7 +72,7 @@ export interface CompileGenerationPlanInput {
 	readonly human: CompilePromptDefinition;
 	readonly model: CompilePromptDefinition;
 	readonly context: readonly PromptContextEntry[];
-	readonly trailingMessages?: readonly PromptContextEntry[];
+	readonly trailingMessages?: readonly LiteralPromptMessage[];
 	// The selected Prompt Preset's ordered recipe, captured with the rest of
 	// the attempt's inputs so execution never rereads mutable preset state.
 	readonly recipe: readonly PromptPresetSlot[];

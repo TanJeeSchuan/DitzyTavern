@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { AppSelect } from "@/components/ui/select";
@@ -40,26 +41,29 @@ export function PaintPanel({ conversationId, target, onClose }: { conversationId
 				</Field>
 				<Field label="Messages" htmlFor="brief-message-count">
 					<div className="flex items-center gap-3">
-						<input key={String(selection?.briefMessageCount)} id="brief-message-count" name="messages" type="number" min={1} step={1}
-							className="field-input min-w-0 flex-1" defaultValue={selection?.briefMessageCount ?? ""} disabled={settingsDisabled || selection?.briefMessageCount === null}
+						<Input key={String(selection?.briefMessageCount)} id="brief-message-count" name="messages" type="number" required min={1} step={1}
+							className="min-w-0 flex-1" defaultValue={selection?.briefMessageCount ?? ""} disabled={settingsDisabled || selection?.briefMessageCount === null}
 							onBlur={(event) => {
-								if (event.relatedTarget instanceof HTMLButtonElement && event.relatedTarget.type === "submit") return;
+								if (event.relatedTarget instanceof HTMLButtonElement && (event.relatedTarget.type === "submit" || event.relatedTarget.getAttribute("role") === "switch")) return;
 								const count = event.currentTarget.valueAsNumber;
-								if (Number.isSafeInteger(count) && count > 0) void submit({ type: "set-brief-message-count", briefMessageCount: count });
+								if (Number.isSafeInteger(count) && count > 0) {
+									if (count !== selection?.briefMessageCount) void submit({ type: "set-brief-message-count", briefMessageCount: count });
+								}
 								else event.currentTarget.value = String(selection?.briefMessageCount ?? 5);
 							}} />
 						<label className="flex items-center gap-2 text-sm"><Switch checked={selection?.briefMessageCount === null} disabled={settingsDisabled}
 							onCheckedChange={(all) => void submit({ type: "set-brief-message-count", briefMessageCount: all ? null : 5 })} />All</label>
 					</div>
 				</Field>
-				<div className="flex items-center gap-3">
-					<Button type="submit" disabled={settingsDisabled || !selection?.paintPresets.some((preset) => preset.id === selection.paintPresetId)}>Write Brief</Button>
-					{writing.pending && <><span role="status" className="text-sm text-muted-foreground">Writing Brief…</span><Button type="button" variant="ghost" onClick={writing.stop}>Stop</Button></>}
+				<div className="flex flex-wrap items-center gap-3" aria-live="polite">
+					<Button type="submit" disabled={settingsDisabled || !selection?.paintPresets.some((preset) => preset.id === selection.paintPresetId)}>{writing.pending ? "Writing Brief…" : "Write Brief"}</Button>
+					{writing.pending && <Button type="button" variant="ghost" onClick={writing.stop}>Stop</Button>}
 				</div>
+				{selection && !selection.paintPresets.some((preset) => preset.id === selection.paintPresetId) && <p className="panel-note">Choose a Paint Preset with an enabled Brief instruction to write a Brief.</p>}
 				{writing.error && <p role="alert" className="text-sm text-destructive">{writing.error}</p>}
 			</form>
 			<Field label="Brief" helper="Describe the picture. Insert pictures to use as references.">
-				<ProseEditor className="prose-editor-field" ariaLabel="Brief" value={brief} onChange={setBrief} disabled={writing.pending} />
+				<ProseEditor className="prose-editor-field" ariaLabel="Brief" autoFocus={Boolean(target.brief)} value={brief} onChange={setBrief} disabled={writing.pending} />
 			</Field>
 			<Field label="Shape" htmlFor="painting-aspect-ratio">
 				<AppSelect id="painting-aspect-ratio" className="field-input" value={aspectRatio} disabled={pending || read.isPending || read.isError}

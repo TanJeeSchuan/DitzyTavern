@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { createParser } from "eventsource-parser";
-import { Value } from "@sinclair/typebox/value";
+import { decodeWirePayload } from "./lib/wire-decode";
 import { generationEvent } from "../shared/contract/generation-events";
+import { clientFormattingContext } from "./lib/formatting-context";
 import type { BriefRequest } from "../shared/contract/painting";
 
 export function useWriteBrief(conversationId: number, onText: (text: string) => void) {
@@ -17,13 +18,14 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 		setError(null);
 		try {
 			const response = await fetch(`/api/conversations/${conversationId}/brief`, {
-				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request), signal: active.signal,
+				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...clientFormattingContext(), ...request }), signal: active.signal,
 			});
 			if (!response.ok || !response.body) throw new Error("The Brief request could not start. Try again.");
 			let text = "";
 			let finished = false;
 			const parser = createParser({ onEvent: ({ data }) => {
-				const event = Value.Parse(generationEvent, JSON.parse(data));
+				const event = decodeWirePayload(generationEvent, JSON.parse(data));
+				if (event === null) throw new Error("The Brief stream returned an invalid response. Try again.");
 				if (event.type === "failed") throw new Error(event.message);
 				if (event.type === "finished") finished = true;
 				if (event.type === "content") { text += event.text; onText(text); }

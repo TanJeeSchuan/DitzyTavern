@@ -48,6 +48,7 @@ const promptDefinitionRole = Type.Union([
 ]);
 
 const promptDefinitionBlockKind = Type.Union([
+	Type.Literal("message"),
 	Type.Literal("system-instruction"),
 	Type.Literal("identity"),
 	Type.Literal("appearance"),

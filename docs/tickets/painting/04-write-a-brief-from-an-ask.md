@@ -29,9 +29,9 @@ Overlaps with ticket 02 in Prompt Preset block references. Run it after 02, not 
 - [x] Stream the reply into the panel's Brief editor. Store it nowhere.
 - [x] Add to the Paint panel: the Ask box, Write Brief, the Paint Preset picker listing the presets that hold an enabled Brief instruction, and the number of Messages to read, stored per Chat, defaulting to 5, with All.
 - [x] Test through captured requests (Testing Decision 4): the Paint Preset is used, the Brief instruction is included, the request ends with the Ask, exactly the last N Messages are read, matching Lore is included and no Box block is. A Generation on a preset holding a Brief instruction never sends it.
-- [ ] e2e: open the panel on an older Message, write a Brief from an Ask, edit it and paint.
+- [x] e2e: open the panel on an older Message, write a Brief from an Ask, edit it and paint.
 - [ ] Verify manually with playwright-cli. No UI tests.
-- [ ] Run focused tests locally; let CI run typechecking and the full suite.
+- [x] Run focused tests locally; let CI run typechecking and the full suite.
 - [ ] Run `/code-review` and resolve its findings.
 - [ ] Set this ticket to DONE and commit.
 

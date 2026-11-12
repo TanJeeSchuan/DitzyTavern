@@ -28,6 +28,7 @@ export type {
 	MacroAttemptState,
 	PromptBlock,
 	PromptContextEntry,
+	LiteralPromptMessage,
 	PromptHistoryRole,
 	PromptImage,
 	PromptPlan,

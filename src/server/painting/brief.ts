@@ -6,7 +6,7 @@ import { createConnectionSettingsModule, connectionSnapshotOf, type ConnectionSe
 import { assertGenerationPlan, compileGenerationPlan } from "../generation-plan";
 import { createModelClient, projectModelClientGenerationSettings, type ModelFetch } from "../model-client";
 import { readPromptPresetRecipe } from "../prompt-preset";
-import { readPaintPresetSettings } from "../prompt-preset/paint";
+import { readPaintPresetSettings } from "../prompt-preset";
 import { hasEnabledBriefInstruction, hasEnabledLoreSlot, type PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import { evaluateScopedLore, evaluateScopedLoreAsync, noLoreEvaluation } from "../lorebook/evaluation";
 import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
@@ -22,7 +22,7 @@ export async function* writeBrief(database: Database, conversationId: number, re
 		if (!chat) throw new ConversationNotFoundError(conversationId);
 		const human = chat.cast.find((participant) => participant.id === chat.control.humanParticipantId);
 		const model = chat.cast.find((participant) => participant.id === chat.control.modelParticipantId);
-		if (!human || !model) throw new ConversationNotPlayableError(conversationId);
+		if (!human || !model || human.id === model.id) throw new ConversationNotPlayableError(conversationId);
 		const selection = readPaintPresetSettings(database, conversationId);
 		const preset = readPromptPresetRecipe(database, selection.paintPresetId);
 		if (!preset || !hasEnabledBriefInstruction(preset.slots)) throw new InvalidConversationCommandError("Choose a Paint Preset with an enabled Brief instruction.");
@@ -46,13 +46,13 @@ export async function* writeBrief(database: Database, conversationId: number, re
 		}) : noLoreEvaluation();
 		return { human, model, settings, connection, recipe, context, lore,
 			ask: request.ask.trim() ? request.ask : `Describe the scene at Message ${selected.position}, the final Message in the supplied history.`,
-			attempt: createAttemptEnvironment({ self: human.name, other: model.name, conversationId, promptPresetId: preset.id, now: new Date(), variables }),
+			attempt: createAttemptEnvironment({ self: human.name, other: model.name, conversationId, promptPresetId: preset.id, now: new Date(), variables, timeZone: request.timeZone, locale: request.locale }),
 			client: createModelClient({ profile, secrets: connections.getProfileSecrets(profile.id), loadImage: imageLoader(database), fetch: options.fetch }),
 		};
 	});
-	const lore = captured.lore.sources === undefined ? captured.lore : await evaluateScopedLoreAsync(captured.lore.sources, { fetch: options.fetch, signal });
+	const lore = captured.lore.activation.mode !== "keyword-fallback" || captured.lore.sources === undefined ? captured.lore : await evaluateScopedLoreAsync(captured.lore.sources, { fetch: options.fetch, signal });
 	const plan = assertGenerationPlan(compileGenerationPlan({ ...captured, boxes: {}, lore: lore.candidates, loreAllowance: lore.allowance,
-		trailingMessages: [{ kind: "message", role: "human", speakerName: null, content: captured.ask }],
+		trailingMessages: [{ role: "human", content: captured.ask }],
 		images: promptImageResolutionFor(database, captured.connection, captured.settings),
 	}));
 	yield* captured.client.generate({ promptPlan: plan.promptPlan, modelId: plan.effectiveSettings.modelId,

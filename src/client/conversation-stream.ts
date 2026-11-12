@@ -1,7 +1,7 @@
 import { createParser } from "eventsource-parser";
 // @approved
 // The Conversation JSON routes use the typed Eden client. This module owns
-//  the one deliberately manual protocol: the resumable Generation SSE stream.
+//  the resumable Generation SSE protocol.
 // eventsource-parser owns SSE framing, comments, and partial frames. This module
 // owns HTTP status and network failure mapping, target and cursor checks, and
 // terminal outcomes; every frame payload is decoded
