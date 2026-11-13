@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { renderBlocks, revealedLength } from "./prose";
+import { renderBlocks, revealedLength, settledFloor } from "./prose";
 
 const render = (text: string) => renderBlocks(text).join("");
 
@@ -80,6 +80,13 @@ describe("revealedLength", () => {
 		expect(revealedLength("A lantern dims. ", true)).toBe("A lantern dims.".length);
 		expect(revealedLength("Done.\n\nA second paragraph waits here.", true)).toBe("Done.\n\nA second paragraph waits here.".length);
 		expect(revealedLength("A lantern dims. The door", true)).toBe("A lantern dims.".length);
+	});
+
+	test("a later stall keeps what an earlier one showed while the text extends it", () => {
+		const first = settledFloor("Wait...", "");
+		expect(first).toBe("Wait...");
+		expect(settledFloor("Wait...what", first)).toBe("Wait...");
+		expect(settledFloor("Gone.", first)).toBe("Gone.");
 	});
 
 	test("never takes back revealed text as the stream grows", () => {

@@ -140,6 +140,12 @@ export function revealedLength(text: string, settled = false): number {
 	return revealed;
 }
 
+/** @approved What a stall shows: every finished sentence, or the earlier floor when the text still extends it and no newer sentence has ended. */
+export function settledFloor(text: string, floor: string): string {
+	const shown = text.slice(0, revealedLength(text, true));
+	return text.startsWith(floor) && floor.length > shown.length ? floor : shown;
+}
+
 function wipeTextAfter(root: HTMLElement, offset: number) {
 	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 	const nodes: Text[] = [];
@@ -201,10 +207,7 @@ export function Prose({ text, streaming }: { text: string; streaming: boolean })
 	const [settled, setSettled] = useState("");
 	useEffect(() => {
 		if (!streaming) return;
-		const timer = setTimeout(() => setSettled((floor) => {
-			const shown = text.slice(0, revealedLength(text, true));
-			return text.startsWith(floor) && floor.length > shown.length ? floor : shown;
-		}), STALL_MS);
+		const timer = setTimeout(() => setSettled((floor) => settledFloor(text, floor)), STALL_MS);
 		return () => clearTimeout(timer);
 	}, [text, streaming]);
 	const shown = streaming ? text.slice(0, Math.max(revealedLength(text), text.startsWith(settled) ? settled.length : 0)) : text;
