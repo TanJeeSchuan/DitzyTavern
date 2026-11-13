@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
-import { activeGenerationTable, messageTable, messageVariantTable, participantTable } from "../database/schema";
+import { activeGenerationTable, messageTable, messageVariantTable, messageVariantDataTable, participantTable } from "../database/schema";
 import { connectConversationDatabase } from "./internal";
 import { readSelectedHistory } from "./selected-history";
 import { liveVariantContent } from "./generation-checkpoint";
@@ -127,3 +127,9 @@ export const readChatVariantIds = (database: Database, conversationId: number) =
 	.select({ id: messageVariantTable.id }).from(messageVariantTable)
 	.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
 	.where(eq(messageTable.conversation_id, conversationId)).all().map(({ id }) => id);
+
+export const readChatVariantData = (database: Database, conversationId: number, namespace: string) => connectConversationDatabase(database)
+	.select({ key: messageVariantDataTable.key, variantId: messageVariantDataTable.message_variant_id, value: messageVariantDataTable.value }).from(messageVariantDataTable)
+	.innerJoin(messageVariantTable, eq(messageVariantTable.id, messageVariantDataTable.message_variant_id))
+	.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
+	.where(and(eq(messageTable.conversation_id, conversationId), eq(messageVariantDataTable.namespace, namespace))).all();

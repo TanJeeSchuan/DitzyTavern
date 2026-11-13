@@ -75,7 +75,7 @@ export function AppearanceField({ draft, placeholder, onDraftChange }: { draft: 
 				}}><ImageUp aria-hidden="true" /> Insert Portrait</Button>
 				<Popover open={open} onOpenChange={setOpen}>
 					<PopoverTrigger asChild><Button type="button" size="xs" variant="ghost">Describe</Button></PopoverTrigger>
-					<PopoverContent align="end" collisionBoundary={boundary.current} collisionPadding={8} className="w-72">
+					<PopoverContent align="end" collisionBoundary={boundary.current} collisionPadding={8} className="w-72 max-w-[var(--radix-popover-content-available-width)]">
 						<AskForm ask={ask} onAsk={setAsk} pending={state.kind === "describing"} onDescribe={() => void describe(appearanceImageHashes(draft), ask, (text) => {
 							editor.current?.appendText(text);
 							return editor.current !== null;
