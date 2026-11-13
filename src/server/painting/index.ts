@@ -16,7 +16,7 @@ import { parseImageReferences } from "../../shared/image-reference";
 import { illustrationName } from "../../shared/painting-brief";
 import type { GalleryRead } from "../../shared/contract/painting";
 
-const NAMESPACE = "painting";
+import { PAINTING_NAMESPACE } from "../../shared/variant-data-codecs";
 
 export const createPaintingModule = (database: Database, options: ConnectionSettingsModuleOptions & { fetch?: ModelFetch } = {}) => {
 	const db = drizzle(database);
@@ -27,10 +27,10 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	};
 	const read = (conversationId: number): IllustrationsRead => {
 		requireChat(conversationId);
-		const row = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, NAMESPACE), eq(conversationDataTable.key, "aspect-ratio"))).get();
+		const row = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), eq(conversationDataTable.key, "aspect-ratio"))).get();
 		const aspectRatio = row === undefined ? DEFAULT_PAINTING_ASPECT_RATIO : Value.Parse(paintingSettings, JSON.parse(row.value)).aspectRatio;
 		const variantIds = variants(conversationId);
-		const stored = readChatVariantData(database, conversationId, NAMESPACE);
+		const stored = readChatVariantData(database, conversationId, PAINTING_NAMESPACE);
 		const paintings: Painting[] = stored.map(({ key: id, variantId, value }) => ({ kind: "illustration", id, variantId, ...Value.Parse<typeof illustration>(illustration, JSON.parse(value)) }));
 		for (const variantId of variantIds) for (const entry of provisional.forVariant(variantId)) paintings.push(entry.painting);
 		return { ...readPaintPresetSettings(database, conversationId), aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)) };
@@ -52,7 +52,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 				if (controller.signal.aborted) return;
 				database.transaction(() => {
 					storeImage(database, image);
-					db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: NAMESPACE, key: id, value: JSON.stringify({ image: `image:${image.hash}`, brief, ask, imageModel: painting.imageModel, aspectRatio }) }).run();
+					db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: PAINTING_NAMESPACE, key: id, value: JSON.stringify({ image: `image:${image.hash}`, brief, ask, imageModel: painting.imageModel, aspectRatio }) }).run();
 				}).immediate();
 				provisional.remove(variantId, id);
 			} catch (error) {
@@ -66,13 +66,13 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		requireChat(conversationId);
 		if (command.type === "select-paint-preset" || command.type === "set-brief-message-count") return commandPaintPreset(database, conversationId, command);
 		if (command.type === "set-aspect-ratio") {
-			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: NAMESPACE, key: "aspect-ratio", value: JSON.stringify({ aspectRatio: command.aspectRatio }) })
+			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key: "aspect-ratio", value: JSON.stringify({ aspectRatio: command.aspectRatio }) })
 				.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value: JSON.stringify({ aspectRatio: command.aspectRatio }) } }).run();
 			return;
 		}
 		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint.");
 		if (command.type === "delete") {
-			db.delete(messageVariantDataTable).where(and(eq(messageVariantDataTable.message_variant_id, command.variantId), eq(messageVariantDataTable.namespace, NAMESPACE), eq(messageVariantDataTable.key, command.id))).run();
+			db.delete(messageVariantDataTable).where(and(eq(messageVariantDataTable.message_variant_id, command.variantId), eq(messageVariantDataTable.namespace, PAINTING_NAMESPACE), eq(messageVariantDataTable.key, command.id))).run();
 			return;
 		}
 		if (command.type === "paint") {

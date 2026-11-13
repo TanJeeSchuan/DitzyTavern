@@ -1,3 +1,4 @@
+import { MessageAction } from "./MessageAction";
 import { IllustrationRows } from "./IllustrationRows";
 import { hasMoves, type BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
@@ -14,7 +15,7 @@ import {
 	GitFork,
 	Undo2,
 } from "lucide-react";
-import { Collapsible } from "radix-ui";
+import { Collapsible, Tooltip } from "radix-ui";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import type { SwipeBrowsing } from "../workspace";
 import { memo, type ReactNode, type TouchEvent, useEffect, useRef, useState } from "react";
@@ -262,47 +263,19 @@ export const StoryMessageView = memo(function StoryMessageView({
 						{previewTarget && <span className="message-preview-marker">Previewed Swipe</span>}
 					</div>
 				</div>
+				<Tooltip.Provider delayDuration={0}>
 				<div className="advanced-actions" aria-label="Advanced Message actions">
-					{onPaint !== undefined && <button className="edit-action" type="button" disabled={paintDisabledReason !== undefined || generationActive || active === undefined} title={paintDisabledReason ?? "Paint"} onClick={() => { if (active !== undefined) onPaint(active.id); }}><Paintbrush aria-hidden="true" /><span className="advanced-action-label">Paint</span></button>}
-					{onSibling !== undefined && (
-						<button
-							className="edit-action"
-							type="button"
-							disabled={mutationsDisabled}
-							title="New Swipe"
-							onClick={() => onSibling(message.id)}
-						>
-							<RefreshCw aria-hidden="true" /><span className="advanced-action-label">New Swipe</span>
-						</button>
-					)}
-					{onReroll !== undefined && <button className="edit-action" type="button" disabled={mutationsDisabled} title="Re-roll" onClick={() => onReroll(message.id)}>
-						<Dices aria-hidden="true" /><span className="advanced-action-label">Re-roll</span>
-					</button>}
-					{onInspect !== undefined && active !== undefined && (
-						<button
-							className="edit-action"
-							type="button"
-							title="Details"
-							onClick={() => onInspect(message.id, active.id)}
-						>
-							<Info aria-hidden="true" /><span className="advanced-action-label">Details</span>
-						</button>
-					)}
+					{onPaint !== undefined && <MessageAction label="Paint" disabled={paintDisabledReason !== undefined || generationActive || active === undefined}
+						title={paintDisabledReason} onClick={() => { if (active !== undefined) onPaint(active.id); }}><Paintbrush aria-hidden="true" /></MessageAction>}
+					{onSibling !== undefined && <MessageAction label="New Swipe" disabled={mutationsDisabled} onClick={() => onSibling(message.id)}><RefreshCw aria-hidden="true" /></MessageAction>}
+					{onReroll !== undefined && <MessageAction label="Re-roll" disabled={mutationsDisabled} onClick={() => onReroll(message.id)}><Dices aria-hidden="true" /></MessageAction>}
+					{onInspect !== undefined && active !== undefined && <MessageAction label="Details" onClick={() => onInspect(message.id, active.id)}><Info aria-hidden="true" /></MessageAction>}
 					{lens !== undefined && onOpenInspector !== undefined && <BoxMessageActions conversation={lens.conversation} messageId={message.id} onOpen={onOpenInspector} />}
-					{onDelete !== undefined && (
-						<button
-							className="edit-action delete-action"
-							title="Delete"
-							type="button"
-							disabled={mutationsDisabled}
-							onClick={() => {
-								if (window.confirm("Delete this Message?")) onDelete(message.id);
-							}}
-						>
-							<Trash2 aria-hidden="true" /><span className="advanced-action-label">Delete</span>
-						</button>
-					)}
+					{onDelete !== undefined && <MessageAction label="Delete" className="edit-action delete-action" disabled={mutationsDisabled} onClick={() => {
+						if (window.confirm("Delete this Message?")) onDelete(message.id);
+					}}><Trash2 aria-hidden="true" /></MessageAction>}
 				</div>
+				</Tooltip.Provider>
 			</header>
 			<MoveChips moves={message.moves} disabled={mutationsDisabled}
 				onChange={onMovesChange === undefined ? undefined : (moves) => onMovesChange(message.id, moves)} />

@@ -113,7 +113,7 @@ export function ActiveWritingWorkspace({
 		refreshStory: session.refreshStory,
 		ensureLatest: session.ensureLatest,
 		inspectPromptPlanBeforeGenerating,
-		onInspect: paintNavigation.requestNavigation,
+		beforeInspect: paintNavigation.requestNavigation,
 	});
 	const assembly = generation.assembly;
 	const assemblyActive = assembly !== null;
@@ -245,13 +245,17 @@ export function ActiveWritingWorkspace({
 		});
 	});
 
+	const paintDisabledReason = assemblyActive ? "Close the Prompt Plan preview to paint." : story.preview !== null ? "Confirm or cancel the Swipe preview to paint." : undefined;
 	const composerRef = useRef<ComposerHandle>(null);
 	const paintDrafts = useRef(new Map<number, Pick<PaintTarget, "brief" | "ask">>());
-	const openPaint = (variantId: number, brief?: string, ask = "") => saveNavigation.requestNavigation(() => {
-		const draft = brief === undefined ? paintDrafts.current.get(variantId) ?? { brief: "", ask: "" } : { brief, ask };
-		paintDrafts.current.set(variantId, draft);
-		dispatchPanel({ type: "paint-opened", target: { variantId, ...draft, requestId: crypto.randomUUID() } });
-	});
+	const openPaint = (variantId: number, brief?: string, ask = "") => {
+		if (paintDisabledReason !== undefined) return;
+		saveNavigation.requestNavigation(() => {
+			const draft = brief === undefined ? paintDrafts.current.get(variantId) ?? { brief: "", ask: "" } : { brief, ask };
+			paintDrafts.current.set(variantId, draft);
+			dispatchPanel({ type: "paint-opened", target: { variantId, ...draft, requestId: crypto.randomUUID() } });
+		});
+	};
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
 	// @approved
 	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
@@ -264,7 +268,8 @@ export function ActiveWritingWorkspace({
 				if (narrow) dispatchPanel({ type: "details-closed" });
 				composerRef.current?.insertReference(name, hash);
 			},
-			editBrief: openPaint,
+			editBrief: paintDisabledReason === undefined ? openPaint : null,
+			editBriefDisabledReason: paintDisabledReason,
 		}}>
 		<ChatPins.Provider value={conversation ?? noPins}>
 		<Toast.Provider duration={8_000} swipeDirection="right">
@@ -347,6 +352,7 @@ export function ActiveWritingWorkspace({
 				onOpenInspector={openBoxInspector}
 				onInspectVariant={openVariantDetails}
 				onPaint={openPaint}
+				paintDisabledReason={paintDisabledReason}
 				generationRunning={generationRunning}
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}

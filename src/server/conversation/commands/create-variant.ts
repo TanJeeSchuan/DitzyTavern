@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { messageVariantDataTable } from "../../database/schema";
 import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
-import { BOX_TRACES_NAMESPACE, GENERATION_DATA_KEYS, GENERATION_DATA_NAMESPACE, LORE_ACTIVATION_NAMESPACE } from "../../../shared/variant-data-codecs";
+import { BOX_TRACES_NAMESPACE, GENERATION_DATA_KEYS, GENERATION_DATA_NAMESPACE, LORE_ACTIVATION_NAMESPACE, PAINTING_NAMESPACE } from "../../../shared/variant-data-codecs";
 import { SEED_KEY, SEED_NAMESPACE, variantSeedOf } from "../../box/seed";
 import type { ConversationDatabase } from "../internal";
 import { appendSelectedVariant, requireMessage, requireVariant } from "../internal";
@@ -18,7 +18,7 @@ export interface CreateVariantInput {
 // records and seed, macro writes, Reasoning) so selecting it folds the same,
 // and drops its Illustrations and the evidence of the Generation that wrote the source.
 const staysWithSourceVariant = ({ namespace, key }: { namespace: string; key: string }) =>
-	namespace === "painting" || namespace === LORE_ACTIVATION_NAMESPACE || namespace === BOX_TRACES_NAMESPACE
+	namespace === PAINTING_NAMESPACE || namespace === LORE_ACTIVATION_NAMESPACE || namespace === BOX_TRACES_NAMESPACE
 	|| (namespace === GENERATION_DATA_NAMESPACE && key !== GENERATION_DATA_KEYS.reasoning);
 
 export function createVariant(

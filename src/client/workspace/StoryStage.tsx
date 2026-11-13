@@ -67,6 +67,7 @@ export function StoryStage({
 	onOpenInspector,
 	onInspectVariant,
 	onPaint,
+	paintDisabledReason,
 	generationRunning,
 	onOpenGenerationDetails,
 	onControlChange,
@@ -92,6 +93,7 @@ export function StoryStage({
 	onOpenVariables: () => void;
 	onOpenInspector: (box: string, focus: { messageId: number } | null) => void;
 	onPaint: (variantId: number) => void;
+	paintDisabledReason: string | undefined;
 	generationRunning: boolean;
 	onInspectVariant: (messageId: number, variantId: number) => void;
 	onOpenGenerationDetails: () => void;
@@ -147,10 +149,7 @@ export function StoryStage({
 	const onLayerFocus = useLayerFocus(inert);
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
-	const paintDisabledReason = generationRunning ? "Wait for the Generation to finish before painting."
-		: assemblyActive ? "Close the Prompt Plan preview to paint."
-			: previewMode ? "Confirm or cancel the Swipe preview to paint."
-				: undefined;
+	const composerPaintDisabledReason = generationRunning ? "Wait for the Generation to finish before painting." : paintDisabledReason;
 	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(latestStoryMessage, story.preview, story.requestedSelections);
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
@@ -214,7 +213,7 @@ export function StoryStage({
 							conversationId={storyConversationId}
 							message={message}
 							onPaint={rows.paint}
-							paintDisabledReason={previewMode ? "Confirm or cancel the Swipe preview to paint." : undefined}
+							paintDisabledReason={paintDisabledReason}
 							lens={lens}
 							swipeBrowsing={swipeBrowsing}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
@@ -335,7 +334,7 @@ export function StoryStage({
 							onControlChange={onControlChange}
 						>
 							<Button type="button" variant="ghost" size="icon-sm" className="pointer-coarse:h-8" aria-label="Paint"
-								title={paintDisabledReason ?? (finalVariantId === null ? "Load the final Message to paint." : "Paint")}
+								title={composerPaintDisabledReason ?? (finalVariantId === null ? "Load the final Message to paint." : "Paint")}
 								disabled={generationRunning || assemblyActive || previewMode || finalVariantId === null}
 								onClick={() => { if (finalVariantId !== null) onPaint(finalVariantId); }}><Paintbrush aria-hidden="true" /></Button>
 						</ComposerControlSelectors>

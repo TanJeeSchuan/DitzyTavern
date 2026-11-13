@@ -43,7 +43,7 @@ function PictureDescribe({ image, pending, onDescribe }: { image: OpenedImage; p
 
 export function AppearanceField({ draft, placeholder, onDraftChange }: { draft: ParticipantDefinition; placeholder?: string; onDraftChange: (draft: ParticipantDefinition) => void }) {
 	const editor = useRef<ProseEditorHandle>(null);
-	const boundary = useRef<HTMLDivElement>(null);
+	const [boundary, setBoundary] = useState<HTMLDivElement | null>(null);
 	const controller = useRef<AbortController | null>(null);
 	const [state, setState] = useState<DescribeState>({ kind: "idle" });
 	const [open, setOpen] = useState(false);
@@ -66,7 +66,7 @@ export function AppearanceField({ draft, placeholder, onDraftChange }: { draft: 
 			controller.current = null;
 		}
 	};
-	return <div ref={boundary} className="flex flex-col gap-1.5">
+	return <div ref={setBoundary} className="flex flex-col gap-1.5">
 		<div className="flex flex-wrap items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
 			<span>Appearance</span>
 			<div className="flex items-center gap-2">
@@ -75,7 +75,7 @@ export function AppearanceField({ draft, placeholder, onDraftChange }: { draft: 
 				}}><ImageUp aria-hidden="true" /> Insert Portrait</Button>
 				<Popover open={open} onOpenChange={setOpen}>
 					<PopoverTrigger asChild><Button type="button" size="xs" variant="ghost">Describe</Button></PopoverTrigger>
-					<PopoverContent align="end" collisionBoundary={boundary.current} collisionPadding={8} className="w-72 max-w-[var(--radix-popover-content-available-width)]">
+					<PopoverContent align="end" collisionBoundary={boundary} collisionPadding={8} className="w-72 max-w-[var(--radix-popover-content-available-width)]">
 						<AskForm ask={ask} onAsk={setAsk} pending={state.kind === "describing"} onDescribe={() => void describe(appearanceImageHashes(draft), ask, (text) => {
 							editor.current?.appendText(text);
 							return editor.current !== null;

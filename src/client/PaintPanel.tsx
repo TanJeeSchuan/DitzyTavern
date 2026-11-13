@@ -22,12 +22,12 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 	const conversationId = conversation.id;
 	const [editingPreset, setEditingPreset] = useState<number | null>(null);
 	const { variantId } = target;
-	const [brief, updateBrief] = useState(target.brief);
-	const setBrief = (brief: string) => { updateBrief(brief); onDraftChange({ brief }); };
-	const [ask, updateAsk] = useState(target.ask);
-	const setAsk = (ask: string) => { updateAsk(ask); onDraftChange({ ask }); };
+	const [brief, setBrief] = useState(target.brief);
+	const updateBrief = (brief: string) => { setBrief(brief); onDraftChange({ brief }); };
+	const [ask, setAsk] = useState(target.ask);
+	const updateAsk = (ask: string) => { setAsk(ask); onDraftChange({ ask }); };
 	const briefEditor = useRef<ProseEditorHandle>(null);
-	const writing = useWriteBrief(conversationId, setBrief);
+	const writing = useWriteBrief(conversationId, updateBrief);
 	const { submit, pending, error } = usePaintingCommand(conversationId);
 	const messageCount = usePaintingCommand(conversationId);
 	const read = useIllustrations(conversationId);
@@ -50,7 +50,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 				await writing.write({ variantId, ask }, brief, conversation.cast);
 			}}>
 				<Field label="Ask" helper="Leave empty to describe the scene at this Message.">
-					<ProseEditor className="prose-editor-field" ariaLabel="Ask" value={ask} onChange={setAsk} disabled={writing.pending} />
+					<ProseEditor className="prose-editor-field" ariaLabel="Ask" value={ask} onChange={updateAsk} disabled={writing.pending} />
 				</Field>
 				<Field label="Paint Preset" htmlFor="paint-preset">
 					<AppSelect id="paint-preset" className="field-input" value={selection ? String(selection.paintPresetId) : ""} disabled={settingsDisabled}
@@ -71,7 +71,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 								}
 								else event.currentTarget.value = String(selection?.briefMessageCount ?? DEFAULT_BRIEF_MESSAGE_COUNT);
 							}} />
-						<div className="flex items-center gap-2"><Switch id={allMessagesId} checked={selection?.briefMessageCount === null} disabled={settingsDisabled}
+						<div className="flex items-center gap-2"><Switch id={allMessagesId} checked={selection?.briefMessageCount === null} disabled={settingsDisabled || messageCount.pending}
 							onCheckedChange={(all) => void submit({ type: "set-brief-message-count", briefMessageCount: all ? null : DEFAULT_BRIEF_MESSAGE_COUNT })} /><Label htmlFor={allMessagesId}>All</Label></div>
 					</div>
 				</Field>
@@ -83,7 +83,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 				{writing.error && <p role="alert" className="text-sm text-destructive">{writing.error}</p>}
 			</form>
 			<Field label="Brief" helper="Describe the picture. Insert pictures to use as references.">
-				<ProseEditor className="prose-editor-field" ref={briefEditor} ariaLabel="Brief" autoFocus={Boolean(target.brief)} value={brief} onChange={setBrief} disabled={writing.pending} />
+				<ProseEditor className="prose-editor-field" ref={briefEditor} ariaLabel="Brief" autoFocus={Boolean(target.brief)} value={brief} onChange={updateBrief} disabled={writing.pending} />
 			</Field>
 			<PaintGallery conversationId={conversationId} disabled={writing.pending} onReference={(name, hash) => briefEditor.current?.insertReference(name, hash)} />
 			<Field label="Shape" htmlFor="painting-aspect-ratio">

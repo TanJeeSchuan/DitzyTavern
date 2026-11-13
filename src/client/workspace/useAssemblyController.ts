@@ -35,7 +35,7 @@ type AssemblyControllerOptions = {
 	isGenerating: boolean;
 	variantPreviewActive: boolean;
 	inspectPromptPlanBeforeGenerating: boolean;
-	onInspect: (inspect: () => void) => void;
+	beforeInspect: (inspect: () => void) => void;
 	generationStart: GenerationStartLifecycle;
 	dispatchStory: Dispatch<StoryAction>;
 	// @approved
@@ -78,7 +78,7 @@ export function useAssemblyController({
 	isGenerating,
 	variantPreviewActive,
 	inspectPromptPlanBeforeGenerating,
-	onInspect,
+	beforeInspect,
 	generationStart,
 	dispatchStory,
 	takeComposer,
@@ -222,7 +222,7 @@ export function useAssemblyController({
 				else launch(requested);
 			}, () => transition({ type: "failed", visit: signal, error: "The latest Messages could not be loaded." }));
 		};
-		if (inspect) onInspect(prepare);
+		if (inspect) beforeInspect(prepare);
 		else prepare();
 	};
 

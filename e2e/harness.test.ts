@@ -146,7 +146,6 @@ test("the image fake rejects malformed image bodies at its boundary", async () =
 	await assert.rejects(readImageRequestBody(url));
 });
 
-
 test("Describe consumes only describe replies and refuses unscripted descriptions", async () => {
 	const server = await startE2eServer();
 	const call = async (path: string, body?: { type: "apply"; expectedRevision: number; profileId: number; model: string } | { data: string } | { hashes: string[]; ask?: string }) => fetch(`${server.url}/api/${path}`, {

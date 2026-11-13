@@ -42,5 +42,6 @@ export type PaintTarget = { variantId: number; brief: string; ask: string; reque
 
 export const IllustrationActionsContext = createContext<{
 	addToComposer: ((name: string, hash: string) => void) | null;
-	editBrief: (variantId: number, brief: string, ask: string) => void;
+	editBrief: ((variantId: number, brief: string, ask: string) => void) | null;
+	editBriefDisabledReason: string | undefined;
 } | null>(null);

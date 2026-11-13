@@ -32,7 +32,7 @@ export function IllustrationRows({ conversationId, variantId }: { conversationId
 							<Button size="icon-sm" variant="ghost" aria-label="Illustration actions" title="Illustration actions"><MoreHorizontal aria-hidden="true" /></Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-auto">
-							<DropdownMenuItem onSelect={() => actions.editBrief(variantId, painting.brief, painting.ask)}>Edit Brief and repaint</DropdownMenuItem>
+							<DropdownMenuItem disabled={actions.editBrief === null} title={actions.editBriefDisabledReason} onSelect={() => actions.editBrief?.(variantId, painting.brief, painting.ask)}>Edit Brief and repaint</DropdownMenuItem>
 							<DropdownMenuItem variant="destructive" disabled={pending} onSelect={() => void submit({ type: "delete", id: painting.id, variantId })}>Delete</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>

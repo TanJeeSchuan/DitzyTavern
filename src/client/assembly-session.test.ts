@@ -45,7 +45,7 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 		conversation: conversation(), activeChatIdRef: { current: "7" },
 		ensureLatest: async () => options.conversation,
 		refreshStory: async (_id: number) => { effects.push("refresh"); return options.conversation; },
-		isGenerating: false, variantPreviewActive: false, onInspect: (inspect) => inspect(),
+		isGenerating: false, variantPreviewActive: false, beforeInspect: (inspect) => inspect(),
 		inspectPromptPlanBeforeGenerating: true,
 		generationStart: {
 			begin: () => { effects.push("begin"); return 1; },

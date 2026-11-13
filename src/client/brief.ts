@@ -11,7 +11,7 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 	const controller = useRef<AbortController | null>(null);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	useEffect(() => () => { controller.current?.abort(); }, [conversationId]);
+	useEffect(() => () => { const active = controller.current; controller.current = null; active?.abort(); }, [conversationId]);
 	const write = async (request: BriefRequest, previousBrief: string, cast: ConversationSummary["cast"]) => {
 		if (controller.current) return;
 		const kept = keptBriefReferences(previousBrief, cast);
@@ -32,6 +32,7 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 			if (!response.body) throw new Error("The Brief request could not start. Try again.");
 			let finished = false;
 			const parser = createParser({ onEvent: ({ data }) => {
+				if (controller.current !== active) return;
 				const event = decodeWirePayload(generationEvent, JSON.parse(data));
 				if (event === null) throw new Error("The Brief stream returned an invalid response. Try again.");
 				if (event.type === "failed") throw new Error(event.message);
@@ -51,10 +52,12 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 		} catch (error) {
 			if (!active.signal.aborted) setError(error instanceof Error ? error.message : "The Brief could not be written.");
 		} finally {
-			onText(receivedContent ? appendBriefReferences(text, cast, kept) : previousBrief);
-			active.abort();
-			controller.current = null;
-			setPending(false);
+			if (controller.current === active) {
+				onText(receivedContent ? appendBriefReferences(text, cast, kept) : previousBrief);
+				active.abort();
+				controller.current = null;
+				setPending(false);
+			}
 		}
 	};
 	return { write, pending, error, stop: () => controller.current?.abort() };
