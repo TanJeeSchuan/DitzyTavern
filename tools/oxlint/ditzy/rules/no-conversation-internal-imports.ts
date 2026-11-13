@@ -1,8 +1,9 @@
-import { defineRule } from "@oxlint/plugins";
-import { posix } from "node:path";
-import { isTestFile, repositoryPath } from "../path.ts";
+import { defineRule, type ESTree } from "@oxlint/plugins";
+import { importVisitors, staticSpecifier } from "../imports.ts";
+import { importTarget, isTestFile, repositoryPath } from "../path.ts";
 
 const tables = new Set(["messageTable", "messageVariantTable", "activeGenerationTable"]);
+const named = (name: ESTree.ModuleExportName) => name.type === "Identifier" ? name.name : name.value;
 
 export const noConversationInternalImportsRule = defineRule({
  meta: {
@@ -14,23 +15,38 @@ export const noConversationInternalImportsRule = defineRule({
   },
  },
  createOnce(context) {
+  const path = () => repositoryPath(context.filename);
+  const outside = () => !path().startsWith("src/server/conversation/");
+  const readsSchema = (source: string) => outside() && path() !== "src/server/database/schema.ts" && !isTestFile(path()) &&
+   importTarget(path(), source) === "src/server/database/schema";
+  const visitors = importVisitors((node, source) => {
+   const target = importTarget(path(), source);
+   if (outside() && target?.startsWith("src/server/conversation/") && target !== "src/server/conversation/index") context.report({ node, messageId: "internalImport" });
+  });
   return {
+   ...visitors,
    ImportDeclaration(node) {
-    const path = repositoryPath(context.filename);
-    if (path.startsWith("src/server/conversation/")) return;
-    const source = node.source.value;
-    if (typeof source !== "string") return;
-    const resolved = source.startsWith(".") ? posix.normalize(posix.join(posix.dirname(path), source)) : source;
-    if (resolved.startsWith("src/server/conversation/") && !/^src\/server\/conversation\/index(?:\.ts)?$/.test(resolved)) {
-     context.report({ node, messageId: "internalImport" });
-    }
-    if (path === "src/server/database/schema.ts" || isTestFile(path) || !/^src\/server\/database\/schema(?:\.ts)?$/.test(resolved)) return;
+    visitors.ImportDeclaration(node);
+    if (!readsSchema(node.source.value)) return;
     for (const specifier of node.specifiers) {
-     if (specifier.type === "ImportNamespaceSpecifier" ||
-      (specifier.type === "ImportSpecifier" && specifier.imported.type === "Identifier" && tables.has(specifier.imported.name))) {
+     if (specifier.type === "ImportNamespaceSpecifier" || (specifier.type === "ImportSpecifier" && tables.has(named(specifier.imported)))) {
       context.report({ node: specifier, messageId: "tableImport" });
      }
     }
+   },
+   ExportNamedDeclaration(node) {
+    visitors.ExportNamedDeclaration(node);
+    if (node.source === null || !readsSchema(node.source.value)) return;
+    for (const specifier of node.specifiers) if (tables.has(named(specifier.local))) context.report({ node: specifier, messageId: "tableImport" });
+   },
+   ExportAllDeclaration(node) {
+    visitors.ExportAllDeclaration(node);
+    if (readsSchema(node.source.value)) context.report({ node, messageId: "tableImport" });
+   },
+   ImportExpression(node) {
+    visitors.ImportExpression(node);
+    const source = staticSpecifier(node.source);
+    if (source !== undefined && readsSchema(source)) context.report({ node, messageId: "tableImport" });
    },
   };
  },

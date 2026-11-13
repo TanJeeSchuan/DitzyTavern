@@ -2,7 +2,7 @@ import type { ESTree } from "@oxlint/plugins";
 
 type Check = (node: ESTree.Node, source: string, typeOnly: boolean) => void;
 
-const staticSpecifier = (node: ESTree.Expression): string | undefined => {
+export const staticSpecifier = (node: ESTree.Expression): string | undefined => {
 	if (node.type === "Literal") return typeof node.value === "string" ? node.value : undefined;
 	return node.type === "TemplateLiteral" && node.expressions.length === 0 ? node.quasis[0]?.value.cooked ?? undefined : undefined;
 };
