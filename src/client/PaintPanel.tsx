@@ -29,11 +29,12 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 	const briefEditor = useRef<ProseEditorHandle>(null);
 	const writing = useWriteBrief(conversationId, setBrief);
 	const { submit, pending, error } = usePaintingCommand(conversationId);
+	const messageCount = usePaintingCommand(conversationId);
 	const read = useIllustrations(conversationId);
 	const selection = read.data;
 	const writablePreset = selection?.paintPresets.some((preset) => preset.id === selection.paintPresetId) ?? false;
 	const settingsDisabled = pending || writing.pending || read.isPending || read.isError;
-	const saveMessageCount = (count: number) => count === selection?.briefMessageCount ? Promise.resolve(true) : submit({ type: "set-brief-message-count", briefMessageCount: count });
+	const saveMessageCount = (count: number) => count === selection?.briefMessageCount ? Promise.resolve(true) : messageCount.submit({ type: "set-brief-message-count", briefMessageCount: count });
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;
 	if (editingPreset !== null) return <aside className="details-panel" data-open="true" aria-label="Paint Preset">
 		<PromptPresetPanel conversation={conversation} onConversationChange={onConversationChange} presetId={editingPreset}
@@ -92,7 +93,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 			</Field>
 			<Button className="justify-self-start" disabled={pending || writing.pending || !brief.trim() || read.isPending || read.isError} onClick={() => void submit({ type: "paint", variantId, brief, ask, aspectRatio })}>Paint</Button>
 			<p className="panel-note">Painting continues after you close this panel.</p>
-			{(error !== null || read.isError) && <p role="alert" className="text-sm text-destructive">{error ?? "Illustrations could not be loaded."}</p>}
+			{(error !== null || messageCount.error !== null || read.isError) && <p role="alert" className="text-sm text-destructive">{error ?? messageCount.error ?? "Illustrations could not be loaded."}</p>}
 			<div><IllustrationRows conversationId={conversationId} variantId={variantId} /></div>
 		</div>
 	</aside>;
