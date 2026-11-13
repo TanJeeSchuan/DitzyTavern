@@ -70,6 +70,18 @@ describe("revealedLength", () => {
 		expect(revealedLength(text)).toBe(sentence.length * 7 - 1);
 	});
 
+	test("ends a CJK sentence at its full stop", () => {
+		const pair = "灯りが消えた。誰も動かなかった。";
+		expect(revealedLength(pair.repeat(12))).toBe(pair.length * 4 + "灯りが消えた。".length);
+	});
+
+	test("shows every finished sentence once the stream stalls", () => {
+		expect(revealedLength("A lantern dims. ")).toBe(0);
+		expect(revealedLength("A lantern dims. ", true)).toBe("A lantern dims.".length);
+		expect(revealedLength("Done.\n\nA second paragraph waits here.", true)).toBe("Done.\n\nA second paragraph waits here.".length);
+		expect(revealedLength("A lantern dims. The door", true)).toBe("A lantern dims.".length);
+	});
+
 	test("never takes back revealed text as the stream grows", () => {
 		const text = `${sentence.repeat(5)}\n\n"Short." ${sentence.repeat(9)}\n\nEnd.`;
 		const lengths = [...text].map((_, index) => revealedLength(text.slice(0, index + 1)));
