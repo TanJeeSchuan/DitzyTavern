@@ -31,15 +31,18 @@ const referencedDefinitionBlockKinds = [
 export const referencedDefinitionBlock = Type.Union([...referencedDefinitionBlockKinds]);
 export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>;
 
+export const promptBriefInstructionReference = Type.Literal("brief-instruction");
+export type PromptBriefInstructionReference = Static<typeof promptBriefInstructionReference>;
+
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 
-/** @approved Whether a preset may hold at most one block of `reference`: Lore, and each Box's, loaded or not. */
-export const isSingleUseReference = (reference: string): reference is PromptLoreReference | PromptBoxReference =>
-	reference === "lore" || boxIdOf(reference) !== undefined;
+/** @approved Whether a preset may hold at most one block of `reference`: Lore, Brief instruction, and each Box's, loaded or not. */
+export const isSingleUseReference = (reference: string): reference is PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference =>
+	reference === "brief-instruction" || reference === "lore" || boxIdOf(reference) !== undefined;
 /** @approved A single-use block's label; a block whose Box is not loaded shows its reference. */
-export const singleUseReferenceLabel = (reference: PromptLoreReference | PromptBoxReference): string =>
-	reference === "lore" ? "Lore" : isBoxReference(reference) ? boxMetadata(boxIdOf(reference)).label : reference;
+export const singleUseReferenceLabel = (reference: PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference): string =>
+	reference === "brief-instruction" ? "Brief instruction" : reference === "lore" ? "Lore" : isBoxReference(reference) ? boxMetadata(boxIdOf(reference)).label : reference;
 /** @approved The first single-use reference `references` repeats, which a preset refuses. */
 export const repeatedSingleUseReference = (references: readonly string[]) => {
 	const singleUse = references.filter(isSingleUseReference);
@@ -73,14 +76,16 @@ const fixedOutgoingRoles = {
 	"model-example-dialogue": "user",
 	"model-post-history-instruction": "system",
 	lore: "system",
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference, PromptOutgoingRole>;
-export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference): PromptOutgoingRole =>
+	"brief-instruction": "user",
+} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBriefInstructionReference, PromptOutgoingRole>;
+export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference): PromptOutgoingRole =>
 	isBoxReference(reference) ? boxDescriptor(boxIdOf(reference)).role : fixedOutgoingRoles[reference];
 
 export const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,
 	Type.Literal("history"),
 	promptLoreReference,
+	promptBriefInstructionReference,
 	promptBoxReference,
 ]);
 export type PromptBlockReference = Static<typeof promptBlockReference>;
@@ -102,15 +107,20 @@ export const promptPresetBlockReference = Type.Union([
 ]);
 export type PromptPresetBlockReference = Static<typeof promptPresetBlockReference>;
 
+// @approved A Brief instruction owns its text and role and is sent only when writing a Brief.
+const briefInstructionSlot = Type.Object({ reference: promptBriefInstructionReference, enabled: Type.Boolean(), role: promptOutgoingRole, content: Type.String() });
+
 // @approved
 //  One ordered recipe slot as the compiler consumes it. A referenced
 // Definition slot carries its required outgoing role; history carries no
 // slot-owned role because its entries keep the roles of their own Messages;
 // a Box block carries its editable instructions, rendered before the Box's
-// items; and an authored instruction carries its editable name, text, and role.
+// items; an authored instruction carries its editable name, text, and role;
+// and a Brief instruction carries text and a role that Generations skip.
 // Enablement lives on the slot so a disabled slot keeps its place in the
 // order instead of disappearing from it.
 export const promptPresetSlot = Type.Union([
+	briefInstructionSlot,
 	Type.Object({
 		reference: referencedDefinitionBlock,
 		enabled: Type.Boolean(),
@@ -143,6 +153,13 @@ export type PromptPresetSlot = Static<typeof promptPresetSlot>;
 
 /** @approved A Box's block, among any slot shape that carries a reference, whether or not its Box is loaded: a stored block outlives a plugin that is removed or refused, and renders nothing. */
 export const isBoxSlot = <Slot extends { readonly reference: string }>(slot: Slot): slot is Extract<Slot, { readonly reference: PromptBoxReference }> => boxIdOf(slot.reference) !== undefined;
+
+export type PromptAuthoredTextReference = PromptInstructionReference | PromptBriefInstructionReference | PromptBoxReference;
+export const isAuthoredTextSlot = <Slot extends { readonly reference: string }>(slot: Slot): slot is Extract<Slot, { readonly reference: PromptAuthoredTextReference }> =>
+	slot.reference === "instruction" || slot.reference === "brief-instruction" || isBoxSlot(slot);
+
+export const hasEnabledBriefInstruction = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
+	slots.some((slot) => slot.reference === "brief-instruction" && slot.enabled);
 
 export const hasEnabledLoreSlot = (slots: readonly Pick<PromptPresetSlot, "reference" | "enabled">[]): boolean =>
 	slots.some((slot) => slot.reference === "lore" && slot.enabled);
@@ -221,6 +238,7 @@ export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 // Messages rather than authored text. `sourceName` is null when the
 // Conversation has no Participant in that Control seat.
 export const resolvedPromptPresetSlot = Type.Union([
+	Type.Composite([Type.Object({ id: Type.Integer() }), briefInstructionSlot]),
 	Type.Object({ id: Type.Integer(), reference: promptBoxReference, enabled: Type.Boolean(), role: promptOutgoingRole, content: Type.String() }),
 	Type.Object({ id: Type.Integer(), reference: promptLoreReference, enabled: Type.Boolean(), role: promptOutgoingRole }),
 	Type.Object({
@@ -270,7 +288,7 @@ export const promptPresetSummary = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
-	isDefault: Type.Boolean(),
+	isBuiltIn: Type.Boolean(),
 	conversationCount: Type.Integer(),
 });
 export type PromptPresetSummary = Static<typeof promptPresetSummary>;

@@ -23,7 +23,7 @@ const fixedSlotLabels = {
 	history: "Chat history",
 	"model-post-history-instruction": "Post-History Instruction",
 	instruction: "Instruction",
-} satisfies Record<Exclude<PromptPresetBlockReference, "lore" | `box:${string}`>, string>;
+} satisfies Record<Exclude<PromptPresetBlockReference, "lore" | "brief-instruction" | `box:${string}`>, string>;
 export const slotLabel = (reference: PromptPresetBlockReference): string =>
 	isSingleUseReference(reference) ? singleUseReferenceLabel(reference) : fixedSlotLabels[reference];
 
@@ -75,9 +75,8 @@ interface PresetDeletionConfirmationCopy {
 }
 
 // @approved
-// The confirmation names exactly what deletion does: the affected
-//  Conversations move to the Default preset in the same operation, and
-// the Default preset itself can never be deleted.
+// Deletion resets affected story selections to Default and Paint selections
+// to Default (Paint) in the same operation. Neither built-in can be deleted.
 export function presetDeletionConfirmationCopy(
 	name: string,
 	conversationCount: number,
@@ -86,7 +85,7 @@ export function presetDeletionConfirmationCopy(
 	return {
 		title,
 		impact:
-			`${affectedConversationsLabel(conversationCount)}. Deleting this preset removes it from the Library and moves every affected Chat to the Default preset. Nothing else in those Chats changes.`,
+			`${affectedConversationsLabel(conversationCount)}. Deleting this preset removes it from the Library and resets selections using it to Default for story writing or Default (Paint) for painting. Nothing else in those Chats changes.`,
 		confirmLabel: "Yes, delete preset",
 	};
 }
@@ -105,8 +104,7 @@ export function presetDeletionImpactChangedNotice(
 // @approved
 // Success notice after a confirmed deletion. The typed result carries the
 //  derived reassignment, so the wording matches what the server
-// actually did: affected Chats landed on the Default preset, and nothing
-// else in them changed.
+// actually did: affected selections reset to their respective built-in presets.
 export function presetDeletionResultNotice(
 	name: string,
 	result: { reassignedConversationCount: number },
@@ -114,7 +112,7 @@ export function presetDeletionResultNotice(
 	const moved = result.reassignedConversationCount === 0
 		? "No Chat was using it."
 		: result.reassignedConversationCount === 1
-			? "1 Chat moved to the Default preset."
-			: `${result.reassignedConversationCount} Chats moved to the Default preset.`;
+			? "Selections using it in 1 Chat reset to their built-in presets."
+			: `Selections using it in ${result.reassignedConversationCount} Chats reset to their built-in presets.`;
 	return `Deleted "${name}". ${moved}`;
 }

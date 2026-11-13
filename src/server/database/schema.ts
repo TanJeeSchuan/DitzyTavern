@@ -16,6 +16,7 @@ import {
 	text,
 	uniqueIndex,
 } from "drizzle-orm/sqlite-core";
+import { DEFAULT_BRIEF_MESSAGE_COUNT } from "../../shared/contract/painting";
 import { DEFAULT_DECISION_STATE_TOKEN_LIMIT } from "../../shared/contract/decision-model";
 import type { ConnectionProfileDraftPayload } from "../../shared/contract/connection-settings";
 import type { LoreAttachmentScope } from "../../shared/contract/lorebook";
@@ -57,14 +58,15 @@ export interface PortraitColumnRow {
 // @approved
 //  The shared Prompt Preset library. A preset is an ordered assembly recipe
 // only: Generation Settings and text-processing scripts are deliberately not
-// part of it. Exactly one row is the Default preset, which every Conversation
-// selects until it selects another.
+// part of it. Chats start with Default for stories and Default (Paint) for
+// painting, each identified by its own unique built-in marker.
 export const promptPresetTable = sqliteTable(
 	"prompt_preset",
 	{
 		id: int().primaryKey({ autoIncrement: true }),
 		name: text().notNull(),
 		is_default: int({ mode: "boolean" }).notNull().default(false),
+		is_default_paint: int({ mode: "boolean" }).notNull().default(false),
 		// @approved
 		//  Optimistic-concurrency revision following the Character
 		// Library convention: every authoritative library command carries the
@@ -73,6 +75,7 @@ export const promptPresetTable = sqliteTable(
 		revision: int().notNull().default(0),
 	},
 	(table) => [
+		uniqueIndex("prompt_preset_single_default_paint").on(table.is_default_paint).where(sql`${table.is_default_paint} = 1`),
 		uniqueIndex("prompt_preset_single_default")
 			.on(table.is_default)
 			.where(sql`${table.is_default} = 1`),
@@ -112,6 +115,7 @@ export const promptPresetBlockTable = sqliteTable(
 		uniqueIndex("prompt_preset_single_lore_block")
 			.on(table.preset_id)
 			.where(sql`${table.reference} = 'lore'`),
+		uniqueIndex("prompt_preset_single_brief_instruction").on(table.preset_id).where(sql`${table.reference} = 'brief-instruction'`),
 		uniqueIndex("prompt_preset_single_box_block").on(table.preset_id, table.reference).where(sql`${table.reference} LIKE 'box:%'`),
 		check(
 			"prompt_preset_block_shape_check",
@@ -148,7 +152,7 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.name} IS NULL
 				AND ${table.content} IS NULL
 			) OR (
-				${table.reference} LIKE 'box:%'
+				(${table.reference} LIKE 'box:%' OR ${table.reference} = 'brief-instruction')
 				AND ${table.role} IS NOT NULL
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL
@@ -299,21 +303,24 @@ export const conversationTable = sqliteTable("conversation", {
 }, (table) => [check("conversation_fork_link_check", sql`${table.forked_from_conversation_id} IS NOT NULL OR ${table.forked_from_message_id} IS NULL`)]);
 
 // @approved
-//  The Conversation's own selection from the shared preset library. The
-// preset is referenced, never copied: saved edits reach every Conversation
-// that selected it. Every Conversation has exactly one row, written at
-// creation, so no read has to invent a selection.
+//  Each Chat holds its story and Paint selections plus its Brief Messages
+// count (NULL means All) in one row, written at creation. Presets are referenced,
+// never copied: saved edits reach every Chat that selected them.
 export const conversationPromptPresetTable = sqliteTable(
 	"conversation_prompt_preset",
 	{
 		conversation_id: int()
 			.primaryKey()
 			.references(() => conversationTable.id, { onDelete: "cascade" }),
+		paint_preset_id: int().notNull().references(() => promptPresetTable.id),
+		brief_message_count: int().default(DEFAULT_BRIEF_MESSAGE_COUNT),
 		prompt_preset_id: int()
 			.notNull()
 			.references(() => promptPresetTable.id),
 	},
 	(table) => [
+		check("brief_message_count_positive", sql`${table.brief_message_count} IS NULL OR ${table.brief_message_count} > 0`),
+		index("conversation_paint_preset_id_index").on(table.paint_preset_id),
 		index("conversation_prompt_preset_prompt_preset_id_index").on(
 			table.prompt_preset_id,
 		),

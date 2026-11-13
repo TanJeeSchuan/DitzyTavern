@@ -27,6 +27,7 @@ const addableReferences = (): PromptBlockReference[] => [
 	"history",
 	"model-post-history-instruction",
 	"lore",
+	"brief-instruction",
 	...[...installedBoxes().keys()].map(boxReference),
 ];
 

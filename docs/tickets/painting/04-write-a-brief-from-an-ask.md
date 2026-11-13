@@ -1,6 +1,6 @@
 # Write a Brief from an Ask
 
-Status: TODO
+Status: IN PROGRESS
 
 Blocked By: 01
 
@@ -21,9 +21,9 @@ Overlaps with ticket 02 in Prompt Preset block references. Run it after 02, not 
 
 ## Work
 
-- [ ] Add the Brief instruction slot: single-use, with authored text and a role, editable in the preset editor. A Generation's Prompt Plan skips it.
-- [ ] Add the built-in, non-deletable "Default (Paint)" preset holding Lore, history and a Brief instruction, with instruction text that asks for a short description of the scene for an image model.
-- [ ] Store a Paint Preset selection per Chat beside its story selection, starting on the built-in one. Fork copies it. Deleting a preset reassigns the Chats painting with it to the built-in one.
+- [x] Add the Brief instruction slot: single-use, with authored text and a role, editable in the preset editor. A Generation's Prompt Plan skips it.
+- [x] Add the built-in, non-deletable "Default (Paint)" preset holding Lore, history and a Brief instruction, with instruction text that asks for a short description of the scene for an image model.
+- [x] Store a Paint Preset selection per Chat beside its story selection, starting on the built-in one. Fork copies it. Deleting a preset reassigns the Chats painting with it to the built-in one.
 - [ ] Compile a Brief request through the Generation Plan seam with the Chat's Paint Preset and Generation Settings. History is the last N Messages of the Selected narrative path ending at the Message the panel was opened from. Lore scans those Messages. No Box is captured and no Macro State is written.
 - [ ] Send the Ask as the final human message, after everything the preset places. An empty Ask sends a built-in line naming the scene at that Message.
 - [ ] Stream the reply into the panel's Brief editor. Store it nowhere.

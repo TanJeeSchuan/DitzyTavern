@@ -90,5 +90,5 @@ test.each([true, false])("native import rejects duplicate Author Note slots even
 		{ reference: "box:author-note", enabled: false, role: "assistant", content: "" },
 	] });
 	expect(imported).toEqual({ status: 422, body: { outcome: "invalid", reason: "A Prompt Preset may contain at most one Author Note block." } });
-	expect(await listPresets(library)).toHaveLength(2);
+	expect(await listPresets(library)).toHaveLength(3);
 });

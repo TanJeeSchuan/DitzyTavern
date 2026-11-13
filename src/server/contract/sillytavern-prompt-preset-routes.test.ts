@@ -188,14 +188,14 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			const imported = await postImport(app, source);
 			expect(imported.status).toBe(200);
 			const applied = requireApplied(imported.body);
-			expect(applied.preset.isDefault).toBe(false);
+			expect(applied.preset.isBuiltIn).toBe(false);
 			expect(applied.preset.conversationCount).toBe(0);
 		}
 		const listed = await app.handle(new Request("http://localhost/api/prompt-presets"));
 		// @approved
 		//  SAFETY: the list route's payload is the authoritative library read.
 		const payload = await listed.json() as { presets: { name: string }[] };
-		expect(payload.presets).toHaveLength(4);
+		expect(payload.presets).toHaveLength(5);
 	});
 
 	test("requires an explicit unfamiliar-list choice and keeps conflicting toggles", async () => {

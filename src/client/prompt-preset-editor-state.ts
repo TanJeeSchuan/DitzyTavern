@@ -1,5 +1,5 @@
 import {
-	isBoxSlot,
+	isAuthoredTextSlot,
 	type ConversationPromptPreset,
 	type PromptOutgoingRole,
 	type PromptPresetBlockPatch,
@@ -37,7 +37,7 @@ export function draftToPatch(
 		: { occurrenceId: slot.id, type: "enabled", enabled: draft.enabled };
 	const enabledChanged = draft.enabled !== undefined && draft.enabled !== slot.enabled;
 	if (slot.reference === "history") return null;
-	if (slot.reference === "instruction" || isBoxSlot(slot)) {
+	if (isAuthoredTextSlot(slot)) {
 		if (draft.kind !== "content") return null;
 		const { content, role } = draft;
 		const name = slot.reference === "instruction" ? draft.name ?? slot.name : undefined;
@@ -316,7 +316,7 @@ function slotReflectsSubmitted(slot: ResolvedPromptPresetSlot, submitted: BlockD
 	if (submitted.kind === "role") {
 		return slot.reference !== "history" && slot.reference !== "instruction" && slot.role === submitted.role;
 	}
-	if (slot.reference !== "instruction" && !isBoxSlot(slot)) return false;
+	if (!isAuthoredTextSlot(slot)) return false;
 	return (slot.reference !== "instruction" || slot.name === submitted.name)
 		&& slot.content === submitted.content
 		&& slot.role === submitted.role;

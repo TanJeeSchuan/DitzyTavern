@@ -7,14 +7,15 @@ import {
 	promptPresetTable,
 } from "../database/schema";
 import {
-	isBoxSlot,
+	isAuthoredTextSlot,
+	hasEnabledBriefInstruction,
 	type PromptOutgoingRole,
 	type PromptPresetRecipe,
 	type ReferencedDefinitionBlock,
 	type PromptLoreReference,
 } from "../../shared/contract/prompt-preset";
 import type { PromptBoxReference } from "../../shared/contract/box";
-import { PromptPresetNotFoundError } from "./errors";
+import { InvalidPromptPresetCommandError, PromptPresetNotFoundError } from "./errors";
 
 const connect = (database: Database) => drizzle(database);
 export type PromptPresetDatabase = ReturnType<typeof connect>;
@@ -32,6 +33,7 @@ type StoredPromptPresetBlock = {
 } & (
 	| { reference: "history"; role: null; name: null; content: null }
 	| { reference: PromptLoreReference; role: PromptOutgoingRole; name: null; content: null }
+	| { reference: "brief-instruction"; role: PromptOutgoingRole; name: null; content: string }
 	| { reference: PromptBoxReference; role: PromptOutgoingRole; name: null; content: string }
 	| { reference: "instruction"; role: PromptOutgoingRole; name: string; content: string }
 	| {
@@ -73,7 +75,13 @@ export const readDefaultPromptPresetId = (db: PromptPresetDatabase): number => {
 	return row.id;
 };
 
-/** @approved Records a new Conversation's initial selection of the Default preset. */
+export const readDefaultPaintPresetId = (db: PromptPresetDatabase): number => {
+	const row = db.select({ id: promptPresetTable.id }).from(promptPresetTable).where(eq(promptPresetTable.is_default_paint, true)).get();
+	if (row === undefined) throw new Error("The Default (Paint) preset is missing from the preset library.");
+	return row.id;
+};
+
+/** @approved Records a new Chat's initial story and Paint selections on their respective built-in presets. */
 export const selectDefaultPromptPreset = (
 	db: PromptPresetDatabase,
 	conversationId: number,
@@ -82,6 +90,7 @@ export const selectDefaultPromptPreset = (
 		.values({
 			conversation_id: conversationId,
 			prompt_preset_id: readDefaultPromptPresetId(db),
+			paint_preset_id: readDefaultPaintPresetId(db),
 		})
 		.run();
 };
@@ -90,7 +99,7 @@ export const selectDefaultPromptPreset = (
 //  Applies one Conversation's authoritative selection of a shared
 // preset. The selection is a reference to the library entry: validation
 // reads the live library row inside the caller's transaction, so a preset
-// deleted concurrently can never become the stored target, and the upsert
+// deleted concurrently can never become the stored target, and the update
 // keeps the exactly-one-selection invariant the creation seam established.
 export const selectConversationPromptPreset = (
 	db: PromptPresetDatabase,
@@ -102,15 +111,9 @@ export const selectConversationPromptPreset = (
 		.where(eq(promptPresetTable.id, promptPresetId))
 		.get();
 	if (preset === undefined) throw new PromptPresetNotFoundError(promptPresetId);
-	db.insert(conversationPromptPresetTable)
-		.values({
-			conversation_id: conversationId,
-			prompt_preset_id: promptPresetId,
-		})
-		.onConflictDoUpdate({
-			target: conversationPromptPresetTable.conversation_id,
-			set: { prompt_preset_id: promptPresetId },
-		})
+	db.update(conversationPromptPresetTable)
+		.set({ prompt_preset_id: promptPresetId })
+		.where(eq(conversationPromptPresetTable.conversation_id, conversationId))
 		.run();
 };
 
@@ -137,7 +140,7 @@ const toRecipeSlots = (
 				content: slot.content,
 			};
 		}
-		if (isBoxSlot(slot)) return { id: slot.id, reference: slot.reference, enabled: slot.enabled, role: slot.role, content: slot.content };
+		if (isAuthoredTextSlot(slot)) return { id: slot.id, reference: slot.reference, enabled: slot.enabled, role: slot.role, content: slot.content };
 		return {
 			id: slot.id,
 			reference: slot.reference,
@@ -205,4 +208,10 @@ export const readConversationPromptPresetRecipeFromConnection = (
 		.get();
 	if (selection === undefined) return undefined;
 	return presetRecipeOf(readPromptPresetHeader(db, selection.prompt_preset_id), db);
+};
+
+export const requirePaintPresetRecipe = (database: Database, presetId: number): PromptPresetRecipe => {
+	const recipe = readPromptPresetRecipe(database, presetId);
+	if (!recipe || !hasEnabledBriefInstruction(recipe.slots)) throw new InvalidPromptPresetCommandError("Choose a Paint Preset with an enabled Brief instruction.");
+	return recipe;
 };
