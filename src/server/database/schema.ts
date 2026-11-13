@@ -115,6 +115,7 @@ export const promptPresetBlockTable = sqliteTable(
 		uniqueIndex("prompt_preset_single_lore_block")
 			.on(table.preset_id)
 			.where(sql`${table.reference} = 'lore'`),
+		uniqueIndex("prompt_preset_single_cast_appearance").on(table.preset_id).where(sql`${table.reference} = 'cast-appearance'`),
 		uniqueIndex("prompt_preset_single_brief_instruction").on(table.preset_id).where(sql`${table.reference} = 'brief-instruction'`),
 		uniqueIndex("prompt_preset_single_box_block").on(table.preset_id, table.reference).where(sql`${table.reference} LIKE 'box:%'`),
 		check(
@@ -146,7 +147,7 @@ export const promptPresetBlockTable = sqliteTable(
 				AND ${table.name} IS NULL
 				AND ${table.content} IS NULL
 			) OR (
-				${table.reference} = 'lore'
+				${table.reference} IN ('lore', 'cast-appearance')
 				AND ${table.role} IS NOT NULL
 				AND ${table.role} IN ('system', 'user', 'assistant')
 				AND ${table.name} IS NULL

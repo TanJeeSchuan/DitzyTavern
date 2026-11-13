@@ -78,6 +78,7 @@ export interface CompilePromptInput {
 	alwaysRender?: ReadonlySet<string>;
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
+	castAppearance?: readonly CompilePromptDefinition[];
 	context?: readonly PromptContextEntry[];
 	readonly trailingMessages?: readonly LiteralPromptMessage[];
 	// The selected Prompt Preset's ordered recipe. It decides which blocks the

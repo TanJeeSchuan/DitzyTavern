@@ -28,11 +28,13 @@ test("a Brief instruction saves authored text and role and refuses a second occu
 	expect((await duplicateBlock(database, 1, slot.id)).status).toBe(422);
 });
 
-test("a Generation skips an enabled Brief instruction on its story preset", async () => {
+test("a Generation skips Brief instruction and Cast Appearance on its story preset", async () => {
 	const chat = createChat(database);
 	withProfile(database);
+	database.exec("UPDATE participant_prompt SET appearance = 'Appearance only for painting.'");
 	const preset = importNativePromptPreset(database, { name: "Both", slots: [
 		{ reference: "history", enabled: true },
+		{ reference: "cast-appearance", enabled: true, role: "system" },
 		{ reference: "instruction", enabled: true, role: "system", name: "Story", content: "Tell the story." },
 		{ reference: "brief-instruction", enabled: true, role: "user", content: "Only for painting." },
 	] });
@@ -42,4 +44,19 @@ test("a Generation skips an enabled Brief instruction on its story preset", asyn
 	await completeGeneration(app, chat.id, await startGeneration(app, chat.id, selected.revision));
 	expect(JSON.stringify(requests)).toContain("Tell the story.");
 	expect(JSON.stringify(requests)).not.toContain("Only for painting.");
+	expect(JSON.stringify(requests)).not.toContain("Appearance only for painting.");
+});
+
+
+test("Cast Appearance is a single-use reference with an editable role", async () => {
+	createChat(database);
+	const app = recipeRoutes(database);
+	const add = () => app.handle(new Request("http://localhost/api/prompt-presets/1/blocks", {
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reference: "cast-appearance" }),
+	}));
+	expect((await add()).status).toBe(200);
+	const slot = readStoredRecipe(database, 1).slots.find((slot) => slot.reference === "cast-appearance")!;
+	expect(slot).toMatchObject({ role: "system" });
+	expect((await add()).status).toBe(422);
+	expect((await duplicateBlock(database, 1, slot.id)).status).toBe(422);
 });

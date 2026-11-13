@@ -64,6 +64,7 @@ const referenceBlockCopy = (slot: ReferenceSlot, title: string): ReferenceBlockC
 			source: "This Chat",
 		};
 	}
+	if (slot.reference === "cast-appearance") return { description: "Uses the Appearance of Cast members in the scene, only when writing a Brief.", source: "This Chat’s Cast" };
 	if (slot.reference === "lore") {
 		return {
 			description: "Uses Lore Entries admitted when a Generation is assembled.",
