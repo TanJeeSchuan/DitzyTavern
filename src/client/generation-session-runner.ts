@@ -3,8 +3,8 @@
 //  Generation session machine and its effects. Every machine transition
 // returns ordered effects; this runner is the only component that executes
 // them — opening and closing subscriptions through the injected stream
-// adapter (the production SSE adapter or a fake one), forwarding story
-// effects to the host, and requesting authoritative Conversation refreshes.
+// adapter (the production SSE adapter or a fake one), feeding Variant
+// streams, and requesting authoritative Conversation refreshes.
 // The React hook wires hosts onto this runner; it owns no session behavior.
 
 import type {
@@ -15,18 +15,20 @@ import {
 	createGenerationSessions,
 	reduceGenerationSessions,
 	type GenerationSessionEffect,
-	type GenerationSessionStoryEffect,
 	type GenerationSessionsAction,
 	type GenerationSessionsState,
 } from "./generation-sessions";
+import type { StoryVariant } from "./story";
+import type { VariantStreams } from "./story/variant-streams";
 
 // @approved
-// The host surfaces the runner's outward effects. Story effects are mapped
-//  by the host (which owns the story reducer boundary); refresh requests go
-// to the authoritative Conversation read.
+// The host surfaces the runner's outward effects. Story effects go to the
+//  host's Variant streams, beside story state; refresh requests go to the
+// authoritative Conversation read.
 export interface GenerationSessionRunnerHost {
 	adapter: GenerationStreamAdapter;
-	applyStoryEffect: (effect: GenerationSessionStoryEffect) => void;
+	streams: VariantStreams;
+	getVariant: (messageId: number, variantId: number) => StoryVariant | undefined;
 	refreshConversation: (conversationId: number, signal: AbortSignal) => Promise<void>;
 }
 
@@ -46,6 +48,9 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 	const controllers = new Map<number, AbortController>();
 	const listeners = new Set<() => void>();
 	let disposed = false;
+	const retainStreams = () => host.streams.retain(new Set([...state.sessions.values()]
+		.filter((session) => session.conversationId === state.activeConversationId && session.terminal === null)
+		.map((session) => session.generationId)));
 	type Refresh = { controller: AbortController; timer: ReturnType<typeof setTimeout> | null; requested: boolean };
 	let refresh: Refresh | null = null;
 
@@ -68,6 +73,7 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 			try {
 				await host.refreshConversation(conversationId, pending.controller.signal);
 				if (pending.controller.signal.aborted) return;
+				retainStreams();
 				if (pending.requested) void attempt();
 				else refresh = null;
 			} catch {
@@ -99,9 +105,14 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 	const dispatch = (action: GenerationSessionsAction): void => {
 		if (disposed) return;
 		const transition = reduceGenerationSessions(state, action);
-		if (transition.state === state) return;
-		if (transition.state.activeConversationId !== state.activeConversationId) cancelRefresh();
+		if (transition.state === state) {
+			if (action.type === "targets-observed") retainStreams();
+			return;
+		}
+		const switched = transition.state.activeConversationId !== state.activeConversationId;
+		if (switched) cancelRefresh();
 		state = transition.state;
+		if (switched || action.type === "targets-observed") retainStreams();
 		notify();
 		for (const effect of transition.effects) runEffect(effect);
 	};
@@ -160,7 +171,7 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 				refreshConversation(effect.conversationId);
 				return;
 			case "story":
-				host.applyStoryEffect(effect);
+				host.streams.observe(effect, host.getVariant(effect.messageId, effect.variantId));
 				return;
 		}
 	};
@@ -176,12 +187,13 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 			controllers.clear();
 			// @approved
 			// Detach the machine as well: a surface that stops observing loses
-			//  its live subscriptions, and a later surface reattaches from the
-			// sessions' cursors instead of resuming dead "subscribing" rows.
+			//  its live subscriptions and text; a later surface reattaches from
+			// its page checkpoint instead of resuming dead "subscribing" rows.
 			// The detach updates silently: disposal itself never notifies, and
 			// later work cannot reach subscribers.
 			const transition = reduceGenerationSessions(state, { type: "conversation-switched" });
 			state = transition.state;
+			host.streams.retain(new Set());
 			listeners.clear();
 			disposed = true;
 		},

@@ -93,7 +93,7 @@ export type GenerationSessionsAction =
 	| { type: "generation-accepted"; target: GenerationAttemptTarget }
 	// @approved
 	//  The view is leaving the current Chat: every live local subscription of
-	// the active Conversation detaches (cursors persist), terminal sessions
+	// the active Conversation detaches (cursors reset), terminal sessions
 	// are collected, and no server-owned Generation is ever stopped.
 	| { type: "conversation-switched" }
 	| { type: "event-observed"; generationId: number; eventId: number; event: GenerationEvent }
@@ -107,7 +107,7 @@ export type GenerationSessionsAction =
 	//  The user moved on (new start, new Stop): session errors stop being news.
 	| { type: "errors-acknowledged" };
 
-export type GenerationSessionStoryEffect = { kind: "story" } & Extract<import("./story").StoryAction, { type: "generation-observed" }>;
+export type GenerationSessionStoryEffect = { kind: "story" } & import("./story/variant-streams").VariantObservation;
 
 export type GenerationSessionEffect =
 	// @approved
@@ -173,7 +173,7 @@ const livePhases: ReadonlySet<GenerationSessionPhase> = new Set(["subscribing", 
 
 // @approved
 //  Detach every live session of one Conversation: local subscriptions close
-// (unsubscribe effects) while cursors and identity persist for reattachment.
+// (unsubscribe effects). Text is released with the Chat, so reattachment starts at a fresh page checkpoint.
 const detachConversationSessions = (
 	sessions: ReadonlyMap<number, GenerationSession>,
 	conversationId: number,
@@ -181,9 +181,9 @@ const detachConversationSessions = (
 	const next = new Map(sessions);
 	const effects: GenerationSessionEffect[] = [];
 	for (const [generationId, session] of next) {
-		if (session.conversationId !== conversationId || !livePhases.has(session.phase)) continue;
-		next.set(generationId, { ...session, phase: "detached" });
-		effects.push({ kind: "unsubscribe", generationId });
+		if (session.conversationId !== conversationId || session.terminal !== null) continue;
+		next.set(generationId, { ...session, phase: "detached", lastEventId: 0 });
+		if (livePhases.has(session.phase)) effects.push({ kind: "unsubscribe", generationId });
 	}
 	return { sessions: next, effects };
 };
@@ -357,7 +357,7 @@ const observeEvent = (
 	const effects: GenerationSessionEffect[] = [];
 	if (action.event.type === "content") {
 		effects.push({
-			kind: "story", type: "generation-observed", mode: "append", stream: "content",
+			kind: "story", mode: "append", stream: "content",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			text: action.event.text,
@@ -367,7 +367,7 @@ const observeEvent = (
 	}
 	if (action.event.type === "reasoning") {
 		effects.push({
-			kind: "story", type: "generation-observed", mode: "append", stream: "reasoning",
+			kind: "story", mode: "append", stream: "reasoning",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			text: action.event.text,
@@ -399,7 +399,7 @@ const observeState = (
 	const terminal = terminalFromStatus(action.state);
 	const effects: GenerationSessionEffect[] = [
 		{
-			kind: "story", type: "generation-observed", mode: "replace",
+			kind: "story", mode: "replace",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			content: action.state.content,

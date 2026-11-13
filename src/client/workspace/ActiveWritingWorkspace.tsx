@@ -55,6 +55,7 @@ import { forkConversation } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import type { ForkConversationBody } from "../../shared/contract/conversation-schema";
 import { hasMoves } from "../../shared/contract/box-generation";
+import { VariantStreamsContext } from "../story/variant-streams";
 
 const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
 
@@ -272,6 +273,7 @@ export function ActiveWritingWorkspace({
 			editBriefDisabledReason: paintDisabledReason,
 		}}>
 		<ChatPins.Provider value={conversation ?? noPins}>
+		<VariantStreamsContext value={generation.streams}>
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
@@ -458,6 +460,7 @@ export function ActiveWritingWorkspace({
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
 		<UnsavedChangesDialog {...paintNavigation.dialogProps} />
 		</Toast.Provider>
+		</VariantStreamsContext>
 		</ChatPins.Provider>
 		</IllustrationActionsContext>
 	);

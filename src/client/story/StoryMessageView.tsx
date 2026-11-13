@@ -35,6 +35,7 @@ import { SwipeBrowser } from "./SwipeBrowser";
 import { useSaveGuard } from "../SaveGuard";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchNeighbourText, useVariantText, useVariantsText } from "./variant-text";
+import { useStreamedVariant, useStreamedVariants } from "./variant-streams";
 
 // @approved
 //  The story renders one native Message from the paginated read model: the
@@ -123,7 +124,8 @@ export const StoryMessageView = memo(function StoryMessageView({
 	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
 	const visibleId = displayedVariantId ?? getDisplayedVariantId(message, null);
-	const { variant: active, failed: textFailed } = useVariantText(conversationId, message.id, message.swipes.find((variant) => variant.id === visibleId));
+	const streamed = useStreamedVariant(message.swipes.find((variant) => variant.id === visibleId));
+	const { variant: active, failed: textFailed } = useVariantText(conversationId, message.id, streamed);
 	const activeIndex = active === undefined
 		? message.activeSwipe
 		: message.swipes.findIndex((variant) => variant.id === active.id);
@@ -171,7 +173,8 @@ export const StoryMessageView = memo(function StoryMessageView({
 		else onMoveSwipe(message.id, 1);
 	};
 	const [browsing, setBrowsing] = useState(false);
-	const browsed = useVariantsText(conversationId, message.id, message.swipes, browsing);
+	const streamedSwipes = useStreamedVariants(message.swipes, browsing);
+	const browsed = useVariantsText(conversationId, message.id, streamedSwipes, browsing);
 	const client = useQueryClient();
 	const prefetchNeighbours = () => prefetchNeighbourText(client, conversationId, message.id, message.swipes, activeIndex);
 	useEffect(() => {
