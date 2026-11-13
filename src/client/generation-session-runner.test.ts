@@ -232,6 +232,20 @@ describe("the Generation session runner", () => {
 		expect(spy.streams.get(9_007)).toEqual({ generationId: 7, eventId: 3, content: "Checkpoint", reasoning: "Revised plan" });
 	});
 
+	test("a refresh that has not placed an accepted Generation cannot discard its stream", () => {
+		const stream = fakeStream();
+		const spy = host();
+		const runner = runnerWith(stream, spy);
+		runner.dispatch(observeTargets([]));
+		runner.dispatch({ type: "generation-accepted", target: { ...target(7), conversationId: 42 } });
+		stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("One.") });
+		runner.dispatch(observeTargets([]));
+		stream.requests[0]!.onEvent({ eventId: 2, event: contentEvent(" Two.") });
+		// Reject treating an absent target as terminal while its live session can still deliver text.
+		expect(spy.streams.get(9_007)?.content).toBe("One. Two.");
+		runner.dispose();
+	});
+
 	test("a checkpoint observed before the first subscription survives an off-window delta", () => {
 		const stream = fakeStream();
 		const spy = host();
@@ -255,8 +269,11 @@ describe("the Generation session runner", () => {
 			if (end === "dispose") runner.dispose();
 			else if (end === "switch") runner.dispatch({ type: "conversation-switched" });
 			else if (end === "implicit-switch") runner.dispatch({ type: "targets-observed", conversationId: 43, targets: [] });
-			else if (end === "deleted") runner.dispatch(observeTargets([8]));
-			else if (end === "snapshot") stream.requests[0]!.onState({ ...stateSnapshot({ content: "Final", latestEventId: 2 }), status: "complete" });
+			else if (end === "deleted") {
+				stream.settle(0, { outcome: "interrupted", reason: "Disconnected before deletion" });
+				await flushSubscriptions();
+				runner.dispatch(observeTargets([8]));
+			} else if (end === "snapshot") stream.requests[0]!.onState({ ...stateSnapshot({ content: "Final", latestEventId: 2 }), status: "complete" });
 			else {
 				stream.settle(0, end === "failed" ? { outcome: end, reason: "Provider failed" } : { outcome: end });
 			}

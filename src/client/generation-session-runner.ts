@@ -105,12 +105,14 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 	const dispatch = (action: GenerationSessionsAction): void => {
 		if (disposed) return;
 		const transition = reduceGenerationSessions(state, action);
-		if (action.type === "targets-observed") host.streams.retain(new Set(action.targets.map((target) => target.generationId)));
-		if (transition.state === state) return;
+		if (transition.state === state) {
+			if (action.type === "targets-observed") retainStreams();
+			return;
+		}
 		const switched = transition.state.activeConversationId !== state.activeConversationId;
 		if (switched) cancelRefresh();
 		state = transition.state;
-		if (switched) retainStreams();
+		if (switched || action.type === "targets-observed") retainStreams();
 		notify();
 		for (const effect of transition.effects) runEffect(effect);
 	};
