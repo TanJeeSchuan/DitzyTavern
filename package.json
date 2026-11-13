@@ -28,7 +28,7 @@
 		"typecheck:tools": "bun node_modules/typescript5/bin/tsc -p tsconfig.tools.json",
 		"test": "bun test --only-failures --parallel=3 --no-isolate --path-ignore-patterns '**/*.spec.ts' --preload ./src/client/test-fixtures/window.ts --preload ./src/server/test-fixtures/boxes.ts src",
 		"test:files": "bun test --no-isolate --preload ./src/client/test-fixtures/window.ts --preload ./src/server/test-fixtures/boxes.ts",
-		"test:publication": "bun test scripts/publish-docker.test.ts scripts/write-build-metadata.test.ts",
+		"test:publication": "bun test scripts/docker-smoke.test.ts scripts/publish-docker.test.ts scripts/write-build-metadata.test.ts",
 		"check": "bun scripts/run-check.ts check",
 		"screenshots:capture": "node scripts/capture-screenshots.ts",
 		"test:e2e": "bun scripts/run-check.ts e2e",
