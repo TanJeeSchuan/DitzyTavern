@@ -1,3 +1,4 @@
+import { DESCRIBE_INSTRUCTION } from "../src/shared/contract/describe";
 import type { Database } from "bun:sqlite";
 import { cpSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -18,6 +19,8 @@ import {
 	isImageRequest,
 	readImageRequestBody,
 	type ImageReply,
+	describeCallBody,
+	type DescribeModelCall,
 	chatCompletionCallBody,
 	decisionCallBody,
 	embeddingsCallBody,
@@ -38,6 +41,7 @@ initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.fro
 registerWireFormats();
 
 let chatReplies: ChatReply[] = [];
+let describeReplies: ChatReply[] = [];
 let imageReplies: ImageReply[] = [];
 let authoringReplies: AuthoringReply[] = [];
 let decisionRules: DecisionRule[] = [];
@@ -108,10 +112,10 @@ const extraction = (call: ChatModelCall) => {
 	return completion([JSON.stringify({ candidates })], call.body.stream === true);
 };
 
-const chat = async (call: ChatModelCall) => {
-	const reply = chatReplies[0];
+const chat = async (call: ChatModelCall | DescribeModelCall, replies = chatReplies) => {
+	const reply = replies[0];
 	if (!reply) return refuse(call);
-	if (!reply.repeat) chatReplies.shift();
+	if (!reply.repeat) replies.shift();
 	if ("status" in reply && reply.hold) await held.promise;
 	if ("status" in reply) return Response.json({ error: { message: reply.error } }, { status: reply.status });
 	return completion(reply.chunks, call.body.stream === true, reply.hold, reply.truncate);
@@ -179,6 +183,8 @@ const fakeFetch: ModelFetch = async (input, init) => {
 		call = { kind: "models", url, headers, body: raw };
 	} else if (url.endsWith("/embeddings") && Value.Check(embeddingsCallBody, raw)) {
 		call = { kind: "embeddings", url, headers, body: raw };
+	} else if (url.endsWith("/chat/completions") && Value.Check(describeCallBody, raw) && raw.messages[0].content === DESCRIBE_INSTRUCTION) {
+		call = { kind: "describe", url, headers, body: raw };
 	} else if (url.endsWith("/chat/completions") && Value.Check(chatCompletionCallBody, raw)) {
 		call = { kind: raw.messages[0]?.content.startsWith("Extract durable, attributed story Memories") === true ? "extraction" : "chat", url, headers, body: raw };
 	} else {
@@ -193,6 +199,7 @@ const fakeFetch: ModelFetch = async (input, init) => {
 			if (reply.hold) await held.promise;
 			return "status" in reply ? Response.json({ error: { message: reply.error } }, { status: reply.status }) : Response.json({ data: [{ b64_json: reply.base64 }] });
 		}
+		case "describe": return chat(call, describeReplies);
 		case "chat": return chat(call);
 		case "extraction": return extraction(call);
 		case "decision": return decisions(call);
@@ -243,6 +250,7 @@ const reset = async () => {
 		current = undefined;
 	}
 	chatReplies = [];
+	describeReplies = [];
 	imageReplies = [];
 	authoringReplies = [];
 	decisionRules = [];
@@ -301,6 +309,7 @@ const server = Bun.serve({
 		switch (new URL(request.url).pathname) {
 			case "/__e2e/reset": await reset(); break;
 			case "/__e2e/images": imageReplies.push(...await request.json()); break;
+			case "/__e2e/describe": describeReplies.push(...await request.json()); break;
 			case "/__e2e/chat": chatReplies.push(...await request.json()); break;
 			case "/__e2e/authoring": authoringReplies.push(...await request.json()); break;
 			case "/__e2e/authoring/chat/completions": return authoring(request);

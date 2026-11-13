@@ -1,12 +1,12 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { imageModelSelection } from "./image-model";
+import { modelSelection } from "./model-selection";
 import { invalidOutcome, notFoundOutcome } from "./outcomes";
 
 export const paintingAspectRatio = Type.Union([Type.Literal("9:16"), Type.Literal("3:4"), Type.Literal("1:1"), Type.Literal("4:3"), Type.Literal("16:9")]);
 export const paintingSettings = Type.Object({ aspectRatio: paintingAspectRatio });
 export type PaintingAspectRatio = Static<typeof paintingAspectRatio>;
 export const DEFAULT_PAINTING_ASPECT_RATIO: PaintingAspectRatio = "1:1";
-const paintingInput = Type.Object({ brief: Type.String(), imageModel: imageModelSelection, aspectRatio: paintingAspectRatio });
+const paintingInput = Type.Object({ brief: Type.String(), imageModel: modelSelection, aspectRatio: paintingAspectRatio });
 export const illustration = Type.Composite([paintingInput, Type.Object({ image: Type.String({ pattern: "^image:[0-9a-f]{64}$" }) })]);
 const paintingBase = Type.Composite([paintingInput, Type.Object({ id: Type.String(), variantId: Type.Integer() })]);
 export const painting = Type.Union([
