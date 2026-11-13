@@ -1,10 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, messageVariantDataTable } from "../database/schema";
 import { illustration, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
-import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantIds, readPaintPresetSettings, commandPaintPreset } from "../conversation";
+import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantData, readChatVariantIds, readChatVariants, readConversationSummary, readPaintPresetSettings, commandPaintPreset } from "../conversation";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import { readImageModelSettings } from "./image-model-settings";
 import { paintImage, type ModelFetch } from "../model-client";
@@ -12,7 +12,11 @@ import { imageLoader, ingestImage, storeImage } from "../image";
 import { announceChange } from "../database/changes";
 import { processStateFor } from "../application/process-state";
 
-const NAMESPACE = "painting";
+import { parseImageReferences } from "../../shared/image-reference";
+import { illustrationName } from "../../shared/painting-brief";
+import type { GalleryRead } from "../../shared/contract/painting";
+
+import { PAINTING_NAMESPACE } from "../../shared/variant-data-codecs";
 
 export const createPaintingModule = (database: Database, options: ConnectionSettingsModuleOptions & { fetch?: ModelFetch } = {}) => {
 	const db = drizzle(database);
@@ -23,23 +27,22 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	};
 	const read = (conversationId: number): IllustrationsRead => {
 		requireChat(conversationId);
-		const row = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, NAMESPACE), eq(conversationDataTable.key, "aspect-ratio"))).get();
+		const row = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), eq(conversationDataTable.key, "aspect-ratio"))).get();
 		const aspectRatio = row === undefined ? DEFAULT_PAINTING_ASPECT_RATIO : Value.Parse(paintingSettings, JSON.parse(row.value)).aspectRatio;
 		const variantIds = variants(conversationId);
-		const stored = variantIds.length === 0 ? [] : db.select({ id: messageVariantDataTable.key, variantId: messageVariantDataTable.message_variant_id, value: messageVariantDataTable.value }).from(messageVariantDataTable)
-			.where(and(inArray(messageVariantDataTable.message_variant_id, variantIds), eq(messageVariantDataTable.namespace, NAMESPACE))).all();
-		const paintings: Painting[] = stored.map(({ id, variantId, value }) => ({ kind: "illustration", id, variantId, ...Value.Parse<typeof illustration>(illustration, JSON.parse(value)) }));
+		const stored = readChatVariantData(database, conversationId, PAINTING_NAMESPACE);
+		const paintings: Painting[] = stored.map(({ key: id, variantId, value }) => ({ kind: "illustration", id, variantId, ...Value.Parse<typeof illustration>(illustration, JSON.parse(value)) }));
 		for (const variantId of variantIds) for (const entry of provisional.forVariant(variantId)) paintings.push(entry.painting);
 		return { ...readPaintPresetSettings(database, conversationId), aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)) };
 	};
-	const start = (variantId: number, brief: string, aspectRatio: IllustrationsRead["aspectRatio"], id: string = Bun.randomUUIDv7()) => {
+	const start = ({ variantId, brief, ask, aspectRatio, id = Bun.randomUUIDv7() }: Pick<Painting, "variantId" | "brief" | "ask" | "aspectRatio"> & { id?: string }) => {
 		const { profileId, model } = readImageModelSettings(database);
 		const connections = createConnectionSettingsModule(database, options);
 		const profile = connections.get().profiles.find((profile) => profile.id === profileId);
 		if (profile === undefined || profile.apiFormat !== "images" || !model) throw new InvalidConversationCommandError("Choose an Image Model in Connections before painting.");
 		const secrets = connections.getProfileSecrets(profile.id);
 		const controller = new AbortController();
-		const painting = { kind: "painting", id, variantId, brief, aspectRatio, imageModel: { profileId, model } } as const;
+		const painting = { kind: "painting", id, variantId, brief, ask, aspectRatio, imageModel: { profileId, model } } as const;
 		provisional.set(variantId, id, { painting, controller });
 		announceChange(database);
 		void (async () => {
@@ -49,7 +52,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 				if (controller.signal.aborted) return;
 				database.transaction(() => {
 					storeImage(database, image);
-					db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: NAMESPACE, key: id, value: JSON.stringify({ image: `image:${image.hash}`, brief, imageModel: painting.imageModel, aspectRatio }) }).run();
+					db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: PAINTING_NAMESPACE, key: id, value: JSON.stringify({ image: `image:${image.hash}`, brief, ask, imageModel: painting.imageModel, aspectRatio }) }).run();
 				}).immediate();
 				provisional.remove(variantId, id);
 			} catch (error) {
@@ -63,27 +66,42 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		requireChat(conversationId);
 		if (command.type === "select-paint-preset" || command.type === "set-brief-message-count") return commandPaintPreset(database, conversationId, command);
 		if (command.type === "set-aspect-ratio") {
-			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: NAMESPACE, key: "aspect-ratio", value: JSON.stringify({ aspectRatio: command.aspectRatio }) })
+			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key: "aspect-ratio", value: JSON.stringify({ aspectRatio: command.aspectRatio }) })
 				.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value: JSON.stringify({ aspectRatio: command.aspectRatio }) } }).run();
 			return;
 		}
-		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint");
+		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint.");
 		if (command.type === "delete") {
-			db.delete(messageVariantDataTable).where(and(eq(messageVariantDataTable.message_variant_id, command.variantId), eq(messageVariantDataTable.namespace, NAMESPACE), eq(messageVariantDataTable.key, command.id))).run();
+			db.delete(messageVariantDataTable).where(and(eq(messageVariantDataTable.message_variant_id, command.variantId), eq(messageVariantDataTable.namespace, PAINTING_NAMESPACE), eq(messageVariantDataTable.key, command.id))).run();
 			return;
 		}
 		if (command.type === "paint") {
 			if (!command.brief.trim()) throw new InvalidConversationCommandError("Write a Brief before painting.");
-			start(command.variantId, command.brief, command.aspectRatio);
+			start(command);
 			return;
 		}
 		const failed = provisional.get(command.variantId, command.id)?.painting;
 		if (failed?.kind !== "failed") throw new InvalidConversationCommandError("The failed painting is no longer available.");
-		if (command.type === "retry") start(failed.variantId, failed.brief, failed.aspectRatio, failed.id);
+		if (command.type === "retry") start(failed);
 		else {
 			provisional.remove(command.variantId, command.id);
 			announceChange(database);
 		}
 	};
-	return { read, command };
+	const gallery = (conversationId: number): GalleryRead => {
+		const chat = readConversationSummary(database, conversationId);
+		if (!chat) throw new ConversationNotFoundError(conversationId);
+		const images: GalleryRead = [
+			...read(conversationId).paintings.flatMap((painting) => painting.kind === "illustration" ? [{ hash: painting.image.slice(6), name: illustrationName(painting.ask) }] : []),
+			...readChatVariants(database, conversationId, { includeActive: true }).flatMap(({ content }) => parseImageReferences(content)),
+			...chat.cast.flatMap((participant) => [
+				...(participant.portrait ? [{ hash: participant.portrait.hash, name: `${participant.name} Portrait` }] : []),
+				...parseImageReferences(participant.prompt.appearance),
+			]),
+		];
+		const firstByHash = new Map<string, GalleryRead[number]>();
+		for (const { hash, name } of images) if (!firstByHash.has(hash)) firstByHash.set(hash, { hash, name });
+		return [...firstByHash.values()];
+	};
+	return { read, command, gallery };
 };

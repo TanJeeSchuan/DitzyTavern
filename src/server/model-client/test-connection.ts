@@ -155,7 +155,7 @@ async function testEmbeddings(
 ): Promise<TestConnectionResult> {
 	try {
 		const vectors = await requestEmbeddings(["DitzyTavern embedding test"], {
-			endpoint: resolveRequestUrl(profile.requestUrl, profile.apiFormat),
+			endpoint: resolveRequestUrl(profile.requestUrl, "embeddings"),
 			model: modelId,
 			secrets,
 			timeoutMs: Math.min(profile.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS, options.timeoutMs ?? TEST_CONNECTION_TIMEOUT_MS),

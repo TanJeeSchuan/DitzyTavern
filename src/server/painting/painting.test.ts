@@ -1,8 +1,8 @@
 import { prepareConversationEffects } from "../application/conversation-effects";
 import { createGenerationPreviewAsync } from "../workflows/generation-preview";
 import { expect, test } from "bun:test";
-import { createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
-import { executeConversationCommand, readConversationSummary, observeConversationWrites } from "../conversation";
+import { createConversationWithHistory, openObservedDatabase, checkpointFromStart } from "../test-fixtures/conversation";
+import { executeConversationCommand, readConversationSummary, observeConversationWrites, acceptConversationContinuationGeneration } from "../conversation";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
@@ -37,7 +37,7 @@ test("an Illustration lands on its original Variant after a swipe without a Conv
 	const module = createPaintingModule(database, { fetch: () => reply.promise });
 	const message = chat.messages[0]!;
 	const variantId = message.variants[0]!.id;
-	module.command(chat.id, { type: "paint", variantId, brief: "Private painted scene", aspectRatio: "3:4" });
+	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "Private painted scene", aspectRatio: "3:4" });
 	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "painting", variantId }]);
 	expect(database.query("SELECT * FROM message_variant_data WHERE namespace = 'painting'").all()).toHaveLength(0);
 	const targets = [{ kind: "send", content: "Continue the scene" }, { kind: "continuation" }, { kind: "sibling", messageId: message.id }] as const;
@@ -79,7 +79,7 @@ test("provider failures persist until retry or dismissal; restarting drops provi
 		return result.promise.finally(unsubscribe);
 	};
 	const variantId = chat.messages[0]!.variants[0]!.id;
-	module.command(chat.id, { type: "paint", variantId, brief: "A scene", aspectRatio: "1:1" });
+	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "A scene", aspectRatio: "1:1" });
 	await settled();
 	const failure = module.read(chat.id).paintings[0]!;
 	expect(failure).toMatchObject({ kind: "failed", message: "The provider refused this Brief." });
@@ -89,14 +89,14 @@ test("provider failures persist until retry or dismissal; restarting drops provi
 	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "illustration" }]);
 	expect(calls).toBe(2);
 	const rejected = createPaintingModule(database, { fetch: async () => Response.json({ data: [{ b64_json: Buffer.from("<svg></svg>").toString("base64") }] }) });
-	rejected.command(chat.id, { type: "paint", variantId, brief: "Rejected media", aspectRatio: "1:1" });
+	rejected.command(chat.id, { type: "paint", ask: "", variantId, brief: "Rejected media", aspectRatio: "1:1" });
 	await settled();
 	const invalid = module.read(chat.id).paintings.find((entry) => entry.kind === "failed")!;
 	expect(invalid).toMatchObject({ kind: "failed", message: "Only PNG, JPEG, WebP, and GIF images are accepted." });
 	module.command(chat.id, { type: "dismiss", variantId, id: invalid.id });
 	expect(module.read(chat.id).paintings).toHaveLength(1);
 	const held = createPaintingModule(database, { fetch: (_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true })) });
-	held.command(chat.id, { type: "paint", variantId, brief: "Abandoned", aspectRatio: "1:1" });
+	held.command(chat.id, { type: "paint", ask: "", variantId, brief: "Abandoned", aspectRatio: "1:1" });
 	processStateFor(database).dispose();
 	expect(createPaintingModule(database).read(chat.id).paintings).toMatchObject([{ kind: "illustration" }]);
 });
@@ -118,8 +118,8 @@ test("concurrent paintings keep their starting positions when the later picture 
 	const second = Promise.withResolvers<Response>();
 	const module = createPaintingModule(database, { fetch: (_url, init) => JSON.parse(String(init?.body)).prompt === "First" ? first.promise : second.promise });
 	const variantId = chat.messages[0]!.variants[0]!.id;
-	module.command(chat.id, { type: "paint", variantId, brief: "First", aspectRatio: "9:16" });
-	module.command(chat.id, { type: "paint", variantId, brief: "Second", aspectRatio: "16:9" });
+	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "First", aspectRatio: "9:16" });
+	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "Second", aspectRatio: "16:9" });
 	const ids = module.read(chat.id).paintings.map((painting) => painting.id);
 	const finish = async (reply: typeof first, brief: string) => {
 		const finished = Promise.withResolvers<void>();
@@ -148,7 +148,7 @@ test("deleting a Variant aborts only its painting and discards a late provider r
 	} });
 	const message = chat.messages[0]!;
 	const variantId = message.variants[0]!.id;
-	module.command(chat.id, { type: "paint", variantId, brief: "Removed scene", aspectRatio: "1:1" });
+	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "Removed scene", aspectRatio: "1:1" });
 	const signal = await started.promise;
 	executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "delete-variant", messageId: message.id, variantId } });
 	expect(signal.aborted).toBe(true);
@@ -162,7 +162,7 @@ test("deleting a Variant aborts only its painting and discards a late provider r
 
 const paintAndWait = async (fixture: ReturnType<typeof setup>, variantId: number, brief: string) => {
 	const module = createPaintingModule(fixture.database, { fetch: async () => Response.json({ data: [{ b64_json: pngFixture({ width: 320 }).toString("base64") }] }) });
-	module.command(fixture.chat.id, { type: "paint", variantId, brief, aspectRatio: "4:3" });
+	module.command(fixture.chat.id, { type: "paint", ask: "", variantId, brief, aspectRatio: "4:3" });
 	const finished = Promise.withResolvers<void>();
 	const unsubscribe = subscribeDatabaseChanges(fixture.database, () => {
 		if (module.read(fixture.chat.id).paintings.some((painting) => painting.kind === "illustration" && painting.brief === brief)) finished.resolve();
@@ -220,4 +220,46 @@ for (const removal of ["Illustration", "Variant"] as const) test(`an Illustratio
 	sweepOrphanedImages(database, later);
 	sweepOrphanedImages(database, later + 24 * 60 * 60 * 1000 + 1);
 	for (const hash of hashes) expect(imageLoader(database)(hash)).toBeUndefined();
+});
+
+test("the gallery includes every Variant, Cast Portraits and Appearance, without duplicate Images", async () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const repeated = await uploadImage(database, pngFixture({ width: 16, height: 16 }));
+	const unselected = await uploadImage(database, pngFixture({ width: 24, height: 16 }));
+	const portrait = await uploadImage(database, pngFixture({ width: 32, height: 16 }));
+	const appearance = await uploadImage(database, pngFixture({ width: 40, height: 16 }));
+	const message = chat.messages[0]!;
+	database.query("UPDATE message_variant SET content = ? WHERE id = ?").run(formatImageReference("Repeated", repeated.hash) + formatImageReference("Later name", repeated.hash), message.variants[0]!.id);
+	database.query("UPDATE message_variant SET content = ? WHERE id = ?").run(formatImageReference("Other Swipe", unselected.hash), message.variants[1]!.id);
+	database.query("UPDATE participant_prompt SET portrait_hash = ?, portrait_focal_x = 0.5, portrait_focal_y = 0.5 WHERE participant_id = ?").run(portrait.hash, chat.control.modelParticipantId);
+	database.query("UPDATE participant_prompt SET appearance = ?, send_appearance_images = 0 WHERE participant_id = ?").run(formatImageReference("Appearance", appearance.hash), chat.control.modelParticipantId);
+	await paintAndWait(fixture, message.variants[1]!.id, "Hidden Illustration");
+	const module = createPaintingModule(database);
+	const painted = module.read(chat.id).paintings[0]!;
+	if (painted.kind !== "illustration") throw new Error("Missing Illustration");
+	expect(module.gallery(chat.id)).toEqual([
+		{ hash: painted.image.slice(6), name: "Illustration" },
+		{ hash: repeated.hash, name: "Repeated" }, { hash: unselected.hash, name: "Other Swipe" },
+		{ hash: portrait.hash, name: "Maren Portrait" }, { hash: appearance.hash, name: "Appearance" },
+	]);
+});
+
+
+test("the gallery includes live Image References while a Generation is active", async () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const image = await uploadImage(database, pngFixture({ width: 72, height: 32 }));
+	const opening = chat.messages[0]!;
+	const active = acceptConversationContinuationGeneration(database, {
+		generationIntent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
+		seed: "gallery-generation", conversationId: chat.id, expectedRevision: chat.revision, timestamp: "2026-11-12T00:00:00Z",
+		precedingMessageId: opening.id, precedingVariantId: opening.variants[0]!.id,
+		humanParticipantId: chat.control.humanParticipantId!, modelParticipantId: chat.control.modelParticipantId!,
+		capturedHumanName: "Writer", capturedModelName: "Maren", modelId: "fixture-model",
+		promptPlan: { blocks: [], warnings: [], images: [] },
+		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+	});
+	checkpointFromStart(database, { conversationId: chat.id, generationId: active.generationId, content: formatImageReference("Live picture", image.hash) });
+	expect(createPaintingModule(database).gallery(chat.id)).toEqual([{ hash: image.hash, name: "Live picture" }]);
 });

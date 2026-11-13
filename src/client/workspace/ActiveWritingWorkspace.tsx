@@ -1,10 +1,10 @@
-import { IllustrationActionsContext } from "../painting";
+import { IllustrationActionsContext, type PaintTarget } from "../painting";
 import type { ComposerHandle } from "../story/Composer";
 import { PaintPanel } from "../PaintPanel";
 import { boxIdOf, type BoxId } from "../../shared/contract/box";
 import { Toast } from "radix-ui";
 import { X } from "lucide-react";
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
 	SaveGuardContext,
 	SaveNavigationContext,
@@ -89,6 +89,11 @@ export function ActiveWritingWorkspace({
 	const [forkAt, setForkAt] = useState<ForkConversationBody["at"] | null>(null);
 	const [forkNotice, setForkNotice] = useState<string | null>(null);
 	const saveNavigation = useSaveNavigation();
+	const paintNavigation = useSaveNavigation();
+	const registerPaintGuard = useCallback((guard: Parameters<typeof saveNavigation.registerSaveGuard>[0]) => {
+		const unregister = [saveNavigation.registerSaveGuard(guard), paintNavigation.registerSaveGuard(guard)];
+		return () => unregister.forEach((remove) => remove());
+	}, [saveNavigation.registerSaveGuard, paintNavigation.registerSaveGuard]);
 	const [theme, setPersistedTheme] = useThemePreference();
 	const [swipeBrowsing, setSwipeBrowsing] = useSwipeBrowsing();
 
@@ -108,6 +113,7 @@ export function ActiveWritingWorkspace({
 		refreshStory: session.refreshStory,
 		ensureLatest: session.ensureLatest,
 		inspectPromptPlanBeforeGenerating,
+		beforeInspect: paintNavigation.requestNavigation,
 	});
 	const assembly = generation.assembly;
 	const assemblyActive = assembly !== null;
@@ -239,8 +245,17 @@ export function ActiveWritingWorkspace({
 		});
 	});
 
+	const paintDisabledReason = assemblyActive ? "Close the Prompt Plan preview to paint." : story.preview !== null ? "Confirm or cancel the Swipe preview to paint." : undefined;
 	const composerRef = useRef<ComposerHandle>(null);
-	const openPaint = (variantId: number, brief = "") => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", target: { variantId, brief, requestId: crypto.randomUUID() } }));
+	const paintDrafts = useRef(new Map<number, Pick<PaintTarget, "brief" | "ask">>());
+	const openPaint = (variantId: number, brief?: string, ask = "") => {
+		if (paintDisabledReason !== undefined) return;
+		saveNavigation.requestNavigation(() => {
+			const draft = brief === undefined ? paintDrafts.current.get(variantId) ?? { brief: "", ask: "" } : { brief, ask };
+			paintDrafts.current.set(variantId, draft);
+			dispatchPanel({ type: "paint-opened", target: { variantId, ...draft, requestId: crypto.randomUUID() } });
+		});
+	};
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
 	// @approved
 	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
@@ -249,11 +264,12 @@ export function ActiveWritingWorkspace({
 
 	return (
 		<IllustrationActionsContext value={{
-			addToComposer: !generation.assemblyAvailable ? null : (hash) => {
+			addToComposer: !generation.assemblyAvailable ? null : (name, hash) => {
 				if (narrow) dispatchPanel({ type: "details-closed" });
-				composerRef.current?.insertReference("Illustration", hash);
+				composerRef.current?.insertReference(name, hash);
 			},
-			editBrief: openPaint,
+			editBrief: paintDisabledReason === undefined ? openPaint : null,
+			editBriefDisabledReason: paintDisabledReason,
 		}}>
 		<ChatPins.Provider value={conversation ?? noPins}>
 		<Toast.Provider duration={8_000} swipeDirection="right">
@@ -316,10 +332,11 @@ export function ActiveWritingWorkspace({
 					setForkAt(at);
 				})}
 				swipeBrowsing={swipeBrowsing}
-				onEnterPreview={() => {
+				onEnterPreview={(enter) => paintNavigation.requestNavigation(() => {
 					dispatchPanel({ type: "preview-entered" });
 					onNewChatClose();
-				}}
+					enter();
+				})}
 				onOpenNavigation={() => setNavigationOpen(true)}
 				onOpenCast={() => saveNavigation.requestNavigation(() => togglePanel("characters"))}
 				onOpenConnections={openConnections}
@@ -335,6 +352,7 @@ export function ActiveWritingWorkspace({
 				onOpenInspector={openBoxInspector}
 				onInspectVariant={openVariantDetails}
 				onPaint={openPaint}
+				paintDisabledReason={paintDisabledReason}
 				generationRunning={generationRunning}
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}
@@ -358,10 +376,14 @@ export function ActiveWritingWorkspace({
 
 			<CoveredLayer inert={narrow && newChatOpen}>
 			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintTarget !== null && conversation !== null && (
-				<SaveGuardContext.Provider value={saveNavigation.registerSaveGuard}>
+				<SaveGuardContext.Provider value={registerPaintGuard}>
 				<PaintPanel
 					key={`${conversation.id}:${panelState.paintTarget.requestId}`}
 					conversation={conversation} onConversationChange={session.setConversation} target={panelState.paintTarget}
+					onDraftChange={(draft) => {
+						const { variantId } = panelState.paintTarget!;
+						paintDrafts.current.set(variantId, { ...paintDrafts.current.get(variantId)!, ...draft });
+					}}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 				</SaveGuardContext.Provider>
@@ -423,7 +445,7 @@ export function ActiveWritingWorkspace({
 		<GenerationErrorToast
 			error={generation.generationError}
 			imageModel={generation.generationImageModel}
-			retry={generation.retryGeneration === null ? null : () => saveNavigation.requestNavigation(() => generation.retryGeneration?.())}
+			retry={generation.retryGeneration}
 			acknowledge={generation.acknowledgeGenerationError}
 		/>
 		<ControlChangeToaster ref={controlToaster} />
@@ -434,6 +456,7 @@ export function ActiveWritingWorkspace({
 		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generationRunning} onClose={() => setForkAt(null)} onFork={fork} />}
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
+		<UnsavedChangesDialog {...paintNavigation.dialogProps} />
 		</Toast.Provider>
 		</ChatPins.Provider>
 		</IllustrationActionsContext>

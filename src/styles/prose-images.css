@@ -72,3 +72,15 @@
 	border-color: var(--focus);
 	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
 }
+
+.paint-gallery-thumbnail {
+	width: 100%;
+	height: 6rem;
+	margin: 0;
+}
+
+.paint-gallery-thumbnail img {
+	width: 100%;
+	height: 100%;
+	object-fit: contain;
+}

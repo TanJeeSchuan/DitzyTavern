@@ -104,3 +104,72 @@ test("write a Brief from an Ask on an older Message, edit it and paint", async (
 	expect(sent).not.toContain("You arrive as she pins a third map over the first two.");
 	expect((await llm.log()).calls.find((call) => call.kind === "image")?.body).toMatchObject({ prompt: "A red lantern reflected under a stone bridge." });
 });
+
+test.describe("Brief References", () => {
+	test.use({ allowedBrowserErrors: /status of 422/ });
+
+	test("rewrite a Brief, keep a gallery Reference, recompute Cast Appearance and paint exactly the edited References", async ({ page, llm }) => {
+		await selectImageModel(page);
+		const upload = async (width: number) => {
+			const base64 = pngFixture({ width, height: 32 }).toString("base64");
+			const image = await (await page.request.post("/api/images", { data: { data: base64 } })).json();
+			return { hash: image.hash, base64 };
+		};
+		const old = await upload(40);
+		const face = await upload(48);
+		const coat = await upload(56);
+		const gallery = await upload(64);
+		const quiet = await upload(72);
+		const { activeChatId } = await (await page.request.get("/api/workspace")).json();
+		const url = `/api/conversations/${activeChatId}`;
+		const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+		for (const [name, appearance, portrait] of [
+			["Iris", `Silver hair. ![Face](image:${face.hash}) ![Coat](image:${coat.hash})`, { hash: gallery.hash, focalX: 0.5, focalY: 0.5 }],
+			["Old", `Red cloak. ![Red cloak](image:${old.hash})`, undefined],
+			["Quiet", `Hidden hood. ![Quiet picture](image:${quiet.hash})`, undefined],
+		] as const) {
+			const { revision } = await (await page.request.get(url)).json();
+			const added = await page.request.post(`${url}/commands`, { data: { expectedRevision: revision, action: {
+				type: "add-participant", definition: { name, prompt: { ...prompt, appearance }, sendAppearanceImages: name !== "Quiet", openings: [], portrait },
+			} } });
+			expect(added.ok()).toBe(true);
+		}
+		await llm.chat({ chunks: [`Old in a red cloak. ![Red cloak](image:${old.hash}) ![Duplicate](image:${old.hash})`] }, { chunks: ["Iris standing at the bridge."] });
+		await llm.images({ base64: picture });
+		await page.goto("/");
+		await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
+		const panel = page.getByRole("complementary", { name: "Paint", exact: true });
+		await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("Paint Iris at the bridge in daylight.");
+		await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
+		const brief = panel.getByRole("textbox", { name: "Brief", exact: true });
+		await expect(brief.locator(".image-chip")).toHaveText(["Red cloak"]);
+		await panel.getByRole("button", { name: "Use as reference: Iris Portrait", exact: true }).click();
+		await panel.getByRole("button", { name: "Use as reference: Quiet picture", exact: true }).click();
+		await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
+		await expect(brief.locator(".image-chip")).toHaveText(["Face", "Coat", "Iris Portrait", "Quiet picture"]);
+		await brief.press("ControlOrMeta+Home");
+		await brief.press("ArrowDown");
+		await brief.press("ArrowDown");
+		await brief.press("Home");
+		await brief.press("Delete");
+		await expect(brief.locator(".image-chip")).toHaveText(["Coat", "Iris Portrait", "Quiet picture"]);
+		await panel.getByRole("button", { name: "Paint", exact: true }).click();
+		await expect(panel.getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
+		const sent = (await llm.log()).calls.find((call) => call.kind === "image");
+		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toEqual([coat, gallery, quiet].map(({ base64 }) => `data:image/png;base64,${base64}`));
+		await panel.getByRole("button", { name: "Add to composer", exact: true }).click();
+		await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("Paint Iris at the bridge in");
+		const unchanged = await brief.innerText();
+		await llm.chat({ status: 429, error: "Brief quota exceeded" });
+		await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
+		await expect(panel.getByRole("alert")).toBeVisible();
+		expect(await brief.innerText()).toBe(unchanged);
+		await llm.chat({ chunks: [], hold: true });
+		await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
+		await panel.getByRole("button", { name: "Stop", exact: true }).click();
+		await expect(panel.getByRole("button", { name: "Write Brief", exact: true })).toBeEnabled();
+		expect(await brief.innerText()).toBe(unchanged);
+		await llm.release();
+	});
+
+});

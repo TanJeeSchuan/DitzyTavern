@@ -31,7 +31,6 @@ const imageContent = Type.Array(Type.Union([
 	Type.Object({ type: Type.Literal("text"), text: Type.String() }),
 	Type.Object({ type: Type.Literal("image_url"), image_url: Type.Object({ url: Type.String() }) }),
 ]));
-const textMessage = Type.Object({ role: Type.String(), content: Type.String() });
 const chatCompletionMessage = Type.Object({ role: Type.String(), content: Type.Union([Type.String(), imageContent]) });
 export const chatCompletionCallBody = Type.Object({
 	model: Type.String(),
@@ -41,11 +40,7 @@ export const chatCompletionCallBody = Type.Object({
 	stream: Type.Optional(Type.Boolean()),
 	messages: Type.Array(chatCompletionMessage),
 });
-export const describeCallBody = Type.Object({
-	...chatCompletionCallBody.properties,
-	messages: Type.Tuple([textMessage, Type.Object({ role: Type.String(), content: imageContent })]),
-});
-export type DescribeModelCall = { kind: "describe"; url: string; headers: Record<string, string>; body: Static<typeof describeCallBody> };
+export type DescribeModelCall = { kind: "describe"; url: string; headers: Record<string, string>; body: Static<typeof chatCompletionCallBody> };
 export type ChatCompletionCallBody = Static<typeof chatCompletionCallBody>;
 
 export const messageText = ({ content }: ChatCompletionCallBody["messages"][number]): string =>

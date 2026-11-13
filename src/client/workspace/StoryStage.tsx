@@ -1,4 +1,3 @@
-import { useNavigationRequest } from "../SaveGuard";
 import { Paintbrush } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { RefObject } from "react";
@@ -68,6 +67,7 @@ export function StoryStage({
 	onOpenInspector,
 	onInspectVariant,
 	onPaint,
+	paintDisabledReason,
 	generationRunning,
 	onOpenGenerationDetails,
 	onControlChange,
@@ -84,7 +84,7 @@ export function StoryStage({
 	session: ReturnType<typeof useConversationSession>;
 	generation: ReturnType<typeof useGenerationController>;
 	preview: ReturnType<typeof usePreviewController>;
-	onEnterPreview: () => void;
+	onEnterPreview: (enter: () => void) => void;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
 	onOpenConnections: (box: BoxId) => void;
@@ -93,13 +93,13 @@ export function StoryStage({
 	onOpenVariables: () => void;
 	onOpenInspector: (box: string, focus: { messageId: number } | null) => void;
 	onPaint: (variantId: number) => void;
+	paintDisabledReason: string | undefined;
 	generationRunning: boolean;
 	onInspectVariant: (messageId: number, variantId: number) => void;
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
 	onFork: (at: { through: number; variantId?: number } | { rewind: number }) => void;
 }) {
-	const navigate = useNavigationRequest();
 	const readyStory = isStoryReady(story) ? story : null;
 	const storyConversationId = "conversationId" in story ? story.conversationId : null;
 	const illustrations = useIllustrations(storyConversationId);
@@ -122,24 +122,24 @@ export function StoryStage({
 	//  Message rows are memoized, so a streamed event re-renders only the row
 	// whose text changed. Their handlers keep one identity across renders and
 	// call the latest render's.
-	const latest = useRef({ navigate, generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint });
-	latest.current = { navigate, generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint };
+	const latest = useRef({ generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint });
+	latest.current = { generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint };
 	const rows = useMemo(() => ({
 		paint: (variantId: number) => latest.current.onPaint(variantId),
-		continueMessage: (messageId: number) => latest.current.navigate(() => latest.current.generation.continueMessage(messageId)),
-		regenerate: (messageId: number) => latest.current.navigate(() => {
+		continueMessage: (messageId: number) => latest.current.generation.continueMessage(messageId),
+		regenerate: (messageId: number) => {
 			latest.current.viewport.followLatest(messageId);
 			latest.current.generation.regenerateResponse(messageId);
-		}),
-		sibling: (messageId: number) => latest.current.navigate(() => {
+		},
+		sibling: (messageId: number) => {
 			latest.current.viewport.followLatest(messageId);
 			latest.current.generation.siblingMessage(messageId);
-		}),
-		reroll: (messageId: number) => latest.current.navigate(() => latest.current.generation.siblingMessage(messageId, true)),
+		},
+		reroll: (messageId: number) => latest.current.generation.siblingMessage(messageId, true),
 		inspect: (messageId: number, variantId: number) => latest.current.onInspectVariant(messageId, variantId),
 		openInspector: (box: string, focus: { messageId: number }) => latest.current.onOpenInspector(box, focus),
-		moveSwipe: (messageId: number, direction: -1 | 1) => latest.current.navigate(() => void latest.current.storyActions.changeSwipe(messageId, direction)),
-		selectVariant: (messageId: number, variantId: number) => latest.current.navigate(() => void latest.current.storyActions.selectSwipe(messageId, variantId)),
+		moveSwipe: (messageId: number, direction: -1 | 1) => void latest.current.storyActions.changeSwipe(messageId, direction),
+		selectVariant: (messageId: number, variantId: number) => void latest.current.storyActions.selectSwipe(messageId, variantId),
 		edit: (messageId: number, content: string, asNew: boolean) => latest.current.storyActions.editStoryMessage(messageId, content, asNew),
 		fork: (messageId: number) => latest.current.onFork({ through: messageId }),
 		rewind: (messageId: number) => latest.current.onFork({ rewind: messageId }),
@@ -149,10 +149,7 @@ export function StoryStage({
 	const onLayerFocus = useLayerFocus(inert);
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
-	const paintDisabledReason = generationRunning ? "Wait for the Generation to finish before painting."
-		: assemblyActive ? "Close the Prompt Plan preview to paint."
-			: previewMode ? "Confirm or cancel the Swipe preview to paint."
-				: undefined;
+	const composerPaintDisabledReason = generationRunning ? "Wait for the Generation to finish before painting." : paintDisabledReason;
 	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(latestStoryMessage, story.preview, story.requestedSelections);
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
@@ -216,6 +213,7 @@ export function StoryStage({
 							conversationId={storyConversationId}
 							message={message}
 							onPaint={rows.paint}
+							paintDisabledReason={paintDisabledReason}
 							lens={lens}
 							swipeBrowsing={swipeBrowsing}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}
@@ -320,7 +318,7 @@ export function StoryStage({
 					isGenerating={generation.isGenerating}
 					canWrite={generation.assemblyAvailable}
 					atLatest={viewport.atLatest}
-					onSubmit={(event) => { event.preventDefault(); if (generation.canSubmit()) navigate(() => generation.submitMessage(event)); }}
+					onSubmit={generation.submitMessage}
 					onCancel={generation.cancelGeneration}
 					stopPending={generation.stopPending || generation.selectedGenerationTarget === undefined}
 					writerName={humanParticipant?.duplicateLabel}
@@ -336,7 +334,7 @@ export function StoryStage({
 							onControlChange={onControlChange}
 						>
 							<Button type="button" variant="ghost" size="icon-sm" className="pointer-coarse:h-8" aria-label="Paint"
-								title={paintDisabledReason ?? (finalVariantId === null ? "Load the final Message to paint." : "Paint")}
+								title={composerPaintDisabledReason ?? (finalVariantId === null ? "Load the final Message to paint." : "Paint")}
 								disabled={generationRunning || assemblyActive || previewMode || finalVariantId === null}
 								onClick={() => { if (finalVariantId !== null) onPaint(finalVariantId); }}><Paintbrush aria-hidden="true" /></Button>
 						</ComposerControlSelectors>

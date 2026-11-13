@@ -20,7 +20,9 @@ export async function paintImage(input: {
 	const { profile, secrets } = input;
 	if (profile.apiFormat !== "images" || profile.adapter === "deepseek") throw new Error("Choose an Images connection with the OpenRouter or OpenAI-compatible adapter.");
 	if (profile.timeoutMs === null || profile.timeoutMs <= 0) throw new Error("An Images connection needs a positive timeout.");
-	const images = parseImageReferences(input.brief).map(({ hash, name }) => {
+	const references = new Map<string, string>();
+	for (const { hash, name } of parseImageReferences(input.brief)) if (!references.has(hash)) references.set(hash, name);
+	const images = [...references].map(([hash, name]) => {
 		const image = input.loadImage(hash);
 		if (image === undefined) throw new Error(`The Image "${name}" is missing.`);
 		return `data:${image.mediaType};base64,${Buffer.from(image.bytes).toString("base64")}`;

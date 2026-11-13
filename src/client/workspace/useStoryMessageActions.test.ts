@@ -179,8 +179,9 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 			events.push(`scroll:${target}`);
 		},
 		canEnterPreview: true,
-		onEnterPreview: () => {
+		onEnterPreview: (enter) => {
 			events.push("enter-preview");
+			enter();
 		},
 	});
 	const swipe = (messageId: number, direction: -1 | 1) => actions().changeSwipe(messageId, direction);

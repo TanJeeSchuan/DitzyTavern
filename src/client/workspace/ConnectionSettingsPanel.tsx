@@ -1,6 +1,5 @@
-import { loadImageModel, saveImageModel } from "../image-model";
+import { modelSelectionClient } from "../model-selection-client";
 import { ModelSelectionSettingsEditor } from "./ModelSelectionSettingsEditor";
-import { loadDescribingModel, saveDescribingModel } from "../describing-model";
 import type { ModelSelectionSettings } from "../../shared/contract/model-selection";
 import { useState, type ReactNode } from "react";
 import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfileEditor";
@@ -64,10 +63,13 @@ export function BoxSettingsDrafts({ render }: { readonly render: (drafts: Drafts
 	return <Drafted owners={owners} drafts={{ decisions: [], delegates: [] }} render={({ decisions, delegates }) => render({ decisions: listed(decisions), delegates: listed(delegates) })} />;
 }
 
+const describingModelClient = modelSelectionClient("describing-model");
+const imageModelClient = modelSelectionClient("image-model");
+
 export function ConnectionSettingsPanel({ controller, activeProfileId, delegateBox }: PanelProps) {
 	const semanticTriggers = useSemanticTriggerSettings();
-	const describingModel = useSettingsDraft("Describing model", loadDescribingModel, saveDescribingModel);
-	const imageModel = useSettingsDraft("Image Model", loadImageModel, saveImageModel);
+	const describingModel = useSettingsDraft("Describing model", describingModelClient.load, describingModelClient.save);
+	const imageModel = useSettingsDraft("Image Model", imageModelClient.load, imageModelClient.save);
 	const [open, setOpen] = useState<Open>(delegateBox === undefined ? null : `delegate:${delegateBox}`);
 	const defaultDelegate = useSettingsDraft("Default delegate settings", defaultDelegateClient.load, defaultDelegateClient.save);
 	return <BoxSettingsDrafts render={(drafts) =>

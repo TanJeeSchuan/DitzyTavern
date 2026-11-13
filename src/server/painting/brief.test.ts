@@ -103,7 +103,7 @@ test("a Brief request rejects unavailable Chats and invalid targets before strea
 		const invalid = await write(chat.id);
 		expect(invalid.status).toBe(422);
 		expect(await invalid.json()).toEqual({ outcome: "invalid", reason: "This reply was deleted; reopen Paint" });
-		expect(() => createPaintingModule(database).command(chat.id, { type: "paint", variantId: -1, brief: "A scene", aspectRatio: "1:1" })).toThrow("This reply was deleted; reopen Paint");
+		expect(() => createPaintingModule(database).command(chat.id, { type: "paint", ask: "", variantId: -1, brief: "A scene", aspectRatio: "1:1" })).toThrow("This reply was deleted; reopen Paint");
 	} finally { database.close(); }
 });
 
@@ -224,7 +224,7 @@ test("a Brief reads unseated Cast Appearance by name or authorship and sends onl
 		const image = await uploadImage(database, pngFixture());
 		const chat = createConversationWithHistory(database, { name: "Cast scene", participants: [
 			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: { ...modelPrompt, appearance: "A red cloak." }, sendAppearanceImages: true, openings: ["Iris waits on the bridge."] } },
+			{ definition: { name: "Maren", prompt: { ...modelPrompt, appearance: "A red cloak beside {{other}}." }, sendAppearanceImages: true, openings: ["Iris waits on the bridge."] } },
 			{ definition: { name: "Iris", prompt: { ...modelPrompt, appearance: `{{self}} has silver hair. ${formatImageReference("Silver hair", image.hash)}` }, sendAppearanceImages: false, openings: [] } },
 			{ definition: { name: "Nora", prompt: { ...modelPrompt, appearance: "A blue scarf." }, sendAppearanceImages: true, openings: [] } },
 			{ definition: { name: "Absent", prompt: { ...modelPrompt, appearance: "Must not be sent." }, sendAppearanceImages: true, openings: [] } },
@@ -234,10 +234,19 @@ test("a Brief reads unseated Cast Appearance by name or authorship and sends onl
 		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint Nora beside her." },
 			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
 		const sent = JSON.stringify(requests[0]!.messages);
-		expect(sent).toContain("Maren\\nA red cloak.");
+		expect(sent).toContain("Maren\\nA red cloak beside Writer.");
 		expect(sent).toContain("Iris\\nIris has silver hair. [Image: Silver hair]");
 		expect(sent).toContain("Nora\\nA blue scarf.");
 		expect(sent).not.toContain("Must not be sent.");
 		expect(sent).not.toContain("image_url");
+		const nora = chat.cast.find((participant) => participant.name === "Nora")!;
+		database.query("UPDATE messages SET author_participant_id = ?, author_name = 'A witness' WHERE id = ?").run(nora.id, chat.messages[0]!.id);
+		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint the bridge." },
+			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+		expect(JSON.stringify(requests[1]!.messages)).toContain("Nora\\nA blue scarf.");
+		database.query("UPDATE participant_prompt SET send_appearance_images = 1 WHERE participant_id = ?").run(chat.cast.find((participant) => participant.name === "Iris")!.id);
+		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint the bridge." },
+			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+		expect(JSON.stringify(requests[2]!.messages)).toContain(`data:image/png;base64,${pngFixture().toString("base64")}`);
 	} finally { database.close(); }
 });

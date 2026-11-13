@@ -40,11 +40,13 @@ export type PromptCastAppearanceReference = Static<typeof promptCastAppearanceRe
 export const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 
-/** @approved Whether a preset may hold at most one block of `reference`: Lore, Brief instruction, and each Box's, loaded or not. */
-export const isSingleUseReference = (reference: string): reference is PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference | PromptCastAppearanceReference =>
+export type PromptSingleUseReference = PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference | PromptCastAppearanceReference;
+
+/** @approved Whether a preset may hold at most one block of `reference`: Lore, Brief instruction, Cast Appearance, and each Box's, loaded or not. */
+export const isSingleUseReference = (reference: string): reference is PromptSingleUseReference =>
 	reference === "cast-appearance" || reference === "brief-instruction" || reference === "lore" || boxIdOf(reference) !== undefined;
 /** @approved A single-use block's label; a block whose Box is not loaded shows its reference. */
-export const singleUseReferenceLabel = (reference: PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference | PromptCastAppearanceReference): string =>
+export const singleUseReferenceLabel = (reference: PromptSingleUseReference): string =>
 	reference === "cast-appearance" ? "Cast Appearance" : reference === "brief-instruction" ? "Brief instruction" : reference === "lore" ? "Lore" : isBoxReference(reference) ? boxMetadata(boxIdOf(reference)).label : reference;
 /** @approved The first single-use reference `references` repeats, which a preset refuses. */
 export const repeatedSingleUseReference = (references: readonly string[]) => {
@@ -81,8 +83,8 @@ const fixedOutgoingRoles = {
 	lore: "system",
 	"brief-instruction": "user",
 	"cast-appearance": "system",
-} as const satisfies Record<ReferencedDefinitionBlock | PromptLoreReference | PromptBriefInstructionReference | PromptCastAppearanceReference, PromptOutgoingRole>;
-export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference | PromptCastAppearanceReference): PromptOutgoingRole =>
+} as const satisfies Record<ReferencedDefinitionBlock | Exclude<PromptSingleUseReference, PromptBoxReference>, PromptOutgoingRole>;
+export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptSingleUseReference): PromptOutgoingRole =>
 	isBoxReference(reference) ? boxDescriptor(boxIdOf(reference)).role : fixedOutgoingRoles[reference];
 
 export const promptBlockReference = Type.Union([

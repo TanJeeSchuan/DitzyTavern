@@ -228,7 +228,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			for (const [index, owner] of (input.castAppearance ?? []).entries()) {
 				const start = blocks.length;
 				expandInto({ blocks, warnings, block: { kind: "appearance" }, role: planRoleFor[slot.role],
-					text: owner.prompt.appearance, context: { self: owner.name, other: owner === input.model ? input.human.name : input.model.name },
+					text: owner.prompt.appearance, context: { self: owner.name, other: owner.otherName },
 					blockLabel: `Appearance (${owner.name})`, macroEnvironment, macroAttemptState,
 					cacheKey: `slot:${slotIndex}:cast:${index}`, beforeHistory: slotIndex < historySlot });
 				for (const block of blocks.slice(start)) block.content = `${owner.name}\n${owner.sendAppearanceImages ? block.content : projectImageAnchors(block.content)}`;

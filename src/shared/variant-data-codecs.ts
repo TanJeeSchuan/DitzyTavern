@@ -127,3 +127,5 @@ export type VariantDataName = keyof typeof variantDataCodecs;
 export const toVariantDataEntry = (codec: { namespace: string; key: string }, value: string): GenerationProvenanceDataEntry => ({
 	namespace: codec.namespace, key: codec.key, value,
 });
+
+export const PAINTING_NAMESPACE = "painting";

@@ -285,7 +285,8 @@ test("an old Stop mutation cannot settle a newer Stop after A to B to A", async 
 	const reselect = () => { visit.abort(); visit = new AbortController(); };
 	const hook = await renderHook(() => useGenerationController({
 		signal: visit.signal, conversation, story: { ...createStoryState(), status: "loading-first", conversationId: conversation.id }, dispatchStory, activeChatIdRef,
-		refreshStory: async () => conversation, ensureLatest: async () => conversation, inspectPromptPlanBeforeGenerating: false,
+		refreshStory: async () => conversation, ensureLatest: async () => conversation, beforeInspect: (inspect) => inspect(),
+		inspectPromptPlanBeforeGenerating: false,
 	}), client);
 	let older: Promise<void> = Promise.resolve();
 	await hook.act(async () => { older = hook.current.stopGeneration(7); });

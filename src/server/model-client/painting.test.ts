@@ -11,14 +11,14 @@ test("painting sends anchors, ordered reference Images and the chosen shape to O
 	const result = await paintImage({
 		profile: { ...blankConnectionProfileDraft, apiFormat: "images", adapter: "openrouter", requestUrl: "https://example.com/api/v1/" },
 		modelId: "test/painter", secrets: { credential: "secret", headers: { "X-Custom": "yes" } },
-		brief: `Paint ${formatImageReference("coat", "b".repeat(64))} beside ${formatImageReference("map", "a".repeat(64))}.`,
+		brief: `Paint ${formatImageReference("coat", "b".repeat(64))} beside ${formatImageReference("map", "a".repeat(64))} and ${formatImageReference("coat again", "b".repeat(64))}.`,
 		aspectRatio: "3:4", loadImage: (hash) => pictures.get(hash),
 		fetch: async (url, init) => {
 			expect(String(url)).toBe("https://example.com/api/v1/images");
 			expect(new Headers(init?.headers).get("authorization")).toBe("Bearer secret");
 			expect(new Headers(init?.headers).get("x-custom")).toBe("yes");
 			expect(init?.redirect).toBe("error");
-			expect(JSON.parse(String(init?.body))).toEqual({ model: "test/painter", prompt: "Paint [Image: coat] beside [Image: map].", n: 1, aspect_ratio: "3:4", input_references: [
+			expect(JSON.parse(String(init?.body))).toEqual({ model: "test/painter", prompt: "Paint [Image: coat] beside [Image: map] and [Image: coat again].", n: 1, aspect_ratio: "3:4", input_references: [
 				{ type: "image_url", image_url: { url: `data:image/jpeg;base64,${coat.toString("base64")}` } },
 				{ type: "image_url", image_url: { url: `data:image/png;base64,${map.toString("base64")}` } },
 			] });

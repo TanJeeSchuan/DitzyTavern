@@ -43,7 +43,7 @@ type StoryMessageActionsOptions = {
 	setConversation: (conversation: ConversationSummary | null) => void;
 	queueSwipeScroll: (messageId: number) => void;
 	canEnterPreview: boolean;
-	onEnterPreview: () => void;
+	onEnterPreview: (enter: () => void) => void;
 };
 
 /**
@@ -114,12 +114,13 @@ export function useStoryMessageActions({
 		const selection = classifyVariantSelection(story, messageId, variantId);
 		if (selection.kind === "noop" || selection.kind === "blocked") return;
 		if (selection.kind === "preview") {
-			onEnterPreview();
-			queueSwipeScroll(messageId);
-			dispatchStory({
-				type: "preview-started",
-				messageId: selection.messageId,
-				variantId: selection.variantId,
+			onEnterPreview(() => {
+				queueSwipeScroll(messageId);
+				dispatchStory({
+					type: "preview-started",
+					messageId: selection.messageId,
+					variantId: selection.variantId,
+				});
 			});
 			return;
 		}

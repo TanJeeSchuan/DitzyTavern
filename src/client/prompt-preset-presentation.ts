@@ -6,7 +6,7 @@
 // seam. Transport stays out of this module so tests can import it without a
 // browser.
 
-import { isSingleUseReference, singleUseReferenceLabel, type PromptOutgoingRole, type PromptPresetBlockReference } from "../shared/contract/prompt-preset";
+import { isSingleUseReference, singleUseReferenceLabel, type PromptSingleUseReference, type PromptOutgoingRole, type PromptPresetBlockReference } from "../shared/contract/prompt-preset";
 
 // @approved
 //  One vocabulary for both the recipe editor and the SillyTavern import
@@ -23,7 +23,7 @@ const fixedSlotLabels = {
 	history: "Chat history",
 	"model-post-history-instruction": "Post-History Instruction",
 	instruction: "Instruction",
-} satisfies Record<Exclude<PromptPresetBlockReference, "lore" | "brief-instruction" | "cast-appearance" | `box:${string}`>, string>;
+} satisfies Record<Exclude<PromptPresetBlockReference, PromptSingleUseReference>, string>;
 export const slotLabel = (reference: PromptPresetBlockReference): string =>
 	isSingleUseReference(reference) ? singleUseReferenceLabel(reference) : fixedSlotLabels[reference];
 

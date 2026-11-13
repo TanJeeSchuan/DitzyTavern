@@ -145,3 +145,30 @@ test("the image fake rejects malformed image bodies at its boundary", async () =
 	await assert.rejects(readImageRequestBody(url, { method: "POST", body: JSON.stringify({ model: "painter", prompt: "A map", n: 2, aspect_ratio: "1:1" }) }));
 	await assert.rejects(readImageRequestBody(url));
 });
+
+test("Describe consumes only describe replies and refuses unscripted descriptions", async () => {
+	const server = await startE2eServer();
+	const call = async (path: string, body?: { type: "apply"; expectedRevision: number; profileId: number; model: string } | { data: string } | { hashes: string[]; ask?: string }) => fetch(`${server.url}/api/${path}`, {
+		method: body === undefined ? "GET" : "POST", headers: { "content-type": "application/json" },
+		body: body === undefined ? undefined : JSON.stringify(body),
+	});
+	try {
+		await server.reset();
+		const { profiles } = await (await call("connection-settings")).json();
+		const profile = profiles.find((profile: { apiFormat: string }) => profile.apiFormat === "chat-completions");
+		const { revision } = await (await call("describing-model")).json();
+		await call("describing-model/commands", { type: "apply", expectedRevision: revision, profileId: profile.id, model: "e2e-model" });
+		const { pngFixture } = await import("../src/server/image/image-fixtures.ts");
+		const { hash } = await (await call("images", { data: pngFixture().toString("base64") })).json();
+		await server.chat({ chunks: ["Reserved for chat"] });
+		await server.describe({ chunks: ["A red coat."] });
+		assert.deepEqual(await (await call("describe", { hashes: [hash], ask: "Clothing" })).json(), { text: "A red coat." });
+		assert.equal((await call("describe", { hashes: [hash] })).status, 422);
+		const log = await server.log();
+		assert.deepEqual(log.calls.map(({ kind }) => kind), ["describe", "describe"]);
+		assert.equal(log.unscripted.length, 1);
+		assert.match(log.unscripted[0]!, /^describe /);
+	} finally {
+		await server.stop();
+	}
+});

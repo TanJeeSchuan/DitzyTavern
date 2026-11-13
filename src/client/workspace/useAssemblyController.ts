@@ -35,6 +35,7 @@ type AssemblyControllerOptions = {
 	isGenerating: boolean;
 	variantPreviewActive: boolean;
 	inspectPromptPlanBeforeGenerating: boolean;
+	beforeInspect: (inspect: () => void) => void;
 	generationStart: GenerationStartLifecycle;
 	dispatchStory: Dispatch<StoryAction>;
 	// @approved
@@ -77,6 +78,7 @@ export function useAssemblyController({
 	isGenerating,
 	variantPreviewActive,
 	inspectPromptPlanBeforeGenerating,
+	beforeInspect,
 	generationStart,
 	dispatchStory,
 	takeComposer,
@@ -210,14 +212,18 @@ export function useAssemblyController({
 	const requestGeneration = (request: GenerationPreviewBody, seat = conversation?.control.humanParticipantId ?? null, versions = conversation?.boxVersions ?? {}) => {
 		if (conversation === null) return;
 		const requested = { conversationId: conversation.id, seat, versions, request };
-		if (!transition({ type: "requested", visit: signal, request: requested })) return;
 		const inspect = inspectPromptPlanBeforeGenerating;
-		void ensureLatest().then(() => {
-			if (Number(activeChatIdRef.current) !== requested.conversationId) return void transition({ type: "cancelled", visit: signal });
-			if (!transition({ type: "prepared", visit: signal, inspect })) return;
-			if (inspect) client.removeQueries({ queryKey: ["assembly-preview"] });
-			else launch(requested);
-		}, () => transition({ type: "failed", visit: signal, error: "The latest Messages could not be loaded." }));
+		const prepare = () => {
+			if (!transition({ type: "requested", visit: signal, request: requested })) return;
+			void ensureLatest().then(() => {
+				if (Number(activeChatIdRef.current) !== requested.conversationId) return void transition({ type: "cancelled", visit: signal });
+				if (!transition({ type: "prepared", visit: signal, inspect })) return;
+				if (inspect) client.removeQueries({ queryKey: ["assembly-preview"] });
+				else launch(requested);
+			}, () => transition({ type: "failed", visit: signal, error: "The latest Messages could not be loaded." }));
+		};
+		if (inspect) beforeInspect(prepare);
+		else prepare();
 	};
 
 	const retry = conversation !== null && start.phase === "idle" && !variantPreviewActive && !isGenerating ? start.last : null;

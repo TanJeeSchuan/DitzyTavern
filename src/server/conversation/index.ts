@@ -134,7 +134,7 @@ export { editMacroVariables, readMacroVariables } from "./macro-variables";
 export { stopConversationGeneration, stopConversationGenerations } from "./commands/active-generation";
 export { runConversationReadTransaction } from "./commands/transaction";
 export { findConversation, readActiveCast, readControlAssignment } from "./internal";
-export { readActiveVariantIds, readChatVariantIds, readChatVariants, readExistingSources, readMessageAuthors, readParticipants, readSelectedPassages } from "./variant-read";
+export { readChatVariantData, readActiveVariantIds, readChatVariantIds, readChatVariants, readExistingSources, readMessageAuthors, readParticipants, readSelectedPassages } from "./variant-read";
 export type { ChatParticipant, ChatVariant } from "./variant-read";
 
 export { readActiveGenerationsForRecovery } from "./generation-details";

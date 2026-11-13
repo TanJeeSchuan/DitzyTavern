@@ -1,8 +1,11 @@
 import type { ConnectionProfileDraftPayload } from "./contract/connection-settings";
 
-const requestPaths = { "chat-completions": "chat/completions", responses: "responses", "anthropic-messages": "messages", embeddings: "embeddings", images: "images/generations", "system-one": "systemone" } satisfies Record<ConnectionProfileDraftPayload["apiFormat"], string>;
+type ApiFormat = ConnectionProfileDraftPayload["apiFormat"];
+type ImageRequest = { adapter: ConnectionProfileDraftPayload["adapter"]; references: boolean };
 
-export function resolveRequestUrl(requestUrl: string, apiFormat: ConnectionProfileDraftPayload["apiFormat"], imageRequest?: { adapter: ConnectionProfileDraftPayload["adapter"]; references: boolean }): string {
+const requestPaths = { "chat-completions": "chat/completions", responses: "responses", "anthropic-messages": "messages", embeddings: "embeddings", "system-one": "systemone" } satisfies Record<Exclude<ApiFormat, "images">, string>;
+
+export function resolveRequestUrl(requestUrl: string, ...[apiFormat, imageRequest]: [apiFormat: Exclude<ApiFormat, "images">, imageRequest?: ImageRequest] | [apiFormat: "images", imageRequest: ImageRequest]): string {
 	const parsed = new URL(requestUrl.trim());
 	if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
 		throw new Error("The request URL must use HTTP or HTTPS.");
@@ -11,7 +14,7 @@ export function resolveRequestUrl(requestUrl: string, apiFormat: ConnectionProfi
 		throw new Error("The request URL must not contain user information or a fragment.");
 	}
 	if (parsed.pathname.endsWith("/")) {
-		const path = apiFormat === "images" && imageRequest !== undefined
+		const path = apiFormat === "images"
 			? imageRequest.adapter === "openrouter" ? "images" : imageRequest.references ? "images/edits" : "images/generations"
 			: requestPaths[apiFormat];
 		parsed.pathname = `${parsed.pathname}${path}`;

@@ -20,7 +20,7 @@ A writer can use, refine and remove an Illustration, paint the current scene fro
 ## Work
 
 - [x] Open an Illustration full size when pressed.
-- [x] Add "Add to composer": it inserts an Image Reference into the composer, named "Illustration".
+- [x] Add "Add to composer": it inserts an Image Reference into the composer, named from the first words of the Ask, falling back to "Illustration".
 - [x] Add "Edit Brief and repaint": it opens the Paint panel on the Illustration's stored Brief.
 - [x] Add "Delete": it removes the Illustration without changing the Conversation Revision.
 - [x] Add a Paint button to the composer that opens the panel on the final Message. Disable it while the Chat has an Active Generation.
@@ -38,4 +38,4 @@ A writer can use, refine and remove an Illustration, paint the current scene fro
 
 - An Illustration reaches a story model only after the writer adds it to a Message.
 - A picture arriving never moves text the writer is reading or typing.
-- Nothing of a deleted Variant's paintings or Illustrations remains after the next sweep.
+- A deleted Variant's Illustrations are gone at once, and the orphan sweep collects their pictures and the Brief's references once no other owner holds them and they have been orphaned for more than 24 hours.

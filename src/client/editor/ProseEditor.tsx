@@ -14,6 +14,12 @@ export interface ProseEditorHandle {
 	appendText: (text: string) => void;
 }
 
+const paragraphSeparator = (text: string, edge: "start" | "end"): string => {
+	if (text.length === 0) return "";
+	const newlines = text.match(edge === "start" ? /^\n*/ : /\n*$/)?.[0].length ?? 0;
+	return "\n".repeat(Math.max(0, 2 - newlines));
+};
+
 class ImageChip extends WidgetType {
 	constructor(readonly name: string, readonly hash: string) {
 		super();
@@ -159,7 +165,7 @@ function Editor({
 		appendText: (text) => {
 			const editor = view.current;
 			if (editor === null || !editor.state.facet(EditorView.editable)) return;
-			editor.dispatch({ changes: { from: editor.state.doc.length, insert: `${editor.state.doc.length === 0 ? "" : "\n\n"}${text}` }, annotations: isolateHistory.of("full"), userEvent: "input" });
+			editor.dispatch({ changes: { from: editor.state.doc.length, insert: `${paragraphSeparator(editor.state.doc.toString(), "end")}${text}` }, annotations: isolateHistory.of("full"), userEvent: "input" });
 		},
 		insertReference: (name, hash) => {
 			const editor = view.current;
@@ -282,7 +288,9 @@ function Editor({
 		openImageAt(target, {
 			insertAfter: (text) => {
 				if (view.current !== editor || !editor.state.facet(EditorView.editable) || !openedReferences.current.has(tracked)) return false;
-				editor.dispatch({ changes: { from: tracked.range.to, insert: `\n\n${text}\n\n` }, annotations: isolateHistory.of("full"), userEvent: "input" });
+				const after = editor.state.doc.sliceString(tracked.range.to);
+				const separators = paragraphSeparator(after, "start");
+				editor.dispatch({ changes: { from: tracked.range.to, insert: `\n\n${text}${separators}` }, annotations: isolateHistory.of("full"), userEvent: "input" });
 				return true;
 			},
 		});
