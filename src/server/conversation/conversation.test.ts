@@ -428,7 +428,7 @@ describe("Conversation module", () => {
 		).toBe(true);
 	});
 
-	test("a new Variant copies its source's state but not the evidence of the Generation that wrote it", () => {
+	test("a new Variant copies its source's state but not its Illustrations or Generation evidence", () => {
 		const greeting = requireSnapshot(database, conversationId).messages[0]!;
 		const source = greeting.variants[0]!;
 		const state = [
@@ -438,6 +438,7 @@ describe("Conversation module", () => {
 			{ namespace: "generation", key: "reasoning", value: "Thinking." },
 		];
 		const evidence = [
+			{ namespace: "painting", key: "illustration", value: "{}" },
 			{ namespace: "generation", key: "provenance", value: "{}" },
 			{ namespace: "lore-activation", key: "record", value: "{}" },
 			{ namespace: "generation-box", key: "traces", value: "{}" },
@@ -456,6 +457,18 @@ describe("Conversation module", () => {
 			.from(messageVariantDataTable).where(eq(messageVariantDataTable.message_variant_id, copied.id)).all();
 		expect(rows).toEqual(expect.arrayContaining(state));
 		expect(rows).toHaveLength(state.length);
+	});
+
+	test.each(["put-data", "delete-data"] as const)("%s refuses painting data without advancing the Conversation Revision", (type) => {
+		const chat = requireSnapshot(database, conversationId);
+		const message = chat.messages[0]!;
+		for (const scope of [{ type: "conversation" }, { type: "variant", messageId: message.id, variantId: message.variants[0]!.id }] as const) {
+			expect(() => executeConversationCommand(database, {
+				conversationId, expectedRevision: chat.revision,
+				action: { type, scope, namespace: "painting", key: "forged", value: "{}" },
+			})).toThrow(InvalidConversationCommandError);
+		}
+		expect(readConversationRevision(database, conversationId)).toBe(chat.revision);
 	});
 
 	test("a copy of a Variant without a stored seed keeps drawing from the source's seed", () => {

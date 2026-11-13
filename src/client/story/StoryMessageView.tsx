@@ -45,6 +45,7 @@ import { prefetchNeighbourText, useVariantText, useVariantsText } from "./varian
 //  Memoized: while a reply streams, only the row whose text changed renders.
 export const StoryMessageView = memo(function StoryMessageView({
 	conversationId,
+	paintDisabledReason,
 	onPaint,
 	message,
 	isLatest = false,
@@ -74,6 +75,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	lens,
 }: {
 	conversationId: number;
+	paintDisabledReason?: string;
 	onPaint?: (variantId: number) => void;
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
@@ -219,7 +221,6 @@ export const StoryMessageView = memo(function StoryMessageView({
 	};
 
 	return (
-		<>
 		<article
 			className="story-message"
 			data-latest={isLatest}
@@ -262,7 +263,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 					</div>
 				</div>
 				<div className="advanced-actions" aria-label="Advanced Message actions">
-					{onPaint !== undefined && <button className="edit-action" type="button" disabled={generationActive || active === undefined} onClick={() => { if (active !== undefined) onPaint(active.id); }}><Paintbrush aria-hidden="true" /> Paint</button>}
+					{onPaint !== undefined && <button className="edit-action" type="button" disabled={paintDisabledReason !== undefined || generationActive || active === undefined} title={paintDisabledReason} onClick={() => { if (active !== undefined) onPaint(active.id); }}><Paintbrush aria-hidden="true" /> Paint</button>}
 					{onSibling !== undefined && (
 						<button
 							className="edit-action"
@@ -427,9 +428,8 @@ export const StoryMessageView = memo(function StoryMessageView({
 					</button>
 				</div>
 			</footer>
+			{visibleId !== null && <IllustrationRows key={visibleId} conversationId={conversationId} variantId={visibleId} />}
 		</article>
-		{visibleId !== null && <IllustrationRows key={visibleId} conversationId={conversationId} variantId={visibleId} />}
-		</>
 	);
 });
 

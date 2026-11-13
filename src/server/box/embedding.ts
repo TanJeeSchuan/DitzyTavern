@@ -40,7 +40,7 @@ export const readEmbeddingConfiguration = (database: Database, profileId: number
 	if (profile === undefined || profile.timeout_ms === null || model.length === 0) return undefined;
 	const secret = db.select({ nonce: connectionSecretTable.nonce }).from(connectionSecretTable).where(eq(connectionSecretTable.profile_id, profile.id)).get();
 	const secrets = createConnectionSettingsModule(database).getProfileSecrets(profile.id);
-	const endpoint = resolveRequestUrl(profile.request_url, profile.api_format);
+	const endpoint = resolveRequestUrl(profile.request_url, "embeddings");
 	return new EmbeddingConfiguration(profile.id, sha256(JSON.stringify([profile.id, secret?.nonce ?? null, endpoint, model])), endpoint, model, profile.timeout_ms, secrets);
 })();
 

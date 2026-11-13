@@ -51,7 +51,7 @@
 
 .message-header {
 	display: grid;
-	grid-template-columns: auto minmax(0, 1fr) minmax(0, 2fr);
+	grid-template-columns: auto minmax(0, 1fr) auto;
 	align-items: center;
 	gap: 0.7rem;
 	min-height: 2.4rem;
@@ -109,7 +109,6 @@
 
 .advanced-actions {
 	display: flex;
-	flex-wrap: wrap;
 	justify-content: flex-end;
 	align-items: center;
 	gap: 0.2rem;

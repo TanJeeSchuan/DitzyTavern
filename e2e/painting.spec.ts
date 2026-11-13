@@ -156,8 +156,6 @@ test.describe("Brief References", () => {
 		await panel.getByRole("button", { name: "Paint", exact: true }).click();
 		await expect(panel.getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
 		const sent = (await llm.log()).calls.find((call) => call.kind === "image");
-		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toEqual(expect.arrayContaining([gallery, quiet].map(({ base64 }) => `data:image/png;base64,${base64}`)));
-		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).not.toContain(`data:image/png;base64,${old.base64}`);
 		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toEqual([coat, gallery, quiet].map(({ base64 }) => `data:image/png;base64,${base64}`));
 		await panel.getByRole("button", { name: "Add to composer", exact: true }).click();
 		await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("Paint Iris at the bridge in");

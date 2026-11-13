@@ -282,7 +282,9 @@ function Editor({
 		openImageAt(target, {
 			insertAfter: (text) => {
 				if (view.current !== editor || !editor.state.facet(EditorView.editable) || !openedReferences.current.has(tracked)) return false;
-				editor.dispatch({ changes: { from: tracked.range.to, insert: `\n\n${text}\n\n` }, annotations: isolateHistory.of("full"), userEvent: "input" });
+				const after = editor.state.doc.sliceString(tracked.range.to);
+				const separators = after.length === 0 ? "" : after.startsWith("\n\n") ? "" : after.startsWith("\n") ? "\n" : "\n\n";
+				editor.dispatch({ changes: { from: tracked.range.to, insert: `\n\n${text}${separators}` }, annotations: isolateHistory.of("full"), userEvent: "input" });
 				return true;
 			},
 		});

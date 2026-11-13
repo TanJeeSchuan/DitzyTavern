@@ -17,13 +17,15 @@ import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
 import { usePaintingCommand, useIllustrations, type PaintTarget } from "./painting";
 
-export function PaintPanel({ conversation, onConversationChange, target, onClose }: { conversation: ConversationSummary; onConversationChange: (conversation: ConversationSummary | null) => void; target: PaintTarget; onClose: () => void }) {
+export function PaintPanel({ conversation, onConversationChange, target, onDraftChange, onClose }: { conversation: ConversationSummary; onConversationChange: (conversation: ConversationSummary | null) => void; target: PaintTarget; onDraftChange: (draft: Partial<Pick<PaintTarget, "brief" | "ask">>) => void; onClose: () => void }) {
 	const allMessagesId = useId();
 	const conversationId = conversation.id;
 	const [editingPreset, setEditingPreset] = useState<number | null>(null);
 	const { variantId } = target;
-	const [brief, setBrief] = useState(target.brief);
-	const [ask, setAsk] = useState(target.ask);
+	const [brief, updateBrief] = useState(target.brief);
+	const setBrief = (brief: string) => { updateBrief(brief); onDraftChange({ brief }); };
+	const [ask, updateAsk] = useState(target.ask);
+	const setAsk = (ask: string) => { updateAsk(ask); onDraftChange({ ask }); };
 	const briefEditor = useRef<ProseEditorHandle>(null);
 	const writing = useWriteBrief(conversationId, setBrief);
 	const { submit, pending, error } = usePaintingCommand(conversationId);
@@ -61,7 +63,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onClose
 						<Input key={String(selection?.briefMessageCount)} id="brief-message-count" name="messages" type="number" required min={1} step={1}
 							className="min-w-0 flex-1" defaultValue={selection?.briefMessageCount ?? ""} disabled={settingsDisabled || selection?.briefMessageCount === null}
 							onBlur={(event) => {
-								if (event.relatedTarget instanceof HTMLButtonElement && (event.relatedTarget.type === "submit" || event.relatedTarget.getAttribute("role") === "switch")) return;
+								if (event.relatedTarget instanceof HTMLButtonElement && ((event.relatedTarget.type === "submit" && event.relatedTarget.form === event.currentTarget.form) || event.relatedTarget.getAttribute("role") === "switch")) return;
 								const count = event.currentTarget.valueAsNumber;
 								if (Number.isSafeInteger(count) && count > 0) {
 									void saveMessageCount(count);

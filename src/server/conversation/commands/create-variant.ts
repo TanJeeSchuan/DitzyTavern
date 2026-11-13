@@ -16,9 +16,9 @@ export interface CreateVariantInput {
 // @approved
 //  The copy is written, not generated: it keeps the source's state (Box
 // records and seed, macro writes, Reasoning) so selecting it folds the same,
-// and drops the evidence of the Generation that wrote the source.
-const isGenerationEvidence = ({ namespace, key }: { namespace: string; key: string }) =>
-	namespace === LORE_ACTIVATION_NAMESPACE || namespace === BOX_TRACES_NAMESPACE
+// and drops its Illustrations and the evidence of the Generation that wrote the source.
+const staysWithSourceVariant = ({ namespace, key }: { namespace: string; key: string }) =>
+	namespace === "painting" || namespace === LORE_ACTIVATION_NAMESPACE || namespace === BOX_TRACES_NAMESPACE
 	|| (namespace === GENERATION_DATA_NAMESPACE && key !== GENERATION_DATA_KEYS.reasoning);
 
 export function createVariant(
@@ -35,7 +35,7 @@ export function createVariant(
 	const { namespace, key, value } = messageVariantDataTable;
 	const rows = db.select({ namespace, key, value }).from(messageVariantDataTable)
 		.where(eq(messageVariantDataTable.message_variant_id, input.sourceVariantId)).all()
-		.filter((row) => !isGenerationEvidence(row));
+		.filter((row) => !staysWithSourceVariant(row));
 	// @approved
 	//  A source without a stored seed draws from its id, so the copy stores that seed rather than drawing from its own.
 	if (!rows.some((row) => row.namespace === SEED_NAMESPACE && row.key === SEED_KEY)) {

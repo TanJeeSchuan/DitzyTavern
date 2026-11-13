@@ -1,8 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { conversationDataTable, messageVariantDataTable } from "../database/schema";
+import { conversationDataTable, messageTable, messageVariantTable, messageVariantDataTable } from "../database/schema";
 import { illustration, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
 import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantIds, readChatVariants, readConversationSummary, readPaintPresetSettings, commandPaintPreset } from "../conversation";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
@@ -30,8 +30,10 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		const row = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, NAMESPACE), eq(conversationDataTable.key, "aspect-ratio"))).get();
 		const aspectRatio = row === undefined ? DEFAULT_PAINTING_ASPECT_RATIO : Value.Parse(paintingSettings, JSON.parse(row.value)).aspectRatio;
 		const variantIds = variants(conversationId);
-		const stored = variantIds.length === 0 ? [] : db.select({ id: messageVariantDataTable.key, variantId: messageVariantDataTable.message_variant_id, value: messageVariantDataTable.value }).from(messageVariantDataTable)
-			.where(and(inArray(messageVariantDataTable.message_variant_id, variantIds), eq(messageVariantDataTable.namespace, NAMESPACE))).all();
+		const stored = db.select({ id: messageVariantDataTable.key, variantId: messageVariantDataTable.message_variant_id, value: messageVariantDataTable.value }).from(messageVariantDataTable)
+			.innerJoin(messageVariantTable, eq(messageVariantTable.id, messageVariantDataTable.message_variant_id))
+			.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
+			.where(and(eq(messageTable.conversation_id, conversationId), eq(messageVariantDataTable.namespace, NAMESPACE))).all();
 		const paintings: Painting[] = stored.map(({ id, variantId, value }) => ({ kind: "illustration", id, variantId, ...Value.Parse<typeof illustration>(illustration, JSON.parse(value)) }));
 		for (const variantId of variantIds) for (const entry of provisional.forVariant(variantId)) paintings.push(entry.painting);
 		return { ...readPaintPresetSettings(database, conversationId), aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)) };
@@ -71,7 +73,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 				.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value: JSON.stringify({ aspectRatio: command.aspectRatio }) } }).run();
 			return;
 		}
-		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint");
+		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint.");
 		if (command.type === "delete") {
 			db.delete(messageVariantDataTable).where(and(eq(messageVariantDataTable.message_variant_id, command.variantId), eq(messageVariantDataTable.namespace, NAMESPACE), eq(messageVariantDataTable.key, command.id))).run();
 			return;

@@ -20,7 +20,7 @@ A writer can use, refine and remove an Illustration, paint the current scene fro
 ## Work
 
 - [x] Open an Illustration full size when pressed.
-- [x] Add "Add to composer": it inserts an Image Reference into the composer, named "Illustration".
+- [x] Add "Add to composer": it inserts an Image Reference into the composer, named from the first words of the Ask, falling back to "Illustration".
 - [x] Add "Edit Brief and repaint": it opens the Paint panel on the Illustration's stored Brief.
 - [x] Add "Delete": it removes the Illustration without changing the Conversation Revision.
 - [x] Add a Paint button to the composer that opens the panel on the final Message. Disable it while the Chat has an Active Generation.

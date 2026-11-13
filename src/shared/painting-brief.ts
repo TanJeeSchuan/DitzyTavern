@@ -1,4 +1,4 @@
-import { literalMatches } from "./literal-matching";
+import { castNameMatches } from "./literal-matching";
 import type { ConversationSummary } from "./contract/conversation-schema";
 import { formatImageReference, parseImageReferences, projectImageAnchors, sanitizeImageName, type ImageReference } from "./image-reference";
 
@@ -21,7 +21,7 @@ export const appendBriefReferences = (brief: string, cast: Cast, kept: readonly 
 	}
 	chunks.push(brief.slice(cursor));
 	brief = chunks.join("");
-	const appearance = cast.filter((participant) => participant.sendAppearanceImages && literalMatches(brief, participant.name, false, true))
+	const appearance = cast.filter((participant) => participant.sendAppearanceImages && castNameMatches(brief, participant.name))
 		.flatMap((participant) => parseImageReferences(participant.prompt.appearance));
 	const appended = [...appearance, ...kept].flatMap(({ name, hash }) => {
 		if (seen.has(hash)) return [];

@@ -16,12 +16,10 @@ import { Value } from "@sinclair/typebox/value";
 import type { AuthoringReply, ChatModelCall, DecisionModelCall, ModelCall } from "./protocol";
 import {
 	authoringCallBody,
-	imageCallBody,
 	isImageRequest,
 	messageText,
 	readImageRequestBody,
 	type ImageReply,
-	describeCallBody,
 	type DescribeModelCall,
 	chatCompletionCallBody,
 	decisionCallBody,
@@ -173,22 +171,27 @@ const embed = (text: string) => {
 
 const fakeFetch: ModelFetch = async (input, init) => {
 	const url = String(input);
-	const raw: unknown = isImageRequest(url) ? await readImageRequestBody(url, init) : init?.body ? JSON.parse(String(init.body)) : undefined;
+	let raw: unknown;
+	let imageBody;
+	try {
+		if (isImageRequest(url)) raw = imageBody = await readImageRequestBody(url, init);
+		else raw = init?.body ? JSON.parse(String(init.body)) : undefined;
+	} catch { raw = init?.body; }
 	const headers = Object.fromEntries(new Headers(init?.headers));
 	const path = new URL(url).pathname;
 	let call: ModelCall;
-	if (isImageRequest(url) && Value.Check(imageCallBody, raw)) {
-		call = { kind: "image", url, headers, body: raw };
+	if (imageBody !== undefined) {
+		call = { kind: "image", url, headers, body: imageBody };
 	} else if (path.endsWith("/systemone") && Value.Check(decisionCallBody, raw)) {
 		call = { kind: "decision", url, headers, body: raw };
 	} else if (path.endsWith("/models")) {
 		call = { kind: "models", url, headers, body: raw };
 	} else if (url.endsWith("/embeddings") && Value.Check(embeddingsCallBody, raw)) {
 		call = { kind: "embeddings", url, headers, body: raw };
-	} else if (url.endsWith("/chat/completions") && Value.Check(describeCallBody, raw) && raw.messages[0].content === DESCRIBE_INSTRUCTION) {
-		call = { kind: "describe", url, headers, body: raw };
 	} else if (url.endsWith("/chat/completions") && Value.Check(chatCompletionCallBody, raw)) {
-		call = { kind: raw.messages[0] !== undefined && messageText(raw.messages[0]).startsWith("Extract durable, attributed story Memories") ? "extraction" : "chat", url, headers, body: raw };
+		const instruction = raw.messages[0] === undefined ? "" : messageText(raw.messages[0]);
+		const kind = instruction === DESCRIBE_INSTRUCTION ? "describe" : instruction.startsWith("Extract durable, attributed story Memories") ? "extraction" : "chat";
+		call = { kind, url, headers, body: raw };
 	} else {
 		call = { kind: "unknown", url, headers, body: raw };
 	}

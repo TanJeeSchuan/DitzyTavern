@@ -28,3 +28,5 @@ export const literalMatches = (message: string, expression: string, caseSensitiv
 	return false;
 };
 
+
+export const castNameMatches = (text: string, name: string): boolean => literalMatches(text, name, false, true);

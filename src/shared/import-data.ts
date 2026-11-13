@@ -27,6 +27,7 @@ const serverOwnedDataNamespaces = [
 	...importOwnedDataNamespaces,
 	LORE_ACTIVATION_NAMESPACE,
 	BOX_TRACES_NAMESPACE,
+	"painting",
 ] as const;
 
 // @approved

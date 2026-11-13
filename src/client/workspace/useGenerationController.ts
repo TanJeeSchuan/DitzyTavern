@@ -71,6 +71,7 @@ type GenerationControllerOptions = {
 	refreshStory: (conversationId: number, signal?: AbortSignal) => Promise<ConversationSummary | null>;
 	ensureLatest: () => Promise<ConversationSummary | null>;
 	inspectPromptPlanBeforeGenerating: boolean;
+	onInspect: (inspect: () => void) => void;
 };
 
 type StagedMoves = { conversationId: number | undefined; humanParticipantId: number | null | undefined; versions: Readonly<Record<string, string>>; moves: BoxMoves };
@@ -92,6 +93,7 @@ export function useGenerationController({
 	refreshStory,
 	ensureLatest,
 	inspectPromptPlanBeforeGenerating,
+	onInspect,
 }: GenerationControllerOptions) {
 	const client = useQueryClient();
 	// @approved
@@ -224,6 +226,7 @@ export function useGenerationController({
 		isGenerating,
 		variantPreviewActive: story.preview !== null,
 		inspectPromptPlanBeforeGenerating,
+		onInspect,
 		generationStart: {
 			begin: beginStart,
 			settle: (startId) => dispatchPendingStarts({ type: "settled", startId }),

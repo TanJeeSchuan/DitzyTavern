@@ -19,7 +19,7 @@ export const useGallery = (conversationId: number) => useQuery({
 	queryFn: () => requestData(api.api.conversations({ id: conversationId }).gallery.get(), galleryRead),
 });
 
-export const commandPainting = (conversationId: number, command: PaintingCommand) => requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingAccepted, paintingErrors);
+const commandPainting = (conversationId: number, command: PaintingCommand) => requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingAccepted, paintingErrors);
 
 export function usePaintingCommand(conversationId: number) {
 	const client = useQueryClient();
