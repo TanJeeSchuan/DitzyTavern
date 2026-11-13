@@ -26,7 +26,7 @@ Each entry contains literal lore content, Keywords, separately authored Semantic
 
 The shared Lore Scan Window is Chat-owned and defaults to four individual Messages. It includes both authors and pending human text for Send. It follows the Selected narrative path before the Generation target, so a Swipe cannot scan its existing answer or later Messages. Character Definitions, preset instructions and Reasoning Content are excluded. This window determines matching, not how much history the writing model receives.
 
-Keywords default to case-insensitive whole-word matching, with case-sensitive and substring options. Explicit `/pattern/flags` regex keywords are supported. A Keyword or regex must match inside one complete Message. Primary and secondary results combine across the scan window; text from different Messages cannot manufacture a single phrase match.
+Keywords default to case-insensitive whole-word matching, with case-sensitive and substring options. In literal matching, Keywords and Secondary Keyword Conditions need no boundary at an edge with Unicode Script Han, Hiragana, Katakana, or Hangul. Explicit `/pattern/flags` regex keywords are supported. A Keyword or regex must match inside one complete Message. Primary and secondary results combine across the scan window; text from different Messages cannot manufacture a single phrase match.
 
 Semantic matching sends the scanned Messages to Typesafe Jev as the scene and asks one yes/no question per distinct enabled Semantic Trigger: whether its situation happens or is discussed in the scene. Jev's probability is the trigger's score. A long scene or many triggers are split across bounded requests sent one after another, and a trigger keeps its highest score.
 
