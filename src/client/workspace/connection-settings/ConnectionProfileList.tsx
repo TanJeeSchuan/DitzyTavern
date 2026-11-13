@@ -1,3 +1,4 @@
+import type { ImageModelSettings } from "../../../shared/contract/image-model";
 import { ChevronRight, Copy, Ellipsis, Plus, Trash2 } from "lucide-react";
 import type { ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,9 @@ const rowClass = "flex w-full min-w-0 flex-col gap-0.5 px-4 py-3 text-left";
 
 const listOf = (items: readonly string[], conjunction: "and" | "or") => items.length < 2 ? items.join("") : `${items.slice(0, -1).join(", ")} ${conjunction} ${items.at(-1)}`;
 
-export function ConnectionProfileList({ controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger, boxDecisions, onOpenBoxDecision, boxDelegates, defaultDelegate, onOpenBoxDelegate }: {
+export function ConnectionProfileList({ imageModel, onOpenImageModel, controller, settings, activeProfileId, semanticTriggers, onOpenSemanticTrigger, boxDecisions, onOpenBoxDecision, boxDelegates, defaultDelegate, onOpenBoxDelegate }: {
+	imageModel: SettingsPreview<ImageModelSettings>;
+	onOpenImageModel: () => void;
 	controller: ConnectionSettingsController;
 	settings: ConnectionSettings;
 	activeProfileId: number | null;
@@ -44,6 +47,16 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 					describe={(profile) => CONNECTION_ADAPTER_LABELS[profile.adapter]}
 					badge={(profile) => profile.id === activeProfileId ? "This chat" : null}
 					empty={<EmptyProfiles title="No connections yet">Add one to start generating. Chats and imports work without it.</EmptyProfiles>} />
+			</section>
+
+			<section aria-labelledby="image-models-title">
+				<div className="flex items-center justify-between gap-3">
+					<h3 id="image-models-title">Image Models</h3>
+					<PresetMenu controller={controller} apiFormat="images" label="Add Images connection" />
+				</div>
+				<p>Paint Illustrations from a Brief.</p>
+				<ProfileRows label="Images connections" profiles={settings.profiles.filter((profile) => profile.apiFormat === "images")} controller={controller} describe={(profile) => CONNECTION_ADAPTER_LABELS[profile.adapter]} badge={() => null} empty={<EmptyProfiles title="No Images connections yet">Add an Images connection, then choose an Image Model.</EmptyProfiles>} />
+				<div className="mt-3"><DecisionSummary preview={imageModel} name="Image Model" onOpen={onOpenImageModel} model={(settings) => settings.model} describe={() => "Image Model for every Chat"} /></div>
 			</section>
 
 			<section aria-labelledby="embeddings-title">
@@ -112,6 +125,8 @@ export function ConnectionProfileList({ controller, settings, activeProfileId, s
 						<DialogDescription>
 							{pending?.apiFormat === "system-one"
 								? `${listOf(roles, "and")} using it will need another Decision Model.`
+								: pending?.apiFormat === "images"
+									? "Painting needs another Image Model connection."
 								: pending?.apiFormat === "embeddings"
 									? "Tasks using this endpoint stop until you choose another embedding model."
 									: "Chats using it will need another connection before they can generate."}

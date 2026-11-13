@@ -1,3 +1,4 @@
+import { Value } from "@sinclair/typebox/value";
 import { Type, type Static } from "@sinclair/typebox";
 import type { DecisionAnswer } from "../src/shared/contract/decision-model";
 import type { GenerationJsonValue } from "../src/shared/generation-json";
@@ -5,6 +6,11 @@ import type { BuildMetadata } from "../src/server/build-metadata";
 
 export type RegistryReply = { buildNumber: number; revision: string; hold?: boolean } | { status: number };
 export type UpdateScenario = { build: BuildMetadata; automaticChecks?: boolean; replies: RegistryReply[] };
+
+export type ImageReply = ({ base64: string } | { status: number; error: string }) & { hold?: boolean };
+
+export const imageCallBody = Type.Object({ model: Type.String(), prompt: Type.String(), n: Type.Literal(1), aspect_ratio: Type.String(), input_references: Type.Optional(Type.Array(Type.Object({ type: Type.Literal("image_url"), image_url: Type.Object({ url: Type.String() }) }))) });
+export type ImageModelCall = { kind: "image"; url: string; headers: Record<string, string>; body: Static<typeof imageCallBody> };
 
 export type ChatReply =
 	| { chunks: string[]; hold?: boolean; truncate?: boolean; repeat?: boolean }
@@ -75,7 +81,7 @@ export type DecisionModelCall = { kind: "decision"; url: string; headers: Record
 export type EmbeddingsModelCall = { kind: "embeddings"; url: string; headers: Record<string, string>; body: EmbeddingsCallBody };
 export type UncategorizedModelCall = { kind: "models" | "unknown"; url: string; headers: Record<string, string>; body: unknown };
 export type AuthoringModelCall = { kind: "authoring"; url: string; headers: Record<string, string>; body: AuthoringCallBody };
-export type ModelCall = ChatModelCall | DecisionModelCall | EmbeddingsModelCall | AuthoringModelCall | UncategorizedModelCall;
+export type ModelCall = ImageModelCall | ChatModelCall | DecisionModelCall | EmbeddingsModelCall | AuthoringModelCall | UncategorizedModelCall;
 
 /** @approved Narrow logged calls by their decoded kind; the raw `kind` string on an old log entry is untyped. */
 export const isChatModelCall = (call: ModelCall): call is ChatModelCall => call.kind === "chat";
@@ -87,3 +93,17 @@ export const firstCall = <Call extends ModelCall>(calls: readonly ModelCall[], a
 	if (call === undefined) throw new Error("The fake received no matching model call.");
 	return call;
 };
+
+export const isImageRequest = (url: string) => /\/images(?:\/(?:generations|edits))?$/.test(new URL(url).pathname);
+
+export async function readImageRequestBody(url: string, init?: RequestInit): Promise<ImageModelCall["body"]> {
+	if (!init?.body) throw new Error("Missing Image Model request body.");
+	if (!new URL(url).pathname.endsWith("/images/edits")) return Value.Parse(imageCallBody, JSON.parse(String(init.body)));
+	const form = await new Request(url, init).formData();
+	const files: Blob[] = [];
+	form.forEach((value, key) => { if ((key === "image" || key === "image[]") && value instanceof Blob) files.push(value); });
+	const references = await Promise.all(files.map(async (value) => ({
+		type: "image_url", image_url: { url: `data:${value.type};base64,${Buffer.from(await value.arrayBuffer()).toString("base64")}` },
+	})));
+	return Value.Parse(imageCallBody, { model: form.get("model"), prompt: form.get("prompt"), n: Number(form.get("n")), aspect_ratio: form.get("aspect_ratio"), input_references: references });
+}

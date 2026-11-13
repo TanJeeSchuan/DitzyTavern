@@ -1,3 +1,4 @@
+import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
 import { executeConversationCommand, readConversationGenerationSettings } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -161,4 +162,13 @@ const createConnection = (database: Database): number => {
 		).toThrow(InvalidConversationCommandError);
 		expect(readConversationGenerationSettings(module, conversation.id)?.modelId).toBe("deepseek-chat");
 	});
+	test("rejects an Image Model as the Chat's story model without changing settings", () => {
+		const conversation = createTestConversation(database, "Image Model rejected");
+		const connections = createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(3) });
+		const profileId = connections.createProfile({ expectedRevision: 0, profile: { ...blankConnectionProfileDraft, displayName: "Painter", apiFormat: "images" } }).profiles[0]!.id;
+		const before = readConversationGenerationSettings(database, conversation.id);
+		expect(() => executeConversationCommand(database, { conversationId: conversation.id, expectedRevision: conversation.revision, action: { type: "set-generation-model", connectionProfileId: profileId, modelId: "painter" } })).toThrow("Images connection cannot write Messages");
+		expect(readConversationGenerationSettings(database, conversation.id)).toEqual(before);
+	});
+
 });

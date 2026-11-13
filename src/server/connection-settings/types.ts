@@ -12,7 +12,7 @@ import type {
 // representations can no longer drift apart.
 export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 
-export type ChatApiFormat = Exclude<ConnectionApiFormat, "embeddings" | "system-one">;
+export type ChatApiFormat = Exclude<ConnectionApiFormat, "embeddings" | "system-one" | "images">;
 export type SystemPlacement = ConnectionProfileDraftPayload["systemPlacement"];
 
 export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];

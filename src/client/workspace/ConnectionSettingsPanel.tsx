@@ -1,3 +1,6 @@
+import { loadImageModel, saveImageModel } from "../image-model";
+import { ImageModelSettingsEditor } from "./ImageModelSettingsEditor";
+import type { ImageModelSettings } from "../../shared/contract/image-model";
 import { useState, type ReactNode } from "react";
 import { ConnectionProfileEditor } from "./connection-settings/ConnectionProfileEditor";
 import { ConnectionProfileList } from "./connection-settings/ConnectionProfileList";
@@ -62,15 +65,17 @@ export function BoxSettingsDrafts({ render }: { readonly render: (drafts: Drafts
 
 export function ConnectionSettingsPanel({ controller, activeProfileId, delegateBox }: PanelProps) {
 	const semanticTriggers = useSemanticTriggerSettings();
+	const imageModel = useSettingsDraft("Image Model", loadImageModel, saveImageModel);
 	const [open, setOpen] = useState<Open>(delegateBox === undefined ? null : `delegate:${delegateBox}`);
 	const defaultDelegate = useSettingsDraft("Default delegate settings", defaultDelegateClient.load, defaultDelegateClient.save);
 	return <BoxSettingsDrafts render={(drafts) =>
-		<Settings controller={controller} activeProfileId={activeProfileId} semanticTriggers={semanticTriggers} defaultDelegate={defaultDelegate} open={open} setOpen={setOpen} drafts={drafts} />} />;
+		<Settings imageModel={imageModel} controller={controller} activeProfileId={activeProfileId} semanticTriggers={semanticTriggers} defaultDelegate={defaultDelegate} open={open} setOpen={setOpen} drafts={drafts} />} />;
 }
 
-type Open = "semantic-triggers" | BoxId | `delegate:${BoxId}` | null;
-function Settings({ controller, activeProfileId, semanticTriggers, defaultDelegate, open, setOpen, drafts: { decisions: boxDecisions, delegates: boxDelegates } }: PanelProps & {
+type Open = "image-model" | "semantic-triggers" | BoxId | `delegate:${BoxId}` | null;
+function Settings({ imageModel, controller, activeProfileId, semanticTriggers, defaultDelegate, open, setOpen, drafts: { decisions: boxDecisions, delegates: boxDelegates } }: PanelProps & {
 	semanticTriggers: ReturnType<typeof useSemanticTriggerSettings>;
+	imageModel: SettingsDraft<ImageModelSettings>;
 	defaultDelegate: SettingsDraft<BoxDelegateSettings>;
 	open: Open;
 	setOpen: (open: Open) => void;
@@ -79,6 +84,7 @@ function Settings({ controller, activeProfileId, semanticTriggers, defaultDelega
 	const openBox = boxDecisions.find(({ box }) => box === open);
 	const openDelegate = boxDelegates.find(({ box }) => `delegate:${box}` === open);
 	if (controller.editorOpen) return <ConnectionProfileEditor controller={controller} />;
+	if (open === "image-model") return <ImageModelSettingsEditor editor={imageModel} onBack={() => setOpen(null)} />;
 	if (open === "semantic-triggers") return <SemanticTriggerSettingsEditor semanticTriggers={semanticTriggers} onBack={() => setOpen(null)} />;
 	const inherited = defaultDelegate.settings?.profileId != null;
 	if (open === `delegate:${DEFAULT_BOX_DELEGATE}`) return <DelegateSettingsEditor editor={defaultDelegate} box={DEFAULT_BOX_DELEGATE} label="Default" description="Used by every delegating Box without its own model." off="Delegates without their own model are off." inherited={false} onBack={() => setOpen(null)} />;
@@ -102,6 +108,8 @@ function Settings({ controller, activeProfileId, semanticTriggers, defaultDelega
 				: controller.settings === null ? <p className="import-problem" role="alert">{controller.error}</p>
 				: (
 					<ConnectionProfileList
+						imageModel={imageModel}
+						onOpenImageModel={() => setOpen("image-model")}
 						controller={controller}
 						settings={controller.settings}
 						activeProfileId={activeProfileId}

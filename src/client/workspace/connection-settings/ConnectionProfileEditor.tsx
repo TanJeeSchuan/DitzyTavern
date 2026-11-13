@@ -102,12 +102,13 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 							className="field-input"
 							value={draft.apiFormat}
 							onValueChange={(value) => updateDraft({
-								apiFormat: value === "system-one" || value === "embeddings" ? value : "chat-completions",
+								apiFormat: value === "images" || value === "system-one" || value === "embeddings" ? value : "chat-completions",
 								timeoutMs: value === "system-one" ? 15000 : value === "embeddings" ? 5000 : 120000,
 							})}
 							options={[
 								{ value: "chat-completions", label: "Chat Completions" },
 								{ value: "embeddings", label: "Embeddings" },
+								{ value: "images", label: "Images" },
 								{ value: "system-one", label: "System One" },
 							]}
 						/>
@@ -133,7 +134,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						onRemove={() => void controller.resetCredential()}
 						placeholder="Enter API key"
 					/>
-					<Field htmlFor={`connection-model-${selectedProfileId ?? "new"}`} label="Default model" helper="Saved as the default model and used for connection tests.">
+					<Field htmlFor={`connection-model-${selectedProfileId ?? "new"}`} label="Default model" helper={draft.apiFormat === "images" ? "Saved as the default model." : "Saved as the default model and used for connection tests."}>
 						<ModelCombobox
 							id={`connection-model-${selectedProfileId ?? "new"}`}
 							value={testModelId}
@@ -144,13 +145,13 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 							onRefresh={() => void controller.refreshModels()}
 						/>
 					</Field>
-					<div className="grid justify-items-start gap-2">
+					{draft.apiFormat !== "images" && <div className="grid justify-items-start gap-2">
 						<Button type="button" size="sm" variant="outline" disabled={testPending || !controller.canSave} onClick={() => void controller.testDraft()}>
 							<Zap aria-hidden="true" /> {testPending ? "Testing…" : "Test connection"}
 						</Button>
 						{testResult !== null && <TestOutcome result={testResult} />}
 						<small className="text-xs text-muted-foreground">Sends one real request, which the provider may bill. Doesn’t save.</small>
-					</div>
+					</div>}
 				</div>
 
 				<details className="group mt-8 border-t border-border pt-4">
@@ -163,6 +164,7 @@ export function ConnectionProfileEditor({ controller }: { controller: Connection
 						<Field label="Custom headers" helper="Saved values are never shown. Replace or remove them individually.">
 							<HeaderEditor data={headerEditorData} onChange={setHeaderEditorData} />
 						</Field>
+						{draft.apiFormat === "images" && <Field htmlFor="image-connection-adapter" label="AI SDK adapter"><AppSelect id="image-connection-adapter" className="field-input" value={draft.adapter} onValueChange={(value) => updateDraft({ adapter: value === "openrouter" ? value : "openai-compatible" })} options={Object.entries(CONNECTION_ADAPTER_LABELS).filter(([value]) => value !== "deepseek").map(([value, label]) => ({ value, label }))} /></Field>}
 						{!requiresTimeout && <>
 						<Field htmlFor="connection-model-backend" label="Model backend">
 							<AppSelect

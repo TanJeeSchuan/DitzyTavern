@@ -14,6 +14,10 @@ import { Value } from "@sinclair/typebox/value";
 import type { AuthoringReply, ChatModelCall, DecisionModelCall, ModelCall } from "./protocol";
 import {
 	authoringCallBody,
+	imageCallBody,
+	isImageRequest,
+	readImageRequestBody,
+	type ImageReply,
 	chatCompletionCallBody,
 	decisionCallBody,
 	embeddingsCallBody,
@@ -34,6 +38,7 @@ initializeConnectionSecretKey({ environment: { CONNECTION_SECRET_KEY: Buffer.fro
 registerWireFormats();
 
 let chatReplies: ChatReply[] = [];
+let imageReplies: ImageReply[] = [];
 let authoringReplies: AuthoringReply[] = [];
 let decisionRules: DecisionRule[] = [];
 let memoryClaims: MemoryClaim[] | undefined;
@@ -162,11 +167,13 @@ const embed = (text: string) => {
 
 const fakeFetch: ModelFetch = async (input, init) => {
 	const url = String(input);
-	const raw: unknown = init?.body ? JSON.parse(String(init.body)) : undefined;
+	const raw: unknown = isImageRequest(url) ? await readImageRequestBody(url, init) : init?.body ? JSON.parse(String(init.body)) : undefined;
 	const headers = Object.fromEntries(new Headers(init?.headers));
 	const path = new URL(url).pathname;
 	let call: ModelCall;
-	if (path.endsWith("/systemone") && Value.Check(decisionCallBody, raw)) {
+	if (isImageRequest(url) && Value.Check(imageCallBody, raw)) {
+		call = { kind: "image", url, headers, body: raw };
+	} else if (path.endsWith("/systemone") && Value.Check(decisionCallBody, raw)) {
 		call = { kind: "decision", url, headers, body: raw };
 	} else if (path.endsWith("/models")) {
 		call = { kind: "models", url, headers, body: raw };
@@ -180,6 +187,12 @@ const fakeFetch: ModelFetch = async (input, init) => {
 	calls.push(call);
 	writeFileSync(join(current!.directory, "calls.json"), JSON.stringify(calls));
 	switch (call.kind) {
+		case "image": {
+			const reply = imageReplies.shift();
+			if (reply === undefined) return refuse(call);
+			if (reply.hold) await held.promise;
+			return "status" in reply ? Response.json({ error: { message: reply.error } }, { status: reply.status }) : Response.json({ data: [{ b64_json: reply.base64 }] });
+		}
 		case "chat": return chat(call);
 		case "extraction": return extraction(call);
 		case "decision": return decisions(call);
@@ -230,6 +243,7 @@ const reset = async () => {
 		current = undefined;
 	}
 	chatReplies = [];
+	imageReplies = [];
 	authoringReplies = [];
 	decisionRules = [];
 	memoryClaims = undefined;
@@ -286,6 +300,7 @@ const server = Bun.serve({
 		if (request.url.includes("sandbox-escape")) probes.push(request.url);
 		switch (new URL(request.url).pathname) {
 			case "/__e2e/reset": await reset(); break;
+			case "/__e2e/images": imageReplies.push(...await request.json()); break;
 			case "/__e2e/chat": chatReplies.push(...await request.json()); break;
 			case "/__e2e/authoring": authoringReplies.push(...await request.json()); break;
 			case "/__e2e/authoring/chat/completions": return authoring(request);

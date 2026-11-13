@@ -56,3 +56,5 @@ export type {
 	TestConnectionOptions,
 	TestConnectionResult,
 } from "./test-connection";
+
+export { paintImage } from "./painting";

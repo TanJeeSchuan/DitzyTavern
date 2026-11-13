@@ -17,6 +17,7 @@ const apiFormat = Type.Union([
 	Type.Literal("responses"),
 	Type.Literal("anthropic-messages"),
 	Type.Literal("embeddings"),
+	Type.Literal("images"),
 	Type.Literal("system-one"),
 ]);
 
