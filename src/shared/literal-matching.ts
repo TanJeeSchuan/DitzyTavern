@@ -1,4 +1,5 @@
 const WORD = /[\p{L}\p{N}_]/u;
+const NO_WORD_BOUNDARY_SCRIPT = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
 
 const codePointAt = (value: string, index: number): string | undefined => {
 	if (index < 0 || index >= value.length) return undefined;
@@ -20,9 +21,13 @@ export const literalMatches = (message: string, expression: string, caseSensitiv
 	if (expression.length === 0) return false;
 	const source = caseSensitive ? message : message.toLowerCase();
 	const needle = caseSensitive ? expression : expression.toLowerCase();
+	const needsBeforeBoundary = wholeWord && !NO_WORD_BOUNDARY_SCRIPT.test(codePointAt(needle, 0) ?? "");
+	const needsAfterBoundary = wholeWord && !NO_WORD_BOUNDARY_SCRIPT.test(codePointBefore(needle, needle.length) ?? "");
 	let offset = source.indexOf(needle);
 	while (offset >= 0) {
-		if (!wholeWord || (!isWord(codePointBefore(source, offset)) && !isWord(codePointAt(source, offset + needle.length)))) return true;
+		const beforeMatches = !needsBeforeBoundary || !isWord(codePointBefore(source, offset));
+		const afterMatches = !needsAfterBoundary || !isWord(codePointAt(source, offset + needle.length));
+		if (beforeMatches && afterMatches) return true;
 		offset = source.indexOf(needle, offset + Math.max(1, needle.length));
 	}
 	return false;

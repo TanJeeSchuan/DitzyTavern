@@ -36,6 +36,33 @@ describe("lore entry matching", () => {
 		expect(matchLoreEntry(entry({ wholeWord: false }), [{ content: "Silver Keeper" }]).active).toBe(true);
 	});
 
+	test.each([
+		{ keyword: "小明", message: "小明走进房间" },
+		{ keyword: "小明", message: "看见小明走进房间" },
+		{ keyword: "スペシャルウィーク", message: "スペシャルウィークは走る" },
+		{ keyword: "さくら", message: "さくらが来た" },
+		{ keyword: "민수", message: "민수는" },
+		{ keyword: "𠮷野", message: "東𠮷野村" },
+		{ keyword: "野𠮷", message: "東野𠮷村" },
+		{ keyword: "小明Al", message: "看见小明Al arrives" },
+		{ keyword: "Al小明", message: "Meet Al小明走进房间" },
+	])("matches unspaced keyword edges: $keyword in $message", ({ keyword, message }) => {
+		expect(matchLoreEntry(entry({ keywords: [keyword] }), [{ content: message }]).active).toBe(true);
+	});
+
+	test.each([
+		{ keyword: "Al", message: "Alice" },
+		{ keyword: "Al", message: "看见Al走" },
+		{ keyword: "小明Al", message: "小明Alice" },
+		{ keyword: "Al小明", message: "palAl小明" },
+	])("requires boundaries at Latin keyword edges: $keyword in $message", ({ keyword, message }) => {
+		expect(matchLoreEntry(entry({ keywords: [keyword] }), [{ content: message }]).active).toBe(false);
+	});
+
+	test("matches a whole-word Latin keyword", () => {
+		expect(matchLoreEntry(entry({ keywords: ["Al"] }), [{ content: "Meet Al." }]).active).toBe(true);
+	});
+
 	test("keeps whole-word boundaries across Unicode code points", () => {
 		expect(matchLoreEntry(entry({ keywords: ["𐐀"] }), [{ content: "𐐀" }]).active).toBe(true);
 		expect(matchLoreEntry(entry({ keywords: ["silver"] }), [{ content: "𐐀silver" }]).active).toBe(false);
