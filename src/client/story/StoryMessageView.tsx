@@ -135,14 +135,12 @@ export const StoryMessageView = memo(function StoryMessageView({
 	const authorName = message.authorName ?? "Unknown author";
 
 	useEffect(() => setIsEditing(false), [active?.id]);
-	useEffect(() => {
-		if (active !== undefined && !isEditing) setEditText(active.content ?? "");
-	}, [active?.id, active?.content, isEditing]);
 
 	const [editBase, setEditBase] = useState("");
 	const [changedElsewhere, setChangedElsewhere] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const openEditor = () => {
+		setEditText(active?.content ?? "");
 		setEditBase(active?.content ?? "");
 		setChangedElsewhere(false);
 		setIsEditing(true);
