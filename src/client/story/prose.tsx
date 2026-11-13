@@ -1,5 +1,5 @@
 import MarkdownIt, { type Delimiter, type StateInline, type Token } from "markdown-it";
-import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { imageAnchor, imageReferenceAt } from "../../shared/image-reference";
 import { imageSrc } from "../lib/image";
 import { useOpenImageAt } from "../ImageDialog";
@@ -101,13 +101,17 @@ export function renderBlocks(text: string): string[] {
 
 const FIRST = 80;
 const CHUNK = 300;
+const STALL_MS = 300;
 // @approved
 // A soft edge 6em wide wipes each span from left to right. An inline span's mask runs along
 // its lines laid end to end, so the edge travels in reading order, line after line.
 const WIPE = "animate-wipe-in mask-no-repeat mask-size-[calc(200%+6em)_100%] mask-r-from-[calc(50%-3em)] mask-r-to-[calc(50%+3em)]";
 const MS_PER_CHAR = 2.5;
 const EDGE_CHARS = 12;
-const sentenceEnd = /[.!?…]+["”')\]*_~]*(?=\s)/g;
+// @approved
+// A Latin sentence ends at a stop followed by whitespace, or at the end of the text once the
+// stream has stalled. A CJK full stop needs no space after it.
+const sentenceEnd = (settled: boolean) => new RegExp(String.raw`[.!?…]+["”')\]*_~]*(?=\s${settled ? "|$" : ""})|[。！？]+[」』”’）)\]*_~]*`, "g");
 
 const lineStart = (text: string, line: number) => {
 	let offset = 0;
@@ -120,11 +124,13 @@ const lineStart = (text: string, line: number) => {
 // last block up to a sentence end. A reveal falls due each time CHUNK more characters
 // have streamed (FIRST for the opening one, so the first ink lands quickly) and shows up
 // to the latest sentence end before that point, or the next one if none came, so reveals
-// keep a steady pace however the sentences run.
-export function revealedLength(text: string): number {
+// keep a steady pace however the sentences run. A settled stream, one that has paused,
+// shows every sentence it has finished.
+export function revealedLength(text: string, settled = false): number {
 	const last = md.parse(text, {}).findLast((token) => token.level === 0 && token.nesting !== -1);
 	const start = lineStart(text, last?.map?.[0] ?? 0);
-	const ends = [...text.slice(start).matchAll(sentenceEnd)].map((match) => start + match.index + match[0].length);
+	const ends = [...text.slice(start).matchAll(sentenceEnd(settled))].map((match) => start + match.index + match[0].length);
+	if (settled) return ends.at(-1) ?? start;
 	let revealed = start;
 	for (let due = revealed + (revealed === 0 ? FIRST : CHUNK); due <= text.length; due = revealed + CHUNK) {
 		const next = ends.findLast((end) => end > revealed && end < due) ?? ends.find((end) => end > revealed);
@@ -132,6 +138,12 @@ export function revealedLength(text: string): number {
 		revealed = next;
 	}
 	return revealed;
+}
+
+/** @approved What a stall shows: every finished sentence, or the earlier floor when the text still extends it and no newer sentence has ended. */
+export function settledFloor(text: string, floor: string): string {
+	const shown = text.slice(0, revealedLength(text, true));
+	return text.startsWith(floor) && floor.length > shown.length ? floor : shown;
 }
 
 function wipeTextAfter(root: HTMLElement, offset: number) {
@@ -190,7 +202,15 @@ export function Prose({ text, streaming }: { text: string; streaming: boolean })
 	const openImageAt = useOpenImageAt();
 	const [streamed, setStreamed] = useState(streaming);
 	if (streaming && !streamed) setStreamed(true);
-	const shown = streaming ? text.slice(0, revealedLength(text)) : text;
+	// @approved
+	// What a stalled stream revealed, kept as a floor while the stream extends that text.
+	const [settled, setSettled] = useState("");
+	useEffect(() => {
+		if (!streaming) return;
+		const timer = setTimeout(() => setSettled((floor) => settledFloor(text, floor)), STALL_MS);
+		return () => clearTimeout(timer);
+	}, [text, streaming]);
+	const shown = streaming ? text.slice(0, Math.max(revealedLength(text), text.startsWith(settled) ? settled.length : 0)) : text;
 	const blocks = useMemo(() => renderBlocks(shown), [shown]);
 	return blocks.map((html, index) => <ProseBlock key={index} html={html} fade={streamed} openImageAt={openImageAt} />);
 }
