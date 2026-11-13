@@ -201,7 +201,10 @@ export function Prose({ text, streaming }: { text: string; streaming: boolean })
 	const [settled, setSettled] = useState("");
 	useEffect(() => {
 		if (!streaming) return;
-		const timer = setTimeout(() => setSettled(text.slice(0, revealedLength(text, true))), STALL_MS);
+		const timer = setTimeout(() => setSettled((floor) => {
+			const shown = text.slice(0, revealedLength(text, true));
+			return text.startsWith(floor) && floor.length > shown.length ? floor : shown;
+		}), STALL_MS);
 		return () => clearTimeout(timer);
 	}, [text, streaming]);
 	const shown = streaming ? text.slice(0, Math.max(revealedLength(text), text.startsWith(settled) ? settled.length : 0)) : text;
