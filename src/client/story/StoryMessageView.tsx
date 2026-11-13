@@ -263,40 +263,43 @@ export const StoryMessageView = memo(function StoryMessageView({
 					</div>
 				</div>
 				<div className="advanced-actions" aria-label="Advanced Message actions">
-					{onPaint !== undefined && <button className="edit-action" type="button" disabled={paintDisabledReason !== undefined || generationActive || active === undefined} title={paintDisabledReason} onClick={() => { if (active !== undefined) onPaint(active.id); }}><Paintbrush aria-hidden="true" /> Paint</button>}
+					{onPaint !== undefined && <button className="edit-action" type="button" disabled={paintDisabledReason !== undefined || generationActive || active === undefined} title={paintDisabledReason ?? "Paint"} onClick={() => { if (active !== undefined) onPaint(active.id); }}><Paintbrush aria-hidden="true" /><span className="advanced-action-label">Paint</span></button>}
 					{onSibling !== undefined && (
 						<button
 							className="edit-action"
 							type="button"
 							disabled={mutationsDisabled}
+							title="New Swipe"
 							onClick={() => onSibling(message.id)}
 						>
-							<RefreshCw aria-hidden="true" /> New Swipe
+							<RefreshCw aria-hidden="true" /><span className="advanced-action-label">New Swipe</span>
 						</button>
 					)}
-					{onReroll !== undefined && <button className="edit-action" type="button" disabled={mutationsDisabled} onClick={() => onReroll(message.id)}>
-						<Dices aria-hidden="true" /> Re-roll
+					{onReroll !== undefined && <button className="edit-action" type="button" disabled={mutationsDisabled} title="Re-roll" onClick={() => onReroll(message.id)}>
+						<Dices aria-hidden="true" /><span className="advanced-action-label">Re-roll</span>
 					</button>}
 					{onInspect !== undefined && active !== undefined && (
 						<button
 							className="edit-action"
 							type="button"
+							title="Details"
 							onClick={() => onInspect(message.id, active.id)}
 						>
-							<Info aria-hidden="true" /> Details
+							<Info aria-hidden="true" /><span className="advanced-action-label">Details</span>
 						</button>
 					)}
 					{lens !== undefined && onOpenInspector !== undefined && <BoxMessageActions conversation={lens.conversation} messageId={message.id} onOpen={onOpenInspector} />}
 					{onDelete !== undefined && (
 						<button
 							className="edit-action delete-action"
+							title="Delete"
 							type="button"
 							disabled={mutationsDisabled}
 							onClick={() => {
 								if (window.confirm("Delete this Message?")) onDelete(message.id);
 							}}
 						>
-							<Trash2 aria-hidden="true" /> Delete
+							<Trash2 aria-hidden="true" /><span className="advanced-action-label">Delete</span>
 						</button>
 					)}
 				</div>

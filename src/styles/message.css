@@ -183,3 +183,11 @@
 		height: 1rem;
 	}
 }
+
+@media (min-width: 40.001rem) {
+	.story-message { container: message / inline-size; }
+	@container message (max-width: 48rem) {
+		.advanced-actions .edit-action { gap: 0; }
+		.advanced-action-label { @apply sr-only; }
+	}
+}

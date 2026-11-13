@@ -8,8 +8,8 @@ export function BoxMessageActions({ conversation, messageId, onOpen }: {
 	onOpen: (box: string, focus: { messageId: number }) => void;
 }) {
 	return boxClients().map(([id, { icon, Inspector }]) => Inspector && boxPresent(conversation, id) && (
-		<button key={id} className="edit-action" type="button" onClick={() => onOpen(id, { messageId })}>
-			<BoxIcon box={id} icon={icon} /> {Inspector.label}
+		<button key={id} className="edit-action" type="button" title={Inspector.label} onClick={() => onOpen(id, { messageId })}>
+			<BoxIcon box={id} icon={icon} /><span className="advanced-action-label">{Inspector.label}</span>
 		</button>
 	));
 }
