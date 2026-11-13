@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useSyncExternalStore } from "react";
+import { createContext, useCallback, useContext, useMemo, useSyncExternalStore } from "react";
 import type { StoryVariant } from "../story";
 
 // @approved
@@ -100,4 +100,29 @@ export function useStreamedVariant(variant: StoryVariant | undefined) {
 	const subscribe = useCallback((listener: () => void) => id === undefined ? () => undefined : streams.subscribe(id, listener), [streams, id]);
 	const streamed = useSyncExternalStore(subscribe, () => id === undefined ? undefined : streams.get(id));
 	return variant === undefined ? undefined : streamedVariant(variant, streamed);
+}
+
+export function createVariantStreamReader(streams: VariantStreams, variants: StoryVariant[]) {
+	let observed = variants.map((variant) => streams.get(variant.id));
+	let snapshot = variants.map((variant, index) => streamedVariant(variant, observed[index]));
+	return {
+		getSnapshot() {
+			if (variants.some((variant, index) => streams.get(variant.id) !== observed[index])) {
+				observed = variants.map((variant) => streams.get(variant.id));
+				snapshot = variants.map((variant, index) => streamedVariant(variant, observed[index]));
+			}
+			return snapshot;
+		},
+		subscribe(listener: () => void) {
+			const unsubscribe = variants.map((variant) => streams.subscribe(variant.id, listener));
+			return () => { for (const close of unsubscribe) close(); };
+		},
+	};
+}
+
+export function useStreamedVariants(variants: StoryVariant[], enabled: boolean) {
+	const streams = useContext(VariantStreamsContext);
+	const reader = useMemo(() => createVariantStreamReader(streams, enabled ? variants : []), [streams, variants, enabled]);
+	const streamed = useSyncExternalStore(reader.subscribe, reader.getSnapshot);
+	return enabled ? streamed : variants;
 }

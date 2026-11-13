@@ -35,7 +35,7 @@ import { SwipeBrowser } from "./SwipeBrowser";
 import { useSaveGuard } from "../SaveGuard";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchNeighbourText, useVariantText, useVariantsText } from "./variant-text";
-import { useStreamedVariant } from "./variant-streams";
+import { useStreamedVariant, useStreamedVariants } from "./variant-streams";
 
 // @approved
 //  The story renders one native Message from the paginated read model: the
@@ -173,7 +173,8 @@ export const StoryMessageView = memo(function StoryMessageView({
 		else onMoveSwipe(message.id, 1);
 	};
 	const [browsing, setBrowsing] = useState(false);
-	const browsed = useVariantsText(conversationId, message.id, message.swipes, browsing).map((variant) => variant.id === active?.id ? active : variant);
+	const streamedSwipes = useStreamedVariants(message.swipes, browsing);
+	const browsed = useVariantsText(conversationId, message.id, streamedSwipes, browsing);
 	const client = useQueryClient();
 	const prefetchNeighbours = () => prefetchNeighbourText(client, conversationId, message.id, message.swipes, activeIndex);
 	useEffect(() => {

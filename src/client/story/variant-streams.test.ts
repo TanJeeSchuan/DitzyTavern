@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { StoryVariant } from "../story";
-import { createVariantStreams, streamedVariant, type VariantObservation } from "./variant-streams";
+import { createVariantStreamReader, createVariantStreams, streamedVariant, type VariantObservation } from "./variant-streams";
 
 const checkpoint = (lastEventId: number, content: string, reasoning = ""): StoryVariant => ({
 	id: 100, position: 1, content, reasoning, hasReasoning: reasoning !== "", empty: content === "", generationId: 55, lastEventId,
@@ -70,6 +70,40 @@ describe("Variant stream checkpoints", () => {
 		unsubscribe();
 		streams.observe(append(2, " Two."), undefined);
 		// Reject an old unsubscribe removing the replacement listener set.
+		expect(notifications).toBe(1);
+	});
+});
+
+describe("the Swipes browser stream reader", () => {
+	const otherSwipe = (): StoryVariant => ({ ...checkpoint(0, ""), id: 101, generationId: 56 });
+	const otherDelta = (eventId: number, text: string): VariantObservation => ({ ...append(eventId, text), variantId: 101, generationId: 56 });
+
+	test("a non-selected Swipe shows its streamed text and stops showing the empty placeholder", () => {
+		const streams = createVariantStreams();
+		const variants = [checkpoint(0, ""), otherSwipe()];
+		const reader = createVariantStreamReader(streams, variants);
+		streams.observe(otherDelta(1, "Other reply."), variants[1]);
+		// Reject overlaying only the selected Swipe while a sibling's Content stays at its empty checkpoint.
+		expect(reader.getSnapshot()[1]).toMatchObject({ content: "Other reply.", empty: false, lastEventId: 1 });
+	});
+
+	test("opening subscribes to other Swipes, and closing detaches them without broadcasting other Messages", () => {
+		const streams = createVariantStreams();
+		const reader = createVariantStreamReader(streams, [checkpoint(0, ""), otherSwipe()]);
+		let notifications = 0;
+		const close = reader.subscribe(() => notifications++);
+		streams.observe(otherDelta(1, "Other reply."), undefined);
+		// Reject listening only to the selected Swipe, which never hears the sibling's delta.
+		expect(notifications).toBe(1);
+		const snapshot = reader.getSnapshot();
+		// Reject allocating a new snapshot on every read, which causes an external-store render loop.
+		expect(reader.getSnapshot()).toBe(snapshot);
+		streams.observe({ ...append(1, "Another Message"), variantId: 102, generationId: 57 }, undefined);
+		// Reject subscribing the browser to the whole workspace's traffic.
+		expect(notifications).toBe(1);
+		close();
+		streams.observe(otherDelta(2, " More."), undefined);
+		// Reject keeping browser-only subscriptions after the browser closes.
 		expect(notifications).toBe(1);
 	});
 });
