@@ -179,7 +179,7 @@ const fakeFetch: ModelFetch = async (input, init) => {
 	} catch { raw = init?.body; }
 	const headers = Object.fromEntries(new Headers(init?.headers));
 	const path = new URL(url).pathname;
-	let call: ModelCall;
+	let call: Exclude<ModelCall, { kind: "authoring" }>;
 	if (imageBody !== undefined) {
 		call = { kind: "image", url, headers, body: imageBody };
 	} else if (path.endsWith("/systemone") && Value.Check(decisionCallBody, raw)) {

@@ -428,7 +428,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 					</button>
 				</div>
 			</footer>
-			{visibleId !== null && <IllustrationRows key={visibleId} conversationId={conversationId} variantId={visibleId} />}
+			{visibleId !== null && <IllustrationRows key={`illustrations:${visibleId}`} conversationId={conversationId} variantId={visibleId} />}
 		</article>
 	);
 });
