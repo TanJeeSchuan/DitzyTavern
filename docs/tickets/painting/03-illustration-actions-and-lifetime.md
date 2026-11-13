@@ -38,4 +38,4 @@ A writer can use, refine and remove an Illustration, paint the current scene fro
 
 - An Illustration reaches a story model only after the writer adds it to a Message.
 - A picture arriving never moves text the writer is reading or typing.
-- Nothing of a deleted Variant's paintings or Illustrations remains after the next sweep.
+- A deleted Variant's Illustrations are gone at once, and the orphan sweep collects their pictures and the Brief's references once no other owner holds them and they have been orphaned for more than 24 hours.
