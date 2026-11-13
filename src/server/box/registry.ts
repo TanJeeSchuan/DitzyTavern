@@ -16,6 +16,7 @@ import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureMessage
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
 import { sandboxedBox } from "./sandboxed";
+import { BOX_HOOK_MS, BOX_IMPORT_MS, settledWithin } from "./settled";
 import { sandboxedSources } from "./sandboxed-build";
 import { esmOrigin } from "./sandboxed-deps";
 import { sandboxedFolder } from "./sandboxed-folder";
@@ -92,6 +93,23 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		routes: host.routes?.bind(host),
 		upgrade: host.upgrade?.bind(host),
 		delegate: delegate && { apply: async (input) => checked("delegate.apply", await delegate.apply(input)) },
+	};
+};
+
+// @approved
+//  A trusted Box's async hooks run in the server's own process, so the host
+// stops waiting for one once its context's signal aborts or BOX_HOOK_MS
+// passes. A sandboxed Box needs none of this: its runtime already fails a
+// promise that can no longer settle.
+const boundedHooks = (id: BoxId, box: HostBox): HostBox => {
+	const wait = <Output>(hook: string, run: () => Promise<Output>, signal: AbortSignal) =>
+		settledWithin(run, { aborted: signal, stopping: signal, ms: BOX_HOOK_MS }, `The ${id} Box's ${hook} did not settle within ${BOX_HOOK_MS / 1000} s.`);
+	const { advance, records } = box;
+	const digest = records?.digest;
+	return {
+		...box,
+		advance: advance && { ...advance, run: (input, ctx) => wait("advance.run", () => advance.run(input, ctx), ctx.signal) },
+		records: records && digest ? { ...records, digest: { ...digest, run: (window, ctx) => wait("records.digest.run", () => digest.run(window, ctx), ctx.signal) } } : records,
 	};
 };
 
@@ -202,6 +220,12 @@ export type CheckedSandboxedBox = Awaited<ReturnType<typeof checkSandboxedFolder
 // Box's id. A plugin folder holding `versions/` is a versioned Box, which
 // loads the version its `latest` names, and nothing before its first
 // Install.
+/** @approved A trusted module, refused once its import runs past BOX_IMPORT_MS, as a top-level await that never settles would. */
+const importWithin = (path: string): Promise<{ readonly default: unknown }> => {
+	const never = new AbortController().signal;
+	return settledWithin(() => import(path), { aborted: never, stopping: never, ms: BOX_IMPORT_MS }, `${path} did not import within ${BOX_IMPORT_MS / 1000} s.`);
+};
+
 const loadFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>) => {
 	const builtIn = dirname(folder) === builtInBoxes;
 	if (!builtIn && isVersioned(folder)) {
@@ -213,14 +237,14 @@ const loadFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>
 	if (sandboxed && existsSync(join(folder, "server.ts"))) throw new Error("It holds both server.ts and sandboxed logic; a Box folder is trusted or sandboxed, not both.");
 	const unversioned = { version: undefined, home: undefined };
 	if (!sandboxed) {
-		const { default: imported }: { default: unknown } = await import(join(folder, "shared-descriptor.ts"));
+		const { default: imported } = await importWithin(join(folder, "shared-descriptor.ts"));
 		assertBoxDescriptor(imported);
 		const descriptor = named(imported, name, seen);
-		const { default: box }: { default: unknown } = await import(join(folder, "server.ts"));
+		const { default: box } = await importWithin(join(folder, "server.ts"));
 		if (box === undefined) throw new Error(`The ${descriptor.id} Box's server.ts has no default export.`);
 		const client = { kind: "module", folder: builtIn ? join("dist", "boxes", descriptor.id) : join(folder, "dist") } as const;
 		assertBoxServer(box);
-		return { descriptor, box: checkedHooks(descriptor.id, descriptor, box), client, dispose: undefined, ...unversioned };
+		return { descriptor, box: boundedHooks(descriptor.id, checkedHooks(descriptor.id, descriptor, box)), client, dispose: undefined, ...unversioned };
 	}
 	if (!typed) return { ...await checkSandboxedFolder(folder, name, seen), ...unversioned };
 	const read = (path: string) => Bun.file(join(folder, path)).text().catch(() => undefined);

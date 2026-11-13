@@ -21,6 +21,7 @@ import { isHostChatKey, readBoxLifecycles, readBoxSetups } from "./setup";
 import { boxSeed, variantSeedOf } from "./seed";
 import { readBoxWindow, type HostWindowRead } from "./window";
 import { announceChange } from "../database/changes";
+import { settledWithin } from "./settled";
 
 // @approved
 //  The host digest queue (ADR-0050). Selected passages are digested in the
@@ -170,30 +171,6 @@ const delegateRecord = async (database: Database, queue: DigestQueue, job: Diges
 	const limits = { aborted: job.controller.signal, stopping: queue.stopping.signal, ms: queue.applyMs };
 	return await settledWithin(() => apply.apply({ setup, state, operations, cast }), limits, `The ${job.box} Box's delegate.apply did not settle within ${queue.applyMs / 1000} s.`);
 };
-
-// @approved
-//  A Box's reducer may never settle, so its run fails once the deadline
-// passes. A job aborted before its reducer starts, or a queue already
-// stopping, starts none. Once started, the job stays running and holds its
-// Chat and Box's lane, aborted or not, so no later passage reads state it
-// could still change; a stopping queue stops waiting at once, since no later
-// job runs. The reducer starts in the same turn as the checks, so no abort
-// lands between them. The wait removes its listener when it ends, either way.
-export const settledWithin = <T>(run: () => T | Promise<T>, { aborted, stopping, ms }: { readonly aborted: AbortSignal; readonly stopping: AbortSignal; readonly ms: number }, reason: string): Promise<T> => new Promise((resolve, reject) => {
-	if (aborted.aborted) return reject(aborted.reason);
-	if (stopping.aborted) return reject(new Error(reason));
-	const end = () => {
-		clearTimeout(timer);
-		stopping.removeEventListener("abort", fail);
-	};
-	const fail = () => {
-		end();
-		reject(new Error(reason));
-	};
-	const timer = setTimeout(fail, ms);
-	stopping.addEventListener("abort", fail, { once: true });
-	new Promise<T>((settle) => settle(run())).then(resolve, reject).finally(end);
-});
 
 /** @approved The default deadline for a delegate's `delegate.apply`, well past what a reducer of one batch takes. */
 export const DELEGATE_APPLY_MS = 10_000;
