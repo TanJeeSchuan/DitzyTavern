@@ -433,9 +433,11 @@ for (const [hook, outcome, server, fields = ""] of [
 	const { boxes: [lantern] } = await discoverBoxes([installPlugins({ lantern: { fields, server: `const box = { ${server} }; export default box;` } })]);
 	// SAFETY: each plugin's hook ignores its arguments.
 	const none = undefined as never;
+	// SAFETY: the host reads only an async hook's signal from its context.
+	const context = { signal: new AbortController().signal } as never;
 	const call = async () => {
 		const box = lantern?.box;
-		await box?.advance?.run(none, none);
+		await box?.advance?.run(none, context);
 		box?.advance?.fingerprint?.(none);
 		box?.moves?.render(none, "Ann");
 		box?.setupError?.(none, none);
@@ -445,7 +447,22 @@ for (const [hook, outcome, server, fields = ""] of [
 		box?.read?.(none);
 		box?.routes?.(none);
 		box?.records?.fold?.(none, none, none);
-		await box?.records?.digest?.run(none, none);
+		await box?.records?.digest?.run(none, context);
 	};
 	await expect(call()).rejects.toThrow(`The lantern Box's ${hook} ${outcome}`);
 });
+
+test("the host stops waiting for a trusted Box's async hook that ignores its signal once that signal aborts", async () => {
+	const { boxes: [lantern] } = await discoverBoxes([installPlugins({ lantern: {
+		fields: `${recordField}, ${decisionField}`,
+		server: "const never = () => new Promise(() => {}); export default { advance: { run: never }, records: { digest: { window: 0, run: never } } };",
+	} })]);
+	for (const run of [lantern?.box.advance?.run, lantern?.box.records?.digest?.run]) {
+		const controller = new AbortController();
+		// SAFETY: the hook ignores its input and reads nothing from its context.
+		const pending = run?.(undefined as never, { signal: controller.signal } as never);
+		controller.abort();
+		await expect(pending).rejects.toThrow("did not settle");
+	}
+});
+
