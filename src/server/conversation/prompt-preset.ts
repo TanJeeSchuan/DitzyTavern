@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { and, count, eq } from "drizzle-orm";
 import { referencedDefinitionBlocks } from "../prompt-compiler";
-import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
+import { readConversationPromptPresetRecipeFromConnection, readPromptPresetRecipe } from "../prompt-preset";
 import {
 	messageTable,
 	messageVariantTable,
@@ -63,9 +63,12 @@ const projectPromptPreset = (
 export const readConversationPromptPreset = (
 	database: Database,
 	conversationId: number,
+	presetId?: number,
 ): ConversationPromptPreset | undefined =>
 	runConversationReadTransaction(database, (db) => {
-		const recipe = readConversationPromptPresetRecipeFromConnection(db, conversationId);
+		const selected = readConversationPromptPresetRecipeFromConnection(db, conversationId);
+		if (selected === undefined) return undefined;
+		const recipe = presetId === undefined ? selected : readPromptPresetRecipe(database, presetId);
 		if (recipe === undefined) return undefined;
 		const control = readControlAssignment(db, conversationId);
 		const controlledIds = [control.humanParticipantId, control.modelParticipantId]

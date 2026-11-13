@@ -29,7 +29,7 @@ import {
 	type GenerationCoordinatorOptions,
 } from "../application/generation-coordinator";
 
-import { conversationPromptPreset } from "../../shared/contract/prompt-preset";
+import { conversationPromptPreset, conversationPromptPresetQuery } from "../../shared/contract/prompt-preset";
 import {
 	addCharacterToCast,
 	generationRuntimeFor,
@@ -403,12 +403,13 @@ export const createConversationRoutes = (
 		)
 		.get(
 			"/api/conversations/:id/prompt-preset",
-			({ params }) => {
-				const preset = readConversationPromptPreset(database, params.id);
+			({ params, query }) => {
+				const preset = readConversationPromptPreset(database, params.id, query.presetId);
 				return preset ?? notFoundResponse();
 			},
 			{
 				params: conversationIdParams,
+				query: conversationPromptPresetQuery,
 				response: {
 					200: conversationPromptPreset,
 					404: notFoundOutcome,

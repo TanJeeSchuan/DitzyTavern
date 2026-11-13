@@ -288,9 +288,10 @@ export function useGenerationController({
 		if (target !== undefined) void stopGeneration(target);
 	};
 
+	const canSubmit = () => assemblyAvailable && conversation !== null && (draft.get().trim() !== "" || hasMoves(moves));
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
-		if (!assemblyAvailable || conversation === null || (draft.get().trim() === "" && !hasMoves(moves))) return;
+		if (!canSubmit()) return;
 		requestGeneration({ kind: "send", content: draft.get(), moves, ...clientFormattingContext() });
 	};
 
@@ -363,6 +364,7 @@ export function useGenerationController({
 		stopGeneration,
 		stopAllGenerations,
 		cancelGeneration,
+		canSubmit,
 		submitMessage,
 		continueMessage,
 		regenerateResponse,

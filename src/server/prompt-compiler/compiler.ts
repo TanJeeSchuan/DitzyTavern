@@ -322,5 +322,5 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	}
 
 	const placed = input.systemPlacement === "strict" ? placeStrictly(blocks, historyStart ?? blocks.length) : blocks;
-	return resolvePromptImages({ blocks: placed, warnings }, input.images);
+	return resolvePromptImages({ blocks: [...placed, ...(input.trailingMessages ?? []).map((entry) => ({ ...entry, kind: "message" as const }))], warnings }, input.images);
 }

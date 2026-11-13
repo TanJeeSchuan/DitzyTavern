@@ -1,6 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
+import { generationFormattingContext } from "./conversation-schema";
 import { modelSelection } from "./model-selection";
-import { invalidOutcome, notFoundOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome, notPlayableOutcome } from "./outcomes";
 
 export const paintingAspectRatio = Type.Union([Type.Literal("9:16"), Type.Literal("3:4"), Type.Literal("1:1"), Type.Literal("4:3"), Type.Literal("16:9")]);
 export const paintingSettings = Type.Object({ aspectRatio: paintingAspectRatio });
@@ -41,3 +42,8 @@ export const paintingCommand = Type.Union([
 export type PaintingCommand = Static<typeof paintingCommand>;
 export const paintingAccepted = Type.Object({ outcome: Type.Literal("accepted") });
 export const paintingErrors = Type.Union([invalidOutcome, notFoundOutcome]);
+
+export const briefRequest = Type.Object({ ...generationFormattingContext.properties, variantId: Type.Integer(), ask: Type.String() });
+export type BriefRequest = Static<typeof briefRequest>;
+
+export const briefErrors = Type.Union([invalidOutcome, notFoundOutcome, notPlayableOutcome]);

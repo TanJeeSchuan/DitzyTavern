@@ -214,7 +214,7 @@ export function ActiveWritingWorkspace({
 		if (inspectorBox !== undefined && conversation !== null && !boxPresent(conversation, inspectorBox)) dispatchPanel({ type: "details-closed" });
 	}, [conversation, inspectorBox]);
 
-	const openActiveGenerationDetails = () => {
+	const openActiveGenerationDetails = () => saveNavigation.requestNavigation(() => {
 		if (assemblyActive || session.conversation === null || generation.selectedGenerationTarget === undefined) return;
 		dispatchPanel({
 			type: "generation-details-opened",
@@ -224,20 +224,20 @@ export function ActiveWritingWorkspace({
 				generationId: generation.selectedGenerationTarget.generationId,
 			},
 		});
-	};
+	});
 
 	const openBoxInspector = (box: string, focus: { messageId: number } | null) => {
 		if (assemblyActive) return;
-		dispatchPanel({ type: "box-inspector-opened", box, focus });
+		saveNavigation.requestNavigation(() => dispatchPanel({ type: "box-inspector-opened", box, focus }));
 	};
 
-	const openVariantDetails = (messageId: number, variantId: number) => {
+	const openVariantDetails = (messageId: number, variantId: number) => saveNavigation.requestNavigation(() => {
 		if (assemblyActive || session.conversation === null) return;
 		dispatchPanel({
 			type: "generation-details-opened",
 			target: { type: "variant", conversationId: session.conversation.id, messageId, variantId },
 		});
-	};
+	});
 
 	const composerRef = useRef<ComposerHandle>(null);
 	const openPaint = (variantId: number, brief = "") => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", target: { variantId, brief, requestId: crypto.randomUUID() } }));
@@ -326,11 +326,11 @@ export function ActiveWritingWorkspace({
 				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
 				onOpenInfo={() => {
 					if (assemblyActive) return;
-					dispatchPanel({ type: "chat-info-opened" });
+					saveNavigation.requestNavigation(() => dispatchPanel({ type: "chat-info-opened" }));
 				}}
 				onOpenVariables={() => {
 					if (assemblyActive) return;
-					dispatchPanel({ type: "macro-variables-opened" });
+					saveNavigation.requestNavigation(() => dispatchPanel({ type: "macro-variables-opened" }));
 				}}
 				onOpenInspector={openBoxInspector}
 				onInspectVariant={openVariantDetails}
@@ -358,11 +358,13 @@ export function ActiveWritingWorkspace({
 
 			<CoveredLayer inert={narrow && newChatOpen}>
 			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintTarget !== null && conversation !== null && (
+				<SaveGuardContext.Provider value={saveNavigation.registerSaveGuard}>
 				<PaintPanel
 					key={`${conversation.id}:${panelState.paintTarget.requestId}`}
-					conversationId={conversation.id} target={panelState.paintTarget}
+					conversation={conversation} onConversationChange={session.setConversation} target={panelState.paintTarget}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
+				</SaveGuardContext.Provider>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
@@ -421,7 +423,7 @@ export function ActiveWritingWorkspace({
 		<GenerationErrorToast
 			error={generation.generationError}
 			imageModel={generation.generationImageModel}
-			retry={generation.retryGeneration}
+			retry={generation.retryGeneration === null ? null : () => saveNavigation.requestNavigation(() => generation.retryGeneration?.())}
 			acknowledge={generation.acknowledgeGenerationError}
 		/>
 		<ControlChangeToaster ref={controlToaster} />

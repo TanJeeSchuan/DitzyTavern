@@ -1,3 +1,4 @@
+import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
 import { isActive } from "../database/is-active";
 import { loadMessageRows, toDataEntry } from "./message-rows";
 // @approved
@@ -23,7 +24,7 @@ import type {
 	HistoricalControlSnapshot,
 	SelectedHistoryReadRequest,
 } from "./types";
-import { InvalidConversationCommandError } from "./errors";
+import { ConversationNotFoundError, InvalidConversationCommandError } from "./errors";
 
 export interface SelectedHistoryVariant {
 	id: number;
@@ -175,3 +176,15 @@ export const readSelectedVariantIdsFromConnection = (db: ConversationDatabase, c
 	.orderBy(asc(messageTable.position))
 	.all()
 	.map(({ id }) => id);
+
+/** @approved The selected path through the target Message, with that Message shown as the requested Variant. */
+export const readHistoryThroughVariant = (db: ConversationDatabase, conversationId: number, variantId: number): SelectedHistoryRead => {
+	const target = db.select({ messageId: messageTable.id, messagePosition: messageTable.position, id: messageVariantTable.id, position: messageVariantTable.position, content: messageVariantTable.content }).from(messageTable)
+		.innerJoin(messageVariantTable, eq(messageVariantTable.message_id, messageTable.id))
+		.where(and(eq(messageTable.conversation_id, conversationId), eq(messageVariantTable.id, variantId))).get();
+	if (!target) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint");
+	const history = readSelectedHistoryFromConnection(db, conversationId, { position: target.messagePosition, conversationDataNamespace: MACRO_DATA_NAMESPACE });
+	if (!history) throw new ConversationNotFoundError(conversationId);
+	return { ...history, messages: history.messages.map((message) => message.id === target.messageId
+		? { ...message, variant: { id: target.id, position: target.position, content: target.content } } : message) };
+};

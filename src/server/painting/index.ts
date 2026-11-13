@@ -4,15 +4,13 @@ import { and, eq, inArray } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, messageVariantDataTable } from "../database/schema";
 import { illustration, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
-import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantIds } from "../conversation";
+import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantIds, readPaintPresetSettings, commandPaintPreset } from "../conversation";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import { readImageModelSettings } from "./image-model-settings";
 import { paintImage, type ModelFetch } from "../model-client";
 import { imageLoader, ingestImage, storeImage } from "../image";
 import { announceChange } from "../database/changes";
 import { processStateFor } from "../application/process-state";
-
-import { readPaintPresetSettings, commandPaintPreset } from "../conversation";
 
 const NAMESPACE = "painting";
 
@@ -69,7 +67,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 				.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value: JSON.stringify({ aspectRatio: command.aspectRatio }) } }).run();
 			return;
 		}
-		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("The Variant is no longer available.");
+		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint");
 		if (command.type === "delete") {
 			db.delete(messageVariantDataTable).where(and(eq(messageVariantDataTable.message_variant_id, command.variantId), eq(messageVariantDataTable.namespace, NAMESPACE), eq(messageVariantDataTable.key, command.id))).run();
 			return;

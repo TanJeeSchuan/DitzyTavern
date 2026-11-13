@@ -69,6 +69,8 @@ export type PromptContextEntry = {
 	role: PromptHistoryRole;
 };
 
+export type LiteralPromptMessage = { content: string; role: Exclude<PromptHistoryRole, null> };
+
 export interface CompilePromptInput {
 	/** What each Box with an enabled block contributed, captured before compilation. */
 	boxes: BoxItems;
@@ -77,6 +79,7 @@ export interface CompilePromptInput {
 	human: CompilePromptDefinition;
 	model: CompilePromptDefinition;
 	context?: readonly PromptContextEntry[];
+	readonly trailingMessages?: readonly LiteralPromptMessage[];
 	// The selected Prompt Preset's ordered recipe. It decides which blocks the
 	// plan contains and in what order; the compiler holds no order of its own.
 	recipe: readonly PromptPresetSlot[];

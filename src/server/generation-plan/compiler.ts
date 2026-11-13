@@ -160,6 +160,7 @@ export const compileGenerationPlan = (
 			human: input.human,
 			model: input.model,
 			context,
+			trailingMessages: input.trailingMessages,
 			recipe: input.recipe,
 			lore,
 			attempt,
