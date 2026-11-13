@@ -51,7 +51,7 @@
 
 .message-header {
 	display: grid;
-	grid-template-columns: auto 1fr auto;
+	grid-template-columns: auto minmax(0, 1fr) minmax(0, 2fr);
 	align-items: center;
 	gap: 0.7rem;
 	min-height: 2.4rem;
@@ -60,6 +60,7 @@
 
 .message-author {
 	display: flex;
+	flex-wrap: wrap;
 	min-width: 0;
 	align-items: baseline;
 	gap: 0.65rem;
@@ -108,6 +109,8 @@
 
 .advanced-actions {
 	display: flex;
+	flex-wrap: wrap;
+	justify-content: flex-end;
 	align-items: center;
 	gap: 0.2rem;
 	opacity: 0;

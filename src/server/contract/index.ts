@@ -1,3 +1,4 @@
+import { createPaintingRoutes } from "./painting";
 import type { Database } from "bun:sqlite";
 import type { ConversationRouteOptions } from "./conversation";
 import { Elysia } from "elysia";
@@ -53,6 +54,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 	.use(createCharacterLibraryRoutes(database))
 	.use(createImageRoutes(database))
 	.use(createImageModelRoutes(database))
+	.use(createPaintingRoutes(database, options))
 	.use(createNativeConversationRoutes(database))
 	.use(createConversationRoutes(database, options))
 	.use(createPromptPresetRoutes(database))

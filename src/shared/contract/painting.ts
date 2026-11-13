@@ -1,0 +1,28 @@
+import { Type, type Static } from "@sinclair/typebox";
+import { imageModelSelection } from "./image-model";
+import { invalidOutcome, notFoundOutcome } from "./outcomes";
+
+export const paintingAspectRatio = Type.Union([Type.Literal("9:16"), Type.Literal("3:4"), Type.Literal("1:1"), Type.Literal("4:3"), Type.Literal("16:9")]);
+export const paintingSettings = Type.Object({ aspectRatio: paintingAspectRatio });
+export type PaintingAspectRatio = Static<typeof paintingAspectRatio>;
+export const DEFAULT_PAINTING_ASPECT_RATIO: PaintingAspectRatio = "1:1";
+const paintingInput = Type.Object({ brief: Type.String(), imageModel: imageModelSelection, aspectRatio: paintingAspectRatio });
+export const illustration = Type.Composite([paintingInput, Type.Object({ image: Type.String({ pattern: "^image:[0-9a-f]{64}$" }) })]);
+const paintingBase = Type.Composite([paintingInput, Type.Object({ id: Type.String(), variantId: Type.Integer() })]);
+export const painting = Type.Union([
+	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("painting") })]),
+	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("failed"), message: Type.String() })]),
+	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("illustration"), image: illustration.properties.image })]),
+]);
+export type Painting = Static<typeof painting>;
+export const illustrationsRead = Type.Object({ aspectRatio: paintingAspectRatio, paintings: Type.Array(painting) });
+export type IllustrationsRead = Static<typeof illustrationsRead>;
+export const paintingCommand = Type.Union([
+	Type.Object({ type: Type.Literal("paint"), variantId: Type.Integer(), brief: Type.String({ minLength: 1 }), aspectRatio: paintingAspectRatio }),
+	Type.Object({ type: Type.Literal("retry"), variantId: Type.Integer(), id: Type.String() }),
+	Type.Object({ type: Type.Literal("dismiss"), variantId: Type.Integer(), id: Type.String() }),
+	Type.Object({ type: Type.Literal("set-aspect-ratio"), aspectRatio: paintingAspectRatio }),
+]);
+export type PaintingCommand = Static<typeof paintingCommand>;
+export const paintingAccepted = Type.Object({ outcome: Type.Literal("accepted") });
+export const paintingErrors = Type.Union([invalidOutcome, notFoundOutcome]);

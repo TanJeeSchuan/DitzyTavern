@@ -1,3 +1,4 @@
+import { useIllustrations } from "../painting";
 import { isStoryReady } from "../story";
 import { useMemo, useRef, type Dispatch } from "react";
 import type { BoxId } from "../../shared/contract/box";
@@ -60,6 +61,7 @@ export function StoryStage({
 	onOpenVariables,
 	onOpenInspector,
 	onInspectVariant,
+	onPaint,
 	onOpenGenerationDetails,
 	onControlChange,
 	onFork,
@@ -82,6 +84,7 @@ export function StoryStage({
 	onOpenInfo: () => void;
 	onOpenVariables: () => void;
 	onOpenInspector: (box: string, focus: { messageId: number } | null) => void;
+	onPaint: (variantId: number) => void;
 	onInspectVariant: (messageId: number, variantId: number) => void;
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
@@ -89,6 +92,7 @@ export function StoryStage({
 }) {
 	const readyStory = isStoryReady(story) ? story : null;
 	const storyConversationId = "conversationId" in story ? story.conversationId : null;
+	const illustrations = useIllustrations(storyConversationId);
 	const viewport = useStoryViewport({
 		messages: story.messages,
 		conversationId: storyConversationId,
@@ -108,9 +112,10 @@ export function StoryStage({
 	//  Message rows are memoized, so a streamed event re-renders only the row
 	// whose text changed. Their handlers keep one identity across renders and
 	// call the latest render's.
-	const latest = useRef({ generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector });
-	latest.current = { generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector };
+	const latest = useRef({ generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint });
+	latest.current = { generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint };
 	const rows = useMemo(() => ({
+		paint: (variantId: number) => latest.current.onPaint(variantId),
 		continueMessage: (messageId: number) => latest.current.generation.continueMessage(messageId),
 		regenerate: (messageId: number) => {
 			latest.current.viewport.followLatest(messageId);
@@ -188,12 +193,14 @@ export function StoryStage({
 							</button>
 						</div>
 					)}
+					{illustrations.isError && <p role="alert" className="text-sm text-destructive">Illustrations could not be loaded. <button className="edit-action" onClick={() => void illustrations.refetch()}>Try again</button></p>}
 					{story.messages.length === 0 && story.status !== "loading-first" && <EmptyChat />}
 					{storyConversationId !== null && story.messages.map((persisted) => [shownMessage(story, persisted), hasRequestedSwipe(story, persisted.id)] as const).map(([message, swiping]) => (
 						<StoryMessageView
 							key={message.id}
 							conversationId={storyConversationId}
 							message={message}
+							onPaint={rows.paint}
 							lens={lens}
 							swipeBrowsing={swipeBrowsing}
 							portrait={conversation?.cast.find((participant) => participant.id === message.authorParticipantId)?.portrait}

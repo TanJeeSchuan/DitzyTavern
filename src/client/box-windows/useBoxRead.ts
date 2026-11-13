@@ -18,6 +18,10 @@ export const useDelegateRead = (conversation: ConversationSummary, box: BoxId) =
 	enabled: chatBoxDescriptor(conversation, box)?.delegate !== undefined,
 });
 
+export async function loadBoxRead<Schema extends TSchema>(conversationId: number, box: BoxId, schema: Schema, signal?: AbortSignal) {
+	return foundOrNull(await requestOutcome(api.api.conversations({ id: conversationId }).boxes({ box }).get({ fetch: { signal } }), schema, notFoundOutcome));
+}
+
 // @approved
 //  A Box's window read, decoded with the Box's own schema. The key carries
 // the Chat's revision, so the read refetches when the Chat changes, and the
@@ -31,7 +35,7 @@ export const useBoxRead = <Schema extends TSchema>(conversation: ConversationSum
 	const landed = useDelegateRead(conversation, box).data?.landed;
 	return useQuery({
 		queryKey: [box, conversation.id, conversation.revision, landed],
-		queryFn: async ({ signal }) => foundOrNull(await requestOutcome(api.api.conversations({ id: conversation.id }).boxes({ box }).get({ fetch: { signal } }), schema, notFoundOutcome)),
+		queryFn: ({ signal }) => loadBoxRead(conversation.id, box, schema, signal),
 		placeholderData: (previous) => previous,
 	});
 };

@@ -1,3 +1,4 @@
+import { createProvisionalPaintings } from "../painting/provisional";
 import type { Database } from "bun:sqlite";
 import { GenerationRuntimeRegistry } from "../workflows/generation-runtime";
 import {
@@ -17,6 +18,7 @@ import { createStagedImportStore, type StagedImportStore } from "../sillytavern/
 const PROCESS_STATE_SWEEP_INTERVAL_MS = 60_000;
 
 export interface ProcessState {
+	readonly paintings: ReturnType<typeof createProvisionalPaintings>;
 	/** @approved Generation fan-out and replay registry; drain semantics live on the registry. */
 	readonly generationRuntimes: GenerationRuntimeRegistry;
 	readonly generationPreviews: GenerationPreviewStore;
@@ -39,6 +41,7 @@ export function processStateFor(database: Database): ProcessState {
 }
 
 const createProcessState = (database: Database): ProcessState => {
+	const paintings = createProvisionalPaintings();
 	const generationRuntimes = new GenerationRuntimeRegistry();
 	const generationPreviews = createGenerationPreviewStore();
 	const stagedImports = createStagedImportStore();
@@ -52,6 +55,7 @@ const createProcessState = (database: Database): ProcessState => {
 	const dispose = (): void => {
 		if (timer !== undefined) clearInterval(timer);
 		timer = undefined;
+		paintings.dispose();
 		generationPreviews.dispose();
 		stagedImports.dispose();
 		states.delete(database);
@@ -67,6 +71,7 @@ const createProcessState = (database: Database): ProcessState => {
 	timer = setInterval(() => sweep(), PROCESS_STATE_SWEEP_INTERVAL_MS);
 	timer.unref();
 	return {
+		paintings,
 		generationRuntimes,
 		generationPreviews,
 		stagedImports,
