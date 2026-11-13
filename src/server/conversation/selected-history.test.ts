@@ -8,6 +8,7 @@ import { macroWritesToData } from "../prompt-macros";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -23,8 +24,8 @@ describe("Conversation selected history", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Focused history",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Model", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Model", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 			messages: [1, 2, 3].map((position) => {

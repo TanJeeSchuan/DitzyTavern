@@ -63,7 +63,7 @@ export function CharactersPanel({
 
 	const createCharacter = async () => {
 		setCreating(true);
-		const outcome = await applyCommand({ type: "create", definition: { name: "New Character", prompt: emptyPromptChannels(), openings: [] } });
+		const outcome = await applyCommand({ type: "create", definition: { name: "New Character", prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] } });
 		setCreating(false);
 		if (outcome.outcome !== "available" || "result" in outcome.value) {
 			return setLibraryNotice(outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE);

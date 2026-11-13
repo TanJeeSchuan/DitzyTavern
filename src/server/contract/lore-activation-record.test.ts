@@ -14,6 +14,7 @@ import { createConversationRoutes } from "./conversation";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "A quiet room.",
 	exampleDialogue: "",
 	postHistoryInstruction: "Continue.",
@@ -44,8 +45,8 @@ describe("permanent Lore Activation Records", () => {
 		const created = createConversationWithHistory(database, {
 			name: "Lore details",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -85,8 +86,8 @@ describe("permanent Lore Activation Records", () => {
 		const created = createConversationWithHistory(database, {
 			name: "Lore namespace",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -108,8 +109,8 @@ describe("permanent Lore Activation Records", () => {
 		const created = createConversationWithHistory(database, {
 			name: "Corrupt lore details",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -166,8 +167,8 @@ describe("permanent Lore Activation Records", () => {
 		const created = createConversationWithHistory(database, {
 			name: "Interrupted lore",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});

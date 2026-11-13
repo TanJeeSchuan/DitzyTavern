@@ -6,9 +6,9 @@ import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 import type { RecallActivation } from "./server-recall";
 import { memoryItems } from "./server-prompt";
 
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const compile = (overrides: Partial<Parameters<typeof compileGenerationPlan>[0]>) => compileGenerationPlan({
-	boxes: {}, human: { name: "Writer", prompt }, model: { name: "Maren", prompt }, recipe: [], context: [],
+	boxes: {}, human: { name: "Writer", prompt, sendAppearanceImages: true }, model: { name: "Maren", prompt, sendAppearanceImages: true }, recipe: [], context: [],
 	settings: DEFAULT_CONVERSATION_GENERATION_SETTINGS, connection: null,
 	images: { lookup: () => undefined, placement: "last", sendImages: true }, ...overrides,
 });

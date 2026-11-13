@@ -19,7 +19,9 @@ import { PromptPresetRecipeRow, type RecipeOperationHandlers } from "./PromptPre
 const addableReferences = (): PromptBlockReference[] => [
 	"model-system-instruction",
 	"human-identity",
+	"human-appearance",
 	"model-identity",
+	"model-appearance",
 	"model-scenario",
 	"model-example-dialogue",
 	"history",

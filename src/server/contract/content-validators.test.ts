@@ -21,7 +21,7 @@ test("a read answers its own validator with an empty 304, and a changed read wit
 	const repeated = await get("/api/workspace", etag.replace(/^W\//, ""));
 	expect(repeated.status).toBe(304);
 	expect(await repeated.text()).toBe("");
-	createCharacterLibraryModule(database).execute({ type: "create", definition: { name: "Maren", prompt: emptyPromptChannels(), openings: [] } });
+	createCharacterLibraryModule(database).execute({ type: "create", definition: { name: "Maren", prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] } });
 	const changed = await get("/api/workspace", etag);
 	expect(changed.status).toBe(200);
 	expect(changed.headers.get("etag")).not.toBe(etag);

@@ -24,6 +24,7 @@ import { createFakeModelClient } from "../model-client";
 const emptyPrompt = () => ({
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -32,7 +33,7 @@ const emptyPrompt = () => ({
 const adHoc = (
 	name: string,
 	openings: string[] = [],
-): ParticipantDefinition => ({ name, prompt: emptyPrompt(), openings });
+): ParticipantDefinition => ({ name, prompt: emptyPrompt(), sendAppearanceImages: true, openings });
 
 const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);
@@ -262,10 +263,12 @@ describe("Participant removal", () => {
 				prompt: {
 					systemInstruction: "Keep responses literary.",
 					identity: "Lighthouse archivist.",
+					appearance: "",
 					scenario: "",
 					exampleDialogue: "",
 					postHistoryInstruction: "",
 				},
+				sendAppearanceImages: true,
 				openings: ["The lamp turns."],
 			},
 		});
@@ -279,6 +282,7 @@ describe("Participant removal", () => {
 					definition: {
 						name: source.name,
 						prompt: source.prompt,
+						sendAppearanceImages: true,
 						openings: [...source.openings],
 					},
 					sourceCharacterId: source.id,
@@ -516,6 +520,7 @@ describe("Participant removal", () => {
 			definition: {
 				name: "Maren Voss",
 				prompt: emptyPrompt(),
+				sendAppearanceImages: true,
 				openings: ["Forked opening."],
 			},
 		});
@@ -526,6 +531,7 @@ describe("Participant removal", () => {
 			definition: {
 				name: character?.name ?? "Maren Voss",
 				prompt: character?.prompt ?? emptyPrompt(),
+				sendAppearanceImages: true,
 				openings: character?.openings ?? [],
 			},
 			sourceCharacterId: source.id,
@@ -601,6 +607,7 @@ describe("Participant removal", () => {
 			definition: {
 				name: "Maren Voss",
 				prompt: emptyPrompt(),
+				sendAppearanceImages: true,
 				openings: ["The lamp turns."],
 			},
 		});
@@ -613,6 +620,7 @@ describe("Participant removal", () => {
 					definition: {
 						name: source.name,
 						prompt: source.prompt,
+						sendAppearanceImages: true,
 						openings: [...source.openings],
 					},
 					sourceCharacterId: source.id,
@@ -662,6 +670,7 @@ describe("Participant removal", () => {
 			definition: {
 				name: "Maren Voss",
 				prompt: emptyPrompt(),
+				sendAppearanceImages: true,
 				openings: [],
 			},
 		});
@@ -675,6 +684,7 @@ describe("Participant removal", () => {
 					definition: {
 						name: source.name,
 						prompt: source.prompt,
+						sendAppearanceImages: true,
 						openings: [],
 					},
 					sourceCharacterId: source.id,
@@ -714,6 +724,7 @@ describe("Participant removal", () => {
 			definition: {
 				name: "Maren Voss",
 				prompt: emptyPrompt(),
+				sendAppearanceImages: true,
 				openings: ["The lamp turns."],
 			},
 		});
@@ -726,6 +737,7 @@ describe("Participant removal", () => {
 					definition: {
 						name: source.name,
 						prompt: source.prompt,
+						sendAppearanceImages: true,
 						openings: [...source.openings],
 					},
 					sourceCharacterId: source.id,

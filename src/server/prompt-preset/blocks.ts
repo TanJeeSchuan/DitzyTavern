@@ -203,7 +203,13 @@ const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: P
 	if (isUnknownBoxReference(reference)) throw new InvalidPromptPresetOperationError(`There is no Box for ${reference}.`);
 	assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
 	const ordered = recipe.slots.map((slot) => slot.id);
-	const inserted = insertOccurrence(db, recipe.id, ordered.length + 1, { reference, enabled: true });
+	const identityReference = reference === "human-appearance" ? "human-identity" : reference === "model-appearance" ? "model-identity" : null;
+	const identity = recipe.slots.find((slot) => slot.reference === identityReference);
+	const role = identityReference === null ? undefined
+		: identity?.reference === "human-identity" || identity?.reference === "model-identity" ? identity.role : defaultOutgoingRole(identityReference);
+	const occurrence: Parameters<typeof insertOccurrence>[3] = { reference, enabled: true };
+	if (role !== undefined) occurrence.role = role;
+	const inserted = insertOccurrence(db, recipe.id, ordered.length + 1, occurrence);
 	if (!isBoxReference(reference)) return [...ordered, inserted];
 	const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
 	ordered.splice(historyIndex === -1 ? ordered.length : historyIndex + 1, 0, inserted);

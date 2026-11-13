@@ -21,6 +21,7 @@ import { addCharacterToCast, createNativeConversation } from ".";
 const prompt = () => ({
 	systemInstruction: "Keep the scene grounded.",
 	identity: "Lighthouse archivist on the northern coast.",
+	appearance: "",
 	scenario: "A storm season begins.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?",
 	postHistoryInstruction: "",
@@ -29,6 +30,7 @@ const prompt = () => ({
 const sourceDefinition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",
 	prompt: prompt(),
+	sendAppearanceImages: true,
 	openings: ["The lamp turns above you.", "Rain writes on every window."],
 	...overrides,
 });
@@ -51,11 +53,11 @@ describe("Add Character to Cast workflow", () => {
 			name: "Host Chat",
 			humanSeat: {
 				type: "adhoc",
-				definition: { name: "Writer", prompt: prompt(), openings: [] },
+				definition: { name: "Writer", prompt: prompt(), sendAppearanceImages: true, openings: [] },
 			},
 			modelSeat: {
 				type: "adhoc",
-				definition: { name: "Juno Ashfeld", prompt: prompt(), openings: [] },
+				definition: { name: "Juno Ashfeld", prompt: prompt(), sendAppearanceImages: true, openings: [] },
 			},
 		});
 
@@ -164,7 +166,7 @@ describe("Add Character to Cast workflow", () => {
 			expectedRevision: conversation.revision,
 			action: {
 				type: "add-participant",
-				definition: { name: "Concurrent", prompt: prompt(), openings: [] },
+				definition: { name: "Concurrent", prompt: prompt(), sendAppearanceImages: true, openings: [] },
 			},
 		});
 

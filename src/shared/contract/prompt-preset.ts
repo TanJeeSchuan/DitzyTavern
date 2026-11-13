@@ -20,7 +20,9 @@ export type SillyTavernJsonValue =
 const referencedDefinitionBlockKinds = [
 	Type.Literal("model-system-instruction"),
 	Type.Literal("human-identity"),
+	Type.Literal("human-appearance"),
 	Type.Literal("model-identity"),
+	Type.Literal("model-appearance"),
 	Type.Literal("model-scenario"),
 	Type.Literal("model-example-dialogue"),
 	Type.Literal("model-post-history-instruction"),
@@ -64,7 +66,9 @@ export type PromptOutgoingRole = Static<typeof promptOutgoingRole>;
 const fixedOutgoingRoles = {
 	"model-system-instruction": "system",
 	"human-identity": "user",
+	"human-appearance": "user",
 	"model-identity": "assistant",
+	"model-appearance": "assistant",
 	"model-scenario": "system",
 	"model-example-dialogue": "user",
 	"model-post-history-instruction": "system",

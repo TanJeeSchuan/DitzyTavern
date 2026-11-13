@@ -16,6 +16,7 @@ export const fromPortraitColumns = (row: PortraitColumnRow | undefined): Portrai
 export const toPromptChannelRow = (prompt: PromptChannels): PromptChannelRow => ({
 	system_instruction: prompt.systemInstruction,
 	identity: prompt.identity,
+	appearance: prompt.appearance,
 	scenario: prompt.scenario,
 	example_dialogue: prompt.exampleDialogue,
 	post_history_instruction: prompt.postHistoryInstruction,
@@ -24,6 +25,7 @@ export const toPromptChannelRow = (prompt: PromptChannels): PromptChannelRow => 
 export const toPromptChannels = (row: PromptChannelRow): PromptChannels => ({
 	systemInstruction: row.system_instruction,
 	identity: row.identity,
+	appearance: row.appearance,
 	scenario: row.scenario,
 	exampleDialogue: row.example_dialogue,
 	postHistoryInstruction: row.post_history_instruction,

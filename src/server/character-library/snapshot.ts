@@ -86,6 +86,7 @@ export function readCharacterSnapshot(
 		revision: character.revision,
 		pinned: character.pinned,
 		prompt: toPromptChannels(promptRow),
+		sendAppearanceImages: promptRow.send_appearance_images,
 		openings,
 		portrait: fromPortraitColumns(promptRow),
 		deletionImpact: readDeletionImpact(db, characterId),

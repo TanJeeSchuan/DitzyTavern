@@ -1,6 +1,6 @@
 # Appearance and Describe
 
-Status: TODO
+Status: IN PROGRESS
 
 Blocked By: None
 
@@ -22,15 +22,15 @@ Overlaps with ticket 01 in Connection Settings and with ticket 04 in Prompt Pres
 
 ## Work
 
-- [ ] Add the Appearance channel to every Definition, edited like the other channels. It copies with the Definition on seeding, Save as Character and duplication.
-- [ ] Add the "Send Appearance Images" switch to the Definition, on by default, copied with it. When off, a Prompt Plan reads that Definition's Appearance References as Image Anchors.
-- [ ] Add the `human-appearance` and `model-appearance` preset references, each starting with the role of the matching Identity block, to the preset editor's add-block menu. An empty Appearance renders nothing.
-- [ ] Migrate the built-in Default preset to hold both, each right after its Identity block.
+- [x] Add the Appearance channel to every Definition, edited like the other channels. It copies with the Definition on seeding, Save as Character and duplication.
+- [x] Add the "Send Appearance Images" switch to the Definition, on by default, copied with it. When off, a Prompt Plan reads that Definition's Appearance References as Image Anchors.
+- [x] Add the `human-appearance` and `model-appearance` preset references, each starting with the role of the matching Identity block, to the preset editor's add-block menu. An empty Appearance renders nothing.
+- [x] Migrate the built-in Default preset to hold both, each right after its Identity block.
 - [ ] Add the app-wide describing model selection, stored under a host namespace, and edit it in Connection Settings with the existing picker.
 - [ ] Add the Describe route: Image hashes and an optional Ask in, text out, through the existing Model Client, with the built-in instruction from Implementation Decision 3.
 - [ ] In the image viewer opened from a picture in Appearance, add Describe with an Ask box. It inserts the text right after that picture's Reference.
 - [ ] Add a Describe button to the Appearance field with an Ask box. It sends every Appearance picture, or the Portrait when there are none, and appends the text. Neither button replaces existing text.
-- [ ] Give seed data an Appearance and update the teardown to match.
+- [x] Give seed data an Appearance and update the teardown to match.
 - [ ] Test through captured requests: the built-in preset sends Appearance after Identity, an empty one sends nothing, the switch off sends anchors without Images, and a Describe request carries the chosen pictures or the Portrait, and the Ask.
 - [ ] Verify the editor, the switch and both Describe buttons manually with playwright-cli, in the Character editor and a Participant editor. No UI tests.
 - [ ] Run focused tests locally; let CI run typechecking and the full suite.
@@ -39,6 +39,6 @@ Overlaps with ticket 01 in Connection Settings and with ticket 04 in Prompt Pres
 
 ## Acceptance
 
-- No existing Chat's Prompt Plan changes until an Appearance is filled in.
+- No existing Chat's Prompt Plan changes until an Appearance is filled in, except that a `{{pick}}` in a slot after the new blocks of the built-in story preset may choose again once.
 - The Portrait reaches a model through Appearance only when the writer inserts it or presses Describe with no Appearance pictures.
 - Changing a Character's Appearance or switch never changes a Participant it seeded.

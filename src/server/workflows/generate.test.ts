@@ -29,6 +29,7 @@ const prompt = (
 ): ParticipantDefinition["prompt"] => ({
 	systemInstruction: "Keep the reply literary.",
 	identity: "I am {{self}}, speaking to {{other}}.",
+	appearance: "",
 	scenario: "The fog closes in on the lantern house.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?",
 	postHistoryInstruction: "End with a question.",
@@ -42,6 +43,7 @@ const adHoc = (
 ): ParticipantDefinition => ({
 	name,
 	prompt: prompt(promptOverrides),
+	sendAppearanceImages: true,
 	openings,
 });
 

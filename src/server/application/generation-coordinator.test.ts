@@ -26,6 +26,7 @@ const key = new Uint8Array(32).fill(31);
 const prompt = {
 	systemInstruction: "Write briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "A quiet room.",
 	exampleDialogue: "",
 	postHistoryInstruction: "Continue.",
@@ -66,8 +67,8 @@ describe("GenerationCoordinator", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Coordinator Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -125,8 +126,8 @@ describe("GenerationCoordinator", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Shutdown Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -166,8 +167,8 @@ describe("GenerationCoordinator", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Coordinator Stop Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -264,8 +265,8 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Stop lifecycle",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: ["Original."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original."] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -530,8 +531,8 @@ describe("Generation Coordinator terminal races", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Terminal race",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: ["Original."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original."] } },
 			],
 			control: { human: 0, model: 1 },
 		});

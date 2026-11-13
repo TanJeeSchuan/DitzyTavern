@@ -197,7 +197,7 @@ export function useCastActions({
 		try {
 			await runConversationCommand(surface, {
 				type: "add-participant",
-				definition: { name, prompt: emptyPromptChannels(), openings: [] },
+				definition: { name, prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] },
 			}, {
 				notices: ADD_ADHOC_NOTICES,
 				onApplied: (applied) => {

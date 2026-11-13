@@ -6,7 +6,7 @@ import { sweepOrphanedImages } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { createContract } from ".";
 
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 
 describe("Image routes", () => {
 	let database: Database;
@@ -18,7 +18,7 @@ describe("Image routes", () => {
 	}));
 	const createPortrait = (hash: string) => createContract(database).handle(new Request("http://localhost/api/characters/commands", {
 		method: "POST", headers: { "content-type": "application/json" },
-		body: JSON.stringify({ type: "create", definition: { name: "Maren", prompt, openings: [], portrait: { hash, focalX: 0.5, focalY: 0.5 } } }),
+		body: JSON.stringify({ type: "create", definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [], portrait: { hash, focalX: 0.5, focalY: 0.5 } } }),
 	}));
 
 	test("uploads metadata-stripped bytes once and serves them by hash with permanent caching", async () => {

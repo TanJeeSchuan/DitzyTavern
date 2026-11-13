@@ -238,10 +238,12 @@ export function readConversationSummaryFromConnection(
 			prompt: {
 				systemInstruction: participant.systemInstruction,
 				identity: participant.identity,
+				appearance: participant.appearance,
 				scenario: participant.scenario,
 				exampleDialogue: participant.exampleDialogue,
 				postHistoryInstruction: participant.postHistoryInstruction,
 			},
+			sendAppearanceImages: participant.sendAppearanceImages,
 			openings: openingsByParticipant.get(participant.id) ?? [],
 			portrait: participant.portrait,
 			sourceCharacterId: participant.sourceCharacterId ?? null,

@@ -7,6 +7,7 @@ import { listChatSummaries } from "./chat-summaries";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -25,7 +26,7 @@ describe("Chat list summaries", () => {
 	const createChat = (name: string, names: string[]) =>
 		createConversationWithHistory(module, {
 			name,
-			participants: names.map((participantName) => ({ definition: { name: participantName, prompt, openings: [] } })),
+			participants: names.map((participantName) => ({ definition: { name: participantName, prompt, sendAppearanceImages: true, openings: [] } })),
 			control: { human: 0, model: 1 },
 		});
 

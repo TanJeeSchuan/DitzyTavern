@@ -10,6 +10,7 @@ const key = new Uint8Array(32).fill(23);
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "The room is quiet.",
 	exampleDialogue: "",
 	postHistoryInstruction: "Continue.",
@@ -82,8 +83,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Generation Contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -199,8 +200,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Canonical Settings Update",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -262,8 +263,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Unconfigured Generation",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -291,8 +292,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Budget-bound Generation",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -329,8 +330,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Malformed Generation Settings",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -364,8 +365,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Live Generation Contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -406,8 +407,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Generic Generation Contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -458,8 +459,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Sibling Generation Contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: ["Opening."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Opening."] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -496,8 +497,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Parallel Sibling Contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: ["Opening."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Opening."] } },
 			],
 			control: { human: 0, model: 1 },
 		});

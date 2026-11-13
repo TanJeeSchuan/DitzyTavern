@@ -34,6 +34,7 @@ export type {
 export interface CompilePromptDefinition {
 	name: string;
 	prompt: PromptChannels;
+	sendAppearanceImages: boolean;
 }
 
 /** A captured, already-admitted lore entry. Matching is owned by the lore domain. */

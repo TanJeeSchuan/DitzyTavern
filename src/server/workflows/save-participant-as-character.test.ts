@@ -22,6 +22,7 @@ import { createNativeConversation, saveParticipantAsCharacter } from ".";
 const prompt = () => ({
 	systemInstruction: "Keep responses literary and patient.",
 	identity: "A lighthouse archivist who catalogues shipwrecks.",
+	appearance: "",
 	scenario: "A storm season cuts the lantern house off from town.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?\n{{char}}: I do.",
 	postHistoryInstruction: "End with a weather detail.",
@@ -34,6 +35,7 @@ const prompt = () => ({
 const participantDefinition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "  Maren Voss  ",
 	prompt: prompt(),
+	sendAppearanceImages: true,
 	openings: [
 		"The lamp turns above you, steady as a heartbeat.",
 		"The lamp turns above you, steady as a heartbeat.",
@@ -66,7 +68,7 @@ describe("Save Participant as Character workflow", () => {
 				name: "Host Chat",
 				humanSeat: {
 					type: "adhoc",
-					definition: { name: "Writer", prompt: prompt(), openings: [] },
+					definition: { name: "Writer", prompt: prompt(), sendAppearanceImages: true, openings: [] },
 				},
 				modelSeat: { type: "adhoc", definition },
 			}),
@@ -113,6 +115,7 @@ describe("Save Participant as Character workflow", () => {
 			definition: {
 				name: "Maren Voss",
 				prompt: prompt(),
+				sendAppearanceImages: true,
 				openings: ["An opening only the existing Character had."],
 			},
 		});
@@ -148,6 +151,7 @@ describe("Save Participant as Character workflow", () => {
 			definition: {
 				name: "Maren Voss",
 				prompt: prompt(),
+				sendAppearanceImages: true,
 				openings: ["Source opening."],
 			},
 		});
@@ -155,7 +159,7 @@ describe("Save Participant as Character workflow", () => {
 			name: "Fork Host",
 			humanSeat: {
 				type: "adhoc",
-				definition: { name: "Writer", prompt: prompt(), openings: [] },
+				definition: { name: "Writer", prompt: prompt(), sendAppearanceImages: true, openings: [] },
 			},
 			modelSeat: {
 				type: "character",
@@ -208,7 +212,7 @@ describe("Save Participant as Character workflow", () => {
 			expectedRevision: conversation.revision,
 			action: {
 				type: "add-participant",
-				definition: { name: "Concurrent", prompt: prompt(), openings: [] },
+				definition: { name: "Concurrent", prompt: prompt(), sendAppearanceImages: true, openings: [] },
 			},
 		});
 

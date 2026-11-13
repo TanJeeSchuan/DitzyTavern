@@ -14,7 +14,7 @@ import {
 	stopConversationGeneration,
 } from ".";
 
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 
 describe("Generation checkpoints", () => {
 	let database: Database;
@@ -24,7 +24,7 @@ describe("Generation checkpoints", () => {
 	const accept = () => {
 		const created = createConversationWithHistory(database, {
 			name: "Checkpoint Chat",
-			participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: [] } }],
+			participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }],
 			control: { human: 0, model: 1 },
 		});
 		const accepted = acceptConversationTailGeneration(database, {

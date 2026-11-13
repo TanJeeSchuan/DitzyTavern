@@ -65,6 +65,7 @@ export function saveParticipantAsCharacter(
 				definition: {
 					name: participant.name,
 					prompt: participant.prompt,
+					sendAppearanceImages: participant.sendAppearanceImages,
 					openings: participant.openings,
 					portrait: participant.portrait,
 				},

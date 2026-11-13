@@ -14,10 +14,10 @@ let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 const initial = initialWorldClockSetup;
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const createClockChat = () => createConversationWithHistory(database, {
 	name: "Clock Chat",
-	participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: [] } }],
+	participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }],
 	control: { human: 0, model: 1 },
 });
 const saveSetup = (app: ReturnType<typeof createContract>, id: number, revision: number, setup: typeof initial) =>

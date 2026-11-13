@@ -12,6 +12,7 @@ import {
 const prompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -86,8 +87,8 @@ describe("Conversation Generation Settings", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Invalid budget settings",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -117,8 +118,8 @@ describe("Conversation Generation Settings", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Round-trip settings",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: [] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 
 			],
 			control: { human: 0, model: 1 },

@@ -23,6 +23,7 @@ import { gracefullyShutdownGenerations } from "./generation-recovery";
 const prompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -35,8 +36,8 @@ const setup = () => {
 	const conversation = createConversationWithHistory(database, {
 		name: "Capture Coherence",
 		participants: [
-			{ definition: { name: "Writer", prompt, openings: [] } },
-			{ definition: { name: "Maren", prompt, openings: ["The lamp turns above you."] } },
+			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["The lamp turns above you."] } },
 		],
 		control: { human: 0, model: 1 },
 	});

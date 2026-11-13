@@ -130,7 +130,9 @@ export const promptPresetBlockTable = sqliteTable(
 				${table.reference} IN (
 					'model-system-instruction',
 					'human-identity',
+					'human-appearance',
 					'model-identity',
+					'model-appearance',
 					'model-scenario',
 					'model-example-dialogue',
 					'model-post-history-instruction'
@@ -399,6 +401,8 @@ export const characterPromptTable = sqliteTable("character_prompt", {
 		.references(() => characterTable.id, { onDelete: "cascade" }),
 	system_instruction: text().notNull(),
 	identity: text().notNull(),
+	appearance: text().notNull().default(""),
+	send_appearance_images: int({ mode: "boolean" }).notNull().default(true),
 	scenario: text().notNull(),
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
@@ -507,6 +511,8 @@ export const participantPromptTable = sqliteTable("participant_prompt", {
 		.references(() => participantTable.id, { onDelete: "cascade" }),
 	system_instruction: text().notNull(),
 	identity: text().notNull(),
+	appearance: text().notNull().default(""),
+	send_appearance_images: int({ mode: "boolean" }).notNull().default(true),
 	scenario: text().notNull(),
 	example_dialogue: text().notNull(),
 	post_history_instruction: text().notNull(),
@@ -519,6 +525,7 @@ export const participantPromptTable = sqliteTable("participant_prompt", {
 export interface PromptChannelRow {
 	system_instruction: string;
 	identity: string;
+	appearance: string;
 	scenario: string;
 	example_dialogue: string;
 	post_history_instruction: string;

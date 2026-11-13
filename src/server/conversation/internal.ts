@@ -84,6 +84,8 @@ export interface ActiveCastRow {
 	sourceCharacterName: string | null;
 	systemInstruction: string;
 	identity: string;
+	appearance: string;
+	sendAppearanceImages: boolean;
 	scenario: string;
 	exampleDialogue: string;
 	postHistoryInstruction: string;
@@ -109,6 +111,8 @@ export const readActiveCast = (
 			sourceCharacterName: characterTable.name,
 			systemInstruction: participantPromptTable.system_instruction,
 			identity: participantPromptTable.identity,
+			appearance: participantPromptTable.appearance,
+			sendAppearanceImages: participantPromptTable.send_appearance_images,
 			scenario: participantPromptTable.scenario,
 			exampleDialogue: participantPromptTable.example_dialogue,
 			postHistoryInstruction: participantPromptTable.post_history_instruction,
@@ -231,6 +235,7 @@ export const requireParticipantDefinition = (
 ): ParticipantDefinition => ({
 	name: requireParticipantName(definition.name),
 	prompt: definition.prompt,
+	sendAppearanceImages: definition.sendAppearanceImages,
 	openings: requireParticipantOpenings(definition.openings),
 	portrait: definition.portrait,
 });
@@ -520,6 +525,7 @@ export const insertParticipant = (
 		.values({
 			participant_id: inserted.id,
 			...toPromptChannelRow(definition.prompt),
+				send_appearance_images: definition.sendAppearanceImages,
 			...portraitRow(db, definition.portrait),
 		})
 		.run();

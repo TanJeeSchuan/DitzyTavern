@@ -21,10 +21,12 @@ const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefi
 	prompt: {
 		systemInstruction: "System text.",
 		identity: "Identity text.",
+		appearance: "",
 		scenario: "",
 		exampleDialogue: "",
 		postHistoryInstruction: "",
 	},
+	sendAppearanceImages: true,
 	openings: [],
 	...overrides,
 });
@@ -184,6 +186,7 @@ describe("Native Conversation transport adapter", () => {
 		definition: {
 			name: string;
 			prompt: PromptChannels;
+				sendAppearanceImages: boolean;
 			openings: string[];
 		};
 	}
@@ -223,10 +226,12 @@ describe("Native Conversation transport adapter", () => {
 			prompt: {
 				systemInstruction: "",
 				identity: "",
+				appearance: "",
 				scenario: "",
 				exampleDialogue: "",
 				postHistoryInstruction: "",
 			},
+			sendAppearanceImages: true,
 			openings: [],
 		},
 	});
@@ -350,10 +355,12 @@ describe("Conversation Cast/Control transport adapters", () => {
 		prompt: {
 			systemInstruction: "",
 			identity: "",
+			appearance: "",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings,
 	});
 
@@ -702,10 +709,12 @@ describe("Save Participant as Character transport adapter", () => {
 		prompt: {
 			systemInstruction: "System text.",
 			identity: "Identity text.",
+			appearance: "",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings,
 	});
 

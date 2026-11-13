@@ -8,6 +8,7 @@ import type { SemanticSettingsSnapshot } from "../lorebook/semantic";
 const emptyPrompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -18,6 +19,7 @@ const participant = (id: number, name: string) => ({
 	position: id - 1,
 	name,
 	prompt: emptyPrompt,
+	sendAppearanceImages: true,
 	openings: [],
 	sourceCharacterId: null,
 	sourceCharacterName: null,

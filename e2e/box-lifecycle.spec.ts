@@ -28,11 +28,11 @@ test.describe("a Box lifecycle change from a stale read", () => {
 });
 
 test("a new Chat starts with only the Author Note and Memory enabled", async ({ page, request }) => {
-	const emptyPrompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const emptyPrompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 	const created = await (await request.post("/api/conversations/native", { data: {
 		name: "Fresh Chat",
-		humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt, openings: [] } },
-		modelSeat: { type: "adhoc", definition: { name: "Maren", prompt: emptyPrompt, openings: [] } },
+		humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt, sendAppearanceImages: true, openings: [] } },
+		modelSeat: { type: "adhoc", definition: { name: "Maren", prompt: emptyPrompt, sendAppearanceImages: true, openings: [] } },
 	} })).json();
 	expect(created.outcome).toBe("created");
 	await page.goto("/");

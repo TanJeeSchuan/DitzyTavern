@@ -9,6 +9,7 @@ import { createConversationRoutes } from "./conversation";
 const prompt = {
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
+	appearance: "",
 	scenario: "The room is quiet.",
 	exampleDialogue: "",
 	postHistoryInstruction: "Continue.",
@@ -34,8 +35,8 @@ describe("Generation Stop route mapping", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Stop mapping",
 			participants: [
-				{ definition: { name: "Writer", prompt, openings: [] } },
-				{ definition: { name: "Maren", prompt, openings: ["Original."] } },
+				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original."] } },
 			],
 			control: { human: 0, model: 1 },
 		});

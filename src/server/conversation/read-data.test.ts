@@ -23,6 +23,7 @@ describe("readConversationData", () => {
 					definition: {
 						name: "Writer",
 						prompt: emptyPrompt(),
+						sendAppearanceImages: true,
 						openings: [],
 					},
 				},
@@ -30,6 +31,7 @@ describe("readConversationData", () => {
 					definition: {
 						name: "Maren",
 						prompt: emptyPrompt(),
+						sendAppearanceImages: true,
 						openings: ["Greeting"],
 					},
 				},
@@ -58,6 +60,7 @@ describe("readConversationData", () => {
 	const emptyPrompt = () => ({
 		systemInstruction: "",
 		identity: "",
+		appearance: "",
 		scenario: "",
 		exampleDialogue: "",
 		postHistoryInstruction: "",

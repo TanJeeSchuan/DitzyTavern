@@ -16,7 +16,7 @@ import { uploadImage } from "../image";
 import { formatImageReference } from "../../shared/image-reference";
 
 const key = new Uint8Array(32).fill(29);
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const profile = {
 	displayName: "Vision",
 	apiFormat: "chat-completions" as const,
@@ -62,7 +62,7 @@ describe("Text-only Models", () => {
 	const chat = (modelId: string) => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Chat",
-			participants: [{ definition: { name: "Writer", prompt, openings: [] } }, { definition: { name: "Maren", prompt, openings: [] } }],
+			participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }],
 			control: { human: 0, model: 1 },
 		});
 		const conversations = database;

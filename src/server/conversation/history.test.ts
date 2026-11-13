@@ -15,6 +15,7 @@ import type { ConversationCreationInput, ParticipantDefinition } from ".";
 const prompt = (): ParticipantDefinition["prompt"] => ({
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -23,6 +24,7 @@ const prompt = (): ParticipantDefinition["prompt"] => ({
 const adHoc = (name: string): ParticipantDefinition => ({
 	name,
 	prompt: prompt(),
+	sendAppearanceImages: true,
 	openings: [],
 });
 
@@ -328,6 +330,7 @@ describe("Conversation paginated history", () => {
 					definition: {
 						name: "Maren Voss",
 						prompt: prompt(),
+						sendAppearanceImages: true,
 						openings: ["Greetings from the model."],
 					},
 				},

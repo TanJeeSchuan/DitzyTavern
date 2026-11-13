@@ -38,6 +38,7 @@ import type {
 	PromptWarning,
 	PromptLoreEntry,
 } from "./types";
+import { projectImageAnchors } from "../../shared/image-reference";
 import { resolvePromptImages } from "./images";
 
 // @approved
@@ -72,6 +73,8 @@ export const referencedDefinitionBlocks = {
 		block: { kind: "identity" },
 		label: "identity (model)",
 	},
+	"human-appearance": { owner: "human", channel: "appearance", block: { kind: "appearance" }, label: "appearance (human)" },
+	"model-appearance": { owner: "model", channel: "appearance", block: { kind: "appearance" }, label: "appearance (model)" },
 	"model-scenario": {
 		owner: "model",
 		channel: "scenario",
@@ -299,6 +302,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 		}
 		const referenced = referencedDefinitionBlocks[slot.reference];
 		const owner = definitions[referenced.owner];
+		const start = blocks.length;
 		expandInto({
 			blocks,
 			warnings,
@@ -312,6 +316,9 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			cacheKey: `slot:${slotIndex}`,
 			beforeHistory: slotIndex < historySlot,
 		});
+		if (referenced.channel === "appearance" && !owner.definition.sendAppearanceImages) {
+			for (const block of blocks.slice(start)) block.content = projectImageAnchors(block.content);
+		}
 	}
 
 	const placed = input.systemPlacement === "strict" ? placeStrictly(blocks, historyStart ?? blocks.length) : blocks;

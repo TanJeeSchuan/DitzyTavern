@@ -30,6 +30,7 @@ const prompt = (
 ): ParticipantDefinition["prompt"] => ({
 	systemInstruction: "Keep the reply literary.",
 	identity: "I am {{self}}, speaking to {{other}}.",
+	appearance: "",
 	scenario: "The fog closes in on the lantern house.",
 	exampleDialogue: "",
 	postHistoryInstruction: "End in silence.",
@@ -43,6 +44,7 @@ const adHoc = (
 ): ParticipantDefinition => ({
 	name,
 	prompt: prompt(promptOverrides),
+	sendAppearanceImages: true,
 	openings,
 });
 
@@ -226,6 +228,7 @@ describe("Historical sibling Variant generation", () => {
 				prompt: {
 					systemInstruction: "Keep the reply literary.",
 					identity: "I am the keeper of {{other}}'s light.",
+					appearance: "",
 					scenario: "The fog closes in on the lantern house.",
 					exampleDialogue: "",
 					postHistoryInstruction: "End in silence.",

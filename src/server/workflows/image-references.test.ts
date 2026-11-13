@@ -32,8 +32,8 @@ import { removeRetainedGenerationInspection } from "../conversation";
 import { createNativeConversation } from ".";
 import { captureGeneration, capturedAcceptanceFields } from "./generate-capture";
 
-const prompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-const writer = { name: "Writer", prompt, openings: [] };
+const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const writer = { name: "Writer", prompt, sendAppearanceImages: true, openings: [] };
 const timestamp = "2026-10-04T00:00:00.000Z";
 
 describe("Image Reference lifetime", () => {
@@ -121,7 +121,8 @@ describe("Image Reference lifetime", () => {
 			const definition = {
 				name: "Maren",
 				portrait: { hash: portrait!.hash, focalX: 0.5, focalY: 0.5 },
-				prompt: { systemInstruction: system!.token, identity: identity!.token, scenario: scenario!.token, exampleDialogue: dialogue!.token, postHistoryInstruction: postHistory!.token },
+				prompt: { systemInstruction: system!.token, identity: identity!.token, appearance: "", scenario: scenario!.token, exampleDialogue: dialogue!.token, postHistoryInstruction: postHistory!.token },
+				sendAppearanceImages: true,
 				openings: [opening!.token],
 			};
 			const character = owner === "Character" ? library().execute({ type: "create", definition }) : undefined;
@@ -204,7 +205,7 @@ describe("Image Reference lifetime", () => {
 		const [art, opening] = [await picture(4), await picture(5)];
 		const character = library().execute({
 			type: "create",
-			definition: { name: "Maren", prompt: { ...prompt, identity: `Looks like ${art.token}` }, openings: [`Hello ${opening.token}`] },
+			definition: { name: "Maren", prompt: { ...prompt, identity: `Looks like ${art.token}` }, sendAppearanceImages: true, openings: [`Hello ${opening.token}`] },
 		});
 		expect(referenced().sort()).toEqual([art.hash, opening.hash].sort());
 
@@ -227,13 +228,13 @@ describe("Image Reference lifetime", () => {
 		executeConversationCommand(conversations(), {
 			conversationId: target.id,
 			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
-			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt: { ...prompt, scenario: art.token }, openings: [] } },
+			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt: { ...prompt, scenario: art.token }, sendAppearanceImages: true, openings: [] } },
 		});
 		expect(referenced()).toEqual([art.hash]);
 		executeConversationCommand(conversations(), {
 			conversationId: target.id,
 			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
-			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt, openings: [] } },
+			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 		});
 		expect(referenced()).toEqual([]);
 	});
@@ -241,8 +242,8 @@ describe("Image Reference lifetime", () => {
 	for (const owner of ["Character", "Participant"] as const) {
 		test(`${owner} Definition moves its only Image from its Portrait to its Prompt without uploading it again`, async () => {
 			const art = await picture(4);
-			const inPortrait = { name: "Maren", prompt, openings: [], portrait: { hash: art.hash, focalX: 0.5, focalY: 0.5 } };
-			const inPrompt = { name: "Maren", prompt: { ...prompt, identity: art.token }, openings: [] };
+			const inPortrait = { name: "Maren", prompt, sendAppearanceImages: true, openings: [], portrait: { hash: art.hash, focalX: 0.5, focalY: 0.5 } };
+			const inPrompt = { name: "Maren", prompt: { ...prompt, identity: art.token }, sendAppearanceImages: true, openings: [] };
 			if (owner === "Character") {
 				const character = library().execute({ type: "create", definition: inPortrait });
 				library().execute({ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: inPrompt });
@@ -362,7 +363,7 @@ describe("Image Reference lifetime", () => {
 			name: "Chat",
 			participants: [
 				{ definition: writer },
-				{ definition: { name: "Maren", prompt: { ...prompt, systemInstruction: `{{setvar::outfit::${art.token}}}` }, openings: [] } },
+				{ definition: { name: "Maren", prompt: { ...prompt, systemInstruction: `{{setvar::outfit::${art.token}}}` }, sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -384,7 +385,7 @@ describe("Image Reference lifetime", () => {
 		executeConversationCommand(conversations(), {
 			conversationId: target.id,
 			expectedRevision: readConversationRevision(conversations(), target.id) ?? 0,
-			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt, openings: [] } },
+			action: { type: "update-participant-definition", participantId: maren.id, definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
 		});
 		expect(referenced()).toEqual([art.hash]);
 

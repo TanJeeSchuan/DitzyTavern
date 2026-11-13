@@ -217,9 +217,12 @@ describe("graduated Chat history and Import Details", () => {
 		// A Chat without import provenance has no Import Details.
 		const native = createConversationWithHistory(database, {
 			name: "Native Chat",
-			participants: [{ definition: { name: "Writer", prompt: {
-				systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "",
-			}, openings: [] } }],
+			participants: [{ definition: {
+				name: "Writer",
+				prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+				sendAppearanceImages: true,
+				openings: [],
+			} }],
 		});
 		expect(details.importDetails(native.id)).toBeUndefined();
 		expect(details.importDetails(999999)).toBeUndefined();
@@ -291,10 +294,12 @@ describe("graduated Chat history and Import Details", () => {
 					prompt: {
 						systemInstruction: "",
 						identity: "",
+						appearance: "",
 						scenario: "",
 						exampleDialogue: "",
 						postHistoryInstruction: "",
 					},
+					sendAppearanceImages: true,
 					openings: [],
 				},
 			}],

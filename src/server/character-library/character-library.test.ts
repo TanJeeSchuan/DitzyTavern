@@ -26,10 +26,12 @@ const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefi
 	prompt: {
 		systemInstruction: "You are the keeper of the Lantern House.",
 		identity: "Maren is a lighthouse archivist.",
+		appearance: "",
 		scenario: "A storm season begins on the northern coast.",
 		exampleDialogue: "<START>\n{{user}}: Who tends the light?\n{{char}}: I do.",
 		postHistoryInstruction: "Keep the fog dense and the prose patient.",
 	},
+	sendAppearanceImages: true,
 	openings: ["The lamp turns above you."],
 	...overrides,
 });
@@ -37,6 +39,7 @@ const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefi
 const emptyPrompt = {
 	systemInstruction: "",
 	identity: "",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -57,7 +60,7 @@ describe("Character Library", () => {
 
 	test("saves a complete Character Definition in one revision", () => {
 		const created = library.execute({ type: "create", definition: definition() });
-		const next = definition({ name: "Maren Vale", prompt: { ...created.prompt, identity: "A different identity." }, openings: ["A new beginning."] });
+		const next = definition({ name: "Maren Vale", prompt: { ...created.prompt, identity: "A different identity." }, sendAppearanceImages: true, openings: ["A new beginning."] });
 		const saved = library.execute({ type: "update-definition", characterId: created.id, expectedRevision: created.revision, definition: next });
 		expect(saved.revision).toBe(created.revision + 1);
 		expect(saved).toMatchObject(next);
@@ -70,6 +73,7 @@ describe("Character Library", () => {
 			prompt: {
 				systemInstruction: "  leading and trailing   ",
 				identity: "",
+				appearance: "",
 				scenario: "Unicode stays: café, 灯台, 🜃.",
 				exampleDialogue: "Raw\nmulti-line\n\ttext",
 				postHistoryInstruction: "",
@@ -101,7 +105,7 @@ describe("Character Library", () => {
 	test("creates a Character with an empty Prompt and no openings", () => {
 		const created = library.execute({
 			type: "create",
-			definition: { name: "Blank Slate", prompt: emptyPrompt, openings: [] },
+			definition: { name: "Blank Slate", prompt: emptyPrompt, sendAppearanceImages: true, openings: [] },
 		});
 
 		expect(created.prompt).toEqual(emptyPrompt);
@@ -155,7 +159,7 @@ describe("Character Library", () => {
 	test("derives an Identity preview on every list entry", () => {
 		const blank = library.execute({
 			type: "create",
-			definition: definition({ name: "Blank", prompt: emptyPrompt }),
+			definition: definition({ name: "Blank", prompt: emptyPrompt, sendAppearanceImages: true }),
 		});
 		const populated = library.execute({
 			type: "create",
@@ -166,6 +170,7 @@ describe("Character Library", () => {
 					systemInstruction: "Keep responses literary.",
 					identity: "Lighthouse archivist.",
 				},
+				sendAppearanceImages: true,
 			}),
 		});
 
@@ -237,6 +242,7 @@ describe("Character Library", () => {
 		const replacement = {
 			systemInstruction: "New system instruction.",
 			identity: "",
+			appearance: "",
 			scenario: "New scenario.",
 			exampleDialogue: "",
 			postHistoryInstruction: "New post-history.",
@@ -407,6 +413,7 @@ describe("Character deletion", () => {
 					definition: {
 						name: "Writer",
 						prompt: emptyPrompt,
+						sendAppearanceImages: true,
 						openings: [],
 					} satisfies ParticipantDefinition,
 				},
@@ -414,6 +421,7 @@ describe("Character deletion", () => {
 					definition: {
 						name: source.name,
 						prompt: source.prompt,
+						sendAppearanceImages: true,
 						openings: [...source.openings],
 					},
 					sourceCharacterId: characterId,
@@ -449,6 +457,7 @@ describe("Character deletion", () => {
 				definition: {
 					name: "Spare Seater",
 					prompt: emptyPrompt,
+					sendAppearanceImages: true,
 					openings: [],
 				},
 			},

@@ -14,6 +14,7 @@ import { addCharacterToCast, createNativeConversation, saveParticipantAsCharacte
 const prompt = {
 	systemInstruction: "",
 	identity: "A lighthouse archivist.",
+	appearance: "",
 	scenario: "",
 	exampleDialogue: "",
 	postHistoryInstruction: "",
@@ -35,7 +36,7 @@ describe("Portraits", () => {
 	const library = () => createCharacterLibraryModule(database);
 	const conversations = () => database;
 
-	const writer = { name: "Writer", prompt, openings: [] };
+	const writer = { name: "Writer", prompt, sendAppearanceImages: true, openings: [] };
 
 	const seatConversation = (characterId: number, expectedRevision: number) =>
 		createNativeConversation(database, {
@@ -46,11 +47,11 @@ describe("Portraits", () => {
 
 	test("stores identical uploads as one Image and orphans it with its last reference", async () => {
 		const first = await art(4);
-		const a = library().execute({ type: "create", definition: { name: "A", prompt, openings: [], portrait: first.portrait } });
-		const b = library().execute({ type: "create", definition: { name: "B", prompt, openings: [], portrait: first.portrait } });
+		const a = library().execute({ type: "create", definition: { name: "A", prompt, sendAppearanceImages: true, openings: [], portrait: first.portrait } });
+		const b = library().execute({ type: "create", definition: { name: "B", prompt, sendAppearanceImages: true, openings: [], portrait: first.portrait } });
 		expect(referenced()).toEqual([first.portrait.hash]);
 
-		library().execute({ type: "update-definition", characterId: a.id, expectedRevision: a.revision, definition: { name: "A", prompt, openings: [] } });
+		library().execute({ type: "update-definition", characterId: a.id, expectedRevision: a.revision, definition: { name: "A", prompt, sendAppearanceImages: true, openings: [] } });
 		expect(referenced()).toEqual([first.portrait.hash]);
 
 		library().execute({ type: "delete", characterId: b.id, expectedRevision: b.revision });
@@ -59,9 +60,9 @@ describe("Portraits", () => {
 
 	test("replacing a Portrait keeps the new Image and orphans the old one", async () => {
 		const [old, next] = [await art(4), await art(5)];
-		const character = library().execute({ type: "create", definition: { name: "A", prompt, openings: [], portrait: old.portrait } });
+		const character = library().execute({ type: "create", definition: { name: "A", prompt, sendAppearanceImages: true, openings: [], portrait: old.portrait } });
 		const updated = library().execute(
-			{ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: { name: "A", prompt, openings: [], portrait: next.portrait } },
+			{ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: { name: "A", prompt, sendAppearanceImages: true, openings: [], portrait: next.portrait } },
 		);
 		expect(updated.portrait).toEqual(next.portrait);
 		expect(referenced()).toEqual([next.portrait.hash]);
@@ -69,8 +70,8 @@ describe("Portraits", () => {
 
 	test("a failed command leaves its upload orphaned; unknown Portrait hashes are rejected", async () => {
 		const carried = await art(4);
-		expect(() => library().execute({ type: "create", definition: { name: "A", prompt, openings: [" "], portrait: carried.portrait } })).toThrow();
-		expect(() => library().execute({ type: "create", definition: { name: "A", prompt, openings: [], portrait: { ...carried.portrait, hash: "f".repeat(64) } } })).toThrow(InvalidImageError);
+		expect(() => library().execute({ type: "create", definition: { name: "A", prompt, sendAppearanceImages: true, openings: [" "], portrait: carried.portrait } })).toThrow();
+		expect(() => library().execute({ type: "create", definition: { name: "A", prompt, sendAppearanceImages: true, openings: [], portrait: { ...carried.portrait, hash: "f".repeat(64) } } })).toThrow(InvalidImageError);
 		expect(library().list()).toEqual([]);
 		expect(referenced()).toEqual([]);
 
@@ -78,7 +79,7 @@ describe("Portraits", () => {
 		expect(() => executeConversationCommand(conversations(), {
 			conversationId: chat.id,
 			expectedRevision: chat.revision,
-			action: { type: "add-participant", definition: { name: "Ghost", prompt, openings: [], portrait: { ...carried.portrait, hash: "f".repeat(64) } } },
+			action: { type: "add-participant", definition: { name: "Ghost", prompt, sendAppearanceImages: true, openings: [], portrait: { ...carried.portrait, hash: "f".repeat(64) } } },
 		})).toThrow(InvalidImageError);
 		expect(readConversationSummary(conversations(), chat.id)?.cast).toHaveLength(2);
 		expect(referenced()).toEqual([]);
@@ -86,12 +87,12 @@ describe("Portraits", () => {
 
 	test("seeding copies the Portrait and later Character edits leave the Chat unchanged", async () => {
 		const [original, replacement] = [await art(4), await art(5)];
-		const character = library().execute({ type: "create", definition: { name: "Maren", prompt, openings: [], portrait: original.portrait } });
+		const character = library().execute({ type: "create", definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [], portrait: original.portrait } });
 		const chat = seatConversation(character.id, character.revision);
 		expect(chat.cast[1]?.portrait).toEqual(original.portrait);
 
 		library().execute(
-			{ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: { name: "Maren", prompt, openings: [], portrait: replacement.portrait } },
+			{ type: "update-definition", characterId: character.id, expectedRevision: character.revision, definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [], portrait: replacement.portrait } },
 		);
 		expect(readConversationSummary(conversations(), chat.id)?.cast[1]?.portrait).toEqual(original.portrait);
 		expect(referenced().sort()).toEqual([original.portrait.hash, replacement.portrait.hash].sort());
@@ -99,7 +100,7 @@ describe("Portraits", () => {
 
 	test("adding a Character to the Cast copies its Portrait", async () => {
 		const carried = await art(4);
-		const character = library().execute({ type: "create", definition: { name: "Maren", prompt, openings: [], portrait: carried.portrait } });
+		const character = library().execute({ type: "create", definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [], portrait: carried.portrait } });
 		const chat = createConversationWithHistory(conversations(), { name: "Chat", participants: [{ definition: writer }, { definition: { ...writer, name: "Other" } }], control: { human: 0, model: 1 } });
 		const added = addCharacterToCast(database, {
 			conversationId: chat.id,
@@ -128,7 +129,7 @@ describe("Portraits", () => {
 
 	test("a Participant keeps the Image after its Character is deleted, and the Chat's deletion releases it", async () => {
 		const carried = await art(4);
-		const character = library().execute({ type: "create", definition: { name: "Maren", prompt, openings: [], portrait: carried.portrait } });
+		const character = library().execute({ type: "create", definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [], portrait: carried.portrait } });
 		const chat = seatConversation(character.id, character.revision);
 
 		const result = library().execute({ type: "delete", characterId: character.id, expectedRevision: character.revision });

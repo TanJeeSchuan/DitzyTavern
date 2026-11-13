@@ -118,11 +118,11 @@ test("a revised Box installs as a new version: Chats keep theirs until Update, w
 	await other.close();
 
 	// A new Chat starts on v2.
-	const emptyPrompt = { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const emptyPrompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 	expect((await (await request.post("/api/conversations/native", { data: {
 		name: "Fresh Jar Chat",
-		humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt, openings: [] } },
-		modelSeat: { type: "adhoc", definition: { name: "Maren", prompt: emptyPrompt, openings: [] } },
+		humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt, sendAppearanceImages: true, openings: [] } },
+		modelSeat: { type: "adhoc", definition: { name: "Maren", prompt: emptyPrompt, sendAppearanceImages: true, openings: [] } },
 	} })).json()).outcome).toBe("created");
 	await page.goto("/");
 	await expect(story(page).getByRole("heading", { name: "Fresh Jar Chat" })).toBeVisible();

@@ -7,7 +7,8 @@ import { readBoxStates } from "./setup";
 
 const definition = (name: string) => ({
 	name,
-	prompt: { systemInstruction: "", identity: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+	prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+	sendAppearanceImages: true,
 	openings: [],
 });
 

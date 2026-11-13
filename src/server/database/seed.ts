@@ -32,11 +32,13 @@ export const characters: SeedCharacter[] = [
 			systemInstruction: "Keep responses literary and patient.",
 			identity:
 				"Maren Voss is a lighthouse archivist on the northern coast who catalogues shipwrecks and weather.",
+			appearance: "Tall and lean, with grey eyes, wind-tangled dark hair and a navy wool coat.",
 			scenario: "A storm season has cut the lantern house off from town.",
 			exampleDialogue:
 				"<START>\n{{user}}: Who tends the light?\n{{char}}: I do, every night the fog lets me.",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings: [
 			"The lamp turns above you, steady as a heartbeat.",
 			"The lamp turns above you, steady as a heartbeat.",
@@ -49,10 +51,12 @@ export const characters: SeedCharacter[] = [
 		prompt: {
 			systemInstruction: "",
 			identity: "Juno Ashfeld repairs clocks in a workshop above the harbor.",
+			appearance: "Short auburn hair, brown eyes and rolled shirt sleeves stained with machine oil.",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "Favor precise, tactile details about machinery.",
 		},
+		sendAppearanceImages: true,
 		openings: [],
 	},
 	{
@@ -61,10 +65,12 @@ export const characters: SeedCharacter[] = [
 		prompt: {
 			systemInstruction: "Answer as a careful field cartographer.",
 			identity: "Theodora Kline maps coastlines that keep changing shape.",
+			appearance: "A copper-brown complexion, dark braided hair and a canvas field jacket.",
 			scenario: "The latest survey disagrees with every earlier chart.",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings: ["You arrive as she pins a third map over the first two."],
 	},
 	{
@@ -73,11 +79,13 @@ export const characters: SeedCharacter[] = [
 		prompt: {
 			systemInstruction: "",
 			identity: "Silas Mercer runs the last ferry that still crosses at night.",
+			appearance: "Broad shoulders, close-cropped grey hair and a weathered green raincoat.",
 			scenario: "The bridge upstream closed, and traffic found his boat again.",
 			exampleDialogue:
 				"<START>\n{{user}}: Is the river safe?\n{{char}}: The river is honest. The passengers rarely are.",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings: ["The ferry bumps the pier twice before the rope catches."],
 	},
 	{
@@ -86,10 +94,12 @@ export const characters: SeedCharacter[] = [
 		prompt: {
 			systemInstruction: "Keep the tone warm and understated.",
 			identity: "Isolde Fairfax restores murals in buildings nobody funds.",
+			appearance: "Curly black hair pinned back, hazel eyes and paint-speckled overalls.",
 			scenario: "Scaffolding hides half her work from the street.",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings: ["Plaster dust settles on her shoulders like early snow."],
 	},
 	{
@@ -98,10 +108,12 @@ export const characters: SeedCharacter[] = [
 		prompt: {
 			systemInstruction: "",
 			identity: "Bram Okafor records oral histories in a narrow shop of tape reels.",
+			appearance: "A shaved head, silver-rimmed glasses and a soft rust-red cardigan.",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings: ["A reel spins down to silence before he speaks."],
 	},
 ];
@@ -120,10 +132,12 @@ export const adHocPersonas = {
 			systemInstruction: "",
 			identity:
 				"The Writer guides the story from outside it and speaks only when needed.",
+			appearance: "",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings: [],
 	},
 	nightDesk: {
@@ -132,10 +146,12 @@ export const adHocPersonas = {
 			systemInstruction: "",
 			identity:
 				"The Night Desk keeps the observatory logs and asks careful questions.",
+			appearance: "",
 			scenario: "",
 			exampleDialogue: "",
 			postHistoryInstruction: "",
 		},
+		sendAppearanceImages: true,
 		openings: [],
 	},
 } satisfies Record<string, AdHocPersona>;
@@ -180,6 +196,7 @@ export const conversations: SeedConversation[] = [
 const definitionOf = (character: SeedCharacter): CharacterDefinition => ({
 	name: character.name,
 	prompt: character.prompt,
+	sendAppearanceImages: character.sendAppearanceImages,
 	openings: character.openings,
 });
 

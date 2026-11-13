@@ -27,15 +27,15 @@ test("a Lore block above Chat history is labelled until it moves below it", asyn
 	const editor = page.getByRole("dialog", { name: "Lore" });
 	const titles = contents.getByRole("listitem").getByRole("heading");
 	const memory = contents.getByRole("listitem").filter({ has: page.getByRole("heading", { name: "Memory", exact: true }) });
-	await expect(titles.nth(5)).toHaveText("Lore");
-	await expect(titles.nth(7)).toHaveText("Chat history");
+	await expect(titles.nth(7)).toHaveText("Lore");
+	await expect(titles.nth(9)).toHaveText("Chat history");
 	await expect(lore.getByText("Breaks cache")).toBeVisible();
 	await expect(memory.getByText("Breaks cache")).toBeVisible();
 
 	await lore.getByRole("button", { name: "Edit Lore" }).click();
 	await editor.getByRole("button", { name: "Move below Chat history" }).click();
-	await expect(titles.nth(6)).toHaveText("Chat history");
-	await expect(titles.nth(7)).toHaveText("Lore");
+	await expect(titles.nth(8)).toHaveText("Chat history");
+	await expect(titles.nth(9)).toHaveText("Lore");
 	await expect(lore.getByText("Breaks cache")).toHaveCount(0);
 	await expect(memory.getByText("Breaks cache")).toBeVisible();
 });

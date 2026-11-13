@@ -139,7 +139,7 @@ describe("Prompt Preset selection around an Active Generation", () => {
 		const copyId = appliedId(await runPresetCommand(routes.library, {
 			type: "duplicate",
 			presetId: 1,
-			expectedRevision: 0,
+			expectedRevision: 1,
 			name: "Copy of Default",
 		}));
 		database.exec(
@@ -250,7 +250,7 @@ describe("Prompt Preset selection around an Active Generation", () => {
 		const copyId = appliedId(await runPresetCommand(routes.library, {
 			type: "duplicate",
 			presetId: 1,
-			expectedRevision: 0,
+			expectedRevision: 1,
 			name: "Copy of Default",
 		}));
 		database.exec(

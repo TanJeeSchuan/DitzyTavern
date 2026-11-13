@@ -96,6 +96,7 @@ describe("SillyTavern chat import", () => {
 			expect(participant.prompt).toEqual({
 				systemInstruction: "",
 				identity: "",
+				appearance: "",
 				scenario: "",
 				exampleDialogue: "",
 				postHistoryInstruction: "",

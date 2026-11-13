@@ -34,6 +34,7 @@ export function forkCharacter(
 		definition: {
 			name: character.name,
 			prompt: character.prompt,
+			sendAppearanceImages: character.sendAppearanceImages,
 			openings: character.openings,
 			portrait: character.portrait,
 		},

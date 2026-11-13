@@ -47,11 +47,12 @@ describe("Conversation module", () => {
 		const snapshot = createConversationWithHistory(module, {
 			name: "Test Conversation",
 			participants: [
-				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
+				{ definition: { name: "Writer", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
 				{
 					definition: {
 						name: "Maren",
 						prompt: emptyPrompt(),
+						sendAppearanceImages: true,
 						openings: ["Greeting"],
 					},
 				},
@@ -66,6 +67,7 @@ describe("Conversation module", () => {
 	const emptyPrompt = () => ({
 		systemInstruction: "",
 		identity: "",
+		appearance: "",
 		scenario: "",
 		exampleDialogue: "",
 		postHistoryInstruction: "",
@@ -181,7 +183,7 @@ describe("Conversation module", () => {
 			expectedRevision: initial.revision,
 			action: {
 				type: "add-participant",
-				definition: { name: "Spare", prompt: emptyPrompt(), openings: [] },
+				definition: { name: "Spare", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] },
 			},
 		});
 		const spareId = withThird.cast.at(-1)?.id;
@@ -277,8 +279,8 @@ describe("Conversation module", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Partial Context",
 			participants: [
-				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
-				{ definition: { name: "Maren", prompt: emptyPrompt(), openings: [] } },
+				{ definition: { name: "Writer", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "Maren", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -348,8 +350,8 @@ describe("Conversation module", () => {
 		const other = createConversationWithHistory(database, {
 			name: "Other Conversation",
 			participants: [
-				{ definition: { name: "A", prompt: emptyPrompt(), openings: [] } },
-				{ definition: { name: "B", prompt: emptyPrompt(), openings: [] } },
+				{ definition: { name: "A", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
+				{ definition: { name: "B", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -617,11 +619,12 @@ describe("Conversation module", () => {
 		const imported = createConversationWithHistory(conversation, {
 			name: "Imported Conversation",
 			participants: [
-				{ definition: { name: "Writer", prompt: emptyPrompt(), openings: [] } },
+				{ definition: { name: "Writer", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
 				{
 					definition: {
 						name: "Maren",
 						prompt: emptyPrompt(),
+						sendAppearanceImages: true,
 						openings: ["Greeting"],
 					},
 				},
@@ -950,8 +953,8 @@ describe("Conversation module", () => {
 			const other = createConversationWithHistory(database, {
 				name: "Other Conversation",
 				participants: [
-					{ definition: { name: "A", prompt: emptyPrompt(), openings: [] } },
-					{ definition: { name: "B", prompt: emptyPrompt(), openings: [] } },
+					{ definition: { name: "A", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
+					{ definition: { name: "B", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
 				],
 				control: { human: 0, model: 1 },
 			});

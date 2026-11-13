@@ -291,6 +291,7 @@ const resolvePlanParticipants = (
 				definition: {
 					name: character.name,
 					prompt: character.prompt,
+					sendAppearanceImages: character.sendAppearanceImages,
 					openings: character.openings,
 				},
 				sourceCharacterId: character.id,

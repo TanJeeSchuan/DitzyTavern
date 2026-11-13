@@ -43,6 +43,7 @@ export const characterSnapshot = Type.Object({
 	revision: Type.Integer(),
 	pinned: Type.Boolean(),
 	prompt: promptChannels,
+	sendAppearanceImages: Type.Boolean(),
 	openings: Type.Array(Type.String()),
 	portrait: Type.Optional(portrait),
 	deletionImpact: characterDeletionImpact,
@@ -60,6 +61,7 @@ const createCommand = Type.Object({
 	definition: Type.Object({
 		name: Type.String(),
 		prompt: promptChannels,
+		sendAppearanceImages: Type.Boolean(),
 		openings: Type.Array(Type.String()),
 		portrait: Type.Optional(portrait),
 	}),
