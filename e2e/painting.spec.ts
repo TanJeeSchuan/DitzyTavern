@@ -1,15 +1,21 @@
+import { isChatModelCall } from "./protocol";
+import type { Page } from "@playwright/test";
 import { test, expect, send, story } from "./fixtures";
 import { pngFixture } from "../src/server/image/image-fixtures";
 
 const picture = pngFixture({ width: 640, height: 480 }).toString("base64");
 
-test("paint a typed Brief, swipe away and back, then retry a provider refusal", async ({ page, llm }) => {
+const selectImageModel = async (page: Page) => {
 	const settings = await (await page.request.get("/api/connection-settings")).json();
 	const { presets } = await (await page.request.get("/api/connection-settings/presets")).json();
 	const profile = presets.find((entry: { id: string }) => entry.id === "openrouter-images").profile;
 	const created = await (await page.request.post("/api/connection-settings/commands", { data: { type: "create-profile", expectedRevision: settings.revision, profile } })).json();
 	const profileId = created.settings.profiles.find((entry: { displayName: string }) => entry.displayName === profile.displayName).id;
 	await page.request.post("/api/image-model/commands", { data: { type: "apply", expectedRevision: 0, profileId, model: "e2e-painter" } });
+};
+
+test("paint a typed Brief, swipe away and back, then retry a provider refusal", async ({ page, llm }) => {
+	await selectImageModel(page);
 	await llm.chat({ chunks: ["A lantern beside the lake."] }, { chunks: ["A lantern inside the house."] });
 	await llm.images({ base64: picture }, { status: 400, error: "This Brief was refused by the painter." }, { base64: picture });
 	await page.goto("/");
@@ -40,4 +46,31 @@ test("paint a typed Brief, swipe away and back, then retry a provider refusal", 
 	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(2);
 	await page.reload();
 	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(2);
+});
+
+test("painting reaches the story model only after Add to composer and Send", async ({ page, llm }) => {
+	await selectImageModel(page);
+	await llm.chat({ chunks: ["The lantern lights the lake.\n\n" + "The water reflects the hills as the lantern sways in the wind. ".repeat(40)] }, { chunks: ["I see your Illustration."] });
+	await llm.images({ base64: picture });
+	await page.goto("/");
+	await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Paint", exact: true });
+	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("A lantern on a moonlit lake.");
+	await panel.getByRole("button", { name: "Paint", exact: true }).click();
+	await panel.getByRole("button", { name: "Close Paint" }).click();
+	const illustration = story(page).getByRole("figure", { name: "Illustration", exact: true });
+	await expect(illustration.getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
+	await send(page, "Look across the lake.");
+	await expect(story(page).getByText("The lantern lights the lake.")).toBeVisible();
+	await illustration.getByRole("button", { name: "Add to composer", exact: true }).click();
+	await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("Illustration");
+	await page.getByRole("button", { name: "Generate Variant" }).click();
+	await page.getByRole("button", { name: "Send exact plan" }).click();
+	await expect(story(page).getByText("I see your Illustration.")).toBeVisible();
+	const calls = (await llm.log()).calls.filter(isChatModelCall);
+	expect(calls).toHaveLength(2);
+	expect(JSON.stringify(calls[0]!.body.messages)).not.toContain("image_url");
+	const sent = calls[1]!.body.messages.flatMap(({ content }) => Array.isArray(content) ? content : []);
+	expect(sent.filter((part) => part.type === "image_url")).toEqual([{ type: "image_url", image_url: { url: `data:image/png;base64,${picture}` } }]);
+	expect(sent).toContainEqual({ type: "text", text: expect.stringContaining("[Image: Illustration]") });
 });

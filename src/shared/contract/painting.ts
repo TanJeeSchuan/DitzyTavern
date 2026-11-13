@@ -21,6 +21,7 @@ export const paintingCommand = Type.Union([
 	Type.Object({ type: Type.Literal("paint"), variantId: Type.Integer(), brief: Type.String({ minLength: 1 }), aspectRatio: paintingAspectRatio }),
 	Type.Object({ type: Type.Literal("retry"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("dismiss"), variantId: Type.Integer(), id: Type.String() }),
+	Type.Object({ type: Type.Literal("delete"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("set-aspect-ratio"), aspectRatio: paintingAspectRatio }),
 ]);
 export type PaintingCommand = Static<typeof paintingCommand>;

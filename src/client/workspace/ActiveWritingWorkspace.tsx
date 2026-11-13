@@ -1,3 +1,5 @@
+import { IllustrationActionsContext } from "../painting";
+import type { ComposerHandle } from "../story/Composer";
 import { PaintPanel } from "../PaintPanel";
 import { boxIdOf, type BoxId } from "../../shared/contract/box";
 import { Toast } from "radix-ui";
@@ -176,6 +178,7 @@ export function ActiveWritingWorkspace({
 	};
 
 	const conversation = session.conversation;
+	const generationRunning = generation.isGenerating || (conversation?.activeGenerations.length ?? 0) > 0;
 	const fork = async (name: string, trimVariants: boolean): Promise<string | null> => {
 		if (conversation === null || forkAt === null) return "The Chat is not available.";
 		let error: string | null = null;
@@ -236,6 +239,8 @@ export function ActiveWritingWorkspace({
 		});
 	};
 
+	const composerRef = useRef<ComposerHandle>(null);
+	const openPaint = (variantId: number, brief = "") => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", target: { variantId, brief, requestId: crypto.randomUUID() } }));
 	const controlToaster = useRef<ControlChangeToasterHandle>(null);
 	// @approved
 	// On narrow viewports every panel is a full-screen layer, so the story under it leaves the tab order.
@@ -243,6 +248,13 @@ export function ActiveWritingWorkspace({
 	const covered = narrow && (panelState.primaryPanel !== null || panelState.detailsSurface !== null || assemblyActive || newChatOpen);
 
 	return (
+		<IllustrationActionsContext value={{
+			addToComposer: !generation.assemblyAvailable ? null : (hash) => {
+				if (narrow) dispatchPanel({ type: "details-closed" });
+				composerRef.current?.insertReference("Illustration", hash);
+			},
+			editBrief: openPaint,
+		}}>
 		<ChatPins.Provider value={conversation ?? noPins}>
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
@@ -289,6 +301,7 @@ export function ActiveWritingWorkspace({
 			</CoveredLayer>
 
 			<StoryStage
+				composerRef={composerRef}
 				story={story}
 				dispatchStory={dispatchStory}
 				conversation={conversation}
@@ -321,7 +334,8 @@ export function ActiveWritingWorkspace({
 				}}
 				onOpenInspector={openBoxInspector}
 				onInspectVariant={openVariantDetails}
-				onPaint={(variantId) => saveNavigation.requestNavigation(() => dispatchPanel({ type: "paint-opened", variantId }))}
+				onPaint={openPaint}
+				generationRunning={generationRunning}
 				onOpenGenerationDetails={openActiveGenerationDetails}
 				onControlChange={(text) => controlToaster.current?.show(text)}
 			/>
@@ -343,7 +357,13 @@ export function ActiveWritingWorkspace({
 			</CoveredLayer>
 
 			<CoveredLayer inert={narrow && newChatOpen}>
-			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintVariantId !== null && conversation !== null && <PaintPanel key={`${conversation.id}:${panelState.paintVariantId}`} conversationId={conversation.id} variantId={panelState.paintVariantId} onClose={() => dispatchPanel({ type: "details-closed" })} />}
+			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintTarget !== null && conversation !== null && (
+				<PaintPanel
+					key={`${conversation.id}:${panelState.paintTarget.requestId}`}
+					conversationId={conversation.id} target={panelState.paintTarget}
+					onClose={() => dispatchPanel({ type: "details-closed" })}
+				/>
+			)}
 			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
 					conversationId={Number(session.activeChatId)}
@@ -409,10 +429,11 @@ export function ActiveWritingWorkspace({
 			<Toast.Description className="workspace-toast-description">{forkNotice}</Toast.Description>
 			<Toast.Close className="icon-button" aria-label="Dismiss Fork notice"><X aria-hidden="true" /></Toast.Close>
 		</Toast.Root>}
-		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generation.isGenerating || conversation.activeGenerations.length > 0} onClose={() => setForkAt(null)} onFork={fork} />}
+		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generationRunning} onClose={() => setForkAt(null)} onFork={fork} />}
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
 		</Toast.Provider>
 		</ChatPins.Provider>
+		</IllustrationActionsContext>
 	);
 }

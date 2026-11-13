@@ -1,3 +1,4 @@
+import type { PaintTarget } from "../painting";
 import { boxReference, type PromptBoxReference } from "../../shared/contract/box";
 import type { GenerationDetailsTarget } from "../GenerationDetailsPanel";
 import type { PrimaryPanel, PrimaryPanelName } from "./types";
@@ -10,7 +11,7 @@ export interface PanelCoordinationState {
 	inspector: SplitInspector | null;
 	detailsSurface: DetailsSurface | null;
 	generationDetailsTarget: GenerationDetailsTarget | null;
-	paintVariantId: number | null;
+	paintTarget: PaintTarget | null;
 	boxFocus: { messageId: number } | null;
 }
 
@@ -21,7 +22,7 @@ export type PanelCoordinationAction =
 	| { type: "inspector-opened"; inspector: SplitInspector }
 	| { type: "inspector-closed" }
 	| { type: "chat-info-opened" }
-	| { type: "paint-opened"; variantId: number }
+	| { type: "paint-opened"; target: PaintTarget }
 	| { type: "generation-details-opened"; target: GenerationDetailsTarget }
 	| { type: "macro-variables-opened" }
 	| { type: "box-inspector-opened"; box: string; focus: { messageId: number } | null }
@@ -34,7 +35,7 @@ export const createPanelCoordinationState = (): PanelCoordinationState => ({
 	inspector: null,
 	detailsSurface: null,
 	generationDetailsTarget: null,
-	paintVariantId: null,
+	paintTarget: null,
 	boxFocus: null,
 });
 
@@ -44,7 +45,7 @@ export const createPanelCoordinationState = (): PanelCoordinationState => ({
 const dropFocusData = (state: PanelCoordinationState): PanelCoordinationState => ({
 	...state,
 	generationDetailsTarget: null,
-	paintVariantId: null,
+	paintTarget: null,
 	boxFocus: null,
 });
 
@@ -95,7 +96,7 @@ export function reducePanelCoordination(
 		case "inspector-closed":
 			return { ...state, inspector: null };
 		case "paint-opened":
-			return { ...openDetailSurface(state, "paint", preview), paintVariantId: action.variantId };
+			return preview ? state : { ...openDetailSurface(state, "paint", preview), paintTarget: action.target };
 		case "chat-info-opened":
 			return openDetailSurface(state, "chat-info", preview);
 		case "generation-details-opened":

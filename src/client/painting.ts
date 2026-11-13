@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { createContext, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./lib/eden";
 import { requestData, requestOutcome } from "./lib/request-outcome";
@@ -31,3 +31,10 @@ export function usePaintingCommand(conversationId: number) {
 	};
 	return { submit, pending, error };
 }
+
+export type PaintTarget = { variantId: number; brief: string; requestId: string };
+
+export const IllustrationActionsContext = createContext<{
+	addToComposer: ((hash: string) => void) | null;
+	editBrief: (variantId: number, brief: string) => void;
+} | null>(null);

@@ -49,3 +49,26 @@
 	display: inline;
 	font-size: 0.9em;
 }
+
+
+.illustration-row {
+	--illustration-actions-height: 2.75rem;
+	overflow-anchor: none;
+}
+
+.illustration-picture {
+	max-height: calc(50dvh - var(--illustration-actions-height) - 2px);
+}
+
+.illustration-actions {
+	height: var(--illustration-actions-height);
+}
+
+.illustration-row:has(.illustration-picture > button:hover) {
+	border-color: color-mix(in oklch, var(--accent) 45%, var(--border-strong));
+}
+
+.illustration-row:has(.illustration-picture > button:focus-visible) {
+	border-color: var(--focus);
+	box-shadow: 0 0 0 3px color-mix(in oklch, var(--focus) 18%, transparent);
+}

@@ -38,6 +38,12 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 	const lastScrollTopRef = useRef(0);
 	const anchoredRef = useRef<{ firstId: number; lastId: number; firstTop: number | null } | null>(null);
 	const swipeScrollTargetRef = useRef<number | null>(null);
+	const readingAnchorRef = useRef<{ element: Element; top: number } | null>(null);
+	const anchorReadingPosition = (root: HTMLElement) => {
+		const top = root.getBoundingClientRect().top;
+		const element = [...root.querySelectorAll(".story-message")].find((message) => message.getBoundingClientRect().bottom > top);
+		readingAnchorRef.current = element === undefined ? null : { element, top: element.getBoundingClientRect().top };
+	};
 
 	const follow = (following: boolean) => {
 		followingRef.current = following && !hasNewer;
@@ -52,6 +58,7 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 		if (nearBottom(root)) follow(true);
 		else if (root.scrollTop < lastScrollTopRef.current - 1) follow(false);
 		lastScrollTopRef.current = root.scrollTop;
+		anchorReadingPosition(root);
 	};
 
 	useLayoutEffect(() => {
@@ -65,6 +72,14 @@ export function useStoryViewport({ messages, conversationId, hasNewer }: StoryVi
 		if (!root || !content) return;
 		const observer = new ResizeObserver(() => {
 			if (!detachedRef.current && followingRef.current) root.scrollTo({ top: root.scrollHeight, behavior: smooth() });
+			else {
+				const anchor = readingAnchorRef.current;
+				if (anchor?.element.isConnected) {
+					const shift = anchor.element.getBoundingClientRect().top - anchor.top;
+					if (shift !== 0) root.scrollTo({ top: root.scrollTop + shift, behavior: "instant" });
+				}
+			}
+			anchorReadingPosition(root);
 		});
 		observer.observe(content);
 		return () => observer.disconnect();

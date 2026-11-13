@@ -1,11 +1,14 @@
 import { PenLine, Send, Square } from "lucide-react";
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode } from "react";
+import { useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode, type RefObject } from "react";
 import { ProseEditor, type ProseEditorHandle } from "../editor/ProseEditor";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
 import type { Store } from "../lib/store";
 
+export type ComposerHandle = Pick<ProseEditorHandle, "insertReference">;
+
 export function Composer({
+	ref,
 	draft,
 	moves,
 	onMovesChange,
@@ -18,6 +21,7 @@ export function Composer({
 	stopPending = false,
 	writerName,
 }: {
+	ref: RefObject<ComposerHandle | null>;
 	draft: Store<string>;
 	moves: BoxMoves;
 	onMovesChange: (moves: BoxMoves) => void;
@@ -33,6 +37,11 @@ export function Composer({
 	const editorRef = useRef<ProseEditorHandle>(null);
 	const formRef = useRef<HTMLFormElement>(null);
 	const [focused, setFocused] = useState(false);
+	const revealEditor = (action: (editor: ProseEditorHandle) => void) => {
+		setFocused(true);
+		requestAnimationFrame(() => { if (editorRef.current !== null) action(editorRef.current); });
+	};
+	useImperativeHandle(ref, () => ({ insertReference: (name, hash) => revealEditor((editor) => editor.insertReference(name, hash)) }), []);
 	// @approved
 	// Disabling or swapping the focused control drops focus without a blur event, so read focus again when they change.
 	useEffect(() => setFocused(formRef.current?.contains(document.activeElement) ?? false), [isGenerating, canWrite, stopPending]);
@@ -47,10 +56,7 @@ export function Composer({
 			data-visible={isReceded}
 			tabIndex={isReceded ? 0 : -1}
 			aria-hidden={!isReceded}
-			onClick={() => {
-				setFocused(true);
-				requestAnimationFrame(() => editorRef.current?.focus());
-			}}
+			onClick={() => revealEditor((editor) => editor.focus())}
 		>
 			<PenLine aria-hidden="true" />
 			Write

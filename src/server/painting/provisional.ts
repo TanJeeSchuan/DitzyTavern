@@ -16,6 +16,12 @@ export const createProvisionalPaintings = () => {
 			entries?.delete(id);
 			if (entries?.size === 0) byVariant.delete(variantId);
 		},
+		abortVariants(variantIds: readonly number[]) {
+			for (const variantId of variantIds) {
+				for (const { controller } of byVariant.get(variantId)?.values() ?? []) controller.abort();
+				byVariant.delete(variantId);
+			}
+		},
 		dispose() {
 			for (const paintings of byVariant.values()) for (const { controller } of paintings.values()) controller.abort();
 			byVariant.clear();

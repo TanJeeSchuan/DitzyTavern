@@ -7,10 +7,11 @@ import { paintingAspectRatio, DEFAULT_PAINTING_ASPECT_RATIO } from "../shared/co
 import { ProseEditor } from "./editor/ProseEditor";
 import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
-import { usePaintingCommand, useIllustrations } from "./painting";
+import { usePaintingCommand, useIllustrations, type PaintTarget } from "./painting";
 
-export function PaintPanel({ conversationId, variantId, onClose }: { conversationId: number; variantId: number; onClose: () => void }) {
-	const [brief, setBrief] = useState("");
+export function PaintPanel({ conversationId, target, onClose }: { conversationId: number; target: PaintTarget; onClose: () => void }) {
+	const { variantId } = target;
+	const [brief, setBrief] = useState(target.brief);
 	const { submit, pending, error } = usePaintingCommand(conversationId);
 	const read = useIllustrations(conversationId);
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;

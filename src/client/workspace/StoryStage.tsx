@@ -1,3 +1,7 @@
+import { Paintbrush } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import type { RefObject } from "react";
+import type { ComposerHandle } from "../story/Composer";
 import { useIllustrations } from "../painting";
 import { isStoryReady } from "../story";
 import { useMemo, useRef, type Dispatch } from "react";
@@ -42,6 +46,7 @@ import { useStoryViewport } from "./useStoryViewport";
 // composer focus; panel coordination and generation remain with the
 // workspace, which composes the guarded openers passed in below.
 export function StoryStage({
+	composerRef,
 	story,
 	dispatchStory,
 	conversation,
@@ -62,10 +67,12 @@ export function StoryStage({
 	onOpenInspector,
 	onInspectVariant,
 	onPaint,
+	generationRunning,
 	onOpenGenerationDetails,
 	onControlChange,
 	onFork,
 }: {
+	composerRef: RefObject<ComposerHandle | null>;
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
 	conversation: ConversationSummary | null;
@@ -85,6 +92,7 @@ export function StoryStage({
 	onOpenVariables: () => void;
 	onOpenInspector: (box: string, focus: { messageId: number } | null) => void;
 	onPaint: (variantId: number) => void;
+	generationRunning: boolean;
 	onInspectVariant: (messageId: number, variantId: number) => void;
 	onOpenGenerationDetails: () => void;
 	onControlChange: (text: string) => void;
@@ -139,6 +147,11 @@ export function StoryStage({
 	const onLayerFocus = useLayerFocus(inert);
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
+	const paintDisabledReason = generationRunning ? "Wait for the Generation to finish before painting."
+		: assemblyActive ? "Close the Prompt Plan preview to paint."
+			: previewMode ? "Confirm or cancel the Swipe preview to paint."
+				: undefined;
+	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(latestStoryMessage, story.preview, story.requestedSelections);
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
 	const lens = useMemo(() => conversation === null ? undefined : { conversation, open: (box: BoxId) => latest.current.boxWindows.open(box) }, [conversation]);
@@ -298,6 +311,7 @@ export function StoryStage({
 					onOpenConnections={onOpenConnections}
 				/>
 				<Composer
+					ref={composerRef}
 					draft={generation.draft}
 					moves={generation.moves}
 					onMovesChange={generation.setMoves}
@@ -318,7 +332,12 @@ export function StoryStage({
 							disabledReason={story.preview !== null ? "Confirm or cancel the Swipe preview to change the model." : assemblyActive ? "Close the Prompt Plan preview to change the model." : undefined}
 							onConversationChange={session.setConversation}
 							onControlChange={onControlChange}
-						/>
+						>
+							<Button type="button" variant="ghost" size="icon-sm" className="pointer-coarse:h-8" aria-label="Paint"
+								title={paintDisabledReason ?? (finalVariantId === null ? "Load the final Message to paint." : "Paint")}
+								disabled={generationRunning || assemblyActive || previewMode || finalVariantId === null}
+								onClick={() => { if (finalVariantId !== null) onPaint(finalVariantId); }}><Paintbrush aria-hidden="true" /></Button>
+						</ComposerControlSelectors>
 					) : null}
 				/>
 			</div>

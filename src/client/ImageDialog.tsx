@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useRef, useState, type ReactNode } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { imageSrc } from "./lib/image";
 
@@ -12,9 +12,11 @@ const ImageDialogContext = createContext<((target: EventTarget, insertion?: Pick
 
 export function ImageDialogProvider({ children, actions }: { children: ReactNode; actions?: (image: OpenedImage) => ReactNode }) {
 	const [opened, setOpened] = useState<OpenedImage | null>(null);
+	const opener = useRef<HTMLElement | null>(null);
 	const [openImageAt] = useState(() => (target: EventTarget, insertion?: Pick<OpenedImage, "insertAfter">) => {
 		const element = target instanceof Element ? target.closest<HTMLElement>("[data-image-hash]") : null;
 		if (element?.dataset.imageHash !== undefined && element.dataset.missing === undefined) {
+			opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 			setOpened({ hash: element.dataset.imageHash, name: element.dataset.imageName ?? "", ...insertion });
 		}
 	});
@@ -22,7 +24,7 @@ export function ImageDialogProvider({ children, actions }: { children: ReactNode
 		<ImageDialogContext value={openImageAt}>
 			{children}
 			<Dialog open={opened !== null} onOpenChange={(open) => { if (!open) { setOpened(null); } }}>
-				<DialogContent className="flex max-h-[calc(100dvh-2rem)] w-fit max-w-[calc(100%-2rem)] flex-col gap-2 sm:max-w-[min(56rem,calc(100%-2rem))]">
+				<DialogContent onCloseAutoFocus={(event) => { event.preventDefault(); opener.current?.focus({ preventScroll: true }); }} className="flex max-h-[calc(100dvh-2rem)] w-fit max-w-[calc(100%-2rem)] flex-col gap-2 sm:max-w-[min(56rem,calc(100%-2rem))]">
 					<DialogTitle className="truncate pr-8">{opened?.name}</DialogTitle>
 					<DialogDescription className="sr-only">Full size image</DialogDescription>
 					{opened !== null && <img src={imageSrc(opened.hash)} alt={opened.name} className="min-h-0 max-h-[78dvh] max-w-full flex-1 rounded-lg object-contain" />}
