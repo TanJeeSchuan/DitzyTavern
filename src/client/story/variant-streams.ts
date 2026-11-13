@@ -54,19 +54,38 @@ export const streamedVariant = (variant: StoryVariant, streamed: Streamed | unde
 export function createVariantStreams() {
 	const streams = new Map<number, Streamed>();
 	const listeners = new Map<number, Set<() => void>>();
+	const notify = (variantId: number) => {
+		for (const listener of listeners.get(variantId) ?? []) listener();
+	};
+	const remove = (variantId: number) => {
+		if (streams.delete(variantId)) notify(variantId);
+	};
 	return {
 		/** @approved `placed` is the Variant as the story's page holds it, if it holds it. */
 		observe(observation: VariantObservation, placed: StoryVariant | undefined) {
 			const next = applyObservation(streams.get(observation.variantId), observation, placed);
 			if (next === undefined) return;
 			streams.set(observation.variantId, next);
-			for (const listener of listeners.get(observation.variantId) ?? []) listener();
+			notify(observation.variantId);
+		},
+		checkpoint(variants: readonly StoryVariant[]) {
+			for (const variant of variants) {
+				if (variant.generationId === undefined) { remove(variant.id); continue; }
+				const previous = streams.get(variant.id);
+				const next = baseOf(previous, variant.generationId, variant);
+				if (next === undefined || next === previous) continue;
+				streams.set(variant.id, next);
+				notify(variant.id);
+			}
+		},
+		retain(generationIds: ReadonlySet<number>) {
+			for (const [variantId, stream] of streams) if (!generationIds.has(stream.generationId)) remove(variantId);
 		},
 		get: (variantId: number) => streams.get(variantId),
 		subscribe(variantId: number, listener: () => void) {
 			const own = listeners.get(variantId) ?? new Set();
 			listeners.set(variantId, own.add(listener));
-			return () => { own.delete(listener); };
+			return () => { if (own.delete(listener) && own.size === 0) listeners.delete(variantId); };
 		},
 	};
 }

@@ -8,7 +8,6 @@ import {
 	hasPendingGenerationStop,
 	MAX_SESSION_RECONNECTS,
 	reduceGenerationSessions,
-	type GenerationSessionEffect,
 	type GenerationSessionTerminal,
 	type GenerationSessionsState,
 	type GenerationSessionTarget,
@@ -515,7 +514,7 @@ describe("the Generation session collection", () => {
 		expect(firstActiveGenerationSessionFailure(state)?.reason ?? null).toBe("Generations could not be stopped.");
 	});
 
-	test("a Conversation switch detaches local subscriptions but keeps cursors for the return", () => {
+	test("a Conversation switch detaches local subscriptions and resets cursors with discarded text", () => {
 		let state = sessionOf(42, targetsFor(7, 8));
 		state = run(state, { type: "event-observed", generationId: 7, eventId: 5, event: contentEvent("kept") }).state;
 
@@ -529,14 +528,14 @@ describe("the Generation session collection", () => {
 		]);
 		expect(state.activeConversationId).toBeNull();
 		expect(stateText(state, 7)?.phase).toBe("detached");
-		expect(stateText(state, 7)?.lastEventId).toBe(5);
+		expect(stateText(state, 7)?.lastEventId).toBe(0);
 		expect(stateText(state, 8)?.phase).toBe("detached");
 		expect(hasActiveGenerationSessions(state)).toBe(false);
 
-		// Returning reattaches from each Generation's own cursor.
+		// Reject skipping text that was discarded when leaving the Chat.
 		const returned = run(state, observed([7, 8]));
 		expect(returned.effects).toEqual([
-			{ kind: "subscribe", conversationId: 42, generationId: 7, messageId: 907, variantId: 9_007, afterEventId: 5 },
+			{ kind: "subscribe", conversationId: 42, generationId: 7, messageId: 907, variantId: 9_007, afterEventId: 0 },
 			{ kind: "subscribe", conversationId: 42, generationId: 8, messageId: 908, variantId: 9_008, afterEventId: 0 },
 		]);
 	});

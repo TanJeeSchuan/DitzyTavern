@@ -139,8 +139,9 @@ export function useGenerationController({
 	if (runnerRef.current === null) {
 		runnerRef.current = createGenerationSessionRunner({
 			adapter: generationStreamAdapter,
-			applyStoryEffect: (observation) => streams.observe(observation, latestStory.current.messages
-				.find((message) => message.id === observation.messageId)?.swipes.find((variant) => variant.id === observation.variantId)),
+			streams,
+			getVariant: (messageId, variantId) => latestStory.current.messages
+				.find((message) => message.id === messageId)?.swipes.find((variant) => variant.id === variantId),
 			refreshConversation: async (conversationId, signal) => {
 				await refreshStory(conversationId, signal);
 			},
@@ -149,9 +150,8 @@ export function useGenerationController({
 	const runner = runnerRef.current;
 
 	// @approved
-	//  Unmount detaches every local subscription. The machine keeps cursors,
-	// so a later remount reattaches from each Generation's latest processed
-	// event, and no server-owned Active Generation is ever cancelled here.
+	//  Unmount releases local subscriptions and text. A later mount resumes from its page checkpoint;
+	// no server-owned Active Generation is cancelled here.
 	useEffect(() => {
 		return () => {
 			runner.dispose();
@@ -164,6 +164,7 @@ export function useGenerationController({
 	// joined dependency keys are needed.
 	useEffect(() => {
 		if (conversation === null) return;
+		streams.checkpoint(story.messages.flatMap((message) => message.swipes));
 		runner.dispatch({
 			type: "targets-observed",
 			conversationId: conversation.id,
@@ -181,7 +182,7 @@ export function useGenerationController({
 				};
 			}),
 		});
-	}, [runner, conversation, story]);
+	}, [runner, streams, conversation, story]);
 
 	// @approved
 	//  Each observed event moves a session's cursor; the workspace reads only what changes when a session starts,

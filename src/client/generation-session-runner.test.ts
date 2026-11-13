@@ -6,10 +6,10 @@ import type {
 	GenerationStreamSubscription,
 } from "./conversation-stream";
 import { createGenerationSessionRunner } from "./generation-session-runner";
+import { createVariantStreams } from "./story/variant-streams";
 import { NetworkError } from "./lib/request-outcome";
 import { hasActiveGenerationSessions } from "./generation-sessions";
 import type {
-	GenerationSessionStoryEffect,
 	GenerationSessionsState,
 	GenerationSessionTarget,
 } from "./generation-sessions";
@@ -71,12 +71,12 @@ const fakeStream = (): FakeStream => {
 };
 
 interface Host {
-	storyEffects: GenerationSessionStoryEffect[];
+	streams: ReturnType<typeof createVariantStreams>;
 	refreshes: number[];
 }
 
 const host = (): Host => ({
-	storyEffects: [],
+	streams: createVariantStreams(),
 	refreshes: [],
 });
 
@@ -96,7 +96,8 @@ const retryUntil = async (done: Promise<void>): Promise<void> => {
 const runnerWith = (stream: FakeStream, spy: Host) =>
 	createGenerationSessionRunner({
 		adapter: stream.adapter,
-		applyStoryEffect: (effect) => spy.storyEffects.push(effect),
+		streams: spy.streams,
+		getVariant: () => undefined,
 		refreshConversation: async (conversationId) => { spy.refreshes.push(conversationId); },
 	});
 
@@ -113,7 +114,8 @@ describe("the Generation session runner", () => {
 		const recovered = Promise.withResolvers<void>();
 		const runner = createGenerationSessionRunner({
 			adapter: stream.adapter,
-			applyStoryEffect: () => {},
+			streams: createVariantStreams(),
+			getVariant: () => undefined,
 			refreshConversation: async () => {
 				if (++attempts < 3) throw new NetworkError("Server is down");
 				runner.dispatch(observeTargets([]));
@@ -135,7 +137,8 @@ describe("the Generation session runner", () => {
 		const recovered = Promise.withResolvers<void>();
 		const runner = createGenerationSessionRunner({
 			adapter: stream.adapter,
-			applyStoryEffect: () => {},
+			streams: createVariantStreams(),
+			getVariant: () => undefined,
 			refreshConversation: async () => {
 				if (++attempts === 1) throw new NetworkError("Server is down");
 				runner.dispatch(observeTargets([7]));
@@ -158,7 +161,8 @@ describe("the Generation session runner", () => {
 			let refreshSignal: AbortSignal | undefined;
 			const runner = createGenerationSessionRunner({
 				adapter: stream.adapter,
-				applyStoryEffect: () => {},
+				streams: createVariantStreams(),
+				getVariant: () => undefined,
 				refreshConversation: async (_conversationId, signal) => {
 					attempts++;
 					refreshSignal = signal;
@@ -183,7 +187,8 @@ describe("the Generation session runner", () => {
 		let attempts = 0;
 		const runner = createGenerationSessionRunner({
 			adapter: stream.adapter,
-			applyStoryEffect: () => {},
+			streams: createVariantStreams(),
+			getVariant: () => undefined,
 			refreshConversation: async () => {
 				if (++attempts === 1) throw new Error("Invalid Conversation response");
 				runner.dispatch(observeTargets([]));
@@ -200,7 +205,7 @@ describe("the Generation session runner", () => {
 		} finally { runner.dispose(); }
 	});
 
-	test("opens subscriptions through the adapter and routes observations to story effects", () => {
+	test("opens subscriptions through the adapter and routes observations to Variant streams", () => {
 		const stream = fakeStream();
 		const spy = host();
 		const runner = runnerWith(stream, spy);
@@ -215,19 +220,73 @@ describe("the Generation session runner", () => {
 
 		stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("Hello") });
 		stream.requests[0]!.onEvent({ eventId: 2, event: { type: "reasoning", text: "Plan" } });
-		expect(spy.storyEffects).toEqual([
-			{ kind: "story", mode: "append", stream: "content", messageId: 907, variantId: 9_007, text: "Hello", generationId: 7, eventId: 1 },
-			{ kind: "story", mode: "append", stream: "reasoning", messageId: 907, variantId: 9_007, text: "Plan", generationId: 7, eventId: 2 },
-		]);
+		// Reject routing Content and Reasoning into different Variants or dropping either stream.
+		expect(spy.streams.get(9_007)).toEqual({ generationId: 7, eventId: 2, content: "Hello", reasoning: "Plan" });
 
 		stream.requests[0]!.onState(stateSnapshot({
-			content: "Hello",
-			reasoning: "Plan",
-			latestEventId: 2,
+			content: "Checkpoint",
+			reasoning: "Revised plan",
+			latestEventId: 3,
 		}));
-		expect(spy.storyEffects.slice(2)).toEqual([
-			{ kind: "story", mode: "replace", messageId: 907, variantId: 9_007, content: "Hello", reasoning: "Plan", generationId: 7, eventId: 2 },
-		]);
+		// Reject treating a state snapshot as an append or leaving its Reasoning stale.
+		expect(spy.streams.get(9_007)).toEqual({ generationId: 7, eventId: 3, content: "Checkpoint", reasoning: "Revised plan" });
+	});
+
+	test("a checkpoint observed before the first subscription survives an off-window delta", () => {
+		const stream = fakeStream();
+		const spy = host();
+		const runner = runnerWith(stream, spy);
+		spy.streams.checkpoint([{ id: 9_007, position: 1, content: "One. Two.", reasoning: "", empty: false, hasReasoning: false, generationId: 7, lastEventId: 2 }]);
+		runner.dispatch({ type: "targets-observed", conversationId: 42, targets: [{ ...target(7), initialEventId: 2 }] });
+		stream.requests[0]!.onEvent({ eventId: 3, event: contentEvent(" Three.") });
+		// Reject collecting the new Chat's checkpoint along with the previous Chat's streams.
+		expect(spy.streams.get(9_007)?.content).toBe("One. Two. Three.");
+		runner.dispose();
+	});
+
+	for (const end of ["applied", "stopped", "not-found", "failed", "snapshot", "deleted", "switch", "implicit-switch", "dispose"] as const) {
+		test(`${end} releases accumulated Variant text`, async () => {
+			const stream = fakeStream();
+			const spy = host();
+			const runner = runnerWith(stream, spy);
+			runner.dispatch(observeTargets([7, 8]));
+			stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("Finished text") });
+			stream.requests[1]!.onEvent({ eventId: 1, event: contentEvent("Still generating") });
+			if (end === "dispose") runner.dispose();
+			else if (end === "switch") runner.dispatch({ type: "conversation-switched" });
+			else if (end === "implicit-switch") runner.dispatch({ type: "targets-observed", conversationId: 43, targets: [] });
+			else if (end === "deleted") runner.dispatch(observeTargets([8]));
+			else if (end === "snapshot") stream.requests[0]!.onState({ ...stateSnapshot({ content: "Final", latestEventId: 2 }), status: "complete" });
+			else {
+				stream.settle(0, end === "failed" ? { outcome: end, reason: "Provider failed" } : { outcome: end });
+			}
+			await flushSubscriptions();
+			// Reject keeping completed, deleted, or abandoned Chat text for the workspace lifetime.
+			expect(spy.streams.get(9_007)).toBeUndefined();
+			if (!["switch", "implicit-switch", "dispose"].includes(end)) {
+				// Reject collecting another active Generation just because it has no mounted Message.
+				expect(spy.streams.get(9_008)?.content).toBe("Still generating");
+			}
+			runner.dispose();
+		});
+	}
+
+	for (const implicit of [false, true]) test(`returning after an ${implicit ? "implicit" : "explicit"} Chat switch replays discarded text`, () => {
+		const stream = fakeStream();
+		const spy = host();
+		const runner = runnerWith(stream, spy);
+		runner.dispatch(observeTargets([7]));
+		stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("One.") });
+		if (implicit) runner.dispatch({ type: "targets-observed", conversationId: 43, targets: [] });
+		else runner.dispatch({ type: "conversation-switched" });
+		runner.dispatch(observeTargets([7]));
+		// Reject reusing a cursor after its accumulated text was discarded.
+		expect(stream.requests[1]?.afterEventId).toBe(0);
+		stream.requests[1]!.onEvent({ eventId: 1, event: contentEvent("One.") });
+		stream.requests[1]!.onEvent({ eventId: 2, event: contentEvent(" Two.") });
+		// Reject suppressing replay at the session cursor even if transport requested it correctly.
+		expect(spy.streams.get(9_007)?.content).toBe("One. Two.");
+		runner.dispose();
 	});
 
 	test("a terminal settle requests the authoritative refresh for the active Conversation", async () => {

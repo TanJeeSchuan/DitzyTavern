@@ -93,7 +93,7 @@ export type GenerationSessionsAction =
 	| { type: "generation-accepted"; target: GenerationAttemptTarget }
 	// @approved
 	//  The view is leaving the current Chat: every live local subscription of
-	// the active Conversation detaches (cursors persist), terminal sessions
+	// the active Conversation detaches (cursors reset), terminal sessions
 	// are collected, and no server-owned Generation is ever stopped.
 	| { type: "conversation-switched" }
 	| { type: "event-observed"; generationId: number; eventId: number; event: GenerationEvent }
@@ -173,7 +173,7 @@ const livePhases: ReadonlySet<GenerationSessionPhase> = new Set(["subscribing", 
 
 // @approved
 //  Detach every live session of one Conversation: local subscriptions close
-// (unsubscribe effects) while cursors and identity persist for reattachment.
+// (unsubscribe effects). Text is released with the Chat, so reattachment starts at a fresh page checkpoint.
 const detachConversationSessions = (
 	sessions: ReadonlyMap<number, GenerationSession>,
 	conversationId: number,
@@ -181,9 +181,9 @@ const detachConversationSessions = (
 	const next = new Map(sessions);
 	const effects: GenerationSessionEffect[] = [];
 	for (const [generationId, session] of next) {
-		if (session.conversationId !== conversationId || !livePhases.has(session.phase)) continue;
-		next.set(generationId, { ...session, phase: "detached" });
-		effects.push({ kind: "unsubscribe", generationId });
+		if (session.conversationId !== conversationId || session.terminal !== null) continue;
+		next.set(generationId, { ...session, phase: "detached", lastEventId: 0 });
+		if (livePhases.has(session.phase)) effects.push({ kind: "unsubscribe", generationId });
 	}
 	return { sessions: next, effects };
 };
