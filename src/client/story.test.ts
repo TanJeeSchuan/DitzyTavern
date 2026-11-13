@@ -12,10 +12,12 @@ import {
 	reusesTrailingHumanMessage,
 	shownMessage,
 	visibleVariantContent,
+	type StoryAction,
 	type StoryPreviewState,
 	type StoryMessage,
 	type StoryState,
 } from "./story";
+import { createVariantStreams, streamedVariant, type VariantObservation } from "./story/variant-streams";
 
 // Focused client-state tests without a frontend framework: page
 // accumulation, selected-Variant updates, empty placeholders, and the
@@ -49,6 +51,35 @@ const createReadyStory = () => readyStory(reduceStory(
 	reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }),
 	{ type: "window-received", page: page() },
 ));
+
+// @approved
+//  The story as the writer reads it: pages through the reducer, stream observations through the Variant streams.
+const reader = (initial = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 })) => {
+	const streams = createVariantStreams();
+	let state = initial;
+	const placed = ({ messageId, variantId }: VariantObservation) =>
+		state.messages.find((entry) => entry.id === messageId)?.swipes.find((variant) => variant.id === variantId);
+	return {
+		get state() { return state; },
+		receive(received: ChatHistoryPage, activeGenerationIds?: number[]) {
+			const action: Extract<StoryAction, { type: "window-received" }> = { type: "window-received", page: received };
+			if (activeGenerationIds !== undefined) action.activeGenerationIds = activeGenerationIds;
+			state = reduceStory(state, action);
+		},
+		observe(...observations: VariantObservation[]) {
+			for (const observation of observations) streams.observe(observation, placed(observation));
+		},
+		shown(variantId: number) {
+			const variant = state.messages.flatMap((entry) => entry.swipes).find((entry) => entry.id === variantId);
+			return variant && streamedVariant(variant, streams.get(variantId));
+		},
+	};
+};
+const target = { messageId: 10, variantId: 100, generationId: 55 };
+const append = (eventId: number, text: string, stream: "content" | "reasoning" = "content", at = target): VariantObservation =>
+	({ ...at, eventId, mode: "append", stream, text });
+const replace = (eventId: number, content: string, reasoning = "", at = target): VariantObservation =>
+	({ ...at, eventId, mode: "replace", content, reasoning });
 
 const message = (
 	overrides: Partial<Omit<
@@ -505,104 +536,52 @@ describe("story reading state", () => {
 });
 
 describe("streaming Provisional Variant content", () => {
+	const provisional = { id: 100, position: 1, content: "", empty: true, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
+		liveGeneration: { generationId: 55, eventId: 0, content: "", reasoning: "" } };
 	const stateWithProvisional = () => {
-		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
-		state = reduceStory(state, {
-			type: "window-received",
-			page: page({
-				revision: 4,
-				messages: [message({
-					id: 10,
-					variants: [
-						{ id: 100, position: 1, content: "", empty: true, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
-							liveGeneration: { generationId: 55, eventId: 0, content: "", reasoning: "" } },
-					],
-				})],
-			}),
-		});
-		return state;
+		const story = reader();
+		story.receive(page({ revision: 4, messages: [message({ id: 10, variants: [provisional] })] }));
+		return story;
 	};
 
-	const variantContent = (state: ReturnType<typeof createStoryState>, variantId: number) =>
-		state.messages[0]?.swipes.find((variant) => variant.id === variantId);
-
 	for (const observedLive of [false, true]) test(`terminal history rejects later replay after live history was ${observedLive ? "observed" : "not observed"}`, () => {
-		let state = observedLive ? stateWithProvisional() : reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
+		const story = observedLive ? stateWithProvisional() : reader();
 		const content = "The tide turns against the pier.\n\nThen the";
-		state = reduceStory(state, {
-			type: "window-received", activeGenerationIds: [],
-			page: page({ revision: 5, messages: [message({ id: 10, variants: [{
-				id: 100, position: 1, content, empty: false, hasReasoning: true, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
-			}] })] }),
-		});
+		story.receive(page({ revision: 5, messages: [message({ id: 10, variants: [{
+			id: 100, position: 1, content, empty: false, hasReasoning: true, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
+		}] })] }), []);
 		for (const [index, text] of ["The tide turns against the pier.\n\n", "Then the"].entries()) {
-			state = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 100, generationId: 55, eventId: index + 1, text });
-			expect(variantContent(state, 100)?.content).toBe(content);
+			story.observe(append(index + 1, text));
+			expect(story.shown(100)?.content).toBe(content);
 		}
-		state = reduceStory(state, { type: "generation-observed", mode: "replace", messageId: 10, variantId: 100, generationId: 55, eventId: 3, content: "Stale checkpoint", reasoning: "Stale thought" });
-		expect(variantContent(state, 100)?.content).toBe(content);
-		expect(variantContent(state, 100)?.reasoning).toBe("");
-		expect(variantContent(state, 100)?.hasReasoning).toBe(true);
+		story.observe(replace(3, "Stale checkpoint", "Stale thought"));
+		expect(story.shown(100)).toMatchObject({ content, reasoning: "", hasReasoning: true });
 	});
 
 	test("Content deltas append to the Provisional Variant and update the empty placeholder", () => {
-		let state = stateWithProvisional();
-		state = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 100, text: "Once upon ", generationId: 55, eventId: 1 });
-		state = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 100, text: "a time", generationId: 55, eventId: 2 });
-
-		const variant = variantContent(state, 100);
-		expect(variant?.content).toBe("Once upon a time");
-		expect(variant?.empty).toBe(false);
+		const story = stateWithProvisional();
+		story.observe(append(1, "Once upon "), append(2, "a time"));
+		expect(story.shown(100)).toMatchObject({ content: "Once upon a time", empty: false });
 	});
 
 	test("an authoritative Content replace overwrites the accumulated text", () => {
-		let state = stateWithProvisional();
-		state = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 100, text: "Stale tail", generationId: 55, eventId: 1 });
-		state = reduceStory(state, { type: "generation-observed", mode: "replace", messageId: 10, variantId: 100, content: "Authoritative", reasoning: "", generationId: 55, eventId: 2 });
-
-		expect(variantContent(state, 100)?.content).toBe("Authoritative");
+		const story = stateWithProvisional();
+		story.observe(append(1, "Stale tail"), replace(2, "Authoritative"));
+		expect(story.shown(100)?.content).toBe("Authoritative");
 	});
 
 	test("Reasoning Content streams separately, and authoritative history hands it to the Variant text read", () => {
-		let state = stateWithProvisional();
-		state = reduceStory(state, {
-			type: "generation-observed",
-			stream: "reasoning",
-			mode: "append",
-			messageId: 10,
-			variantId: 100,
-			text: "First thought. ",
-			generationId: 55,
-			eventId: 1,
-		});
-		state = reduceStory(state, {
-			type: "generation-observed",
-			mode: "replace",
-			messageId: 10,
-			variantId: 100,
-			reasoning: "Authoritative thought.",
-			content: "Finished.",
-			generationId: 55,
-			eventId: 2,
-		});
+		const story = stateWithProvisional();
+		story.observe(append(1, "First thought. ", "reasoning"));
+		expect(story.shown(100)).toMatchObject({ content: "", reasoning: "First thought. ", hasReasoning: true });
+		story.observe(replace(2, "Finished.", "Authoritative thought."));
+		expect(story.shown(100)?.reasoning).toBe("Authoritative thought.");
 
-		expect(variantContent(state, 100)?.reasoning).toBe("Authoritative thought.");
-
-		state = reduceStory(state, {
-			type: "window-received",
-			page: page({
-				revision: 5,
-				messages: [message({
-					id: 10,
-					variants: [
-						{ id: 100, position: 1, content: "Finished.", empty: false, hasReasoning: true, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
-					],
-				})],
-			}),
-		});
-
+		story.receive(page({ revision: 5, messages: [message({ id: 10, variants: [
+			{ id: 100, position: 1, content: "Finished.", empty: false, hasReasoning: true, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
+		] })] }));
 		// A stream that missed its end must not stand in for the persisted text.
-		expect(variantContent(state, 100)).toMatchObject({ content: "Finished.", reasoning: "", hasReasoning: true });
+		expect(story.shown(100)).toMatchObject({ content: "Finished.", reasoning: "", hasReasoning: true });
 	});
 
 	test("a Variant the page stops carrying is read again, not kept from the earlier page", () => {
@@ -615,129 +594,74 @@ describe("streaming Provisional Variant content", () => {
 			variant(100, "Before the other tab's edit.", selectedId === 100),
 			variant(101, "Other.", selectedId === 101),
 		] })] });
-		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
-		state = reduceStory(state, { type: "window-received", page: at(4, 100) });
-		state = reduceStory(state, { type: "window-received", page: at(6, 101) });
-		expect(variantContent(state, 100)?.content).toBeNull();
-		expect(variantContent(state, 101)?.content).toBe("Other.");
+		const story = reader();
+		story.receive(at(4, 100));
+		story.receive(at(6, 101));
+		expect(story.shown(100)?.content).toBeNull();
+		expect(story.shown(101)?.content).toBe("Other.");
 	});
 
-	test("stream events that land before the page placing their Variant replay once it arrives", () => {
-		const observe = (eventId: number, text: string) => ({
-			type: "generation-observed" as const, stream: "content" as const, mode: "append" as const,
-			messageId: 11, variantId: 110, generationId: 55, eventId, text,
-		});
-		const provisional = (live: { eventId: number; content: string } | null, content = "") => {
-			const variant: ChatHistoryPage["messages"][number]["variants"][number] = {
-				id: 110, position: 1, content, empty: content === "", hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
-			};
-			if (live) variant.liveGeneration = { generationId: 55, eventId: live.eventId, content: live.content, reasoning: "" };
-			return page({ messages: [message({ id: 11, variants: [variant] })] });
+	const unplaced = { messageId: 11, variantId: 110, generationId: 55 };
+	const placing = (live: { eventId: number; content: string } | null, content = "") => {
+		const variant: ChatHistoryPage["messages"][number]["variants"][number] = {
+			id: 110, position: 1, content, empty: content === "", hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
 		};
-		const early = [observe(1, "The tide."), observe(2, " The lights."), observe(3, " Then the")]
-			.reduce(reduceStory, reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }));
+		if (live) variant.liveGeneration = { generationId: 55, eventId: live.eventId, content: live.content, reasoning: "" };
+		return page({ messages: [message({ id: 11, variants: [variant] })] });
+	};
 
-		const live = reduceStory(early, { type: "window-received", page: provisional({ eventId: 0, content: "" }), activeGenerationIds: [55] });
-		expect(variantContent(live, 110)?.content).toBe("The tide. The lights. Then the");
+	test("stream events that land before the page placing their Variant show once it arrives", () => {
+		const early = () => {
+			const story = reader();
+			story.observe(append(1, "The tide.", "content", unplaced), append(2, " The lights.", "content", unplaced), append(3, " Then the", "content", unplaced));
+			return story;
+		};
+		const live = early();
+		live.receive(placing({ eventId: 0, content: "" }), [55]);
+		expect(live.shown(110)?.content).toBe("The tide. The lights. Then the");
 
-		const checkpointed = reduceStory(early, { type: "window-received", page: provisional({ eventId: 2, content: "The tide. The lights." }), activeGenerationIds: [55] });
-		expect(variantContent(checkpointed, 110)?.content).toBe("The tide. The lights. Then the");
+		const checkpointed = early();
+		checkpointed.receive(placing({ eventId: 2, content: "The tide. The lights." }), [55]);
+		expect(checkpointed.shown(110)?.content).toBe("The tide. The lights. Then the");
 
-		const finished = reduceStory(early, { type: "window-received", page: provisional(null, "The tide. The lights. Then the end.") });
-		expect(variantContent(finished, 110)?.content).toBe("The tide. The lights. Then the end.");
-		expect(finished.unplacedObservations).toEqual([]);
+		const finished = early();
+		finished.receive(placing(null, "The tide. The lights. Then the end."));
+		expect(finished.shown(110)?.content).toBe("The tide. The lights. Then the end.");
 	});
 
 	test("held stream events survive a jump back to the latest Messages, and a snapshot supersedes earlier ones", () => {
-		const observe = (eventId: number, text: string) => ({
-			type: "generation-observed" as const, stream: "content" as const, mode: "append" as const,
-			messageId: 11, variantId: 110, generationId: 55, eventId, text,
-		});
-		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
-		state = reduceStory(state, { type: "window-received", page: page({ page: { index: 2, pageSize: 2, totalMessages: 4, totalPages: 2, hasOlder: false, hasNewer: true } }) });
-		state = [observe(1, "One."), observe(2, " Two."), observe(3, " Three.")].reduce(reduceStory, state);
-		const latest = page({
-			messages: [message({
-				id: 11,
-				variants: [{
-					id: 110, position: 1, content: "", empty: true, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
-					liveGeneration: { generationId: 55, eventId: 1, content: "One.", reasoning: "" },
-				}],
-			})],
-		});
-		const returned = reduceStory(state, { type: "window-received", page: latest, activeGenerationIds: [55] });
-		expect(variantContent(returned, 110)?.content).toBe("One. Two. Three.");
+		const detached = () => {
+			const story = reader();
+			story.receive(page({ page: { index: 2, pageSize: 2, totalMessages: 4, totalPages: 2, hasOlder: false, hasNewer: true } }));
+			story.observe(append(1, "One.", "content", unplaced), append(2, " Two.", "content", unplaced), append(3, " Three.", "content", unplaced));
+			return story;
+		};
+		const latest = placing({ eventId: 1, content: "One." });
+		const returned = detached();
+		returned.receive(latest, [55]);
+		expect(returned.shown(110)?.content).toBe("One. Two. Three.");
 
-		const snapshot = reduceStory(state, {
-			type: "generation-observed", mode: "replace", messageId: 11, variantId: 110, generationId: 55, eventId: 4, content: "One. Two. Three. Four.", reasoning: "",
-		});
-		expect(snapshot.unplacedObservations).toHaveLength(1);
-		const staleSnapshot = reduceStory(state, {
-			type: "generation-observed", mode: "replace", messageId: 11, variantId: 110, generationId: 55, eventId: 1, content: "One.", reasoning: "",
-		});
-		expect(variantContent(reduceStory(staleSnapshot, { type: "window-received", page: latest, activeGenerationIds: [55] }), 110)?.content).toBe("One. Two. Three.");
-		const finished = reduceStory(state, { type: "window-received", page: page(), activeGenerationIds: [] });
-		expect(finished.unplacedObservations).toEqual([]);
+		const snapshot = detached();
+		snapshot.observe(replace(4, "One. Two. Three. Four.", "", unplaced));
+		snapshot.receive(latest, [55]);
+		expect(snapshot.shown(110)?.content).toBe("One. Two. Three. Four.");
+
+		const staleSnapshot = detached();
+		staleSnapshot.observe(replace(1, "One.", "", unplaced));
+		staleSnapshot.receive(latest, [55]);
+		expect(staleSnapshot.shown(110)?.content).toBe("One. Two. Three.");
 	});
 
 	test("history checkpoint and replay resume share one ordered projection", () => {
-		let state = reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 });
-		state = reduceStory(state, {
-			type: "window-received",
-			page: page({
-				messages: [message({
-					id: 10,
-					variants: [{
-						id: 100,
-						position: 1,
-						content: "Saved",
-						empty: false,
-						hasReasoning: false,
-						timestamp: "2026-01-01T00:00:00.000Z",
-						selected: true,
-						liveGeneration: {
-							generationId: 55,
-							eventId: 1,
-							content: "Saved",
-							reasoning: "",
-						},
-					}],
-				})],
-			}),
-			activeGenerationIds: [55],
-		});
-		state = reduceStory(state, {
-			type: "generation-observed",
-			stream: "content",
-			mode: "append",
-			messageId: 10,
-			variantId: 100,
-			generationId: 55,
-			eventId: 1,
-			text: "Saved",
-		});
-		expect(variantContent(state, 100)?.content).toBe("Saved");
-
-		state = reduceStory(state, {
-			type: "generation-observed",
-			stream: "content",
-			mode: "append",
-			messageId: 10,
-			variantId: 100,
-			generationId: 55,
-			eventId: 2,
-			text: " next",
-		});
-		expect(variantContent(state, 100)?.content).toBe("Saved next");
-	});
-
-	test("deltas ignore Variants and Messages that are not in the current read model", () => {
-		const state = stateWithProvisional();
-		const untouched = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 999, variantId: 100, text: "x", generationId: 55, eventId: 1 });
-		const unknownVariant = reduceStory(state, { type: "generation-observed", stream: "content", mode: "append", messageId: 10, variantId: 999, text: "x", generationId: 55, eventId: 1 });
-
-		expect(variantContent(untouched, 100)?.content).toBe("");
-		expect(variantContent(unknownVariant, 100)?.content).toBe("");
+		const story = reader();
+		story.receive(page({ messages: [message({ id: 10, variants: [{
+			id: 100, position: 1, content: "Saved", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
+			liveGeneration: { generationId: 55, eventId: 1, content: "Saved", reasoning: "" },
+		}] })] }), [55]);
+		story.observe(append(1, "Saved"));
+		expect(story.shown(100)?.content).toBe("Saved");
+		story.observe(append(2, " next"));
+		expect(story.shown(100)?.content).toBe("Saved next");
 	});
 });
 
@@ -785,25 +709,25 @@ describe("detached story windows", () => {
 		expect(reduceStory(refreshed, { type: "window-received", page: selectedElsewhere }).preview).toBeNull();
 	});
 
-	test("live observations outside the window never insert Messages and visible observations still apply", () => {
-		const state = detachLive();
-		const outside = reduceStory(state, { type: "generation-observed", mode: "replace", messageId: 8, variantId: 80, generationId: 1, eventId: 1, content: "Outside", reasoning: "" });
-		expect(outside.messages).toEqual(state.messages);
-		const inside = reduceStory(outside, { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 1, text: " continues" });
-		expect(inside.messages.at(-1)?.swipes[0]?.content).toBe("Message 4 continues");
-		expect(inside.messages).toHaveLength(2);
+	test("live observations apply to a Message in a detached window", () => {
+		const story = reader(detachLive());
+		story.observe(append(1, " continues", "content", { messageId: 4, variantId: 40, generationId: 2 }));
+		expect(story.shown(40)?.content).toBe("Message 4 continues");
 	});
 
 	test("authoritative refreshes update only loaded Messages and preserve a newer live checkpoint", () => {
-		const state = reduceStory(detachLive(), { type: "generation-observed", mode: "append", stream: "content", messageId: 4, variantId: 40, generationId: 2, eventId: 2, text: " streaming" });
-		const refreshed = reduceStory(state, { type: "window-received", page: history(2, [3, 4], 7), activeGenerationIds: [2] });
-		expect(refreshed.messages.map(({ id }) => id)).toEqual([3, 4]);
-		expect(refreshed.messages.at(-1)?.swipes[0]?.content).toBe("Message 4 streaming");
+		const story = reader(detachLive());
+		story.observe(append(2, " streaming", "content", { messageId: 4, variantId: 40, generationId: 2 }));
+		const refreshed = history(2, [3, 4], 7);
+		refreshed.messages[1]!.variants[0]!.liveGeneration = { generationId: 2, eventId: 1, content: "Message 4", reasoning: "" };
+		story.receive(refreshed, [2]);
+		expect(story.state.messages.map(({ id }) => id)).toEqual([3, 4]);
+		expect(story.shown(40)?.content).toBe("Message 4 streaming");
 		const final = history(2, [3, 4], 7);
 		final.messages[1]!.variants[0]!.content = "Finished";
-		const settled = reduceStory(refreshed, { type: "window-received", page: final });
-		expect(settled.messages.at(-1)?.swipes[0]?.content).toBe("Finished");
-		expect(readyStory(settled).page.hasNewer).toBe(true);
+		story.receive(final);
+		expect(story.shown(40)?.content).toBe("Finished");
+		expect(readyStory(story.state).page.hasNewer).toBe(true);
 	});
 
 	test("a detached final visible Message needs Swipe preview", () => {

@@ -21,9 +21,9 @@ import {
 } from "./generation-sessions";
 
 // @approved
-// The host surfaces the runner's outward effects. Story effects are mapped
-//  by the host (which owns the story reducer boundary); refresh requests go
-// to the authoritative Conversation read.
+// The host surfaces the runner's outward effects. Story effects go to the
+//  host's Variant streams, beside story state; refresh requests go to the
+// authoritative Conversation read.
 export interface GenerationSessionRunnerHost {
 	adapter: GenerationStreamAdapter;
 	applyStoryEffect: (effect: GenerationSessionStoryEffect) => void;

@@ -25,8 +25,8 @@ export interface StoryVariant {
 	// Variant than the selected one loads through the Variant text read.
 	content: string | null;
 	// @approved
-	//  Reasoning Content stays separate from authored Content. Active streams
-	// update it locally; persisted Reasoning Content, which `hasReasoning`
+	//  Reasoning Content stays separate from authored Content. A page carries a
+	// live Generation's; persisted Reasoning Content, which `hasReasoning`
 	// announces, loads through the Variant text read when it is opened.
 	reasoning?: string;
 	hasReasoning: boolean;
@@ -106,11 +106,6 @@ interface StoryContent {
 	// A Generation start the server has not accepted yet, and once it has, its accepted target. A page placing the
 	// target's Variant, or authority showing the Generation ended, retires it.
 	requestedGeneration: { request: RequestedGeneration; accepted: { generationId: number; variantId: number; sentRevision: number } | null } | null;
-	// @approved
-	//  Stream observations for a Variant no page has placed yet. A page can land after the events for the
-	// Message it introduces, or after a jump to the latest Messages; they replay once their Variant arrives with
-	// the same live Generation. Snapshots replace covered events; authoritative refreshes retire ended Generations.
-	unplacedObservations: readonly GenerationObservation[];
 }
 
 export type StoryState = StoryContent & (
@@ -121,8 +116,6 @@ export type StoryState = StoryContent & (
 
 export const isStoryReady = (state: StoryState): state is Extract<StoryState, { status: "ready" }> =>
 	state.status === "ready";
-
-type GenerationObservation = Extract<StoryAction, { type: "generation-observed" }>;
 
 export type StoryAction =
 	// @approved
@@ -148,32 +141,6 @@ export type StoryAction =
 	| { type: "generation-requested"; request: RequestedGeneration }
 	| { type: "generation-request-accepted"; generationId: number; variantId: number; sentRevision: number }
 	| { type: "generation-request-failed" }
-	// @approved
-	//  One observation of an Active Generation's stream for the Provisional
-	// Variant. An authoritative snapshot replaces both accumulated fields
-	// atomically — the wire snapshot carries content and reasoning together
-	// under one event id — and a streaming delta appends to the stream it
-	// belongs to. The Generation session machine is the only producer.
-	| {
-			type: "generation-observed";
-			messageId: number;
-			variantId: number;
-			mode: "replace";
-			content: string;
-			reasoning: string;
-			generationId: number;
-			eventId: number;
-		}
-	| {
-			type: "generation-observed";
-			messageId: number;
-			variantId: number;
-			stream: "content" | "reasoning";
-			mode: "append";
-			text: string;
-			generationId: number;
-			eventId: number;
-		}
 	| { type: "preview-started"; messageId: number; variantId: number }
 	// @approved
 	//  Swiping the already-previewed Message moves the local Preview to another
@@ -190,29 +157,16 @@ export const createStoryState = (): StoryState => ({
 	requestedSelections: new Map(),
 	requestedMoves: new Map(),
 	requestedGeneration: null,
-	unplacedObservations: [],
 });
 
 // @approved
 //  An exact empty Variant is presented with a placeholder; whitespace-only
-// content is not empty and renders as stored.
-const toStoryVariant = (
-	variant: ChatHistoryVariant,
-	prior?: StoryVariant,
-	activeGenerationIds: ReadonlySet<number> = new Set(),
-): StoryVariant => {
+// content is not empty and renders as stored. The page is the authority: text
+// it leaves out is read again rather than kept from an earlier page, which
+// another tab's edit may have outdated. A live Generation's newer streamed
+// text stays with the Message showing it (story/variant-streams).
+const toStoryVariant = (variant: ChatHistoryVariant): StoryVariant => {
 	const live = variant.liveGeneration;
-	if (
-		prior?.generationId !== undefined &&
-		activeGenerationIds.has(prior.generationId) &&
-		(live === undefined || (prior.lastEventId ?? 0) > live.eventId)
-	) {
-		return { ...prior, id: variant.id, position: variant.position };
-	}
-	// @approved
-	//  Outside a live Generation the page is the authority: text it leaves out
-	// is read again rather than kept from an earlier page, which another tab's
-	// edit may have outdated, or from a stream that may have missed its end.
 	const reasoning = live?.reasoning ?? "";
 	return {
 		id: variant.id,
@@ -226,11 +180,7 @@ const toStoryVariant = (
 	};
 };
 
-const toStoryMessage = (
-	message: ChatHistoryPage["messages"][number],
-	prior?: StoryMessage,
-	activeGenerationIds?: ReadonlySet<number>,
-): StoryMessage => ({
+const toStoryMessage = (message: ChatHistoryPage["messages"][number]): StoryMessage => ({
 	id: message.id,
 	position: message.position,
 	timestamp: message.timestamp,
@@ -245,11 +195,7 @@ const toStoryMessage = (
 		0,
 		message.variants.findIndex((variant) => variant.selected),
 	),
-	swipes: message.variants.map((variant) => toStoryVariant(
-		variant,
-		prior?.swipes.find((entry) => entry.id === variant.id),
-		activeGenerationIds,
-	)),
+	swipes: message.variants.map(toStoryVariant),
 	moves: message.moves,
 });
 
@@ -291,54 +237,7 @@ export const canOfferSiblingGeneration = ({
 	!previewActive &&
 	activeGenerationMessageIds.every((messageId) => messageId === message.id);
 
-const updateStoryVariant = (
-	state: StoryState,
-	messageId: number,
-	variantId: number,
-	update: (variant: StoryVariant) => StoryVariant,
-): StoryState => ({
-	...state,
-	messages: state.messages.map((message) =>
-		message.id !== messageId
-			? message
-			: {
-					...message,
-					swipes: message.swipes.map((variant) =>
-						variant.id !== variantId ? variant : update(variant),
-					),
-				},
-	),
-});
-
-const acceptsGenerationObservation = (
-	variant: StoryVariant,
-	generationId: number | undefined,
-	eventId: number | undefined,
-): boolean =>
-	(generationId === undefined ||
-		variant.generationId === generationId) &&
-	(eventId === undefined || eventId > (variant.lastEventId ?? 0));
-
-const findVariant = (state: StoryState, { messageId, variantId }: GenerationObservation) =>
-	state.messages.find((message) => message.id === messageId)?.swipes.find((variant) => variant.id === variantId);
-
 export function reduceStory(state: StoryState, action: StoryAction): StoryState {
-	if (action.type === "generation-observed" && findVariant(state, action) === undefined) {
-		const held = action.mode === "replace"
-			? state.unplacedObservations.filter((observation) => observation.generationId !== action.generationId || observation.eventId > action.eventId)
-			: state.unplacedObservations;
-		return { ...state, unplacedObservations: action.mode === "replace" ? [action, ...held] : [...held, action] };
-	}
-	const next = reduceStoryAction(state, action);
-	if (next.messages === state.messages || next.unplacedObservations.length === 0) return next;
-	const placed = next.unplacedObservations.filter((observation) => findVariant(next, observation) !== undefined);
-	if (placed.length === 0) return next;
-	const replayable = placed.filter((observation) => findVariant(next, observation)?.generationId === observation.generationId);
-	const unplacedObservations = next.unplacedObservations.filter((observation) => !placed.includes(observation));
-	return replayable.reduce(reduceStoryAction, { ...next, unplacedObservations });
-}
-
-function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 	switch (action.type) {
 		case "chat-opened":
 			return {
@@ -361,11 +260,7 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 				conversationId: action.page.conversationId,
 				title: action.page.name,
 				revision: action.page.revision,
-				messages: action.page.messages.map((message) => replaceEqualDeep(priorMessages.get(message.id), toStoryMessage(
-					message,
-					priorMessages.get(message.id),
-					activeGenerationIds,
-				))),
+				messages: action.page.messages.map((message) => replaceEqualDeep(priorMessages.get(message.id), toStoryMessage(message))),
 				page: action.page.page,
 				status: "ready",
 				loadingMore: false,
@@ -375,7 +270,6 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 					action.page.messages.some((message) => message.variants.some((variant) => variant.id === accepted.variantId)) ||
 					(action.page.revision > accepted.sentRevision && action.activeGenerationIds !== undefined && !activeGenerationIds.has(accepted.generationId))
 				) ? null : state.requestedGeneration,
-				unplacedObservations: state.unplacedObservations.filter(({ generationId }) => action.activeGenerationIds === undefined || activeGenerationIds.has(generationId)),
 			};
 		case "load-more-started":
 			return isStoryReady(state) && (state.page.hasOlder || state.page.hasNewer)
@@ -430,38 +324,6 @@ function reduceStoryAction(state: StoryState, action: StoryAction): StoryState {
 					return { ...message, activeSwipe: index };
 				}),
 			};
-		case "generation-observed":
-			return updateStoryVariant(state, action.messageId, action.variantId, (variant) => {
-				if (!acceptsGenerationObservation(variant, action.generationId, action.eventId)) return variant;
-				if (action.mode === "replace") {
-					return {
-						...variant,
-						content: action.content,
-						reasoning: action.reasoning,
-						hasReasoning: action.reasoning !== "",
-						empty: action.content === "",
-						generationId: action.generationId,
-						lastEventId: action.eventId,
-					};
-				}
-				if (action.stream === "content") {
-					const content = (variant.content ?? "") + action.text;
-					return {
-						...variant,
-						content,
-						empty: content === "",
-						generationId: action.generationId,
-						lastEventId: action.eventId,
-					};
-				}
-				return {
-					...variant,
-					reasoning: (variant.reasoning ?? "") + action.text,
-					hasReasoning: true,
-					generationId: action.generationId,
-					lastEventId: action.eventId,
-				};
-			});
 		case "preview-started": {
 			if (state.preview !== null) return state;
 			const message = state.messages.find((entry) => entry.id === action.messageId);

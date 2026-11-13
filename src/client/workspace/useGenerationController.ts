@@ -28,6 +28,7 @@ import {
 	firstActiveGenerationSessionFailure,
 	hasActiveGenerationSessions,
 	hasPendingGenerationStop,
+	type GenerationSessionsState,
 	type GenerationStopCommandOutcome,
 } from "../generation-sessions";
 import {
@@ -45,6 +46,7 @@ import {
 } from "../story";
 import { hasMoves, pickMoves, seatBound, type BoxMoves } from "../../shared/contract/box-generation";
 import { chatBoxDescriptor } from "../box-windows/registry";
+import { createVariantStreams } from "../story/variant-streams";
 import { clientFormattingContext } from "../lib/formatting-context";
 import { useAssemblyController } from "./useAssemblyController";
 
@@ -127,11 +129,18 @@ export function useGenerationController({
 	);
 	const nextStartIdRef = useRef(1);
 
+	// @approved
+	//  Streamed text bypasses story state, so a chunk re-renders only the Message showing it. Each observation
+	// builds on the page's live checkpoint, read from the latest story.
+	const [streams] = useState(createVariantStreams);
+	const latestStory = useRef(story);
+	latestStory.current = story;
 	const runnerRef = useRef<GenerationSessionRunner | null>(null);
 	if (runnerRef.current === null) {
 		runnerRef.current = createGenerationSessionRunner({
 			adapter: generationStreamAdapter,
-			applyStoryEffect: dispatchStory,
+			applyStoryEffect: (observation) => streams.observe(observation, latestStory.current.messages
+				.find((message) => message.id === observation.messageId)?.swipes.find((variant) => variant.id === observation.variantId)),
 			refreshConversation: async (conversationId, signal) => {
 				await refreshStory(conversationId, signal);
 			},
@@ -174,20 +183,23 @@ export function useGenerationController({
 		});
 	}, [runner, conversation, story]);
 
-	const sessions = useSyncExternalStore(runner.subscribe, runner.getSnapshot);
-	const hasSessions = hasActiveGenerationSessions(sessions);
-	const isGenerating = pendingStarts.size > 0 || hasSessions;
-	const stopPending = hasPendingGenerationStop(sessions);
-	const sessionFailure = firstActiveGenerationSessionFailure(sessions);
-	const sessionError = sessionFailure?.reason ?? null;
-	const failedImageModel = sessionFailure?.imageModel ?? null;
+	// @approved
+	//  Each observed event moves a session's cursor; the workspace reads only what changes when a session starts,
+	// stops or fails, so streaming does not re-render it.
+	const useSessions = <Value,>(select: (sessions: GenerationSessionsState) => Value) =>
+		useSyncExternalStore(runner.subscribe, () => select(runner.getSnapshot()));
+	const isGenerating = useSessions(hasActiveGenerationSessions) || pendingStarts.size > 0;
+	const stopPending = useSessions(hasPendingGenerationStop);
+	const sessionError = useSessions((sessions) => firstActiveGenerationSessionFailure(sessions)?.reason ?? null);
+	const failedImageModel = useSessions((sessions) => firstActiveGenerationSessionFailure(sessions)?.imageModel ?? null);
+	const sessionIds = useSessions((sessions) => [...sessions.sessions.keys()].join());
 
 	useEffect(() => {
 		dispatchPendingStarts({
 			type: "sessions-observed",
-			generationIds: new Set(sessions.sessions.keys()),
+			generationIds: new Set(runner.getSnapshot().sessions.keys()),
 		});
-	}, [pendingStarts, sessions]);
+	}, [pendingStarts, sessionIds, runner]);
 
 	const activeGenerationTargets = conversation === null
 		? []
@@ -343,6 +355,7 @@ export function useGenerationController({
 		});
 
 	return {
+		streams,
 		draft,
 		moves,
 		setMoves,

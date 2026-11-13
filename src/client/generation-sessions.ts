@@ -107,7 +107,7 @@ export type GenerationSessionsAction =
 	//  The user moved on (new start, new Stop): session errors stop being news.
 	| { type: "errors-acknowledged" };
 
-export type GenerationSessionStoryEffect = { kind: "story" } & Extract<import("./story").StoryAction, { type: "generation-observed" }>;
+export type GenerationSessionStoryEffect = { kind: "story" } & import("./story/variant-streams").VariantObservation;
 
 export type GenerationSessionEffect =
 	// @approved
@@ -357,7 +357,7 @@ const observeEvent = (
 	const effects: GenerationSessionEffect[] = [];
 	if (action.event.type === "content") {
 		effects.push({
-			kind: "story", type: "generation-observed", mode: "append", stream: "content",
+			kind: "story", mode: "append", stream: "content",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			text: action.event.text,
@@ -367,7 +367,7 @@ const observeEvent = (
 	}
 	if (action.event.type === "reasoning") {
 		effects.push({
-			kind: "story", type: "generation-observed", mode: "append", stream: "reasoning",
+			kind: "story", mode: "append", stream: "reasoning",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			text: action.event.text,
@@ -399,7 +399,7 @@ const observeState = (
 	const terminal = terminalFromStatus(action.state);
 	const effects: GenerationSessionEffect[] = [
 		{
-			kind: "story", type: "generation-observed", mode: "replace",
+			kind: "story", mode: "replace",
 			messageId: session.messageId,
 			variantId: session.variantId,
 			content: action.state.content,

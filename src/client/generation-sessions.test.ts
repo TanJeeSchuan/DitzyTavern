@@ -85,7 +85,7 @@ describe("the Generation session collection", () => {
 		});
 		state = first.state;
 		expect(first.effects).toEqual([
-			{ kind: "story", type: "generation-observed", mode: "append", stream: "content", messageId: 907, variantId: 9_007, text: "First ", generationId: 7, eventId: 1 },
+			{ kind: "story", mode: "append", stream: "content", messageId: 907, variantId: 9_007, text: "First ", generationId: 7, eventId: 1 },
 		]);
 		expect(stateText(state, 7)?.lastEventId).toBe(1);
 		expect(stateText(state, 8)?.lastEventId).toBe(0);
@@ -99,7 +99,7 @@ describe("the Generation session collection", () => {
 		});
 		state = second.state;
 		expect(second.effects).toEqual([
-			{ kind: "story", type: "generation-observed", mode: "append", stream: "content", messageId: 908, variantId: 9_008, text: "Second ", generationId: 8, eventId: 1 },
+			{ kind: "story", mode: "append", stream: "content", messageId: 908, variantId: 9_008, text: "Second ", generationId: 8, eventId: 1 },
 		]);
 		expect(stateText(state, 7)?.lastEventId).toBe(1);
 		expect(stateText(state, 8)?.lastEventId).toBe(1);
@@ -111,13 +111,13 @@ describe("the Generation session collection", () => {
 		const content = run(state, { type: "event-observed", generationId: 7, eventId: 1, event: contentEvent("Text") });
 		state = content.state;
 		expect(content.effects).toEqual([
-			{ kind: "story", type: "generation-observed", mode: "append", stream: "content", messageId: 907, variantId: 9_007, text: "Text", generationId: 7, eventId: 1 },
+			{ kind: "story", mode: "append", stream: "content", messageId: 907, variantId: 9_007, text: "Text", generationId: 7, eventId: 1 },
 		]);
 
 		const reasoning = run(state, { type: "event-observed", generationId: 7, eventId: 2, event: reasoningEvent("Thought") });
 		state = reasoning.state;
 		expect(reasoning.effects).toEqual([
-			{ kind: "story", type: "generation-observed", mode: "append", stream: "reasoning", messageId: 907, variantId: 9_007, text: "Thought", generationId: 7, eventId: 2 },
+			{ kind: "story", mode: "append", stream: "reasoning", messageId: 907, variantId: 9_007, text: "Thought", generationId: 7, eventId: 2 },
 		]);
 
 		const silent: GenerationEvent[] = [
@@ -206,7 +206,7 @@ describe("the Generation session collection", () => {
 		const applied = run(state, { type: "state-observed", generationId: 7, state: snapshot });
 		state = applied.state;
 		expect(applied.effects).toEqual([
-			{ kind: "story", type: "generation-observed", mode: "replace", messageId: 907, variantId: 9_007, content: "Checkpointed.", reasoning: "Private.", generationId: 7, eventId: 4 },
+			{ kind: "story", mode: "replace", messageId: 907, variantId: 9_007, content: "Checkpointed.", reasoning: "Private.", generationId: 7, eventId: 4 },
 		]);
 		expect(stateText(state, 7)?.lastEventId).toBe(4);
 		expect(stateText(state, 7)?.phase).toBe("observing");
