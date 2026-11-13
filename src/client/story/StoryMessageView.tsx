@@ -140,7 +140,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	const [changedElsewhere, setChangedElsewhere] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const openEditor = () => {
-		setEditText(active?.content ?? "");
+		if (!isEditing) setEditText(active?.content ?? "");
 		setEditBase(active?.content ?? "");
 		setChangedElsewhere(false);
 		setIsEditing(true);
