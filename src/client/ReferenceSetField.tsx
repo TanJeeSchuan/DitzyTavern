@@ -1,60 +1,12 @@
-import { useEffect, useId, useRef, useState, type Ref } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useId, useState, type Ref } from "react";
 import { MoreHorizontal, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AppSelect } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ProseEditor, type ProseEditorHandle } from "./editor/ProseEditor";
-import { commandPainting, illustrationsKey, usePaintingCommand } from "./painting";
+import { usePaintingCommand, type useReferenceDraft } from "./painting";
 import type { ReferenceSet } from "../shared/contract/painting";
-
-export function useReferenceDraft(conversationId: number, selected: ReferenceSet | undefined) {
-	const client = useQueryClient();
-	const [draft, setDraft] = useState<ReferenceSet | null>(null);
-	const [error, setError] = useState<string | null>(null);
-	const pending = useRef<ReferenceSet | null>(null);
-	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-	const saving = useRef(Promise.resolve(true));
-	const flush = () => {
-		clearTimeout(timer.current);
-		saving.current = saving.current.then(async () => {
-			const set = pending.current;
-			if (set === null) return true;
-			const result = await commandPainting(conversationId, { type: "save-reference-set", id: set.id, references: set.references });
-			if (result.outcome !== "available") {
-				setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The References could not be saved.");
-				return false;
-			}
-			if (pending.current === set) pending.current = null;
-			await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
-			return true;
-		});
-		return saving.current;
-	};
-	const flushOnUnmount = useRef(flush);
-	useEffect(() => { flushOnUnmount.current = flush; });
-	useEffect(() => () => void flushOnUnmount.current(), []);
-	return {
-		references: draft !== null && draft.id === selected?.id ? draft.references : selected?.references ?? "",
-		error,
-		edit: (references: string) => {
-			if (selected === undefined) return;
-			const set = { ...selected, references };
-			setDraft(set);
-			setError(null);
-			pending.current = set;
-			clearTimeout(timer.current);
-			timer.current = setTimeout(() => void flush(), 600);
-		},
-		flush,
-		discard: () => {
-			clearTimeout(timer.current);
-			pending.current = null;
-			return flush();
-		},
-	};
-}
 
 type Naming = { kind: "new" | "rename"; name: string };
 

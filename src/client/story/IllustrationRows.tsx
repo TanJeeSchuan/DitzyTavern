@@ -34,7 +34,7 @@ export function IllustrationRows({ conversationId, variantId }: { conversationId
 							<Button size="icon-sm" variant="ghost" aria-label="Illustration actions" title="Illustration actions"><MoreHorizontal aria-hidden="true" /></Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-auto">
-							<DropdownMenuItem disabled={actions.editBrief === null} title={actions.editBriefDisabledReason} onSelect={() => void adoptReferences(illustrationName(painting.ask), painting.references).then((adopted) => { if (adopted) actions.editBrief?.(variantId, painting.brief, painting.ask); })}>Edit Brief and repaint</DropdownMenuItem>
+							<DropdownMenuItem disabled={actions.editBrief === null} title={actions.editBriefDisabledReason} onSelect={() => void adoptReferences.adopt(illustrationName(painting.ask), painting.references).then((adopted) => { if (adopted) actions.editBrief?.(variantId, painting.brief, painting.ask); })}>Edit Brief and repaint</DropdownMenuItem>
 							<DropdownMenuItem disabled={pending} onSelect={() => void submit({ type: "keep-in-gallery", id: painting.id, variantId })}>Remove, keep in Gallery</DropdownMenuItem>
 							<DropdownMenuItem variant="destructive" disabled={pending} onSelect={() => void submit({ type: "delete", id: painting.id, variantId })}>Delete</DropdownMenuItem>
 						</DropdownMenuContent>
@@ -46,6 +46,6 @@ export function IllustrationRows({ conversationId, variantId }: { conversationId
 				</>}
 			</figcaption>
 		</figure>)}
-		{error !== null && <p role="alert" className="text-sm text-destructive">{error}</p>}
+		{(error ?? adoptReferences.error) !== null && <p role="alert" className="text-sm text-destructive">{error ?? adoptReferences.error}</p>}
 	</>;
 }

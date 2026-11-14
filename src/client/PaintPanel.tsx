@@ -15,8 +15,8 @@ import { Gallery } from "./Gallery";
 import { ProseEditor, type ProseEditorHandle } from "./editor/ProseEditor";
 import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
-import { usePaintingCommand, useIllustrations, useAdoptReferences, useImageModel, type PaintTarget } from "./painting";
-import { ReferenceSetField, useReferenceDraft } from "./ReferenceSetField";
+import { usePaintingCommand, useIllustrations, useAdoptReferences, useImageModel, useReferenceDraft, type PaintTarget } from "./painting";
+import { ReferenceSetField } from "./ReferenceSetField";
 import { ProfileModelPicker } from "./ProfileModelPicker";
 
 export function PaintPanel({ conversation, onConversationChange, target, onDraftChange, onClose }: { conversation: ConversationSummary; onConversationChange: (conversation: ConversationSummary | null) => void; target: PaintTarget; onDraftChange: (draft: Partial<Pick<PaintTarget, "brief" | "ask">>) => void; onClose: () => void }) {
@@ -102,9 +102,9 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 			<ReferenceSetField conversationId={conversationId} sets={selection?.referenceSets ?? []} selected={referenceSet} draft={references} editorRef={referencesEditor} disabled={read.isPending || read.isError} />
 			<Gallery conversationId={conversationId} paint={{ disabled: writing.pending, onReference: (name, hash) => referencesEditor.current?.insertReference(name, hash),
 				onUseBrief: async (name, painted) => {
+					if (!await adoptReferences.adopt(name, painted.references)) return;
 					updateBrief(painted.brief);
 					updateAsk(painted.ask);
-					if (await references.flush()) await adoptReferences(name, painted.references);
 				} }} />
 			<div><IllustrationRows conversationId={conversationId} variantId={variantId} /></div>
 		</div>
@@ -120,8 +120,8 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 					onClick={() => void submit({ type: "paint", variantId, brief, references: references.references, ask, aspectRatio })}>Paint</Button>
 			</div>
 			<p className="panel-note m-0">Painting continues after you close this panel.</p>
-			{(error ?? messageCount.error ?? imageModel.error ?? (read.isError ? "Illustrations could not be loaded." : null)) !== null
-				&& <p role="alert" className="text-sm text-destructive">{error ?? messageCount.error ?? imageModel.error ?? "Illustrations could not be loaded."}</p>}
+			{(error ?? messageCount.error ?? imageModel.error ?? adoptReferences.error ?? (read.isError ? "Illustrations could not be loaded." : null)) !== null
+				&& <p role="alert" className="text-sm text-destructive">{error ?? messageCount.error ?? imageModel.error ?? adoptReferences.error ?? "Illustrations could not be loaded."}</p>}
 		</footer>
 	</aside>;
 }

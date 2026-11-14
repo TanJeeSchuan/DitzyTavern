@@ -1,9 +1,9 @@
-import { createContext, useState } from "react";
+import { createContext, useEffect, useState, useSyncExternalStore } from "react";
 import { modelSelectionClient } from "./model-selection-client";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./lib/eden";
 import { requestData, requestOutcome } from "./lib/request-outcome";
-import { illustrationsRead, galleryRead, paintingAccepted, paintingErrors, type PaintingCommand, type IllustrationsRead } from "../shared/contract/painting";
+import { illustrationsRead, galleryRead, paintingAccepted, paintingErrors, type PaintingCommand, type IllustrationsRead, type ReferenceSet } from "../shared/contract/painting";
 import { followsChanges } from "./server-changes";
 
 export const illustrationsKey = (conversationId: number | null) => ["illustrations", conversationId] as const;
@@ -41,9 +41,77 @@ export function usePaintingCommand(conversationId: number) {
 
 export type PaintTarget = { variantId: number; brief: string; ask: string; requestId: string };
 
+type ReferenceSaves = { pending: ReferenceSet | null; timer?: ReturnType<typeof setTimeout>; saving: Promise<string | null>; listeners: Set<() => void> };
+const referenceSaves = new Map<number, ReferenceSaves>();
+const savesOf = (conversationId: number) => {
+	const saves = referenceSaves.get(conversationId) ?? { pending: null, saving: Promise.resolve(null), listeners: new Set() };
+	referenceSaves.set(conversationId, saves);
+	return saves;
+};
+const setPending = (saves: ReferenceSaves, pending: ReferenceSet | null) => {
+	saves.pending = pending;
+	for (const listener of saves.listeners) listener();
+};
+
+export const flushReferences = (client: QueryClient, conversationId: number): Promise<string | null> => {
+	const saves = savesOf(conversationId);
+	clearTimeout(saves.timer);
+	saves.saving = saves.saving.then(async () => {
+		const set = saves.pending;
+		if (set === null) return null;
+		const result = await commandPainting(conversationId, { type: "save-reference-set", id: set.id, references: set.references });
+		if (result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The References could not be saved.";
+		await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
+		if (saves.pending === set) setPending(saves, null);
+		return null;
+	});
+	return saves.saving;
+};
+
+export function useReferenceDraft(conversationId: number, selected: ReferenceSet | undefined) {
+	const client = useQueryClient();
+	const saves = savesOf(conversationId);
+	const pending = useSyncExternalStore((listener) => {
+		saves.listeners.add(listener);
+		return () => { saves.listeners.delete(listener); };
+	}, () => saves.pending);
+	const [error, setError] = useState<string | null>(null);
+	const flush = async () => {
+		const failure = await flushReferences(client, conversationId);
+		setError(failure);
+		return failure === null;
+	};
+	useEffect(() => () => void flushReferences(client, conversationId), [client, conversationId]);
+	return {
+		references: pending !== null && pending.id === selected?.id ? pending.references : selected?.references ?? "",
+		error,
+		edit: (references: string) => {
+			if (selected === undefined) return;
+			setError(null);
+			setPending(saves, { ...selected, references });
+			clearTimeout(saves.timer);
+			saves.timer = setTimeout(() => void flush(), 600);
+		},
+		flush,
+		discard: () => {
+			clearTimeout(saves.timer);
+			setPending(saves, null);
+			return flush();
+		},
+	};
+}
+
 export function useAdoptReferences(conversationId: number) {
-	const { submit } = usePaintingCommand(conversationId);
-	return (name: string, references: string) => references.trim() ? submit({ type: "adopt-reference-set", name, references }) : Promise.resolve(true);
+	const client = useQueryClient();
+	const { submit, error } = usePaintingCommand(conversationId);
+	const [saveError, setSaveError] = useState<string | null>(null);
+	const adopt = async (name: string, references: string) => {
+		if (!references.trim()) return true;
+		const failure = await flushReferences(client, conversationId);
+		setSaveError(failure);
+		return failure === null && submit({ type: "adopt-reference-set", name, references });
+	};
+	return { adopt, error: saveError ?? error };
 }
 
 const imageModelClient = modelSelectionClient("image-model");
