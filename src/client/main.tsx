@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import "../index.css";
 import { registerWireFormats } from "../shared/contract/wire-formats";
 import { App } from "./App";
-import { loadBoxClients } from "./box-windows/registry";
+import { loadBoxClients, loadedBoxes } from "./box-windows/registry";
 import { ImageDialogProvider } from "./ImageDialog";
 import { followServerChanges } from "./server-changes";
 
@@ -31,6 +31,13 @@ if (!root) {
 // imports host chunks that may import this entry, so the entry finishes
 // evaluating rather than await them, which would deadlock that cycle. A
 // failed Box list leaves the Chat without Boxes.
-void loadBoxClients().catch((error) => console.error("Boxes did not load:", error)).then(() => {
+//  A tab restored from cache after a deploy runs the previous build, whose
+// hashed chunks the server no longer has, so its Box modules fail to import.
+// When a Box failed and this entry is gone too, the tab reloads into the
+// current build; a Box that fails under the current build never reloads.
+const staleBuild = async () =>
+	[...loadedBoxes().values()].some((box) => "failure" in box) && (await fetch(import.meta.url, { method: "HEAD", cache: "no-store" }).then((response) => response.status === 404, () => false));
+void loadBoxClients().catch((error) => console.error("Boxes did not load:", error)).then(async () => {
+	if (await staleBuild()) return location.reload();
 	createRoot(root).render(<QueryClientProvider client={queryClient}><ImageDialogProvider><App /></ImageDialogProvider></QueryClientProvider>);
 });
