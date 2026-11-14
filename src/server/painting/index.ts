@@ -115,7 +115,10 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 			]),
 		];
 		const firstByHash = new Map<string, GalleryRead[number]>();
-		for (const { hash, name, keptId } of images) if (!firstByHash.has(hash)) firstByHash.set(hash, { hash, name, keptId });
+		for (const { hash, name, keptId } of images) {
+			const first = firstByHash.get(hash);
+			firstByHash.set(hash, { hash, name: first?.name ?? name, keptId: first?.keptId ?? keptId });
+		}
 		return [...firstByHash.values()];
 	};
 	return { read, command, gallery };

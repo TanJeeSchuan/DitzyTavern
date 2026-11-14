@@ -286,3 +286,17 @@ test("Remove, keep in Gallery takes an Illustration off its Message but keeps it
 	expect(module.gallery(chat.id)).toEqual([]);
 	expect(module.gallery(fork.id)).toEqual(kept);
 });
+
+test("a kept Illustration stays removable from the Gallery while an attached Illustration shows the same picture", async () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const variantId = chat.messages[0]!.variants[0]!.id;
+	const module = await paintAndWait(fixture, variantId, "First take");
+	await paintAndWait(fixture, variantId, "Same picture again");
+	const [kept, attached] = module.read(chat.id).paintings;
+	if (kept?.kind !== "illustration" || attached?.kind !== "illustration" || kept.image !== attached.image) throw new Error("Two Illustrations of one picture missing");
+	module.command(chat.id, { type: "keep-in-gallery", variantId, id: kept.id });
+	expect(module.gallery(chat.id)).toEqual([{ hash: kept.image.slice(6), name: "Illustration", keptId: kept.id }]);
+	module.command(chat.id, { type: "remove-from-gallery", id: kept.id });
+	expect(module.gallery(chat.id)).toEqual([{ hash: kept.image.slice(6), name: "Illustration" }]);
+});
