@@ -3,7 +3,7 @@ import { QueryClient, useQuery } from "@tanstack/react-query";
 import { renderHook } from "./test-fixtures/render-hook";
 import type { IllustrationsRead, ReferenceSet } from "../shared/contract/painting";
 
-const { useAdoptReferences, useReferenceDraft } = await import("./painting");
+const { useAdoptReferences, useReferenceDraft, illustrationsKey } = await import("./painting");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
@@ -19,14 +19,23 @@ const serve = (refusals: number) => {
 	return sent;
 };
 
-const render = async (conversationId: number, initial: ReferenceSet) => {
+const readOf = (set: ReferenceSet): IllustrationsRead => ({
+	paintPresetId: 1, briefMessageCount: 5, paintPresets: [], aspectRatio: "1:1", paintings: [], referenceSets: [set], referenceSetId: set.id,
+});
+const bridge = (references: string) => () => readOf({ id: "b", name: "Bridge", references });
+
+/** `readBack` answers the Illustrations read that follows each command. */
+const render = async (conversationId: number, initial: ReferenceSet, readBack = () => readOf(initial)) => {
 	let selected = initial;
-	const hook = await renderHook(() => ({ draft: useReferenceDraft(conversationId, selected), adoption: useAdoptReferences(conversationId) }), new QueryClient());
+	const hook = await renderHook(() => {
+		useQuery({ queryKey: illustrationsKey(conversationId), queryFn: async () => readBack(), retry: false });
+		return { draft: useReferenceDraft(conversationId, selected), adoption: useAdoptReferences(conversationId) };
+	}, new QueryClient());
 	return { hook, select: (next: ReferenceSet) => { selected = next; return hook.rerender(); } };
 };
 
 test("a failed save keeps the edit, and adopting an Illustration's References waits for the save and runs only once it lands", async () => {
-	const { hook } = await render(1, { id: "default", name: "References", references: "Iris: silks" });
+	const { hook } = await render(1, { id: "default", name: "References", references: "Iris: silks" }, bridge("Iris: silks"));
 	const sent = serve(1);
 	await hook.act(async () => { hook.current.draft.edit("Iris: kimono"); });
 	let adopted = true;
@@ -49,7 +58,7 @@ test("once an edit is saved, the set shows text saved later from elsewhere", asy
 });
 
 test("an edit made while a save is in flight is saved before adopting an Illustration's References", async () => {
-	const { hook } = await render(3, { id: "default", name: "References", references: "Iris: silks" });
+	const { hook } = await render(3, { id: "default", name: "References", references: "Iris: silks" }, bridge("Iris: silks"));
 	const sent: string[] = [];
 	const held = Promise.withResolvers<void>();
 	globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -68,7 +77,7 @@ test("an edit made while a save is in flight is saved before adopting an Illustr
 });
 
 test("an edit made while an adoption is in flight is still saved after the adoption switches sets", async () => {
-	const { hook, select } = await render(4, { id: "a", name: "A", references: "Iris: silks" });
+	const { hook, select } = await render(4, { id: "a", name: "A", references: "Iris: silks" }, bridge("Iris: kimono"));
 	const sent: string[] = [];
 	const held = Promise.withResolvers<void>();
 	globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => {
@@ -89,7 +98,6 @@ test("an edit made while an adoption is in flight is still saved after the adopt
 });
 
 test("a save shows the saved References before any read-back lands", async () => {
-	const { illustrationsKey } = await import("./painting");
 	const client = new QueryClient();
 	client.setQueryData(illustrationsKey(5), {
 		paintPresetId: 1, briefMessageCount: 5, paintPresets: [], aspectRatio: "1:1", paintings: [],
@@ -103,4 +111,13 @@ test("a save shows the saved References before any read-back lands", async () =>
 	await hook.act(async () => { hook.current.edit("Iris: kimono"); });
 	await hook.act(async () => { expect(await hook.current.flush()).toBe(true); });
 	expect(hook.current.references).toBe("Iris: kimono");
+});
+
+test("an accepted adoption whose read-back fails reports failure, so Use Brief keeps the Brief it had", async () => {
+	const { hook } = await render(6, { id: "default", name: "References", references: "Unrelated" }, () => { throw new Error("offline"); });
+	serve(0);
+	let adopted = true;
+	await hook.act(async () => { adopted = await hook.current.adoption.adopt("Bridge", "Iris: kimono"); });
+	expect(adopted).toBe(false);
+	expect(hook.current.adoption.error).toBe("The References could not be loaded. Try again.");
 });

@@ -109,7 +109,11 @@ export function useAdoptReferences(conversationId: number) {
 		if (!references.trim()) return true;
 		const failure = await flushReferences(client, conversationId);
 		setSaveError(failure);
-		return failure === null && submit({ type: "adopt-reference-set", name, references });
+		if (failure !== null || !await submit({ type: "adopt-reference-set", name, references })) return false;
+		const read = client.getQueryData<IllustrationsRead>(illustrationsKey(conversationId));
+		if (read?.referenceSets.find(({ id }) => id === read.referenceSetId)?.references === references) return true;
+		setSaveError("The References could not be loaded. Try again.");
+		return false;
 	};
 	return { adopt, error: saveError ?? error };
 }
