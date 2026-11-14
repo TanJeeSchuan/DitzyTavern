@@ -5,6 +5,7 @@ import {
 	BookMarked,
 	Boxes,
 	Cable,
+	Images,
 	ListOrdered,
 	MessageSquare,
 	Settings,
@@ -51,6 +52,14 @@ export function NavigationRail({
 					onClick={() => onOpenPanel("lorebooks")}
 				>
 					<BookMarked aria-hidden="true" />
+				</RailButton>
+				<RailButton
+					disabled={inspecting}
+					label="Gallery"
+					active={activePanel === "gallery"}
+					onClick={() => onOpenPanel("gallery")}
+				>
+					<Images aria-hidden="true" />
 				</RailButton>
 				<RailButton
 					disabled={inspecting}

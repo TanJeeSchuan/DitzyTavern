@@ -6,6 +6,7 @@ export type PrimaryPanelName =
 	| "chats"
 	| "characters"
 	| "lorebooks"
+	| "gallery"
 	| "prompts"
 	| "connections"
 	| "generation"

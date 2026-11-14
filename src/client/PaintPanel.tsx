@@ -11,7 +11,7 @@ import { Value } from "@sinclair/typebox/value";
 import { paintingAspectRatio, DEFAULT_PAINTING_ASPECT_RATIO, DEFAULT_BRIEF_MESSAGE_COUNT } from "../shared/contract/painting";
 import { Switch } from "@/components/ui/switch";
 import { useWriteBrief } from "./brief";
-import { PaintGallery } from "./PaintGallery";
+import { Gallery } from "./Gallery";
 import { ProseEditor, type ProseEditorHandle } from "./editor/ProseEditor";
 import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
@@ -85,8 +85,8 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 			<Field label="Brief" helper="Describe the picture. Insert pictures to use as references.">
 				<ProseEditor className="prose-editor-field" ref={briefEditor} ariaLabel="Brief" autoFocus={Boolean(target.brief)} value={brief} onChange={updateBrief} disabled={writing.pending} />
 			</Field>
-			<PaintGallery conversationId={conversationId} disabled={writing.pending} onReference={(name, hash) => briefEditor.current?.insertReference(name, hash)}
-				onUseBrief={(brief, ask) => { updateBrief(brief); updateAsk(ask); }} />
+			<Gallery conversationId={conversationId} paint={{ disabled: writing.pending, onReference: (name, hash) => briefEditor.current?.insertReference(name, hash),
+				onUseBrief: (brief, ask) => { updateBrief(brief); updateAsk(ask); } }} />
 			<Field label="Shape" htmlFor="painting-aspect-ratio">
 				<AppSelect id="painting-aspect-ratio" className="field-input" value={aspectRatio} disabled={pending || read.isPending || read.isError}
 					onValueChange={(value) => { if (Value.Check(paintingAspectRatio, value)) void submit({ type: "set-aspect-ratio", aspectRatio: value }); }}

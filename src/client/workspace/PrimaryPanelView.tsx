@@ -8,6 +8,7 @@ import { boxClient, boxPresent } from "../box-windows/registry";
 import { BoxOffNotice } from "../box-windows/BoxBlockNotice";
 import { CharactersPanel } from "../characters/CharactersPanel";
 import { ImportChatHost } from "../ImportChatHost";
+import { Gallery } from "../Gallery";
 import { PanelHeader } from "../PanelHeader";
 import { PromptPresetPanel } from "./PromptPresetPanel";
 import type { ConversationSummary } from "../conversation";
@@ -33,6 +34,7 @@ import type { PrimaryPanel, PrimaryPanelName } from "./types";
 // branch at the render site.
 const sharedHeaderTitles = {
 	characters: "Characters",
+	gallery: "Gallery",
 	connections: "Connections",
 	generation: "Generation Settings",
 	boxes: "Boxes",
@@ -146,6 +148,7 @@ export function PrimaryPanelView({
 							/>
 						</div>
 					)}
+					{panel === "gallery" && <div className="panel-body"><Gallery key={activeChat.id} conversationId={Number(activeChat.id)} /></div>}
 					{panel === "boxes" && <BoxHeldNotices disabled={mutationsDisabled} />}
 					{panel === "boxes" && conversation !== null && (
 						<BoxManager key={conversation.id} conversation={conversation} disabled={mutationsDisabled} onConversationChange={onConversationChange}

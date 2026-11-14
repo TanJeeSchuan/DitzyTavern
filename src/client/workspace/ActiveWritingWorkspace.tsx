@@ -266,7 +266,7 @@ export function ActiveWritingWorkspace({
 	return (
 		<IllustrationActionsContext value={{
 			addToComposer: !generation.assemblyAvailable ? null : (name, hash) => {
-				if (narrow) dispatchPanel({ type: "details-closed" });
+				if (narrow) dispatchPanel({ type: "primary-closed" });
 				composerRef.current?.insertReference(name, hash);
 			},
 			editBrief: paintDisabledReason === undefined ? openPaint : null,

@@ -1,5 +1,6 @@
 import { api } from "./eden";
 export const imageAccept = "image/png,image/jpeg,image/webp,image/gif";
+export const baseName = (fileName: string) => fileName.replace(/\.[^.]+$/, "");
 export const imageSrc = (hash: string) => `/api/images/${hash}`;
 /** @approved A file's bytes as base64, the form the upload routes take. */
 export const encodeImage = (file: Blob) => new Promise<string>((resolve, reject) => {
