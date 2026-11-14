@@ -32,10 +32,11 @@ export const test = base.extend<{ llm: E2eServer; allowedBrowserErrors: RegExp |
 	}, { auto: true }],
 	doherty: [process.env.DOHERTY === "1", { option: true }],
 	dohertyExempt: [null, { option: true }],
-	dohertyWatch: [async ({ page, doherty, dohertyExempt }, use, testInfo) => {
+	dohertyWatch: [async ({ context, doherty, dohertyExempt }, use, testInfo) => {
 		if (!doherty) return use();
-		const violations = await watchDoherty(page);
+		const settled = await watchDoherty(context);
 		await use();
+		const violations = await settled();
 		await testInfo.attach("doherty.json", { body: JSON.stringify(violations, null, 2), contentType: "application/json" });
 		expect(violations.filter(({ name }) => !dohertyExempt?.test(name)), "actions left unanswered past the Doherty Threshold").toEqual([]);
 	}, { auto: true }],
