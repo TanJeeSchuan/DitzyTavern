@@ -236,7 +236,7 @@ A Referenced Prompt Block holding the Appearance of each Cast member in the scen
 _Avoid_: character sheet, reference block
 
 **Illustration**:
-An Image painted for a moment in a Chat. It belongs to the Variant it was painted from and shows with it, after that Message; it is not a Message. While it is being painted it is provisional: nothing else in the Chat treats it as existing. It never enters a Prompt Plan; the writer who wants a model to see it places an Image Reference to it in text.
+An Image painted for a moment in a Chat. It belongs to the Variant it was painted from and shows with it, after that Message; it is not a Message. While it is being painted it is provisional: nothing else in the Chat treats it as existing. It never enters a Prompt Plan; the writer who wants a model to see it places an Image Reference to it in text. The writer can take it off its Message and keep it in the Chat's Gallery, where it belongs to the Chat instead.
 _Avoid_: generated image, attachment
 
 ## Decisions

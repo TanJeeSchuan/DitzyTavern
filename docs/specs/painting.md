@@ -78,11 +78,12 @@ Keep each painting as an Illustration belonging to the Variant it was painted fr
 43. As a writer, I want the Paint panel to show this Chat's Illustrations from every swipe, so that I can find a picture under a swipe I moved away from.
 44. As a writer, I want it to show the pictures in this Chat's Messages and the Cast's Portraits and Appearance pictures too, so that I can reuse them as references.
 45. As a writer, I want to add any gallery picture to the composer or to the Brief as a reference, so that reuse takes one press.
+46. As a writer, I want to take an Illustration off its Message but keep it in the Gallery, so that a picture that no longer fits the story stays reusable, and to remove it from the Gallery later.
 
 ### Models
 
-46. As a writer, I want to choose one Image Model for the whole app in Connection Settings, with the picker I already know, so that I set it up once.
-47. As a writer, I want to connect OpenRouter's Image API or any OpenAI-shaped image endpoint, so that I am not tied to one provider.
+47. As a writer, I want to choose one Image Model for the whole app in Connection Settings, with the picker I already know, so that I set it up once.
+48. As a writer, I want to connect OpenRouter's Image API or any OpenAI-shaped image endpoint, so that I am not tied to one provider.
 
 ## Implementation Decisions
 
@@ -100,9 +101,9 @@ Keep each painting as an Illustration belonging to the Variant it was painted fr
 12. **Painting from the composer.** Paint, from the composer or a Message, is unavailable while a Swipe preview or the Prompt Plan preview is open. The composer's Paint is also unavailable during an Active Generation.
 13. **Illustration storage.** A finished painting is one `message_variant_data` row under a host namespace. Its value holds the picture as `image:<hash>`, the Brief text, the Ask, the Image Model and the shape. The picture and the Brief's references are therefore found by the orphan sweep. Writing or deleting it changes no Conversation Revision and reports no touched Variant, so no Box digests again. Fork, Trim Variants and Variant deletion already handle such rows.
 14. **Illustrations read.** One read per Chat returns its Illustrations, provisional paintings and failures by Variant, and follows the change feed. The story view renders a row after a Message for each Illustration of the Variant it is showing. The row is as wide as the text column and at most about half the viewport tall, and its height is reserved from the shape as soon as the painting starts. The story viewport follows the bottom when a row is added under the final Message, as it does for a new Message. The Paint panel shows the same rows for the Variant it is open on, so a painting's progress, picture or failure is visible there.
-15. **Illustration actions.** Pressing the picture opens it full size. Add to composer inserts an Image Reference named with the first words of the Ask, or "Illustration" when there was none. Edit Brief and repaint opens the Paint panel on the stored Brief. Delete removes the row.
+15. **Illustration actions.** Pressing the picture opens it full size. Add to composer inserts an Image Reference named with the first words of the Ask, or "Illustration" when there was none. Edit Brief and repaint opens the Paint panel on the stored Brief. Delete removes the row. Remove, keep in Gallery moves the row's value to a `conversation_data` row under the same namespace, keyed `gallery:<id>`, so Fork copies it and the orphan sweep still finds its picture and references.
 16. **Shape.** Five choices, sent as the aspect ratios 9:16, 3:4, 1:1, 4:3 and 16:9. The choice is stored per Chat. A Chat starts on 1:1.
-17. **Gallery.** One server query per Chat returns, without duplicates, the Chat's Illustrations from every Variant, the Image References in every Variant of its Messages found by the shared parser, and the Cast's Portraits and Appearance References. The client cannot build it, since it loads Messages in pages and holds only the selected Variant's text. Each picture has Add to composer and Use as reference, which insert an Image Reference into the composer or the Brief.
+17. **Gallery.** One server query per Chat returns, without duplicates, the Chat's Illustrations from every Variant, the Illustrations kept after removal from their Message, the Image References in every Variant of its Messages found by the shared parser, and the Cast's Portraits and Appearance References. The client cannot build it, since it loads Messages in pages and holds only the selected Variant's text. Each picture has Add to composer and Use as reference, which insert an Image Reference into the composer or the Brief. A kept Illustration also has Remove from Gallery, which deletes its row.
 18. **Design language.** The panel, the picture row, the provisional and failed states and the gallery follow DESIGN.md.
 19. **Database workflow.** Schema changes follow the SQLite and Drizzle workflow. Seed data that gains Appearance gets a matching teardown.
 
