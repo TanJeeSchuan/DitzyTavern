@@ -88,7 +88,7 @@ describe("semantic Lore evaluation", () => {
 
 	test("uses one unavailable result when the Decision Model fails", async () => {
 		const result = await evaluateSemanticLore({ entries: [entry], messages: [{ content: "A ship arrives." }], settings, fetch: async () => new Response("offline", { status: 503 }) });
-		expect(result).toMatchObject({ available: false, threshold: 0.5, fallbackReason: "Decision Model request failed with HTTP 503." });
+		expect(result).toMatchObject({ available: false, threshold: 0.5, fallbackReason: "Decision Model request failed with HTTP 503.\noffline" });
 	});
 
 	test("cancels the other request and stops later batches when a parallel request fails", async () => {
@@ -103,7 +103,7 @@ describe("semantic Lore evaluation", () => {
 				return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => { cancelled = true; reject(new Error("Cancelled.")); }, { once: true }));
 			},
 		});
-		expect(result).toEqual({ available: false, threshold: 0.5, fallbackReason: "Decision Model request failed with HTTP 503." });
+		expect(result).toEqual({ available: false, threshold: 0.5, fallbackReason: "Decision Model request failed with HTTP 503.\noffline" });
 		expect(requests).toBe(2);
 		expect(cancelled).toBe(true);
 	});

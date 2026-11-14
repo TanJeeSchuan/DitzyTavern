@@ -75,6 +75,22 @@ test.each([{ retain: 0.8, confidence: 0.01, kept: 1 }, { retain: 0.59, confidenc
 	}
 });
 
+test.each([
+	{ status: 422, body: JSON.stringify({ detail: [{ loc: ["body", "questions", "candidate_0_support"], msg: "Invalid question", type: "value_error" }], credential: "shared-key", header: "DitzyTavern" }), expected: '"msg":"Invalid question"' },
+	{ status: 503, body: "Decision provider unavailable", expected: "Decision provider unavailable" },
+	{ status: 401, body: "Credential shared-key rejected", expected: "Credential [REDACTED] rejected" },
+	{ status: 422, body: "", expected: "HTTP 422." },
+	{ status: 422, body: "x".repeat(16_385), expected: "[Provider response omitted: exceeds 16 KiB]" },
+])("Memory saves HTTP $status rejection details without credentials", async ({ status, body, expected }) => {
+	prepareExtraction();
+	const slot = await digestPassage(content, (messageId) => async (url) => String(url).endsWith("/systemone") ? new Response(body, { status }) : extractionResponse(messageId));
+	expect(slot?.automatic).toBeUndefined();
+	expect(slot?.error?.message).toContain(`Decision Model request failed with HTTP ${status}.`);
+	expect(slot?.error?.message).toContain(expected);
+	expect(slot?.error?.message).not.toContain("shared-key");
+	expect(slot?.error?.message).not.toContain("DitzyTavern");
+});
+
 test.each(["missing answer", "unasked answer", "unknown option", "missing option", "unknown choice"])("Memory rejects %s without retaining a partial record", async (kind) => {
 	prepareExtraction();
 	const answers: Record<string, import("../../server/decision-model").DecisionJson> = choices();

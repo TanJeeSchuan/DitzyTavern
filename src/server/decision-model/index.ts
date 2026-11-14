@@ -6,6 +6,7 @@ import { resolveRequestUrl } from "../../shared/connection-url";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings/types";
 import { authenticatedHeaders } from "../model-client/authenticated-headers";
+import { readProviderDiagnostic } from "../model-client/diagnostics";
 import { fetchWithTimeout, readBoundedResponse, type ModelFetch } from "../model-client/model-fetch";
 import { tokenxEstimator } from "../prompt-compiler";
 import { InvalidSettingsError } from "../revisioned-settings";
@@ -180,6 +181,7 @@ export async function requestDecisions(input: {
 		},
 		input.selection.timeoutMs,
 		async (response, signal) => {
+			if (!response.ok) return { response, text: await readProviderDiagnostic(response, [input.selection.credential ?? "", ...Object.values(input.selection.headers)]) };
 			const { bytes, truncated } = await readBoundedResponse(response, 256 * 1024, signal);
 			if (truncated) throw new DecisionModelError("malformed-response", "Decision Model response exceeded 256 KiB.");
 			return { response, text: new TextDecoder().decode(bytes) };
@@ -189,7 +191,7 @@ export async function requestDecisions(input: {
 	if (!response.ok) {
 		throw new DecisionModelError(
 			response.status === 401 || response.status === 403 ? "authentication" : "endpoint",
-			`Decision Model request failed with HTTP ${response.status}.`,
+			`Decision Model request failed with HTTP ${response.status}.${text ? `\n${text}` : ""}`,
 		);
 	}
 	let decoded: unknown;
