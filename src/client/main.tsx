@@ -34,9 +34,10 @@ if (!root) {
 //  A tab restored from cache after a deploy runs the previous build, whose
 // hashed chunks the server no longer has, so its Box modules fail to import.
 // When a Box failed and this entry is gone too, the tab reloads into the
-// current build; a Box that fails under the current build never reloads.
-const staleBuild = async () =>
-	[...loadedBoxes().values()].some((box) => "failure" in box) && (await fetch(import.meta.url, { method: "HEAD", cache: "no-store" }).then((response) => response.status === 404, () => false));
+// current build; a Box that fails under the current build never reloads. A
+// probe that fails or stalls past three seconds counts as current.
+const entryGone = () => fetch(import.meta.url, { method: "HEAD", cache: "no-store", signal: AbortSignal.timeout(3000) }).then((response) => response.status === 404, () => false);
+const staleBuild = async () => [...loadedBoxes().values()].some((box) => "failure" in box) && await entryGone();
 void loadBoxClients().catch((error) => console.error("Boxes did not load:", error)).then(async () => {
 	if (await staleBuild()) return location.reload();
 	createRoot(root).render(<QueryClientProvider client={queryClient}><ImageDialogProvider><App /></ImageDialogProvider></QueryClientProvider>);
