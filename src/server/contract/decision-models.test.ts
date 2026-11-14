@@ -177,11 +177,11 @@ test("the preparation fingerprint excludes both Memory and Lore Decision Model c
 	expect(fingerprint).not.toContain(loreCredential);
 });
 
-test.each([{ status: 401, kind: "authentication" }, { status: 403, kind: "authentication" }, { status: 503, kind: "endpoint" }, { status: 0, kind: "endpoint" }])("Test Connection categorizes a Decision Model failure with status $status", async ({ status, kind }) => {
+test.each([{ status: 401, kind: "authentication" }, { status: 403, kind: "authentication" }, { status: 422, kind: "endpoint" }, { status: 503, kind: "endpoint" }, { status: 0, kind: "endpoint" }])("Test Connection categorizes a Decision Model failure with status $status", async ({ status, kind }) => {
 	const app = createConnectionSettingsRoutes(database, { fetch: async () => {
 		if (status === 0) throw new TypeError("Connection refused");
 		return Response.json({ error: "Unavailable" }, { status });
 	} });
 	const tested = await app.handle(post("test-connection", { profile: { ...blankConnectionProfileDraft, displayName: "Local", apiFormat: "system-one", requestUrl: "http://localhost:8000/decision", timeoutMs: 15000 }, modelId: "clef" }));
-	expect(await tested.json()).toMatchObject({ outcome: "failure", kind });
+	expect(await tested.json()).toMatchObject({ outcome: "failure", kind, message: expect.stringContaining(status === 0 ? "Connection refused" : '"error":"Unavailable"') });
 });
