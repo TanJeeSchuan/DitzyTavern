@@ -4,6 +4,9 @@ export default defineConfig({
 	testDir: ".",
 	testMatch: ["e2e/**/*.spec.ts", "src/boxes/**/*.spec.ts"],
 	fullyParallel: true,
+	// @approved
+	// A Doherty run delays every API call by 1.5 s, and one action can chain several.
+	...(process.env.DOHERTY === "1" ? { timeout: 120_000, expect: { timeout: 20_000 } } : { testIgnore: "e2e/doherty-*.spec.ts" }),
 	workers: "60%",
 	globalSetup: "./e2e/global-setup.ts",
 	outputDir: ".scratch/e2e-results",

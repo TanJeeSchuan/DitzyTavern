@@ -21,6 +21,7 @@ When the user asks for rapid UI iteration, keep the playwright-cli session runni
 - `llm.installBox(id)` copies `e2e/fixtures/boxes/<id>/`, built by the global setup with `box:build`, into the worker's plugin folder; a `llm.restart` loads it, and the next test's reset empties the folder.
 
 ## Ticket implementation (if implementing following tickets, ignore if no tickets exist)
+- `bun run test:doherty` reruns the suite with every API call delayed 1.5 s and fails a test when a clicked control paints no DOM change within 400 ms or a click or keypress takes over 400 ms to paint (`e2e/doherty.ts`); it also runs `e2e/doherty-*.spec.ts`, a long Chat on a 4x slower CPU, which the normal run skips. Pass spec paths to check only those. Exempt an accepted violation with `test.use({ dohertyExempt: /.../ })`.
 - Remember to edit the tickets to tick the TODOs on the way and update statuses during implementing
 
 ## Database persistence
