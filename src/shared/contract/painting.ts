@@ -7,7 +7,7 @@ export const paintingAspectRatio = Type.Union([Type.Literal("9:16"), Type.Litera
 export const paintingSettings = Type.Object({ aspectRatio: paintingAspectRatio });
 export type PaintingAspectRatio = Static<typeof paintingAspectRatio>;
 export const DEFAULT_PAINTING_ASPECT_RATIO: PaintingAspectRatio = "1:1";
-const paintingInput = Type.Object({ brief: Type.String(), ask: Type.String(), imageModel: modelSelection, aspectRatio: paintingAspectRatio });
+const paintingInput = Type.Object({ brief: Type.String(), references: Type.String(), ask: Type.String(), imageModel: modelSelection, aspectRatio: paintingAspectRatio });
 export const illustration = Type.Composite([paintingInput, Type.Object({ image: Type.String({ pattern: "^image:[0-9a-f]{64}$" }) })]);
 const paintingBase = Type.Composite([paintingInput, Type.Object({ id: Type.String(), variantId: Type.Integer() })]);
 export const painting = Type.Union([
@@ -29,17 +29,25 @@ export const paintPresetCommand = Type.Union([
 	Type.Object({ type: Type.Literal("set-brief-message-count"), briefMessageCount: paintPresetSettings.properties.briefMessageCount }),
 ]);
 export type PaintPresetCommand = Static<typeof paintPresetCommand>;
-export const illustrationsRead = Type.Object({ ...paintPresetSettings.properties, aspectRatio: paintingAspectRatio, paintings: Type.Array(painting) });
+export const referenceSet = Type.Object({ id: Type.String(), name: Type.String({ minLength: 1 }), references: Type.String() });
+export type ReferenceSet = Static<typeof referenceSet>;
+export const illustrationsRead = Type.Object({ ...paintPresetSettings.properties, aspectRatio: paintingAspectRatio, paintings: Type.Array(painting),
+	referenceSets: Type.Array(referenceSet, { minItems: 1 }), referenceSetId: Type.String() });
 export type IllustrationsRead = Static<typeof illustrationsRead>;
 export const paintingCommand = Type.Union([
 	paintPresetCommand,
-	Type.Object({ type: Type.Literal("paint"), variantId: Type.Integer(), brief: Type.String({ minLength: 1 }), ask: Type.String(), aspectRatio: paintingAspectRatio }),
+	Type.Object({ type: Type.Literal("paint"), variantId: Type.Integer(), brief: Type.String({ minLength: 1 }), references: Type.String(), ask: Type.String(), aspectRatio: paintingAspectRatio }),
 	Type.Object({ type: Type.Literal("retry"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("dismiss"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("delete"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("keep-in-gallery"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("remove-from-gallery"), id: Type.String() }),
 	Type.Object({ type: Type.Literal("set-aspect-ratio"), aspectRatio: paintingAspectRatio }),
+	Type.Object({ type: Type.Literal("create-reference-set"), name: referenceSet.properties.name, references: Type.String() }),
+	Type.Object({ type: Type.Literal("save-reference-set"), id: Type.String(), references: Type.String() }),
+	Type.Object({ type: Type.Literal("rename-reference-set"), id: Type.String(), name: referenceSet.properties.name }),
+	Type.Object({ type: Type.Literal("select-reference-set"), id: Type.String() }),
+	Type.Object({ type: Type.Literal("delete-reference-set"), id: Type.String() }),
 ]);
 export type PaintingCommand = Static<typeof paintingCommand>;
 export const paintingAccepted = Type.Object({ outcome: Type.Literal("accepted") });
@@ -50,7 +58,7 @@ export type BriefRequest = Static<typeof briefRequest>;
 
 export const briefErrors = Type.Union([invalidOutcome, notFoundOutcome, notPlayableOutcome]);
 
-export const galleryRead = Type.Array(Type.Object({ hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String(), keptId: Type.Optional(Type.String()),
-	painted: Type.Optional(Type.Object({ brief: Type.String(), ask: Type.String() })),
+export const galleryRead = Type.Array(Type.Object({ hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String(), source: Type.String(), keptId: Type.Optional(Type.String()),
+	painted: Type.Optional(Type.Pick(paintingInput, ["brief", "references", "ask"])),
 }));
 export type GalleryRead = Static<typeof galleryRead>;

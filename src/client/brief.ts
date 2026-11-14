@@ -3,8 +3,6 @@ import { createParser } from "eventsource-parser";
 import { decodeWirePayload } from "./lib/wire-decode";
 import { generationEvent } from "../shared/contract/generation-events";
 import { clientFormattingContext } from "./lib/formatting-context";
-import { keptBriefReferences, appendBriefReferences } from "../shared/painting-brief";
-import type { ConversationSummary } from "../shared/contract/conversation-schema";
 import { briefErrors, type BriefRequest } from "../shared/contract/painting";
 
 export function useWriteBrief(conversationId: number, onText: (text: string) => void) {
@@ -12,9 +10,8 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	useEffect(() => () => { const active = controller.current; controller.current = null; active?.abort(); }, [conversationId]);
-	const write = async (request: BriefRequest, previousBrief: string, cast: ConversationSummary["cast"]) => {
+	const write = async (request: BriefRequest, previousBrief: string) => {
 		if (controller.current) return;
-		const kept = keptBriefReferences(previousBrief, cast);
 		let text = previousBrief;
 		let receivedContent = false;
 		const active = new AbortController();
@@ -53,7 +50,7 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 			if (!active.signal.aborted) setError(error instanceof Error ? error.message : "The Brief could not be written.");
 		} finally {
 			if (controller.current === active) {
-				onText(receivedContent ? appendBriefReferences(text, cast, kept) : previousBrief);
+				onText(receivedContent ? text : previousBrief);
 				active.abort();
 				controller.current = null;
 				setPending(false);

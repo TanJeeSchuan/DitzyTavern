@@ -48,7 +48,7 @@ test("0043 adds Cast Appearance immediately before Lore in an edited Default (Pa
 	} finally { database.close(); await rm(folder, { recursive: true, force: true }); }
 });
 
-test("0044 upgrades stored Illustrations to an empty Ask", async () => {
+test("0044 and 0045 upgrade stored Illustrations to an empty Ask and empty References", async () => {
 	await mkdir(".scratch", { recursive: true });
 	const folder = await mkdtemp(join(process.cwd(), ".scratch/ask-upgrade-"));
 	const database = new Database(":memory:");
@@ -61,6 +61,6 @@ test("0044 upgrades stored Illustrations to an empty Ask", async () => {
 			INSERT INTO message_variant (id, message_id, position, content, timestamp) VALUES (1, 1, 1, 'Scene', '');
 			INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (1, 'painting', 'old', '{"brief":"A bridge","aspectRatio":"1:1"}');`);
 		initializeDatabase(database);
-		expect(database.query("SELECT value FROM message_variant_data").get()).toEqual({ value: '{"brief":"A bridge","aspectRatio":"1:1","ask":""}' });
+		expect(database.query("SELECT value FROM message_variant_data").get()).toEqual({ value: '{"brief":"A bridge","aspectRatio":"1:1","ask":"","references":""}' });
 	} finally { database.close(); await rm(folder, { recursive: true, force: true }); }
 });

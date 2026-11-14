@@ -216,7 +216,7 @@ A model that paints an Image from a Brief instead of writing text. Generation an
 _Avoid_: image generator, image generation model, generating an image
 
 **Brief**:
-The text and Images handed to an Image Model for one painting. The writer types it, or a model writes it from the writer's Ask and the writer may edit it. It is not a Prompt Plan and is never Conversation history.
+The text and Images describing one painting. The writer types it, or a model writes it from the writer's Ask and the writer may edit it. The Image Model receives it followed by the selected Reference Set. It is not a Prompt Plan and is never Conversation history.
 _Avoid_: image prompt, Prompt, Prompt Plan
 
 **Ask**:
@@ -234,6 +234,10 @@ _Avoid_: image prompt template, Continuation instruction
 **Cast Appearance Block**:
 A Referenced Prompt Block holding the Appearance of each Cast member in the scene being painted, whether or not they hold a Control seat. It is sent only when a Brief is being written.
 _Avoid_: character sheet, reference block
+
+**Reference Set**:
+A named block of writer-authored text and Image References a Chat keeps for painting, telling the Image Model which picture shows whom. The selected set is sent after the Brief. Writing a Brief never changes it, and the app never fills it on its own.
+_Avoid_: reference block, character sheet
 
 **Illustration**:
 An Image painted for a moment in a Chat. It belongs to the Variant it was painted from and shows with it, after that Message; it is not a Message. While it is being painted it is provisional: nothing else in the Chat treats it as existing. It never enters a Prompt Plan; the writer who wants a model to see it places an Image Reference to it in text. The writer can take it off its Message and keep it in the Chat's Gallery, where it belongs to the Chat instead.

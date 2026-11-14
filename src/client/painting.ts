@@ -1,4 +1,5 @@
 import { createContext, useState } from "react";
+import { modelSelectionClient } from "./model-selection-client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./lib/eden";
 import { requestData, requestOutcome } from "./lib/request-outcome";
@@ -19,7 +20,7 @@ export const useGallery = (conversationId: number) => useQuery({
 	queryFn: () => requestData(api.api.conversations({ id: conversationId }).gallery.get(), galleryRead),
 });
 
-const commandPainting = (conversationId: number, command: PaintingCommand) => requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingAccepted, paintingErrors);
+export const commandPainting = (conversationId: number, command: PaintingCommand) => requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingAccepted, paintingErrors);
 
 export function usePaintingCommand(conversationId: number) {
 	const client = useQueryClient();
@@ -39,6 +40,34 @@ export function usePaintingCommand(conversationId: number) {
 }
 
 export type PaintTarget = { variantId: number; brief: string; ask: string; requestId: string };
+
+export function useAdoptReferences(conversationId: number) {
+	const read = useIllustrations(conversationId);
+	const { submit } = usePaintingCommand(conversationId);
+	return (name: string, references: string) => {
+		if (!references.trim()) return Promise.resolve(true);
+		const existing = read.data?.referenceSets.find((set) => set.references === references);
+		return submit(existing ? { type: "select-reference-set", id: existing.id } : { type: "create-reference-set", name, references });
+	};
+}
+
+const imageModelClient = modelSelectionClient("image-model");
+export function useImageModel() {
+	const client = useQueryClient();
+	const read = useQuery({ queryKey: ["image-model"], queryFn: imageModelClient.load });
+	const [error, setError] = useState<string | null>(null);
+	const select = async (profileId: number, model: string) => {
+		if (read.data === undefined) return;
+		setError(null);
+		const result = await imageModelClient.save({ type: "apply", expectedRevision: read.data.revision, profileId, model });
+		if (result.outcome === "available") client.setQueryData(["image-model"], result.value.settings);
+		else if (result.outcome === "conflict") {
+			client.setQueryData(["image-model"], result.currentSettings);
+			setError("The Image Model changed elsewhere. Choose again.");
+		} else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The Image Model could not be saved.");
+	};
+	return { selected: read.data, select, error };
+}
 
 export const IllustrationActionsContext = createContext<{
 	addToComposer: ((name: string, hash: string) => void) | null;
