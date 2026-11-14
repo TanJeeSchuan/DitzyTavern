@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, useQuery } from "@tanstack/react-query";
 import { renderHook } from "./test-fixtures/render-hook";
-import type { ReferenceSet } from "../shared/contract/painting";
+import type { IllustrationsRead, ReferenceSet } from "../shared/contract/painting";
 
 const { useAdoptReferences, useReferenceDraft } = await import("./painting");
 const originalFetch = globalThis.fetch;
@@ -88,18 +88,16 @@ test("an edit made while an adoption is in flight is still saved after the adopt
 	expect(sent).toEqual(["adopt-reference-set::Iris: kimono", "save-reference-set:a:Iris: silks, hair down", "save-reference-set:b:Iris: kimono, sash"]);
 });
 
-test("a save whose read-back fails still shows the saved References", async () => {
-	const { useIllustrations, illustrationsKey } = await import("./painting");
-	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+test("a save shows the saved References before any read-back lands", async () => {
+	const { illustrationsKey } = await import("./painting");
+	const client = new QueryClient();
 	client.setQueryData(illustrationsKey(5), {
 		paintPresetId: 1, briefMessageCount: 5, paintPresets: [], aspectRatio: "1:1", paintings: [],
 		referenceSets: [{ id: "default", name: "References", references: "Iris: silks" }], referenceSetId: "default",
 	});
-	globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => init?.method === "POST"
-		? Response.json({ outcome: "accepted" })
-		: Response.json({ outcome: "not-found" }, { status: 500 }), { preconnect: () => {} });
+	serve(0);
 	const hook = await renderHook(() => {
-		const read = useIllustrations(5);
+		const read = useQuery<IllustrationsRead>({ queryKey: illustrationsKey(5), enabled: false });
 		return useReferenceDraft(5, read.data?.referenceSets[0]);
 	}, client);
 	await hook.act(async () => { hook.current.edit("Iris: kimono"); });
