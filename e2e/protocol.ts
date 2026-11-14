@@ -13,7 +13,7 @@ export const imageCallBody = Type.Object({ model: Type.String(), prompt: Type.St
 export type ImageModelCall = { kind: "image"; url: string; headers: Record<string, string>; body: Static<typeof imageCallBody> };
 
 export type ChatReply =
-	| { chunks: string[]; hold?: boolean; truncate?: boolean; repeat?: boolean }
+	| { chunks: string[]; delayMs?: number; hold?: boolean; truncate?: boolean; repeat?: boolean }
 	| { status: number; error: string; hold?: boolean; repeat?: boolean };
 
 // @approved

@@ -32,6 +32,7 @@
 		"check": "bun scripts/run-check.ts check",
 		"screenshots:capture": "node scripts/capture-screenshots.ts",
 		"test:e2e": "bun scripts/run-check.ts e2e",
+		"test:ui-eval": "bun scripts/run-check.ts ui-eval",
 		"test:e2e:harness": "node --test --test-reporter=dot e2e/harness.test.ts",
 		"profile:actions": "bun --cpu-prof-md --cpu-prof-dir=.scratch/profile scripts/profile-actions.ts",
 		"profile:browser": "bun scripts/profile-browser.ts"
