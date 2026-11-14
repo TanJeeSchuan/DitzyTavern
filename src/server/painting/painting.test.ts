@@ -239,7 +239,7 @@ test("the gallery includes every Variant, Cast Portraits and Appearance, without
 	const painted = module.read(chat.id).paintings[0]!;
 	if (painted.kind !== "illustration") throw new Error("Missing Illustration");
 	expect(module.gallery(chat.id)).toEqual([
-		{ hash: painted.image.slice(6), name: "Illustration" },
+		{ hash: painted.image.slice(6), name: "Illustration", painted: { brief: "Hidden Illustration", ask: "" } },
 		{ hash: repeated.hash, name: "Repeated" }, { hash: unselected.hash, name: "Other Swipe" },
 		{ hash: portrait.hash, name: "Maren Portrait" }, { hash: appearance.hash, name: "Appearance" },
 	]);
@@ -272,7 +272,7 @@ test("Remove, keep in Gallery takes an Illustration off its Message but keeps it
 	const module = await paintAndWait(fixture, variantId, "Kept scene");
 	const painting = module.read(chat.id).paintings[0]!;
 	if (painting.kind !== "illustration") throw new Error("Illustration missing");
-	const kept = [{ hash: painting.image.slice(6), name: "Illustration", keptId: painting.id }];
+	const kept = [{ hash: painting.image.slice(6), name: "Illustration", keptId: painting.id, painted: { brief: "Kept scene", ask: "" } }];
 	module.command(chat.id, { type: "keep-in-gallery", variantId, id: painting.id });
 	expect(module.read(chat.id).paintings).toEqual([]);
 	expect(module.gallery(chat.id)).toEqual(kept);
@@ -296,7 +296,8 @@ test("a kept Illustration stays removable from the Gallery while an attached Ill
 	const [kept, attached] = module.read(chat.id).paintings;
 	if (kept?.kind !== "illustration" || attached?.kind !== "illustration" || kept.image !== attached.image) throw new Error("Two Illustrations of one picture missing");
 	module.command(chat.id, { type: "keep-in-gallery", variantId, id: kept.id });
-	expect(module.gallery(chat.id)).toEqual([{ hash: kept.image.slice(6), name: "Illustration", keptId: kept.id }]);
+	const shown = { hash: kept.image.slice(6), name: "Illustration", painted: { brief: "Same picture again", ask: "" } };
+	expect(module.gallery(chat.id)).toEqual([{ ...shown, keptId: kept.id }]);
 	module.command(chat.id, { type: "remove-from-gallery", id: kept.id });
-	expect(module.gallery(chat.id)).toEqual([{ hash: kept.image.slice(6), name: "Illustration" }]);
+	expect(module.gallery(chat.id)).toEqual([shown]);
 });

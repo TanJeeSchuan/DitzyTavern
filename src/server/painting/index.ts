@@ -104,10 +104,10 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		if (!chat) throw new ConversationNotFoundError(conversationId);
 		const kept = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), like(conversationDataTable.key, "gallery:%"))).all()
 			.map(({ key, value }) => ({ keptId: key.slice("gallery:".length), ...Value.Parse(illustration, JSON.parse(value)) }));
-		const name = ({ image, ask }: { image: string; ask: string }) => ({ hash: image.slice(6), name: illustrationName(ask) });
+		const entry = ({ image, ask, brief }: { image: string; ask: string; brief: string }) => ({ hash: image.slice(6), name: illustrationName(ask), painted: { brief, ask } });
 		const images: GalleryRead = [
-			...read(conversationId).paintings.flatMap((painting) => painting.kind === "illustration" ? [name(painting)] : []),
-			...kept.map((painting) => ({ ...name(painting), keptId: painting.keptId })),
+			...read(conversationId).paintings.flatMap((painting) => painting.kind === "illustration" ? [entry(painting)] : []),
+			...kept.map((painting) => ({ ...entry(painting), keptId: painting.keptId })),
 			...readChatVariants(database, conversationId, { includeActive: true }).flatMap(({ content }) => parseImageReferences(content)),
 			...chat.cast.flatMap((participant) => [
 				...(participant.portrait ? [{ hash: participant.portrait.hash, name: `${participant.name} Portrait` }] : []),
@@ -115,9 +115,9 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 			]),
 		];
 		const firstByHash = new Map<string, GalleryRead[number]>();
-		for (const { hash, name, keptId } of images) {
+		for (const { hash, name, keptId, painted } of images) {
 			const first = firstByHash.get(hash);
-			firstByHash.set(hash, { hash, name: first?.name ?? name, keptId: first?.keptId ?? keptId });
+			firstByHash.set(hash, { hash, name: first?.name ?? name, keptId: first?.keptId ?? keptId, painted: first?.painted ?? painted });
 		}
 		return [...firstByHash.values()];
 	};

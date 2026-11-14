@@ -4,10 +4,11 @@ import { useOpenImageAt } from "./ImageDialog";
 import { IllustrationActionsContext, useGallery, usePaintingCommand } from "./painting";
 import { imageSrc } from "./lib/image";
 
-export function PaintGallery({ conversationId, disabled, onReference }: {
+export function PaintGallery({ conversationId, disabled, onReference, onUseBrief }: {
 	conversationId: number;
 	disabled: boolean;
 	onReference: (name: string, hash: string) => void;
+	onUseBrief: (brief: string, ask: string) => void;
 }) {
 	const headingId = useId();
 	const read = useGallery(conversationId);
@@ -22,7 +23,7 @@ export function PaintGallery({ conversationId, disabled, onReference }: {
 			</div>)}</div>
 				: read.data.length === 0 ? <p className="panel-note">Pictures from this Chat and its Cast appear here.</p>
 					: <ul className="flex gap-3 overflow-x-auto p-1" role="list">
-						{read.data.map(({ hash, name, keptId }) => <li key={hash} className="grid w-36 shrink-0 content-start gap-1">
+						{read.data.map(({ hash, name, keptId, painted }) => <li key={hash} className="grid w-36 shrink-0 content-start gap-1">
 							<button type="button" className="prose-image paint-gallery-thumbnail"
 								aria-label={`Open ${name} full size`} data-image-hash={hash} data-image-name={name} onClick={(event) => openImageAt(event.currentTarget)}>
 								<img src={imageSrc(hash)} alt={name} loading="lazy" />
@@ -30,6 +31,8 @@ export function PaintGallery({ conversationId, disabled, onReference }: {
 							<p className="truncate text-xs text-muted-foreground" title={name}>{name}</p>
 							<Button size="sm" variant="ghost" className="justify-start px-1" aria-label={`Use as reference: ${name}`} disabled={disabled} onClick={() => onReference(name, hash)}>Use as reference</Button>
 							<Button size="sm" variant="ghost" className="justify-start px-1" aria-label={`Add to composer: ${name}`} disabled={actions.addToComposer === null} onClick={() => actions.addToComposer?.(name, hash)}>Add to composer</Button>
+							{painted !== undefined && <Button size="sm" variant="ghost" className="justify-start px-1" aria-label={`Use Brief: ${name}`}
+								disabled={disabled} onClick={() => onUseBrief(painted.brief, painted.ask)}>Use Brief</Button>}
 							{keptId !== undefined && <Button size="sm" variant="ghost" className="justify-start px-1 text-destructive" aria-label={`Remove from Gallery: ${name}`}
 								disabled={pending} onClick={() => void submit({ type: "remove-from-gallery", id: keptId })}>Remove from Gallery</Button>}
 						</li>)}

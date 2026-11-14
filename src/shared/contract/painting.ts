@@ -50,5 +50,7 @@ export type BriefRequest = Static<typeof briefRequest>;
 
 export const briefErrors = Type.Union([invalidOutcome, notFoundOutcome, notPlayableOutcome]);
 
-export const galleryRead = Type.Array(Type.Object({ hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String(), keptId: Type.Optional(Type.String()) }));
+export const galleryRead = Type.Array(Type.Object({ hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String(), keptId: Type.Optional(Type.String()),
+	painted: Type.Optional(Type.Object({ brief: Type.String(), ask: Type.String() })),
+}));
 export type GalleryRead = Static<typeof galleryRead>;

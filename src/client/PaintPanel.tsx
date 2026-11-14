@@ -85,7 +85,8 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 			<Field label="Brief" helper="Describe the picture. Insert pictures to use as references.">
 				<ProseEditor className="prose-editor-field" ref={briefEditor} ariaLabel="Brief" autoFocus={Boolean(target.brief)} value={brief} onChange={updateBrief} disabled={writing.pending} />
 			</Field>
-			<PaintGallery conversationId={conversationId} disabled={writing.pending} onReference={(name, hash) => briefEditor.current?.insertReference(name, hash)} />
+			<PaintGallery conversationId={conversationId} disabled={writing.pending} onReference={(name, hash) => briefEditor.current?.insertReference(name, hash)}
+				onUseBrief={(brief, ask) => { updateBrief(brief); updateAsk(ask); }} />
 			<Field label="Shape" htmlFor="painting-aspect-ratio">
 				<AppSelect id="painting-aspect-ratio" className="field-input" value={aspectRatio} disabled={pending || read.isPending || read.isError}
 					onValueChange={(value) => { if (Value.Check(paintingAspectRatio, value)) void submit({ type: "set-aspect-ratio", aspectRatio: value }); }}

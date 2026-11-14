@@ -79,11 +79,12 @@ Keep each painting as an Illustration belonging to the Variant it was painted fr
 44. As a writer, I want it to show the pictures in this Chat's Messages and the Cast's Portraits and Appearance pictures too, so that I can reuse them as references.
 45. As a writer, I want to add any gallery picture to the composer or to the Brief as a reference, so that reuse takes one press.
 46. As a writer, I want to take an Illustration off its Message but keep it in the Gallery, so that a picture that no longer fits the story stays reusable, and to remove it from the Gallery later.
+47. As a writer, I want to load a painted picture's Brief and Ask from the Gallery, so that I can repaint a picture that is no longer on a Message.
 
 ### Models
 
-47. As a writer, I want to choose one Image Model for the whole app in Connection Settings, with the picker I already know, so that I set it up once.
-48. As a writer, I want to connect OpenRouter's Image API or any OpenAI-shaped image endpoint, so that I am not tied to one provider.
+48. As a writer, I want to choose one Image Model for the whole app in Connection Settings, with the picker I already know, so that I set it up once.
+49. As a writer, I want to connect OpenRouter's Image API or any OpenAI-shaped image endpoint, so that I am not tied to one provider.
 
 ## Implementation Decisions
 
@@ -103,7 +104,7 @@ Keep each painting as an Illustration belonging to the Variant it was painted fr
 14. **Illustrations read.** One read per Chat returns its Illustrations, provisional paintings and failures by Variant, and follows the change feed. The story view renders a row after a Message for each Illustration of the Variant it is showing. The row is as wide as the text column and at most about half the viewport tall, and its height is reserved from the shape as soon as the painting starts. The story viewport follows the bottom when a row is added under the final Message, as it does for a new Message. The Paint panel shows the same rows for the Variant it is open on, so a painting's progress, picture or failure is visible there.
 15. **Illustration actions.** Pressing the picture opens it full size. Add to composer inserts an Image Reference named with the first words of the Ask, or "Illustration" when there was none. Edit Brief and repaint opens the Paint panel on the stored Brief. Delete removes the row. Remove, keep in Gallery moves the row's value to a `conversation_data` row under the same namespace, keyed `gallery:<id>`, so Fork copies it and the orphan sweep still finds its picture and references.
 16. **Shape.** Five choices, sent as the aspect ratios 9:16, 3:4, 1:1, 4:3 and 16:9. The choice is stored per Chat. A Chat starts on 1:1.
-17. **Gallery.** One server query per Chat returns, without duplicates, the Chat's Illustrations from every Variant, the Illustrations kept after removal from their Message, the Image References in every Variant of its Messages found by the shared parser, and the Cast's Portraits and Appearance References. The client cannot build it, since it loads Messages in pages and holds only the selected Variant's text. Each picture has Add to composer and Use as reference, which insert an Image Reference into the composer or the Brief. A kept Illustration also has Remove from Gallery, which deletes its row.
+17. **Gallery.** One server query per Chat returns, without duplicates, the Chat's Illustrations from every Variant, the Illustrations kept after removal from their Message, the Image References in every Variant of its Messages found by the shared parser, and the Cast's Portraits and Appearance References. The client cannot build it, since it loads Messages in pages and holds only the selected Variant's text. Each picture has Add to composer and Use as reference, which insert an Image Reference into the composer or the Brief. An Illustration, attached or kept, also has Use Brief, which loads its stored Brief and Ask into the Paint panel. A kept Illustration also has Remove from Gallery, which deletes its row.
 18. **Design language.** The panel, the picture row, the provisional and failed states and the gallery follow DESIGN.md.
 19. **Database workflow.** Schema changes follow the SQLite and Drizzle workflow. Seed data that gains Appearance gets a matching teardown.
 

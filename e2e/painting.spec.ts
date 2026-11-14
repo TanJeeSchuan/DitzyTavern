@@ -48,7 +48,7 @@ test("paint a typed Brief, swipe away and back, then retry a provider refusal", 
 	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(2);
 });
 
-test("keep an Illustration in the Gallery after taking it off its Message, then remove it from the Gallery", async ({ page, llm }) => {
+test("keep an Illustration in the Gallery after taking it off its Message, reuse its Brief, then remove it from the Gallery", async ({ page, llm }) => {
 	await selectImageModel(page);
 	await llm.chat({ chunks: ["A lantern beside the lake."] });
 	await llm.images({ base64: picture });
@@ -69,6 +69,11 @@ test("keep an Illustration in the Gallery after taking it off its Message, then 
 	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(0);
 	await message.hover();
 	await message.getByRole("button", { name: "Paint", exact: true }).click();
+	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("");
+	await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("");
+	await panel.getByRole("button", { name: "Use Brief: Lantern at the lake", exact: true }).click();
+	await expect(panel.getByRole("textbox", { name: "Brief", exact: true })).toHaveText("A coral lantern reflected in still water.");
+	await expect(panel.getByRole("textbox", { name: "Ask", exact: true })).toHaveText("Lantern at the lake");
 	const remove = panel.getByRole("button", { name: "Remove from Gallery: Lantern at the lake", exact: true });
 	await remove.click();
 	await expect(remove).toHaveCount(0);
