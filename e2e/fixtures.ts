@@ -1,9 +1,13 @@
 import { test as base, expect, type APIRequestContext, type Page } from "@playwright/test";
+import { watchDoherty } from "./doherty";
 import { startE2eServer, type E2eServer } from "./harness";
 
 export { expect };
 
-export const test = base.extend<{ llm: E2eServer; allowedBrowserErrors: RegExp | null }, { server: E2eServer }>({
+// `doherty` (on with DOHERTY=1) delays API calls past 400 ms and fails the test
+// when a clicked control shows no response in time; `dohertyExempt` matches the
+// violation names a test accepts.
+export const test = base.extend<{ llm: E2eServer; allowedBrowserErrors: RegExp | null; doherty: boolean; dohertyExempt: RegExp | null; dohertyWatch: void }, { server: E2eServer }>({
 	allowedBrowserErrors: [null, { option: true }],
 	// oxlint-disable-next-line no-empty-pattern
 	server: [async ({}, use) => {
@@ -25,6 +29,15 @@ export const test = base.extend<{ llm: E2eServer; allowedBrowserErrors: RegExp |
 		expect(log.unscripted, "unscripted model calls").toEqual([]);
 		expect(log.unsentPlans, "captured Prompt Plans that no provider request matches").toEqual([]);
 		expect(problems.filter((problem) => !allowedBrowserErrors?.test(problem)), "browser errors").toEqual([]);
+	}, { auto: true }],
+	doherty: [process.env.DOHERTY === "1", { option: true }],
+	dohertyExempt: [null, { option: true }],
+	dohertyWatch: [async ({ page, doherty, dohertyExempt }, use, testInfo) => {
+		if (!doherty) return use();
+		const violations = await watchDoherty(page);
+		await use();
+		await testInfo.attach("doherty.json", { body: JSON.stringify(violations, null, 2), contentType: "application/json" });
+		expect(violations.filter(({ name }) => !dohertyExempt?.test(name)), "actions left unanswered past the Doherty Threshold").toEqual([]);
 	}, { auto: true }],
 });
 
