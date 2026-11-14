@@ -85,7 +85,10 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		};
 		if (command.type === "save-reference-set" || command.type === "rename-reference-set") {
 			const set = referenceSets(conversationId).find(({ id }) => id === command.id);
-			if (set === undefined) throw new InvalidConversationCommandError("This Reference Set was deleted.");
+			if (set === undefined) {
+				if (command.type === "save-reference-set") return;
+				throw new InvalidConversationCommandError("This Reference Set was deleted.");
+			}
 			const { name, references } = set;
 			return void writeChatRow(conversationId, `reference-set:${command.id}`, JSON.stringify(command.type === "save-reference-set" ? { name, references: command.references } : { name: setName(command.name), references }));
 		}
@@ -93,6 +96,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		if (command.type === "delete-reference-set") return void database.transaction(() => {
 			if (referenceSets(conversationId).length === 1) throw new InvalidConversationCommandError("Keep at least one Reference Set.");
 			db.delete(conversationDataTable).where(chatRow(conversationId, `reference-set:${command.id}`)).run();
+			writeChatRow(conversationId, "selected-reference-set", JSON.stringify(read(conversationId).referenceSetId));
 		}).immediate();
 		if (command.type === "create-reference-set" || command.type === "adopt-reference-set") {
 			const name = setName(command.name);

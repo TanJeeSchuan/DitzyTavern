@@ -399,3 +399,19 @@ for (const [reply, message] of [
 	unsubscribe();
 	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "failed", message }]);
 });
+
+test("deleting the selected Reference Set remembers its replacement, so renaming another set keeps the selection", () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	module.command(chat.id, { type: "rename-reference-set", id: "default", name: "A" });
+	module.command(chat.id, { type: "create-reference-set", name: "C", references: "Kiseki: C" });
+	module.command(chat.id, { type: "create-reference-set", name: "B", references: "Kiseki: B" });
+	const b = module.read(chat.id).referenceSetId;
+	module.command(chat.id, { type: "delete-reference-set", id: b });
+	expect(module.read(chat.id).referenceSetId).toBe("default");
+	module.command(chat.id, { type: "rename-reference-set", id: "default", name: "Z" });
+	expect(module.read(chat.id).referenceSetId).toBe("default");
+	module.command(chat.id, { type: "save-reference-set", id: b, references: "Typed after the delete" });
+	expect(module.read(chat.id).referenceSets.map(({ name }) => name)).toEqual(["C", "Z"]);
+});

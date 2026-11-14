@@ -55,7 +55,7 @@ export function ReferenceSetField({ conversationId, sets, selected, draft, edito
 			<Button type="submit" size="sm" disabled={pending || !naming.name.trim()}>{naming.kind === "new" ? "Create" : "Rename"}</Button>
 			<Button type="button" size="sm" variant="ghost" onClick={() => setNaming(null)}>Cancel</Button>
 		</form>}
-		<ProseEditor className="prose-editor-field" ref={editorRef} ariaLabel="References" value={draft.references} onChange={draft.edit} disabled={busy} />
+		<ProseEditor key={selected?.id} className="prose-editor-field" ref={editorRef} ariaLabel="References" value={draft.references} onChange={draft.edit} disabled={busy} />
 		<small className="text-xs text-muted-foreground">Sent after the Brief. Writing a Brief never changes them. Press a picture below to insert it here.</small>
 		{(error ?? draft.error) !== null && <p role="alert" className="text-sm text-destructive">{error ?? draft.error}</p>}
 	</section>;

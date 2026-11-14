@@ -41,14 +41,17 @@ export function usePaintingCommand(conversationId: number) {
 
 export type PaintTarget = { variantId: number; brief: string; ask: string; requestId: string };
 
-type ReferenceSaves = { pending: ReferenceSet | null; timer?: ReturnType<typeof setTimeout>; saving: Promise<string | null>; listeners: Set<() => void> };
+type ReferenceSaves = { pending: ReadonlyMap<string, string>; timer?: ReturnType<typeof setTimeout>; saving: Promise<string | null>; listeners: Set<() => void> };
 const referenceSaves = new Map<number, ReferenceSaves>();
 const savesOf = (conversationId: number) => {
-	const saves = referenceSaves.get(conversationId) ?? { pending: null, saving: Promise.resolve(null), listeners: new Set() };
+	const saves: ReferenceSaves = referenceSaves.get(conversationId) ?? { pending: new Map(), saving: Promise.resolve(null), listeners: new Set() };
 	referenceSaves.set(conversationId, saves);
 	return saves;
 };
-const setPending = (saves: ReferenceSaves, pending: ReferenceSet | null) => {
+const setPending = (saves: ReferenceSaves, id: string, references: string | undefined) => {
+	const pending = new Map(saves.pending);
+	if (references === undefined) pending.delete(id);
+	else pending.set(id, references);
 	saves.pending = pending;
 	for (const listener of saves.listeners) listener();
 };
@@ -57,11 +60,12 @@ export const flushReferences = (client: QueryClient, conversationId: number): Pr
 	const saves = savesOf(conversationId);
 	clearTimeout(saves.timer);
 	saves.saving = saves.saving.then(async () => {
-		for (let set = saves.pending; set !== null; set = saves.pending) {
-			const result = await commandPainting(conversationId, { type: "save-reference-set", id: set.id, references: set.references });
+		for (let next = saves.pending.entries().next(); !next.done; next = saves.pending.entries().next()) {
+			const [id, references] = next.value;
+			const result = await commandPainting(conversationId, { type: "save-reference-set", id, references });
 			if (result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The References could not be saved.";
 			await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
-			if (saves.pending === set) setPending(saves, null);
+			if (saves.pending.get(id) === references) setPending(saves, id, undefined);
 		}
 		return null;
 	});
@@ -83,12 +87,12 @@ export function useReferenceDraft(conversationId: number, selected: ReferenceSet
 	};
 	useEffect(() => () => void flushReferences(client, conversationId), [client, conversationId]);
 	return {
-		references: pending !== null && pending.id === selected?.id ? pending.references : selected?.references ?? "",
+		references: (selected && pending.get(selected.id)) ?? selected?.references ?? "",
 		error,
 		edit: (references: string) => {
 			if (selected === undefined) return;
 			setError(null);
-			setPending(saves, { ...selected, references });
+			setPending(saves, selected.id, references);
 			clearTimeout(saves.timer);
 			saves.timer = setTimeout(() => void flush(), 600);
 		},
