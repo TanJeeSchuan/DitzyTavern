@@ -47,3 +47,22 @@ test("once an edit is saved, the set shows text saved later from elsewhere", asy
 	await select({ id: "default", name: "References", references: "Changed in second tab" });
 	expect(hook.current.draft.references).toBe("Changed in second tab");
 });
+
+test("an edit made while a save is in flight is saved before adopting an Illustration's References", async () => {
+	const { hook } = await render(3, { id: "default", name: "References", references: "Iris: silks" });
+	const sent: string[] = [];
+	const held = Promise.withResolvers<void>();
+	globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => {
+		const command = JSON.parse(String(init?.body));
+		sent.push(`${command.type}:${command.references}`);
+		if (sent.length === 1) await held.promise;
+		return Response.json({ outcome: "accepted" });
+	}, { preconnect: () => {} });
+	await hook.act(async () => { hook.current.draft.edit("Iris: kimono"); });
+	let adoption: Promise<boolean> = Promise.resolve(false);
+	await hook.act(async () => { adoption = hook.current.adoption.adopt("Bridge", "Iris: silks"); });
+	await hook.act(async () => { hook.current.draft.edit("Iris: kimono, hair down"); });
+	held.resolve();
+	await hook.act(async () => { expect(await adoption).toBe(true); });
+	expect(sent).toEqual(["save-reference-set:Iris: kimono", "save-reference-set:Iris: kimono, hair down", "adopt-reference-set:Iris: silks"]);
+});

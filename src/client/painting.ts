@@ -57,12 +57,12 @@ export const flushReferences = (client: QueryClient, conversationId: number): Pr
 	const saves = savesOf(conversationId);
 	clearTimeout(saves.timer);
 	saves.saving = saves.saving.then(async () => {
-		const set = saves.pending;
-		if (set === null) return null;
-		const result = await commandPainting(conversationId, { type: "save-reference-set", id: set.id, references: set.references });
-		if (result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The References could not be saved.";
-		await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
-		if (saves.pending === set) setPending(saves, null);
+		for (let set = saves.pending; set !== null; set = saves.pending) {
+			const result = await commandPainting(conversationId, { type: "save-reference-set", id: set.id, references: set.references });
+			if (result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The References could not be saved.";
+			await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
+			if (saves.pending === set) setPending(saves, null);
+		}
 		return null;
 	});
 	return saves.saving;
@@ -93,11 +93,6 @@ export function useReferenceDraft(conversationId: number, selected: ReferenceSet
 			saves.timer = setTimeout(() => void flush(), 600);
 		},
 		flush,
-		discard: () => {
-			clearTimeout(saves.timer);
-			setPending(saves, null);
-			return flush();
-		},
 	};
 }
 

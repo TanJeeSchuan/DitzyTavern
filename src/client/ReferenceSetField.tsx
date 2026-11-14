@@ -37,7 +37,7 @@ export function ReferenceSetField({ conversationId, sets, selected, draft, edito
 					<DropdownMenuItem onSelect={() => setNaming({ kind: "rename", name: selected?.name ?? "" })}>Rename</DropdownMenuItem>
 					<DropdownMenuItem variant="destructive" disabled={sets.length === 1} onSelect={() => {
 						if (selected === undefined) return;
-						void draft.discard().then(() => submit({ type: "delete-reference-set", id: selected.id }));
+						void switchTo({ type: "delete-reference-set", id: selected.id });
 					}}>Delete</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>
