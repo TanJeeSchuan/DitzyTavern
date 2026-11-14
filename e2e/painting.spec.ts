@@ -80,6 +80,18 @@ test("keep an Illustration in the Gallery after taking it off its Message, reuse
 	await expect(panel.getByRole("button", { name: "Open Lantern at the lake full size" })).toHaveCount(0);
 });
 
+test("open the Gallery from the rail, upload a picture into it, and remove it", async ({ page }) => {
+	await page.goto("/");
+	await page.getByRole("button", { name: "Gallery", exact: true }).click();
+	const gallery = page.getByRole("region", { name: "Gallery", exact: true });
+	await gallery.getByLabel("Upload to Gallery").setInputFiles({ name: "harbour.png", mimeType: "image/png", buffer: Buffer.from(picture, "base64") });
+	await expect(gallery.getByRole("button", { name: "Open harbour full size" })).toBeVisible();
+	await page.reload();
+	await page.getByRole("button", { name: "Gallery", exact: true }).click();
+	await gallery.getByRole("button", { name: "Remove from Gallery: harbour", exact: true }).click();
+	await expect(gallery.getByRole("button", { name: "Open harbour full size" })).toHaveCount(0);
+});
+
 test("painting reaches the story model only after Add to composer and Send", async ({ page, llm }) => {
 	await selectImageModel(page);
 	await llm.chat({ chunks: ["The lantern lights the lake.\n\n" + "The water reflects the hills as the lantern sways in the wind. ".repeat(40)] }, { chunks: ["I see your Illustration."] });

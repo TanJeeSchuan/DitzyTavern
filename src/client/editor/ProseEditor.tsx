@@ -6,7 +6,7 @@ import { type Ref, type ReactNode, useEffect, useImperativeHandle, useRef, useSt
 import { cn } from "@/lib/utils";
 import { formatImageReference, parseImageReferences } from "../../shared/image-reference";
 import { ImageDialogProvider, useOpenImageAt, type OpenedImage } from "../ImageDialog";
-import { imageAccept, imageSrc, uploadImage } from "../lib/image";
+import { baseName, imageAccept, imageSrc, uploadImage } from "../lib/image";
 
 export interface ProseEditorHandle {
 	focus: () => void;
@@ -82,7 +82,6 @@ const theme = EditorView.theme({
 	".cm-line": { padding: "0" },
 });
 
-const baseName = (fileName: string) => fileName.replace(/\.[^.]+$/, "");
 
 const editability = (disabled: boolean) => [EditorView.editable.of(!disabled), EditorView.contentAttributes.of({ "aria-disabled": String(disabled) })];
 

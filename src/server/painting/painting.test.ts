@@ -287,6 +287,23 @@ test("Remove, keep in Gallery takes an Illustration off its Message but keeps it
 	expect(module.gallery(fork.id)).toEqual(kept);
 });
 
+test("an uploaded picture joins the Chat's Gallery through the sweep until removed, and a missing picture is refused", async () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	const { hash } = await uploadImage(database, pngFixture({ width: 32 }));
+	expect(() => module.command(chat.id, { type: "add-to-gallery", hash: "0".repeat(64), name: "Ghost" })).toThrow("The image is missing; upload it again.");
+	module.command(chat.id, { type: "add-to-gallery", hash, name: "Harbour" });
+	const [uploaded] = module.gallery(chat.id);
+	expect(uploaded).toEqual({ hash, name: "Harbour", keptId: expect.any(String) });
+	const later = Date.now() + 2 * 24 * 60 * 60 * 1000;
+	sweepOrphanedImages(database, later);
+	sweepOrphanedImages(database, later + 24 * 60 * 60 * 1000 + 1);
+	expect(imageLoader(database)(hash)).toBeDefined();
+	module.command(chat.id, { type: "remove-from-gallery", id: uploaded!.keptId! });
+	expect(module.gallery(chat.id)).toEqual([]);
+});
+
 test("a kept Illustration stays removable from the Gallery while an attached Illustration shows the same picture", async () => {
 	using fixture = setup();
 	const { database, chat } = fixture;

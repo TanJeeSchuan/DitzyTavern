@@ -3,12 +3,12 @@ import { Value } from "@sinclair/typebox/value";
 import { and, eq, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, messageVariantDataTable } from "../database/schema";
-import { illustration, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
+import { illustration, keptImage, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
 import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantData, readChatVariantIds, readChatVariants, readConversationSummary, readPaintPresetSettings, commandPaintPreset } from "../conversation";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import { readImageModelSettings } from "./image-model-settings";
 import { paintImage, type ModelFetch } from "../model-client";
-import { imageLoader, ingestImage, storeImage } from "../image";
+import { imageLoader, ingestImage, readImage, storeImage } from "../image";
 import { announceChange } from "../database/changes";
 import { processStateFor } from "../application/process-state";
 
@@ -70,6 +70,11 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 				.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value: JSON.stringify({ aspectRatio: command.aspectRatio }) } }).run();
 			return;
 		}
+		if (command.type === "add-to-gallery") {
+			if (readImage(db, command.hash) === undefined) throw new InvalidConversationCommandError("The image is missing; upload it again.");
+			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key: `gallery:${Bun.randomUUIDv7()}`, value: JSON.stringify({ image: `image:${command.hash}`, name: command.name }) }).run();
+			return;
+		}
 		if (command.type === "remove-from-gallery") {
 			const { conversation_id, namespace, key } = conversationDataTable;
 			db.delete(conversationDataTable).where(and(eq(conversation_id, conversationId), eq(namespace, PAINTING_NAMESPACE), eq(key, `gallery:${command.id}`))).run();
@@ -103,11 +108,11 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		const chat = readConversationSummary(database, conversationId);
 		if (!chat) throw new ConversationNotFoundError(conversationId);
 		const kept = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), like(conversationDataTable.key, "gallery:%"))).all()
-			.map(({ key, value }) => ({ keptId: key.slice("gallery:".length), ...Value.Parse(illustration, JSON.parse(value)) }));
+			.map(({ key, value }) => ({ keptId: key.slice("gallery:".length), image: Value.Parse(keptImage, JSON.parse(value)) }));
 		const entry = ({ image, ask, brief }: { image: string; ask: string; brief: string }) => ({ hash: image.slice(6), name: illustrationName(ask), painted: { brief, ask } });
 		const images: GalleryRead = [
 			...read(conversationId).paintings.flatMap((painting) => painting.kind === "illustration" ? [entry(painting)] : []),
-			...kept.map((painting) => ({ ...entry(painting), keptId: painting.keptId })),
+			...kept.map(({ keptId, image }) => ({ ...("brief" in image ? entry(image) : { hash: image.image.slice(6), name: image.name }), keptId })),
 			...readChatVariants(database, conversationId, { includeActive: true }).flatMap(({ content }) => parseImageReferences(content)),
 			...chat.cast.flatMap((participant) => [
 				...(participant.portrait ? [{ hash: participant.portrait.hash, name: `${participant.name} Portrait` }] : []),
