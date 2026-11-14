@@ -11,7 +11,7 @@ import { Value } from "@sinclair/typebox/value";
 import { paintingAspectRatio, DEFAULT_PAINTING_ASPECT_RATIO, DEFAULT_BRIEF_MESSAGE_COUNT } from "../shared/contract/painting";
 import { Switch } from "@/components/ui/switch";
 import { useWriteBrief } from "./brief";
-import { PaintGallery } from "./PaintGallery";
+import { Gallery } from "./Gallery";
 import { ProseEditor, type ProseEditorHandle } from "./editor/ProseEditor";
 import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
@@ -100,13 +100,13 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 				<ProseEditor className="prose-editor-field" ariaLabel="Brief" autoFocus={Boolean(target.brief)} value={brief} onChange={updateBrief} disabled={writing.pending} />
 			</Field>
 			<ReferenceSetField conversationId={conversationId} sets={selection?.referenceSets ?? []} selected={referenceSet} draft={references} editorRef={referencesEditor} disabled={read.isPending || read.isError} />
-			<PaintGallery conversationId={conversationId} disabled={writing.pending} onReference={(name, hash) => referencesEditor.current?.insertReference(name, hash)}
-				onUseBrief={async (name, painted) => {
+			<Gallery conversationId={conversationId} paint={{ disabled: writing.pending, onReference: (name, hash) => referencesEditor.current?.insertReference(name, hash),
+				onUseBrief: async (name, painted) => {
 					updateBrief(painted.brief);
 					updateAsk(painted.ask);
 					await references.flush();
 					await adoptReferences(name, painted.references);
-				}} />
+				} }} />
 			<div><IllustrationRows conversationId={conversationId} variantId={variantId} /></div>
 		</div>
 		<footer className="panel-action-footer grid gap-2">

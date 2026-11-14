@@ -9,6 +9,7 @@ export type PaintingAspectRatio = Static<typeof paintingAspectRatio>;
 export const DEFAULT_PAINTING_ASPECT_RATIO: PaintingAspectRatio = "1:1";
 const paintingInput = Type.Object({ brief: Type.String(), references: Type.String(), ask: Type.String(), imageModel: modelSelection, aspectRatio: paintingAspectRatio });
 export const illustration = Type.Composite([paintingInput, Type.Object({ image: Type.String({ pattern: "^image:[0-9a-f]{64}$" }) })]);
+export const keptImage = Type.Union([illustration, Type.Object({ image: illustration.properties.image, name: Type.String() })]);
 const paintingBase = Type.Composite([paintingInput, Type.Object({ id: Type.String(), variantId: Type.Integer() })]);
 export const painting = Type.Union([
 	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("painting") })]),
@@ -41,6 +42,7 @@ export const paintingCommand = Type.Union([
 	Type.Object({ type: Type.Literal("dismiss"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("delete"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("keep-in-gallery"), variantId: Type.Integer(), id: Type.String() }),
+	Type.Object({ type: Type.Literal("add-to-gallery"), hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String() }),
 	Type.Object({ type: Type.Literal("remove-from-gallery"), id: Type.String() }),
 	Type.Object({ type: Type.Literal("set-aspect-ratio"), aspectRatio: paintingAspectRatio }),
 	Type.Object({ type: Type.Literal("create-reference-set"), name: referenceSet.properties.name, references: Type.String() }),
