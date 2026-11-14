@@ -15,22 +15,26 @@ export function useReferenceDraft(conversationId: number, selected: ReferenceSet
 	const [error, setError] = useState<string | null>(null);
 	const pending = useRef<ReferenceSet | null>(null);
 	const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
-	const save = async (set: ReferenceSet) => {
-		const result = await commandPainting(conversationId, { type: "save-reference-set", id: set.id, references: set.references });
-		if (result.outcome === "available") await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
-		else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The References could not be saved.");
-	};
-	const take = () => {
+	const saving = useRef(Promise.resolve(true));
+	const flush = () => {
 		clearTimeout(timer.current);
-		const set = pending.current;
-		pending.current = null;
-		return set;
+		saving.current = saving.current.then(async () => {
+			const set = pending.current;
+			if (set === null) return true;
+			const result = await commandPainting(conversationId, { type: "save-reference-set", id: set.id, references: set.references });
+			if (result.outcome !== "available") {
+				setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The References could not be saved.");
+				return false;
+			}
+			if (pending.current === set) pending.current = null;
+			await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
+			return true;
+		});
+		return saving.current;
 	};
-	useEffect(() => () => {
-		const set = take();
-		if (set !== null) void commandPainting(conversationId, { type: "save-reference-set", id: set.id, references: set.references })
-			.then(() => client.invalidateQueries({ queryKey: illustrationsKey(conversationId) }));
-	}, [client, conversationId]);
+	const flushOnUnmount = useRef(flush);
+	useEffect(() => { flushOnUnmount.current = flush; });
+	useEffect(() => () => void flushOnUnmount.current(), []);
 	return {
 		references: draft !== null && draft.id === selected?.id ? draft.references : selected?.references ?? "",
 		error,
@@ -41,10 +45,14 @@ export function useReferenceDraft(conversationId: number, selected: ReferenceSet
 			setError(null);
 			pending.current = set;
 			clearTimeout(timer.current);
-			timer.current = setTimeout(() => { const set = take(); if (set !== null) void save(set); }, 600);
+			timer.current = setTimeout(() => void flush(), 600);
 		},
-		flush: async () => { const set = take(); if (set !== null) await save(set); },
-		discard: take,
+		flush,
+		discard: () => {
+			clearTimeout(timer.current);
+			pending.current = null;
+			return flush();
+		},
 	};
 }
 
@@ -62,10 +70,7 @@ export function ReferenceSetField({ conversationId, sets, selected, draft, edito
 	const { submit, pending, error } = usePaintingCommand(conversationId);
 	const [naming, setNaming] = useState<Naming | null>(null);
 	const busy = disabled || pending || selected === undefined;
-	const switchTo = async (command: Parameters<typeof submit>[0]) => {
-		await draft.flush();
-		return submit(command);
-	};
+	const switchTo = async (command: Parameters<typeof submit>[0]) => await draft.flush() && submit(command);
 	return <section className="grid min-w-0 gap-2" aria-labelledby={headingId}>
 		<h3 id={headingId} className="text-sm font-medium">References</h3>
 		{naming === null ? <div className="flex min-w-0 items-center gap-2">
@@ -80,8 +85,7 @@ export function ReferenceSetField({ conversationId, sets, selected, draft, edito
 					<DropdownMenuItem onSelect={() => setNaming({ kind: "rename", name: selected?.name ?? "" })}>Rename</DropdownMenuItem>
 					<DropdownMenuItem variant="destructive" disabled={sets.length === 1} onSelect={() => {
 						if (selected === undefined) return;
-						draft.discard();
-						void submit({ type: "delete-reference-set", id: selected.id });
+						void draft.discard().then(() => submit({ type: "delete-reference-set", id: selected.id }));
 					}}>Delete</DropdownMenuItem>
 				</DropdownMenuContent>
 			</DropdownMenu>

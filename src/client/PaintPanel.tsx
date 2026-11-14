@@ -104,8 +104,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 				onUseBrief: async (name, painted) => {
 					updateBrief(painted.brief);
 					updateAsk(painted.ask);
-					await references.flush();
-					await adoptReferences(name, painted.references);
+					if (await references.flush()) await adoptReferences(name, painted.references);
 				} }} />
 			<div><IllustrationRows conversationId={conversationId} variantId={variantId} /></div>
 		</div>

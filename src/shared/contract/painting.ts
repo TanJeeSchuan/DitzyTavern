@@ -46,6 +46,7 @@ export const paintingCommand = Type.Union([
 	Type.Object({ type: Type.Literal("remove-from-gallery"), id: Type.String() }),
 	Type.Object({ type: Type.Literal("set-aspect-ratio"), aspectRatio: paintingAspectRatio }),
 	Type.Object({ type: Type.Literal("create-reference-set"), name: referenceSet.properties.name, references: Type.String() }),
+	Type.Object({ type: Type.Literal("adopt-reference-set"), name: referenceSet.properties.name, references: Type.String() }),
 	Type.Object({ type: Type.Literal("save-reference-set"), id: Type.String(), references: Type.String() }),
 	Type.Object({ type: Type.Literal("rename-reference-set"), id: Type.String(), name: referenceSet.properties.name }),
 	Type.Object({ type: Type.Literal("select-reference-set"), id: Type.String() }),

@@ -361,6 +361,27 @@ test("Reference Sets: one empty set before any exists, New selects its copy, edi
 	module.command(chat.id, { type: "delete-reference-set", id: kimono.id });
 	expect(module.read(chat.id)).toMatchObject({ referenceSets: [{ id: "default", name: "Race day" }], referenceSetId: "default" });
 	expect(module.read(fork.id).referenceSets).toHaveLength(2);
+	expect(() => module.command(chat.id, { type: "delete-reference-set", id: "default" })).toThrow("Keep at least one Reference Set.");
+	expect(module.read(chat.id).referenceSets).toMatchObject([{ id: "default", references: "Kiseki: racing silks" }]);
+});
+
+test("adopting an Illustration's References selects the set holding them now, or creates one, and a blank name is refused", () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Kiseki: kimono" });
+	module.command(chat.id, { type: "create-reference-set", name: "Race", references: "Kiseki: racing silks" });
+	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Kiseki: kimono" });
+	expect(module.read(chat.id)).toMatchObject({ referenceSets: [{ name: "Race" }, { id: "default" }], referenceSetId: "default" });
+	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Kiseki: kimono, hair down" });
+	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Kiseki: kimono" });
+	const { referenceSets, referenceSetId } = module.read(chat.id);
+	expect(referenceSets.find(({ id }) => id === referenceSetId)).toMatchObject({ name: "Bridge", references: "Kiseki: kimono" });
+	expect(referenceSets).toHaveLength(3);
+	for (const command of [{ type: "create-reference-set", name: "   ", references: "" }, { type: "rename-reference-set", id: "default", name: " " }] as const) {
+		expect(() => module.command(chat.id, command)).toThrow("Name the Reference Set.");
+	}
+	expect(() => module.read(chat.id)).not.toThrow();
 });
 
 for (const [reply, message] of [

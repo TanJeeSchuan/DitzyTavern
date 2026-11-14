@@ -42,19 +42,14 @@ export function usePaintingCommand(conversationId: number) {
 export type PaintTarget = { variantId: number; brief: string; ask: string; requestId: string };
 
 export function useAdoptReferences(conversationId: number) {
-	const read = useIllustrations(conversationId);
 	const { submit } = usePaintingCommand(conversationId);
-	return (name: string, references: string) => {
-		if (!references.trim()) return Promise.resolve(true);
-		const existing = read.data?.referenceSets.find((set) => set.references === references);
-		return submit(existing ? { type: "select-reference-set", id: existing.id } : { type: "create-reference-set", name, references });
-	};
+	return (name: string, references: string) => references.trim() ? submit({ type: "adopt-reference-set", name, references }) : Promise.resolve(true);
 }
 
 const imageModelClient = modelSelectionClient("image-model");
 export function useImageModel() {
 	const client = useQueryClient();
-	const read = useQuery({ queryKey: ["image-model"], queryFn: imageModelClient.load });
+	const read = useQuery({ queryKey: ["image-model"], meta: followsChanges, queryFn: imageModelClient.load });
 	const [error, setError] = useState<string | null>(null);
 	const select = async (profileId: number, model: string) => {
 		if (read.data === undefined) return;

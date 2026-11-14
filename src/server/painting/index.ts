@@ -79,21 +79,29 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		requireChat(conversationId);
 		if (command.type === "select-paint-preset" || command.type === "set-brief-message-count") return commandPaintPreset(database, conversationId, command);
 		if (command.type === "set-aspect-ratio") return void writeChatRow(conversationId, "aspect-ratio", JSON.stringify({ aspectRatio: command.aspectRatio }));
+		const setName = (name: string) => {
+			if (!name.trim()) throw new InvalidConversationCommandError("Name the Reference Set.");
+			return name.trim();
+		};
 		if (command.type === "save-reference-set" || command.type === "rename-reference-set") {
 			const set = referenceSets(conversationId).find(({ id }) => id === command.id);
 			if (set === undefined) throw new InvalidConversationCommandError("This Reference Set was deleted.");
 			const { name, references } = set;
-			return void writeChatRow(conversationId, `reference-set:${command.id}`, JSON.stringify(command.type === "save-reference-set" ? { name, references: command.references } : { name: command.name.trim(), references }));
+			return void writeChatRow(conversationId, `reference-set:${command.id}`, JSON.stringify(command.type === "save-reference-set" ? { name, references: command.references } : { name: setName(command.name), references }));
 		}
 		if (command.type === "select-reference-set") return void writeChatRow(conversationId, "selected-reference-set", JSON.stringify(command.id));
-		if (command.type === "delete-reference-set") return void db.delete(conversationDataTable).where(chatRow(conversationId, `reference-set:${command.id}`)).run();
-		if (command.type === "create-reference-set") {
-			const id = Bun.randomUUIDv7();
-			database.transaction(() => {
-				writeChatRow(conversationId, `reference-set:${id}`, JSON.stringify({ name: command.name.trim(), references: command.references }));
+		if (command.type === "delete-reference-set") return void database.transaction(() => {
+			if (referenceSets(conversationId).length === 1) throw new InvalidConversationCommandError("Keep at least one Reference Set.");
+			db.delete(conversationDataTable).where(chatRow(conversationId, `reference-set:${command.id}`)).run();
+		}).immediate();
+		if (command.type === "create-reference-set" || command.type === "adopt-reference-set") {
+			const name = setName(command.name);
+			return void database.transaction(() => {
+				const existing = command.type === "adopt-reference-set" ? referenceSets(conversationId).find(({ references }) => references === command.references) : undefined;
+				const id = existing?.id ?? Bun.randomUUIDv7();
+				if (existing === undefined) writeChatRow(conversationId, `reference-set:${id}`, JSON.stringify({ name, references: command.references }));
 				writeChatRow(conversationId, "selected-reference-set", JSON.stringify(id));
 			}).immediate();
-			return;
 		}
 		if (command.type === "add-to-gallery") {
 			if (readImage(db, command.hash) === undefined) throw new InvalidConversationCommandError("The image is missing; upload it again.");
