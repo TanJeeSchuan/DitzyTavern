@@ -21,8 +21,12 @@ export function ReferenceSetField({ conversationId, sets, selected, draft, edito
 	const headingId = useId();
 	const { submit, pending, error } = usePaintingCommand(conversationId);
 	const [naming, setNaming] = useState<Naming | null>(null);
-	const busy = disabled || pending || selected === undefined;
-	const switchTo = async (command: Parameters<typeof submit>[0]) => await draft.flush() && submit(command);
+	const [switching, setSwitching] = useState(false);
+	const busy = disabled || pending || switching || selected === undefined;
+	const switchTo = async (command: Parameters<typeof submit>[0]) => {
+		setSwitching(true);
+		try { return await draft.flush() && await submit(command); } finally { setSwitching(false); }
+	};
 	return <section className="grid min-w-0 gap-2" aria-labelledby={headingId}>
 		<h3 id={headingId} className="text-sm font-medium">References</h3>
 		{naming === null ? <div className="flex min-w-0 items-center gap-2">

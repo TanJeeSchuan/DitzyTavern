@@ -87,3 +87,22 @@ test("an edit made while an adoption is in flight is still saved after the adopt
 	await hook.act(async () => { await hook.current.draft.flush(); });
 	expect(sent).toEqual(["adopt-reference-set::Iris: kimono", "save-reference-set:a:Iris: silks, hair down", "save-reference-set:b:Iris: kimono, sash"]);
 });
+
+test("a save whose read-back fails still shows the saved References", async () => {
+	const { useIllustrations, illustrationsKey } = await import("./painting");
+	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+	client.setQueryData(illustrationsKey(5), {
+		paintPresetId: 1, briefMessageCount: 5, paintPresets: [], aspectRatio: "1:1", paintings: [],
+		referenceSets: [{ id: "default", name: "References", references: "Iris: silks" }], referenceSetId: "default",
+	});
+	globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => init?.method === "POST"
+		? Response.json({ outcome: "accepted" })
+		: Response.json({ outcome: "not-found" }, { status: 500 }), { preconnect: () => {} });
+	const hook = await renderHook(() => {
+		const read = useIllustrations(5);
+		return useReferenceDraft(5, read.data?.referenceSets[0]);
+	}, client);
+	await hook.act(async () => { hook.current.edit("Iris: kimono"); });
+	await hook.act(async () => { expect(await hook.current.flush()).toBe(true); });
+	expect(hook.current.references).toBe("Iris: kimono");
+});

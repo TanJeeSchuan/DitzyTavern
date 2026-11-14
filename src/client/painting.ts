@@ -64,8 +64,9 @@ export const flushReferences = (client: QueryClient, conversationId: number): Pr
 			const [id, references] = next.value;
 			const result = await commandPainting(conversationId, { type: "save-reference-set", id, references });
 			if (result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The References could not be saved.";
-			await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
+			client.setQueryData<IllustrationsRead>(illustrationsKey(conversationId), (read) => read && { ...read, referenceSets: read.referenceSets.map((set) => set.id === id ? { ...set, references } : set) });
 			if (saves.pending.get(id) === references) setPending(saves, id, undefined);
+			await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
 		}
 		return null;
 	});
