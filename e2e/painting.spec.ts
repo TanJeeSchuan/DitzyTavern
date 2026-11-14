@@ -92,6 +92,18 @@ test("open the Gallery from the rail, upload a picture into it, and remove it", 
 	await expect(gallery.getByRole("button", { name: "Open harbour full size" })).toHaveCount(0);
 });
 
+test("on a phone, Add to composer from the Gallery closes it over the composer", async ({ page }) => {
+	await page.setViewportSize({ width: 390, height: 844 });
+	await page.goto("/");
+	await page.getByRole("button", { name: "Open navigation", exact: true }).click();
+	await page.getByRole("button", { name: "Gallery", exact: true }).click();
+	const gallery = page.getByRole("region", { name: "Gallery", exact: true });
+	await gallery.getByLabel("Upload to Gallery").setInputFiles({ name: "harbour.png", mimeType: "image/png", buffer: Buffer.from(picture, "base64") });
+	await gallery.getByRole("button", { name: "Add to composer: harbour", exact: true }).click();
+	await expect(gallery).toBeHidden();
+	await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("harbour");
+});
+
 test("painting reaches the story model only after Add to composer and Send", async ({ page, llm }) => {
 	await selectImageModel(page);
 	await llm.chat({ chunks: ["The lantern lights the lake.\n\n" + "The water reflects the hills as the lantern sways in the wind. ".repeat(40)] }, { chunks: ["I see your Illustration."] });

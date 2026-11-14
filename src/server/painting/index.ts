@@ -72,7 +72,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		}
 		if (command.type === "add-to-gallery") {
 			if (readImage(db, command.hash) === undefined) throw new InvalidConversationCommandError("The image is missing; upload it again.");
-			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key: `gallery:${Bun.randomUUIDv7()}`, value: JSON.stringify({ image: `image:${command.hash}`, name: command.name }) }).run();
+			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key: `gallery:${command.hash}`, value: JSON.stringify({ image: `image:${command.hash}`, name: command.name }) }).onConflictDoNothing().run();
 			return;
 		}
 		if (command.type === "remove-from-gallery") {
