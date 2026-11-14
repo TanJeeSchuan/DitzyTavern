@@ -39,6 +39,11 @@ body > .details-panel > .panel-body {
 		display: none;
 	}
 
+	/* @approved The full-screen story stage hides it, yet its blur re-rasters on every pinch-zoom. */
+	.ambient-field {
+		display: none;
+	}
+
 	.story-header {
 		grid-template-columns: auto minmax(0, 1fr) auto;
 		padding-left: 0.6rem;
