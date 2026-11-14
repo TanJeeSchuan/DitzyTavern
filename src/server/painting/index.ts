@@ -1,6 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { and, eq } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, messageVariantDataTable } from "../database/schema";
 import { illustration, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
@@ -70,9 +70,20 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 				.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value: JSON.stringify({ aspectRatio: command.aspectRatio }) } }).run();
 			return;
 		}
+		if (command.type === "remove-from-gallery") {
+			const { conversation_id, namespace, key } = conversationDataTable;
+			db.delete(conversationDataTable).where(and(eq(conversation_id, conversationId), eq(namespace, PAINTING_NAMESPACE), eq(key, `gallery:${command.id}`))).run();
+			return;
+		}
 		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint.");
-		if (command.type === "delete") {
-			db.delete(messageVariantDataTable).where(and(eq(messageVariantDataTable.message_variant_id, command.variantId), eq(messageVariantDataTable.namespace, PAINTING_NAMESPACE), eq(messageVariantDataTable.key, command.id))).run();
+		if (command.type === "delete" || command.type === "keep-in-gallery") {
+			const { message_variant_id, namespace, key } = messageVariantDataTable;
+			const row = and(eq(message_variant_id, command.variantId), eq(namespace, PAINTING_NAMESPACE), eq(key, command.id));
+			database.transaction(() => {
+				const removed = db.delete(messageVariantDataTable).where(row).returning().get();
+				if (command.type !== "keep-in-gallery" || !removed) return;
+				db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key: `gallery:${command.id}`, value: removed.value }).run();
+			}).immediate();
 			return;
 		}
 		if (command.type === "paint") {
@@ -91,8 +102,12 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	const gallery = (conversationId: number): GalleryRead => {
 		const chat = readConversationSummary(database, conversationId);
 		if (!chat) throw new ConversationNotFoundError(conversationId);
+		const kept = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), like(conversationDataTable.key, "gallery:%"))).all()
+			.map(({ key, value }) => ({ keptId: key.slice("gallery:".length), ...Value.Parse(illustration, JSON.parse(value)) }));
+		const name = ({ image, ask }: { image: string; ask: string }) => ({ hash: image.slice(6), name: illustrationName(ask) });
 		const images: GalleryRead = [
-			...read(conversationId).paintings.flatMap((painting) => painting.kind === "illustration" ? [{ hash: painting.image.slice(6), name: illustrationName(painting.ask) }] : []),
+			...read(conversationId).paintings.flatMap((painting) => painting.kind === "illustration" ? [name(painting)] : []),
+			...kept.map((painting) => ({ ...name(painting), keptId: painting.keptId })),
 			...readChatVariants(database, conversationId, { includeActive: true }).flatMap(({ content }) => parseImageReferences(content)),
 			...chat.cast.flatMap((participant) => [
 				...(participant.portrait ? [{ hash: participant.portrait.hash, name: `${participant.name} Portrait` }] : []),
@@ -100,7 +115,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 			]),
 		];
 		const firstByHash = new Map<string, GalleryRead[number]>();
-		for (const { hash, name } of images) if (!firstByHash.has(hash)) firstByHash.set(hash, { hash, name });
+		for (const { hash, name, keptId } of images) if (!firstByHash.has(hash)) firstByHash.set(hash, { hash, name, keptId });
 		return [...firstByHash.values()];
 	};
 	return { read, command, gallery };

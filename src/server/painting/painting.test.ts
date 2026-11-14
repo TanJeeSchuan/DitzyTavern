@@ -263,3 +263,26 @@ test("the gallery includes live Image References while a Generation is active", 
 	checkpointFromStart(database, { conversationId: chat.id, generationId: active.generationId, content: formatImageReference("Live picture", image.hash) });
 	expect(createPaintingModule(database).gallery(chat.id)).toEqual([{ hash: image.hash, name: "Live picture" }]);
 });
+
+test("Remove, keep in Gallery takes an Illustration off its Message but keeps it in the Gallery, through the sweep and a Fork, until removed from that Chat's Gallery", async () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const message = chat.messages[0]!;
+	const variantId = message.variants[0]!.id;
+	const module = await paintAndWait(fixture, variantId, "Kept scene");
+	const painting = module.read(chat.id).paintings[0]!;
+	if (painting.kind !== "illustration") throw new Error("Illustration missing");
+	const kept = [{ hash: painting.image.slice(6), name: "Illustration", keptId: painting.id }];
+	module.command(chat.id, { type: "keep-in-gallery", variantId, id: painting.id });
+	expect(module.read(chat.id).paintings).toEqual([]);
+	expect(module.gallery(chat.id)).toEqual(kept);
+	const later = Date.now() + 2 * 24 * 60 * 60 * 1000;
+	sweepOrphanedImages(database, later);
+	sweepOrphanedImages(database, later + 24 * 60 * 60 * 1000 + 1);
+	expect(imageLoader(database)(painting.image.slice(6))).toBeDefined();
+	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: chat.revision, at: { through: message.id }, name: "Kept Fork", trimVariants: false }).conversation;
+	expect(module.gallery(fork.id)).toEqual(kept);
+	module.command(chat.id, { type: "remove-from-gallery", id: painting.id });
+	expect(module.gallery(chat.id)).toEqual([]);
+	expect(module.gallery(fork.id)).toEqual(kept);
+});

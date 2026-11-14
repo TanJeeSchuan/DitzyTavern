@@ -37,6 +37,8 @@ export const paintingCommand = Type.Union([
 	Type.Object({ type: Type.Literal("retry"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("dismiss"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("delete"), variantId: Type.Integer(), id: Type.String() }),
+	Type.Object({ type: Type.Literal("keep-in-gallery"), variantId: Type.Integer(), id: Type.String() }),
+	Type.Object({ type: Type.Literal("remove-from-gallery"), id: Type.String() }),
 	Type.Object({ type: Type.Literal("set-aspect-ratio"), aspectRatio: paintingAspectRatio }),
 ]);
 export type PaintingCommand = Static<typeof paintingCommand>;
@@ -48,5 +50,5 @@ export type BriefRequest = Static<typeof briefRequest>;
 
 export const briefErrors = Type.Union([invalidOutcome, notFoundOutcome, notPlayableOutcome]);
 
-export const galleryRead = Type.Array(Type.Object({ hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String() }));
+export const galleryRead = Type.Array(Type.Object({ hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String(), keptId: Type.Optional(Type.String()) }));
 export type GalleryRead = Static<typeof galleryRead>;

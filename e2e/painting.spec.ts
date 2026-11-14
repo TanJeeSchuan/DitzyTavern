@@ -48,6 +48,33 @@ test("paint a typed Brief, swipe away and back, then retry a provider refusal", 
 	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(2);
 });
 
+test("keep an Illustration in the Gallery after taking it off its Message, then remove it from the Gallery", async ({ page, llm }) => {
+	await selectImageModel(page);
+	await llm.chat({ chunks: ["A lantern beside the lake."] });
+	await llm.images({ base64: picture });
+	await page.goto("/");
+	await send(page, "Show me the lantern.");
+	const message = story(page).locator("article").last();
+	await expect(message.getByText("A lantern beside the lake.")).toBeVisible();
+	await message.hover();
+	await message.getByRole("button", { name: "Paint", exact: true }).click();
+	const panel = page.getByRole("complementary", { name: "Paint", exact: true });
+	await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("Lantern at the lake");
+	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("A coral lantern reflected in still water.");
+	await panel.getByRole("button", { name: "Paint", exact: true }).click();
+	await panel.getByRole("button", { name: "Close Paint" }).click();
+	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
+	await story(page).getByRole("button", { name: "Illustration actions" }).click();
+	await page.getByRole("menuitem", { name: "Remove, keep in Gallery" }).click();
+	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(0);
+	await message.hover();
+	await message.getByRole("button", { name: "Paint", exact: true }).click();
+	const remove = panel.getByRole("button", { name: "Remove from Gallery: Lantern at the lake", exact: true });
+	await remove.click();
+	await expect(remove).toHaveCount(0);
+	await expect(panel.getByRole("button", { name: "Open Lantern at the lake full size" })).toHaveCount(0);
+});
+
 test("painting reaches the story model only after Add to composer and Send", async ({ page, llm }) => {
 	await selectImageModel(page);
 	await llm.chat({ chunks: ["The lantern lights the lake.\n\n" + "The water reflects the hills as the lantern sways in the wind. ".repeat(40)] }, { chunks: ["I see your Illustration."] });
