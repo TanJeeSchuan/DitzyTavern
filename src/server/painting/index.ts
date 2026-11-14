@@ -29,11 +29,13 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	const chatRow = (conversationId: number, key: string) => and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), eq(conversationDataTable.key, key));
 	const writeChatRow = (conversationId: number, key: string, value: string) => db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key, value })
 		.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value } }).run();
+	const initialReferenceSet: ReferenceSet = { id: "default", name: "References", references: "" };
+	const storedReferenceSets = (conversationId: number): ReferenceSet[] => db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), like(conversationDataTable.key, "reference-set:%"))).all()
+		.map(({ key, value }) => Value.Parse(referenceSet, { ...JSON.parse(value), id: key.slice("reference-set:".length) }))
+		.sort((a, b) => a.name.localeCompare(b.name));
 	const referenceSets = (conversationId: number): ReferenceSet[] => {
-		const sets = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), like(conversationDataTable.key, "reference-set:%"))).all()
-			.map(({ key, value }) => Value.Parse(referenceSet, { ...JSON.parse(value), id: key.slice("reference-set:".length) }))
-			.sort((a, b) => a.name.localeCompare(b.name));
-		return sets.length === 0 ? [{ id: "default", name: "References", references: "" }] : sets;
+		const sets = storedReferenceSets(conversationId);
+		return sets.length === 0 ? [initialReferenceSet] : sets;
 	};
 	const read = (conversationId: number): IllustrationsRead => {
 		requireChat(conversationId);
@@ -101,6 +103,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		if (command.type === "create-reference-set" || command.type === "adopt-reference-set") {
 			const name = setName(command.name);
 			return void database.transaction(() => {
+				if (storedReferenceSets(conversationId).length === 0) writeChatRow(conversationId, "reference-set:default", JSON.stringify({ name: initialReferenceSet.name, references: initialReferenceSet.references }));
 				const existing = command.type === "adopt-reference-set" ? referenceSets(conversationId).find(({ references }) => references === command.references) : undefined;
 				const id = existing?.id ?? Bun.randomUUIDv7();
 				if (existing === undefined) writeChatRow(conversationId, `reference-set:${id}`, JSON.stringify({ name, references: command.references }));

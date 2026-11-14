@@ -415,3 +415,12 @@ test("deleting the selected Reference Set remembers its replacement, so renaming
 	module.command(chat.id, { type: "save-reference-set", id: b, references: "Typed after the delete" });
 	expect(module.read(chat.id).referenceSets.map(({ name }) => name)).toEqual(["C", "Z"]);
 });
+
+test("the first adoption keeps the initial Reference Set, so an edit typed into it meanwhile is saved", () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Iris: kimono" });
+	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Typed during the adoption" });
+	expect(module.read(chat.id).referenceSets).toMatchObject([{ name: "Bridge", references: "Iris: kimono" }, { id: "default", name: "References", references: "Typed during the adoption" }]);
+});
