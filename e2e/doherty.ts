@@ -13,29 +13,49 @@ declare global {
 
 // @approved
 // Runs in the page. A trusted click on a control must change a rendered part
-// of the DOM and paint within the budget ("dead" when nothing changed, "slow-ack" when the
-// paint came late), and no click or keypress may take longer than the budget
-// to reach its next paint ("jank", from Event Timing; hovers carry no
-// interactionId). Text fields are left out: focus and caret are their
-// acknowledgement and change no DOM.
+// of the DOM and paint within the budget, counted from the press that started
+// it ("dead" when nothing changed, "slow-ack" when the paint came late), and
+// no click or keypress may take longer than the budget to reach its next paint
+// ("jank", from Event Timing; hovers carry no interactionId). A change counts
+// when its container is shown, so hiding a panel answers the click that hid it.
+// Text fields are left out: focus and caret are their acknowledgement and
+// change no DOM.
 const detect = (budget: number) => {
 	const controls = "button,a[href],summary,[role=button],[role=switch],[role=tab],[role=menuitem],[role=option],[role=checkbox],[role=radio]";
 	const label = (element: Element) => `${element.getAttribute("role") ?? element.tagName.toLowerCase()} "${element.getAttribute("aria-label") ?? element.textContent?.trim().slice(0, 40)}"`;
+	const shown = (node: Node | null) => node instanceof Element && node.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+	let changedAt = -Infinity;
+	let pressedControl: Element | null = null;
+	let pressedAt = 0;
+	const waiting = new Set<() => void>();
+	new MutationObserver((records) => {
+		if (!records.some(({ type, target }) => shown(type === "childList" ? target : target.parentNode))) return;
+		changedAt = performance.now();
+		for (const answer of waiting) answer();
+	}).observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+	// @approved
+	// Some controls, such as Radix menu triggers, answer on pointerdown, before the click fires.
+	const pressed = (event: Event) => {
+		if (event.isTrusted && event.target instanceof Element) [pressedControl, pressedAt] = [event.target.closest(controls), event.timeStamp];
+	};
+	addEventListener("pointerdown", pressed, { capture: true });
+	addEventListener("keydown", pressed, { capture: true });
 	addEventListener("click", (event) => {
 		const control = event.target instanceof Element ? event.target.closest(controls) : null;
 		if (!event.isTrusted || control === null) return;
+		const start = pressedControl === control ? pressedAt : event.timeStamp;
+		if (changedAt >= start) return;
 		const name = label(control);
-		const observer = new MutationObserver((records) => {
-			if (!records.some(({ target }) => (target instanceof Element ? target : target.parentElement)?.checkVisibility())) return;
-			observer.disconnect();
+		const answer = () => {
+			waiting.delete(answer);
 			clearTimeout(timer);
 			requestAnimationFrame(() => setTimeout(() => {
-				const ms = Math.round(performance.now() - event.timeStamp);
+				const ms = Math.round(performance.now() - start);
 				if (ms > budget) window.reportDoherty({ kind: "slow-ack", name, ms });
 			}));
-		});
-		observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
-		const timer = setTimeout(() => { observer.disconnect(); window.reportDoherty({ kind: "dead", name }); }, budget);
+		};
+		const timer = setTimeout(() => { waiting.delete(answer); window.reportDoherty({ kind: "dead", name }); }, budget - (performance.now() - start));
+		waiting.add(answer);
 	}, { capture: true });
 	// @approved
 	// TypeScript's DOM types predate `durationThreshold`; a variable skips the excess-property check.
