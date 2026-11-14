@@ -4,6 +4,7 @@ import { startE2eServer, type E2eServer } from "./harness";
 
 export { expect };
 
+// @approved
 // `doherty` (on with DOHERTY=1) delays API calls past 400 ms and fails the test
 // when a clicked control shows no response in time; `dohertyExempt` matches the
 // violation names a test accepts.

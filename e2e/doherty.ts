@@ -1,8 +1,8 @@
 import type { BrowserContext } from "@playwright/test";
 
-/** The Doherty Threshold: a user's action shows a response within 400 ms. */
+/** @approved The Doherty Threshold: a user's action shows a response within 400 ms. */
 const BUDGET = 400;
-/** Longer than the budget, so a response that waits on the server always misses it. */
+/** @approved Longer than the budget, so a response that waits on the server always misses it. */
 const API_LATENCY = 1500;
 
 export type DohertyViolation = { kind: "dead" | "slow-ack" | "jank"; name: string; ms?: number };
@@ -11,6 +11,7 @@ declare global {
 	interface Window { reportDoherty: (violation: DohertyViolation) => void }
 }
 
+// @approved
 // Runs in the page. A trusted click on a control must change a rendered part
 // of the DOM and paint within the budget ("dead" when nothing changed, "slow-ack" when the
 // paint came late), and no click or keypress may take longer than the budget
@@ -36,6 +37,7 @@ const detect = (budget: number) => {
 		observer.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
 		const timer = setTimeout(() => { observer.disconnect(); window.reportDoherty({ kind: "dead", name }); }, budget);
 	}, { capture: true });
+	// @approved
 	// TypeScript's DOM types predate `durationThreshold`; a variable skips the excess-property check.
 	const eventTiming = { type: "event", durationThreshold: budget + 1, buffered: true };
 	new PerformanceObserver((list) => {
@@ -46,16 +48,18 @@ const detect = (budget: number) => {
 	}).observe(eventTiming);
 };
 
-/** Delays every page's API calls past the budget and records every action a page leaves unanswered within it. */
+/** @approved Delays every page's API calls past the budget and records every action a page leaves unanswered within it. */
 export const watchDoherty = async (context: BrowserContext) => {
 	const violations: DohertyViolation[] = [];
 	await context.exposeFunction("reportDoherty", (violation: DohertyViolation) => violations.push(violation));
 	await context.addInitScript(detect, BUDGET);
+	// @approved
 	// The change stream carries other tabs' edits, not answers to this page's actions.
 	await context.route("**/api/**", async (route) => {
 		if (!route.request().url().endsWith("/api/changes")) await new Promise((resolve) => setTimeout(resolve, API_LATENCY));
 		await route.fallback();
 	});
+	// @approved
 	// The last click's deadline may still be running when the test returns.
 	return async () => {
 		await new Promise((resolve) => setTimeout(resolve, BUDGET + 100));
