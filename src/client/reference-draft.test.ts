@@ -135,3 +135,18 @@ test("a second adoption is refused while one is in flight, so the lock lasts unt
 	await hook.act(async () => { expect(await first).toBe(true); });
 	expect(sent).toEqual(["Iris: kimono"]);
 });
+
+test("a set switch in flight refuses an adoption, so the switch cannot land after Use Brief succeeds", async () => {
+	const { hook } = await render(9, { id: "a", name: "A", references: "Iris: silks" }, bridge("Iris: kimono"));
+	const sent = serve(0);
+	const switching = Promise.withResolvers<boolean>();
+	let finished: Promise<boolean> = Promise.resolve(false);
+	let adopted = true;
+	await hook.act(async () => { finished = hook.current.draft.exclusively(() => switching.promise); });
+	await hook.act(async () => { adopted = await hook.current.adoption.adopt("Bridge", "Iris: kimono"); });
+	expect(adopted).toBe(false);
+	expect(sent).toEqual([]);
+	switching.resolve(true);
+	await hook.act(async () => { expect(await finished).toBe(true); });
+	expect(hook.current.draft.locked).toBe(false);
+});

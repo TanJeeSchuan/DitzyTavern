@@ -41,14 +41,25 @@ export function usePaintingCommand(conversationId: number) {
 
 export type PaintTarget = { variantId: number; brief: string; ask: string; requestId: string };
 
-type ReferenceSaves = { pending: ReadonlyMap<string, string>; adopting: boolean; timer?: ReturnType<typeof setTimeout>; saving: Promise<string | null>; listeners: Set<() => void> };
+type ReferenceSaves = { pending: ReadonlyMap<string, string>; locked: boolean; timer?: ReturnType<typeof setTimeout>; saving: Promise<string | null>; listeners: Set<() => void> };
 const referenceSaves = new Map<number, ReferenceSaves>();
 const savesOf = (conversationId: number) => {
-	const saves: ReferenceSaves = referenceSaves.get(conversationId) ?? { pending: new Map(), adopting: false, saving: Promise.resolve(null), listeners: new Set() };
+	const saves: ReferenceSaves = referenceSaves.get(conversationId) ?? { pending: new Map(), locked: false, saving: Promise.resolve(null), listeners: new Set() };
 	referenceSaves.set(conversationId, saves);
 	return saves;
 };
 const notify = (saves: ReferenceSaves) => { for (const listener of saves.listeners) listener(); };
+/** Runs one action that changes the selected set; any other started meanwhile is refused. */
+const exclusively = async (conversationId: number, action: () => Promise<boolean>) => {
+	const saves = savesOf(conversationId);
+	if (saves.locked) return false;
+	saves.locked = true;
+	notify(saves);
+	try { return await action(); } finally {
+		saves.locked = false;
+		notify(saves);
+	}
+};
 const setPending = (saves: ReferenceSaves, id: string, references: string | undefined) => {
 	const pending = new Map(saves.pending);
 	if (references === undefined) pending.delete(id);
@@ -82,7 +93,7 @@ export function useReferenceDraft(conversationId: number, selected: ReferenceSet
 		return () => { saves.listeners.delete(listener); };
 	};
 	const pending = useSyncExternalStore(subscribe, () => saves.pending);
-	const locked = useSyncExternalStore(subscribe, () => saves.adopting);
+	const locked = useSyncExternalStore(subscribe, () => saves.locked);
 	const [error, setError] = useState<string | null>(null);
 	const flush = async () => {
 		const failure = await flushReferences(client, conversationId);
@@ -95,13 +106,14 @@ export function useReferenceDraft(conversationId: number, selected: ReferenceSet
 		error,
 		locked,
 		edit: (references: string) => {
-			if (selected === undefined || saves.adopting) return;
+			if (selected === undefined || saves.locked) return;
 			setError(null);
 			setPending(saves, selected.id, references);
 			clearTimeout(saves.timer);
 			saves.timer = setTimeout(() => void flush(), 600);
 		},
 		flush,
+		exclusively: (action: () => Promise<boolean>) => exclusively(conversationId, action),
 	};
 }
 
@@ -111,11 +123,7 @@ export function useAdoptReferences(conversationId: number) {
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const adopt = async (name: string, references: string) => {
 		if (!references.trim()) return true;
-		const saves = savesOf(conversationId);
-		if (saves.adopting) return false;
-		saves.adopting = true;
-		notify(saves);
-		try {
+		return exclusively(conversationId, async () => {
 			const failure = await flushReferences(client, conversationId);
 			setSaveError(failure);
 			if (failure !== null || !await submit({ type: "adopt-reference-set", name, references })) return false;
@@ -123,10 +131,7 @@ export function useAdoptReferences(conversationId: number) {
 			if (read?.referenceSets.find(({ id }) => id === read.referenceSetId)?.references === references) return true;
 			setSaveError("The References could not be loaded. Try again.");
 			return false;
-		} finally {
-			saves.adopting = false;
-			notify(saves);
-		}
+		});
 	};
 	return { adopt, error: saveError ?? error };
 }
