@@ -29,7 +29,7 @@ export function monitorSseActivity(
 		},
 	});
 	const cancelReader = () => {
-		void reader.cancel();
+		void reader.cancel().catch(() => undefined);
 	};
 	if (options.signal.aborted) cancelReader();
 	else options.signal.addEventListener("abort", cancelReader, { once: true });
