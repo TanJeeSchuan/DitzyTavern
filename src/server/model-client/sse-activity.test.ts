@@ -131,8 +131,8 @@ describe("SSE activity monitor", () => {
 	});
 
 	test("survives an abort that already errored the body, as fetch does, and hands the consumer the abort", async () => {
-		const unhandled: unknown[] = [];
-		const record = (reason: unknown) => unhandled.push(reason);
+		let unhandled = 0;
+		const record = () => { unhandled += 1; };
 		process.on("unhandledRejection", record);
 		try {
 			const controller = new AbortController();
@@ -147,7 +147,7 @@ describe("SSE activity monitor", () => {
 			controller.abort();
 			await expect(read).rejects.toMatchObject({ name: "AbortError" });
 			await Bun.sleep(0);
-			expect(unhandled).toEqual([]);
+			expect(unhandled).toBe(0);
 		} finally {
 			process.off("unhandledRejection", record);
 		}
