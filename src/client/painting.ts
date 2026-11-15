@@ -41,19 +41,20 @@ export function usePaintingCommand(conversationId: number) {
 
 export type PaintTarget = { variantId: number; brief: string; ask: string; requestId: string };
 
-type ReferenceSaves = { pending: ReadonlyMap<string, string>; timer?: ReturnType<typeof setTimeout>; saving: Promise<string | null>; listeners: Set<() => void> };
+type ReferenceSaves = { pending: ReadonlyMap<string, string>; adopting: boolean; timer?: ReturnType<typeof setTimeout>; saving: Promise<string | null>; listeners: Set<() => void> };
 const referenceSaves = new Map<number, ReferenceSaves>();
 const savesOf = (conversationId: number) => {
-	const saves: ReferenceSaves = referenceSaves.get(conversationId) ?? { pending: new Map(), saving: Promise.resolve(null), listeners: new Set() };
+	const saves: ReferenceSaves = referenceSaves.get(conversationId) ?? { pending: new Map(), adopting: false, saving: Promise.resolve(null), listeners: new Set() };
 	referenceSaves.set(conversationId, saves);
 	return saves;
 };
+const notify = (saves: ReferenceSaves) => { for (const listener of saves.listeners) listener(); };
 const setPending = (saves: ReferenceSaves, id: string, references: string | undefined) => {
 	const pending = new Map(saves.pending);
 	if (references === undefined) pending.delete(id);
 	else pending.set(id, references);
 	saves.pending = pending;
-	for (const listener of saves.listeners) listener();
+	notify(saves);
 };
 
 export const flushReferences = (client: QueryClient, conversationId: number): Promise<string | null> => {
@@ -76,10 +77,12 @@ export const flushReferences = (client: QueryClient, conversationId: number): Pr
 export function useReferenceDraft(conversationId: number, selected: ReferenceSet | undefined) {
 	const client = useQueryClient();
 	const saves = savesOf(conversationId);
-	const pending = useSyncExternalStore((listener) => {
+	const subscribe = (listener: () => void) => {
 		saves.listeners.add(listener);
 		return () => { saves.listeners.delete(listener); };
-	}, () => saves.pending);
+	};
+	const pending = useSyncExternalStore(subscribe, () => saves.pending);
+	const locked = useSyncExternalStore(subscribe, () => saves.adopting);
 	const [error, setError] = useState<string | null>(null);
 	const flush = async () => {
 		const failure = await flushReferences(client, conversationId);
@@ -90,8 +93,9 @@ export function useReferenceDraft(conversationId: number, selected: ReferenceSet
 	return {
 		references: (selected && pending.get(selected.id)) ?? selected?.references ?? "",
 		error,
+		locked,
 		edit: (references: string) => {
-			if (selected === undefined) return;
+			if (selected === undefined || saves.adopting) return;
 			setError(null);
 			setPending(saves, selected.id, references);
 			clearTimeout(saves.timer);
@@ -107,13 +111,21 @@ export function useAdoptReferences(conversationId: number) {
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const adopt = async (name: string, references: string) => {
 		if (!references.trim()) return true;
-		const failure = await flushReferences(client, conversationId);
-		setSaveError(failure);
-		if (failure !== null || !await submit({ type: "adopt-reference-set", name, references })) return false;
-		const read = client.getQueryData<IllustrationsRead>(illustrationsKey(conversationId));
-		if (read?.referenceSets.find(({ id }) => id === read.referenceSetId)?.references === references) return true;
-		setSaveError("The References could not be loaded. Try again.");
-		return false;
+		const saves = savesOf(conversationId);
+		saves.adopting = true;
+		notify(saves);
+		try {
+			const failure = await flushReferences(client, conversationId);
+			setSaveError(failure);
+			if (failure !== null || !await submit({ type: "adopt-reference-set", name, references })) return false;
+			const read = client.getQueryData<IllustrationsRead>(illustrationsKey(conversationId));
+			if (read?.referenceSets.find(({ id }) => id === read.referenceSetId)?.references === references) return true;
+			setSaveError("The References could not be loaded. Try again.");
+			return false;
+		} finally {
+			saves.adopting = false;
+			notify(saves);
+		}
 	};
 	return { adopt, error: saveError ?? error };
 }

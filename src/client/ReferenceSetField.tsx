@@ -22,7 +22,7 @@ export function ReferenceSetField({ conversationId, sets, selected, draft, edito
 	const { submit, pending, error } = usePaintingCommand(conversationId);
 	const [naming, setNaming] = useState<Naming | null>(null);
 	const [switching, setSwitching] = useState(false);
-	const busy = disabled || pending || switching || selected === undefined;
+	const busy = disabled || pending || switching || draft.locked || selected === undefined;
 	const switchTo = async (command: Parameters<typeof submit>[0]) => {
 		setSwitching(true);
 		try { return await draft.flush() && await submit(command); } finally { setSwitching(false); }

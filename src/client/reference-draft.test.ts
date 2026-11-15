@@ -68,33 +68,13 @@ test("an edit made while a save is in flight is saved before adopting an Illustr
 		return Response.json({ outcome: "accepted" });
 	}, { preconnect: () => {} });
 	await hook.act(async () => { hook.current.draft.edit("Iris: kimono"); });
+	await hook.act(async () => { void hook.current.draft.flush(); });
+	await hook.act(async () => { hook.current.draft.edit("Iris: kimono, hair down"); });
 	let adoption: Promise<boolean> = Promise.resolve(false);
 	await hook.act(async () => { adoption = hook.current.adoption.adopt("Bridge", "Iris: silks"); });
-	await hook.act(async () => { hook.current.draft.edit("Iris: kimono, hair down"); });
 	held.resolve();
 	await hook.act(async () => { expect(await adoption).toBe(true); });
 	expect(sent).toEqual(["save-reference-set:Iris: kimono", "save-reference-set:Iris: kimono, hair down", "adopt-reference-set:Iris: silks"]);
-});
-
-test("an edit made while an adoption is in flight is still saved after the adoption switches sets", async () => {
-	const { hook, select } = await render(4, { id: "a", name: "A", references: "Iris: silks" }, bridge("Iris: kimono"));
-	const sent: string[] = [];
-	const held = Promise.withResolvers<void>();
-	globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => {
-		const command = JSON.parse(String(init?.body));
-		sent.push(`${command.type}:${command.id ?? ""}:${command.references}`);
-		if (command.type === "adopt-reference-set") await held.promise;
-		return Response.json({ outcome: "accepted" });
-	}, { preconnect: () => {} });
-	let adoption: Promise<boolean> = Promise.resolve(false);
-	await hook.act(async () => { adoption = hook.current.adoption.adopt("Bridge", "Iris: kimono"); });
-	await hook.act(async () => { hook.current.draft.edit("Iris: silks, hair down"); });
-	held.resolve();
-	await hook.act(async () => { await adoption; });
-	await select({ id: "b", name: "Bridge", references: "Iris: kimono" });
-	await hook.act(async () => { hook.current.draft.edit("Iris: kimono, sash"); });
-	await hook.act(async () => { await hook.current.draft.flush(); });
-	expect(sent).toEqual(["adopt-reference-set::Iris: kimono", "save-reference-set:a:Iris: silks, hair down", "save-reference-set:b:Iris: kimono, sash"]);
 });
 
 test("a save shows the saved References before any read-back lands", async () => {
@@ -120,4 +100,18 @@ test("an accepted adoption whose read-back fails reports failure, so Use Brief k
 	await hook.act(async () => { adopted = await hook.current.adoption.adopt("Bridge", "Iris: kimono"); });
 	expect(adopted).toBe(false);
 	expect(hook.current.adoption.error).toBe("The References could not be loaded. Try again.");
+});
+
+test("References are locked while an adoption is in flight, so the adopted set is what the editor shows", async () => {
+	const { hook } = await render(7, { id: "b", name: "Bridge", references: "Iris: kimono" }, bridge("Iris: kimono"));
+	const held = Promise.withResolvers<void>();
+	globalThis.fetch = Object.assign(async () => { await held.promise; return Response.json({ outcome: "accepted" }); }, { preconnect: () => {} });
+	let adoption: Promise<boolean> = Promise.resolve(false);
+	await hook.act(async () => { adoption = hook.current.adoption.adopt("Bridge", "Iris: kimono"); });
+	expect(hook.current.draft.locked).toBe(true);
+	await hook.act(async () => { hook.current.draft.edit("Iris: kimono, typed during the adoption"); });
+	held.resolve();
+	await hook.act(async () => { expect(await adoption).toBe(true); });
+	expect(hook.current.draft.locked).toBe(false);
+	expect(hook.current.draft.references).toBe("Iris: kimono");
 });
