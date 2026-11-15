@@ -130,6 +130,8 @@ test("a second adoption is refused while one is in flight, so the lock lasts unt
 	await hook.act(async () => { first = hook.current.adoption.adopt("Bridge", "Iris: kimono"); });
 	await hook.act(async () => { second = await hook.current.adoption.adopt("Lantern", "Iris: lantern"); });
 	expect(second).toBe(false);
+	await hook.act(async () => { second = await hook.current.adoption.adopt("Painted before References", ""); });
+	expect(second).toBe(false);
 	expect(hook.current.draft.locked).toBe(true);
 	held.resolve();
 	await hook.act(async () => { expect(await first).toBe(true); });

@@ -122,8 +122,8 @@ export function useAdoptReferences(conversationId: number) {
 	const { submit, error } = usePaintingCommand(conversationId);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const adopt = async (name: string, references: string) => {
-		if (!references.trim()) return true;
 		return exclusively(conversationId, async () => {
+			if (!references.trim()) return true;
 			const failure = await flushReferences(client, conversationId);
 			setSaveError(failure);
 			if (failure !== null || !await submit({ type: "adopt-reference-set", name, references })) return false;
