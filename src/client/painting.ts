@@ -112,6 +112,7 @@ export function useAdoptReferences(conversationId: number) {
 	const adopt = async (name: string, references: string) => {
 		if (!references.trim()) return true;
 		const saves = savesOf(conversationId);
+		if (saves.adopting) return false;
 		saves.adopting = true;
 		notify(saves);
 		try {

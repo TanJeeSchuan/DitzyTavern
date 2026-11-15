@@ -115,3 +115,23 @@ test("References are locked while an adoption is in flight, so the adopted set i
 	expect(hook.current.draft.locked).toBe(false);
 	expect(hook.current.draft.references).toBe("Iris: kimono");
 });
+
+test("a second adoption is refused while one is in flight, so the lock lasts until the first finishes", async () => {
+	const { hook } = await render(8, { id: "b", name: "Bridge", references: "Iris: kimono" }, bridge("Iris: kimono"));
+	const held = Promise.withResolvers<void>();
+	const sent: string[] = [];
+	globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => {
+		sent.push(JSON.parse(String(init?.body)).references);
+		await held.promise;
+		return Response.json({ outcome: "accepted" });
+	}, { preconnect: () => {} });
+	let first: Promise<boolean> = Promise.resolve(false);
+	let second = true;
+	await hook.act(async () => { first = hook.current.adoption.adopt("Bridge", "Iris: kimono"); });
+	await hook.act(async () => { second = await hook.current.adoption.adopt("Lantern", "Iris: lantern"); });
+	expect(second).toBe(false);
+	expect(hook.current.draft.locked).toBe(true);
+	held.resolve();
+	await hook.act(async () => { expect(await first).toBe(true); });
+	expect(sent).toEqual(["Iris: kimono"]);
+});
