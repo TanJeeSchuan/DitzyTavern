@@ -58,6 +58,18 @@ describe("Variant stream checkpoints", () => {
 		expect(streams.get(101)?.content).toBe("Active");
 	});
 
+	test("an ended Generation keeps its text until a page settles its Variant", () => {
+		const streams = createVariantStreams();
+		const started = checkpoint(1, "One.");
+		streams.checkpoint([started]);
+		streams.observe(append(2, " Two."), started);
+		streams.retain(new Set());
+		// Reject falling back to the page's older checkpoint between the stream's end and the settled page.
+		expect(streamedVariant(started, streams.get(100)).content).toBe("One. Two.");
+		streams.checkpoint([{ id: 100, position: 1, content: "One. Two.", empty: false, hasReasoning: false }]);
+		expect(streams.get(100)).toBeUndefined();
+	});
+
 	test("the last unsubscribe stops notifications and a new subscriber can use the same Variant", () => {
 		const streams = createVariantStreams();
 		let notifications = 0;
