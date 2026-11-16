@@ -288,6 +288,20 @@ describe("the Generation session runner", () => {
 		});
 	}
 
+	for (const end of ["switch", "dispose"] as const) test(`${end} releases text a live page still holds`, () => {
+		const stream = fakeStream();
+		const spy = host();
+		const runner = runnerWith(stream, spy);
+		runner.dispatch(observeTargets([7]));
+		spy.streams.checkpoint([{ id: 9_007, position: 1, content: "", empty: true, hasReasoning: false, generationId: 7, lastEventId: 0 }]);
+		stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("Live text") });
+		if (end === "dispose") runner.dispose();
+		else runner.dispatch({ type: "conversation-switched" });
+		// Reject keeping a left Chat's text because its last page held the Variant live.
+		expect(spy.streams.get(9_007)).toBeUndefined();
+		runner.dispose();
+	});
+
 	for (const implicit of [false, true]) test(`returning after an ${implicit ? "implicit" : "explicit"} Chat switch replays discarded text`, () => {
 		const stream = fakeStream();
 		const spy = host();

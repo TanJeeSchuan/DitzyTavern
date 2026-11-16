@@ -86,6 +86,10 @@ export function createVariantStreams() {
 		retain(generationIds: ReadonlySet<number>) {
 			for (const [variantId, stream] of streams) if (!generationIds.has(stream.generationId) && !live.has(variantId)) remove(variantId);
 		},
+		clear() {
+			live = new Set();
+			for (const variantId of streams.keys()) remove(variantId);
+		},
 		get: (variantId: number) => streams.get(variantId),
 		subscribe(variantId: number, listener: () => void) {
 			const own = listeners.get(variantId) ?? new Set();

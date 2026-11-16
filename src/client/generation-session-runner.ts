@@ -112,7 +112,8 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 		const switched = transition.state.activeConversationId !== state.activeConversationId;
 		if (switched) cancelRefresh();
 		state = transition.state;
-		if (switched || action.type === "targets-observed") retainStreams();
+		if (action.type === "conversation-switched") host.streams.clear();
+		else if (switched || action.type === "targets-observed") retainStreams();
 		notify();
 		for (const effect of transition.effects) runEffect(effect);
 	};
@@ -193,7 +194,7 @@ export function createGenerationSessionRunner(host: GenerationSessionRunnerHost)
 			// later work cannot reach subscribers.
 			const transition = reduceGenerationSessions(state, { type: "conversation-switched" });
 			state = transition.state;
-			host.streams.retain(new Set());
+			host.streams.clear();
 			listeners.clear();
 			disposed = true;
 		},
