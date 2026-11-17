@@ -1,3 +1,5 @@
+import { uploadImage } from "../image";
+import { pngFixture } from "../image/image-fixtures";
 import { requireSnapshot } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -299,7 +301,9 @@ describe("staged SillyTavern chat import commit", () => {
 	});
 
 	test("forking an existing Character uses the Profile's current name and creates an independent Participant without a live link", async () => {
+		const portrait = { ...(await uploadImage(database, pngFixture())), focalX: 0.25, focalY: 0.75 };
 		const character = addCharacter({
+			portrait,
 			name: "Maren Voss",
 			prompt: {
 				...prompt(),
@@ -325,6 +329,7 @@ describe("staged SillyTavern chat import commit", () => {
 		// Definition with immutable provenance, but no live link.
 		expect(conversation.cast).toHaveLength(1);
 		const participant = conversation.cast[0]!;
+		expect(participant?.portrait).toEqual(portrait);
 		expect(participant?.name).toBe("Maren Voss");
 		expect(participant?.sourceCharacterId).toBe(character.id);
 		expect(participant?.prompt.identity).toBe(

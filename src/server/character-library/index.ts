@@ -28,7 +28,7 @@ export { fromPortraitColumns, toPromptChannelRow, toPromptChannels } from "./pro
 // @approved
 //  Canonical copy-into-Conversation seam: the Library validates the
 // revision the caller read and projects the Definition with its provenance.
-export { forkCharacter, type CharacterFork } from "./fork";
+export { characterDefinitionOf, forkCharacter, type CharacterFork } from "./fork";
 export type {
 	CharacterDeletionImpact,
 	CharacterDeletionMode,
