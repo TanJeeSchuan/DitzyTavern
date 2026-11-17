@@ -100,12 +100,7 @@ export const consumeGenerationPreview = (
 ): void => {
 	const { previews } = previewStore(database);
 	const current = previews.get(record.conversationId);
-	if (current?.id !== record.id) {
-		throw new InvalidConversationCommandError(
-			"The inspected Prompt Plan is unavailable. Refresh it after a server restart or when it has been abandoned.",
-		);
-	}
-	previews.delete(record.conversationId);
+	if (current?.id === record.id) previews.delete(record.conversationId);
 };
 
 const assertEditedPlanStructure = (source: PromptPlan, edited: PromptPlan): void => {
