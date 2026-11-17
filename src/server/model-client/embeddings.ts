@@ -35,7 +35,6 @@ export async function requestEmbeddings(
 			method: "POST",
 			headers: authenticatedHeaders({ "content-type": "application/json" }, options.secrets?.credential ?? null, options.secrets?.headers ?? {}),
 			body: JSON.stringify({ model: options.model, input }),
-			redirect: "error",
 			signal: options.signal,
 		}, options.timeoutMs, async (response, signal) => {
 			if (response.status >= 300 && response.status < 400) throw new EmbeddingServiceError("endpoint", "The embedding endpoint redirected the credentialed request.");

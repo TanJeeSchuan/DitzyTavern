@@ -69,7 +69,6 @@ export async function discoverModels(
 		return await fetchWithTimeout(options.fetch ?? fetch, modelsUrl, {
 			method: "GET",
 			headers: authenticatedHeaders(undefined, credential, customHeaders),
-			redirect: "error",
 		}, timeoutMs, async (response, signal) => {
 			if (response.status >= 300 && response.status < 400) {
 				return failure("redirect", "The Models endpoint redirected the credentialed request, so it was not followed.");
