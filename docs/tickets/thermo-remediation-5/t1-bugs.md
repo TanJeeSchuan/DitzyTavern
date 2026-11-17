@@ -1,6 +1,6 @@
 # T1: Bugs
 
-Status: READY
+Status: IN PROGRESS
 
 Blocked By: None
 
