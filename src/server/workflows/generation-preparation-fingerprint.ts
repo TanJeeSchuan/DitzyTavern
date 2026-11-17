@@ -21,6 +21,8 @@ export const generationPreparationFingerprint = (
 	...snapshot,
 	lore: loreFingerprintOf(snapshot),
 	boxes: fingerprintBoxes(snapshot.boxes),
+	boxImages: [...snapshot.boxImages].sort(([left], [right]) => left.localeCompare(right))
+		.map(([reference, { label, hashes }]) => [reference, { label, hashes: [...hashes].sort() }]),
 	macroState: [...snapshot.macroState.entries()]
 		.sort(([left], [right]) => left.localeCompare(right)),
 });
