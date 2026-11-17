@@ -11,7 +11,7 @@ import { openInitializedDatabase } from "../database/database";
 import { conversationDataTable, conversationTable, messageDataTable, messageTable, messageVariantDataTable, messageVariantTable, participantDataTable, participantTable } from "../database/schema";
 import type { LoadedBox } from "../box/registry";
 import { holdsRowReferences } from "../box/row-references";
-import { isHostChatKey } from "../box/setup";
+import { boxSetupRefusal, isHostChatKey } from "../box/setup";
 import { sha256 } from "../hash";
 
 const parsed = (text: string): BoxValue | undefined => {
@@ -96,8 +96,7 @@ export const upgradeRefusals = (db: BunSQLiteDatabase, conversationId: number, f
 			if (descriptor.setup === undefined) refusals.push("Setup: this version takes none");
 			else if (!Value.Check(descriptor.setup.schema, stored)) refusals.push("Setup");
 			else {
-				let error: string | undefined;
-				try { error = box.setupError?.(stored, stored); } catch (thrown) { error = thrown instanceof Error ? thrown.message : String(thrown); }
+				const error = boxSetupRefusal(box, stored, stored);
 				if (error !== undefined) refusals.push(`Setup: ${error}`);
 			}
 		} else if (!isHostChatKey(key)) {

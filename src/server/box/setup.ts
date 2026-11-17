@@ -5,6 +5,7 @@ import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxDescriptors, boxReference, type BoxId, type BoxSetups, type BoxStates } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { conversationDataTable } from "../database/schema";
+import type { HostBox } from "./contract";
 import { chatBoxes } from "./registry";
 
 const SETUP_KEY = "setup";
@@ -68,4 +69,9 @@ export const readBoxSetups = (db: BunSQLiteDatabase, conversationId: number): Bo
 		const value = stored.get(boxReference(id));
 		return [[id, value === undefined ? initial : parseStoredBoxJson(value, Type.Unsafe<BoxValue>(schema), `Chat ${conversationId} ${boxReference(id)} ${SETUP_KEY}`)]];
 	}));
+};
+
+export const boxSetupRefusal = (box: Pick<HostBox, "setupError">, setup: BoxValue | undefined, previous: BoxValue | undefined): string | undefined => {
+	try { return box.setupError?.(setup, previous); }
+	catch (thrown) { return thrown instanceof Error ? thrown.message : String(thrown); }
 };
