@@ -24,6 +24,17 @@ A plugin is a Box folder installed into a running DitzyTavern without rebuilding
 
 ## Row References and stored values
 
+A Box has four places for data about one Chat. Pick by who writes it and whether it follows the story:
+
+| Store | Shape | Written by | Follows swipes and Forks | When the Box is removed |
+|---|---|---|---|---|
+| `record` | one per Variant, folded along the selected path | the Box's hooks | swipes and Forks | kept with history |
+| `setup` | one document | the writer, with `set-box-setup` | Forks only | cleared |
+| `values.chat` | one document per declared key, each with its own revision | the Box's server code, with `putChatValue` | Forks only | cleared |
+| Library value | shared by every Chat | the Box's server code | no | kept |
+
+`setup` is the writer's configuration. `values.chat` is for Chat state the Box maintains itself and that must stay put when the writer swipes back: a cursor, a cache, a label table. Only a trusted Box can write a Chat value, since `commit-box` takes Library, Character and Participant owners.
+
 Declare every Chat and Participant value key in `values.chat` or `values.participant`, with a TypeBox schema for its JSON value. The loader rejects invalid schemas; writes to undeclared keys fail. Library and Character values need no declaration. When a Character seeds a Participant, a loaded Box's Character values are copied only if declared for Participants; an unloaded Box's values are all copied, since there is no descriptor to check them against. Host-owned Chat keys such as `setup` are not Box values.
 
 Use `MessageId`, `VariantId`, and `ParticipantId` from `@/box-sdk/shared` wherever setup, Moves, records, traces, or declared values contain those row ids. For Participant-keyed records use `Type.Record(ParticipantKey, valueSchema)`. These schemas mark Row References so a Fork can rewrite them to copied rows. A missing reference fails the Fork with its path; traces retain missing ids. TypeBox retains `ParticipantKey`'s distinctive digit pattern when building the record, so use the SDK schema instead of spelling that pattern yourself.
