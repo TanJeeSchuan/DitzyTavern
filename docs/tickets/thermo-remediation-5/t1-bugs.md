@@ -1,6 +1,6 @@
 # T1: Bugs
 
-Status: IN PROGRESS
+Status: IN REVIEW (CI pending)
 
 Blocked By: None
 
@@ -41,13 +41,34 @@ Bug 8 in `bugs.md` (paint preset commands with no revision) is fixed in T5c.
 
 ## TODO
 
-- [ ] Items 1–7, 9, 10: failing test, then fix, one commit each
-- [ ] Item 8
-- [ ] Thermo-nuclear review of items 1, 7, 10
-- [ ] Typecheck, the touched test files, then CI
+- [x] Items 1–7, 9, 10: failing test, then fix, one commit each
+- [x] Item 8
+- [x] Thermo-nuclear review of items 1, 7, 10
+- [x] Touched test files and changed-file lint
+- [ ] Typecheck and full checks through CI
 
 ## Acceptance
 
 Each new test fails on the base commit and passes on the branch. `grep -n 'var(--input)' src/boxes/memory/client.css` is empty.
 
 ## Outcome
+
+Implemented all ten items, one commit per item. The regressions failed before their fixes at the ticket's specified seams:
+
+- 1: removing a Participant named only by Memory labels erased its identity.
+- 2: accepted preview inspection reported no omitted history.
+- 3: consuming a replaced preview threw `InvalidConversationCommandError`.
+- 4: the Decision Model fetch had no redirect policy. Model discovery and embeddings already used `redirect: "error"` on the base, so that portion of the reported premise was dropped; their request-init checks still pass.
+- 5: changing an image grant left the fingerprint unchanged.
+- 6: the imported fork's Portrait was absent.
+- 7: a plugin's throwing `setupError` escaped as an ordinary `Error`.
+- 9: teardown failed with a foreign-key error for a user Chat forked from a seeded Character.
+- 10: the loader accepted the sandboxed Chat value declaration.
+
+Item 8 replaces the undefined token with `--border-strong`; the stylesheet has no remaining `var(--input)`.
+
+Local validation: 102 tests passed across the 11 touched test files; changed-file lint passed with existing overlong-line warnings. An initial combined run hit three 5-second timeouts on this shared host; the serialized rerun passed with a 15-second test bound. The 51 tests covering the review changes also passed, including setup reads and repeated seeding. Full typecheck, suites, build, and e2e are reserved for CI.
+
+Claude Opus 5.5 high completed the Standards/Box-boundary thermo and Spec reviews. Both identified reseeding after a retained tombstone; the extended regression reproduced the skipped seed. The seed guard now checks live Characters, and the test covers reseeding and repeated seeding. The setup test also reproduced host corruption being misclassified as an invalid command; shared `boxSetupRefusal` now catches only the Box hook and is used by setup writes and upgrade validation. Removed redundant caller redirect flags so all three transport tests exercise the shared policy. Tidied duplicate imports and blank lines.
+
+Kept test database scratch files in `.scratch`, as the host instructions explicitly require. Kept the descriptor's parseable `values.chat` field so loader rejection explains why it is unsupported, as item 10 requires. Draft PR: https://github.com/TanJeeSchuan/DitzyTavern/pull/266. CI now owns typecheck, full tests, build, and e2e.
