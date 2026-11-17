@@ -167,12 +167,15 @@ const acceptedEditedPlan = (
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
-	const budget = budgetEditedPromptPlan({
-		plan: editedPlan,
-		contextLimit: settings.contextLimit,
-		responseBudget: settings.responseBudget,
-		safetyAllowance: settings.safetyAllowance,
-	});
+	const budget = {
+		...budgetEditedPromptPlan({
+			plan: editedPlan,
+			contextLimit: settings.contextLimit,
+			responseBudget: settings.responseBudget,
+			safetyAllowance: settings.safetyAllowance,
+		}),
+		omittedContext: record.capture.plan.budget.omittedContext,
+	};
 	if (!budget.fits) throw new PromptBudgetExceededError(budget);
 	const sourceLore = record.capture.plan.loreActivation;
 	const loreActivation = sourceLore === null
