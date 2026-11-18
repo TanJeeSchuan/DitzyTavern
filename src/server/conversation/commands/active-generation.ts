@@ -28,7 +28,6 @@ import type {
 	ConversationDataEntry,
 	ConversationSummary,
 	CheckpointGenerationInput,
-	RemoveGenerationInput,
 	StopGenerationsInput,
 	StoppedGenerations,
 	StopGenerationInput,
@@ -38,7 +37,7 @@ import { GENERATION_REPLAY_RETENTION_MS } from "../generation-retention";
 import { macroWritesToData } from "../../prompt-macros";
 
 // @approved
-//  Terminal lifecycle of the server-owned Generations: resolve, remove,
+//  Terminal lifecycle of the server-owned Generations: resolve,
 // checkpoint, and stop. Acceptance seams (tail/continuation/sibling) live in
 // accept-generation.ts; both halves share the transaction seam and the
 // terminal persistence helpers below.
@@ -193,10 +192,8 @@ const terminalBoxTracesData = (active: ActiveGenerationRow): ConversationDataEnt
 
 /** @approved
  * Persist one terminal Variant's Conversation-scoped data: the compact
- * generation provenance first, then the lifecycle's private reasoning
- * (unless the supplied entries already carry one), then the supplied
- * entries in order. Shared by resolve and stop so the row order and the
- * reasoning dedupe rule cannot drift.
+ * generation provenance first, then the lifecycle's private reasoning,
+ * then the supplied entries in order. Shared by resolve and stop.
  */
 const persistTerminalVariantData = (
 	db: ConversationDatabase,
@@ -218,8 +215,7 @@ const persistTerminalVariantData = (
 		...(input.loreActivationData ?? []),
 		...(input.boxTracesData ?? []),
 		...(input.provenance === undefined ? [] : [input.provenance]),
-		...(input.reasoning !== undefined && input.reasoning.length > 0 &&
-			!suppliedData.some((entry) => entry.namespace === variantDataCodecs.reasoning.namespace && entry.key === variantDataCodecs.reasoning.key)
+		...(input.reasoning !== undefined && input.reasoning.length > 0
 			? [toVariantDataEntry(variantDataCodecs.reasoning, input.reasoning)]
 			: []),
 		...suppliedData,
@@ -317,49 +313,6 @@ export function resolveConversationGeneration(
 }
 
 /** @approved
- * Remove one accepted target. The persisted Active Generation row is
- * the sole authority for the mutation: a Sibling Generation loses only its
- * provisional Variant (restoring the acceptance-time selection unless a
- * later explicit selection took precedence), while a Tail or Continuation
- * Generation is its own provisional Message and is removed whole. The
- * caller never selects a mode, so a Sibling Generation ID cannot reach the
- * Message-removal path and delete the Message owning every sibling Variant.
- * Removal is the same destructive transition Stop applies to a target
- * without durable output, so both entry points share it.
- */
-export const removeConversationGeneration = (
-	database: Database,
-	input: RemoveGenerationInput,
-): ConversationSummary => {
-	return runConversationTransaction(database, (db, reportChange) => {
-		const active = requireActiveGeneration(db, input.conversationId, input.generationId);
-		if (active.checkpoint_content.length > 0 || active.checkpoint_reasoning.length > 0) {
-			throw new InvalidConversationCommandError("A Generation with durable output must be resolved or stopped.");
-		}
-		const transition = removeActiveGenerationTargetInTransaction(db, active);
-		if (transition.removedSibling !== undefined) {
-			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
-		}
-		// @approved
-		//  Removal deletes the provisional target — the sibling Variant
-		// alone, or the whole provisional Message for a Tail or Continuation
-		// target — so its removed Variant id is reported and Memory abandons the
-		// in-flight work the write just deleted. The removed sibling Variant is
-		// the Active Generation's tracked variant, and a provisional Message
-		// owns exactly that one Variant: Sibling acceptance is denied while a
-		// non-sibling Active Generation exists, and a provisional target Message
-		// carries no captured historical Control pair to serve as a sibling
-		// target.
-		reportChange({
-			conversationId: input.conversationId,
-			touchedVariantIds: [],
-			removedVariantIds: [active.variant_id],
-		});
-		return advanceConversationRevision(db, input.conversationId);
-	});
-};
-
-/** @approved
  * Persist one revision-neutral Generation checkpoint: the output streamed
  * since the previous one, appended as one delta row. The delta rows are the
  * authoritative crash-recovery copy of both streams and their application
@@ -428,31 +381,14 @@ const appendCheckpoint = (db: ConversationDatabase, input: CheckpointGenerationI
 	}).run();
 };
 
-interface StoppedSiblingTarget {
-	messageId: number;
-	variantId: number;
-	priorVariantId: number | null;
-	selected: boolean;
-}
-
-interface StopTransition {
-	readonly durableOutput: boolean;
-	readonly removedSibling?: StoppedSiblingTarget;
-}
-
 /** @approved
- * The destructive terminal transition: discard the provisional
- * target — the sibling Variant alone, or the whole provisional Message for
- * a Tail or Continuation target (which leaves a retriable accepted Human
- * Message when Send created one) — and report the removed sibling so the
- * caller can restore the selection the attempt displaced. Shared by Stop's
- * zero-output transition and the canonical removal so the destructive path
- * is written once.
+ * Remove an empty provisional target and restore its displaced selection.
+ * Later siblings inherit the removed target's prior selection before deletion.
  */
 function removeActiveGenerationTargetInTransaction(
 	db: ConversationDatabase,
 	active: ActiveGenerationRow,
-): StopTransition {
+): void {
 	if (decodeStoredGenerationIntent(active.generation_intent_json).type === "sibling") {
 		const variant = provisionalVariantRow(db, active);
 		if (variant === undefined) {
@@ -471,15 +407,13 @@ function removeActiveGenerationTargetInTransaction(
 		db.delete(messageVariantTable)
 			.where(eq(messageVariantTable.id, variant.id))
 			.run();
-		return {
-			durableOutput: false,
-			removedSibling: {
-				messageId: active.message_id,
-				variantId: variant.id,
-				priorVariantId: active.prior_variant_id,
-				selected: variant.selected,
-			},
-		};
+		if (variant.selected && active.prior_variant_id !== null) {
+			db.update(messageVariantTable)
+				.set({ selected: true })
+				.where(and(eq(messageVariantTable.id, active.prior_variant_id), eq(messageVariantTable.message_id, active.message_id)))
+				.run();
+		}
+		return;
 	}
 	db.delete(activeGenerationTable)
 		.where(eq(activeGenerationTable.id, active.id))
@@ -496,7 +430,6 @@ function removeActiveGenerationTargetInTransaction(
 	//  No tombstone is collected here: a Tail or Continuation target names only
 	// the Control seats it was accepted with, and a seat holder can be neither
 	// removed nor replaced while the Generation runs.
-	return { durableOutput: false };
 }
 
 /** @approved
@@ -508,11 +441,13 @@ function stopActiveGenerationInTransaction(
 	db: ConversationDatabase,
 	active: ActiveGenerationRow,
 	timestamp: string,
-): StopTransition {
+	cause: StopGenerationInput["cause"],
+): boolean {
 	const content = active.checkpoint_content;
 	const reasoning = active.checkpoint_reasoning;
 	if (content.length === 0 && reasoning.length === 0) {
-		return removeActiveGenerationTargetInTransaction(db, active);
+		removeActiveGenerationTargetInTransaction(db, active);
+		return false;
 	}
 
 	commitDurableTerminalGenerationInTransaction(db, active, {
@@ -521,42 +456,17 @@ function stopActiveGenerationInTransaction(
 		timestamp,
 		suppliedData: [
 			{ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.outcome, value: durableOutcome({ status: "stopped" }) },
-			{ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.interruptionCause, value: "user-stop" },
+			{ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.interruptionCause, value: cause },
 		] satisfies ConversationDataEntry[],
 	});
-	return { durableOutput: true };
-}
-
-function restoreStoppedSiblingSelection(
-	db: ConversationDatabase,
-	removed: readonly StoppedSiblingTarget[],
-): void {
-	const removedIds = new Set(removed.map((target) => target.variantId));
-	const priorByVariantId = new Map(removed.map((target) => [target.variantId, target.priorVariantId]));
-	for (const target of removed) {
-		if (!target.selected) continue;
-		let fallback = target.priorVariantId;
-		while (fallback !== null && removedIds.has(fallback)) {
-			fallback = priorByVariantId.get(fallback) ?? null;
-		}
-		if (fallback === null) continue;
-		db.update(messageVariantTable)
-			.set({ selected: true })
-			.where(
-				and(
-					eq(messageVariantTable.id, fallback),
-					eq(messageVariantTable.message_id, target.messageId),
-				),
-			)
-			.run();
-	}
+	return true;
 }
 
 // @approved
 //  Explicit Stop uses the latest durable checkpoint as its terminal input. A
 // live runtime flushes immediately before calling this seam; a caller without
 // a runtime still gets the last authoritative checkpoint and the same cleanup
-// rules. The existing resolve/remove operations keep the transition atomic,
+// rules. The transaction keeps the transition atomic,
 // and a race with a provider terminal event simply reports that the target is
 // no longer available to the losing caller.
 export function stopConversationGeneration(
@@ -566,19 +476,12 @@ export function stopConversationGeneration(
 	const timestamp = input.timestamp ?? new Date().toISOString();
 	return runConversationTransaction(database, (db, reportChange) => {
 		const active = requireActiveGeneration(db, input.conversationId, input.generationId);
-		const transition = stopActiveGenerationInTransaction(
-			db,
-			active,
-			timestamp,
-		);
-		if (transition.removedSibling !== undefined) {
-			restoreStoppedSiblingSelection(db, [transition.removedSibling]);
-		}
+		const durableOutput = stopActiveGenerationInTransaction(db, active, timestamp, input.cause);
 		// @approved
 		//  A durable Stop commits the terminal Variant content; a
 		// zero-output Stop deletes the target whole, so its in-flight Memory
 		// work is abandoned through the removed record.
-		reportChange(transition.durableOutput ? {
+		reportChange(durableOutput ? {
 			conversationId: input.conversationId,
 			touchedVariantIds: [active.variant_id],
 			removedVariantIds: [],
@@ -590,7 +493,7 @@ export function stopConversationGeneration(
 		return advanceConversationRevision(
 			db,
 			input.conversationId,
-			transition.durableOutput ? timestamp : undefined,
+			durableOutput ? timestamp : undefined,
 		);
 	});
 }
@@ -606,7 +509,7 @@ export function stopConversationGenerations(
 ): StoppedGenerations {
 	return runConversationTransaction(database, (db, reportChange) => {
 		requireConversation(db, input.conversationId);
-		const activeRows = selectActiveGenerations(db)
+		const activeRows = db.select({ id: activeGenerationTable.id }).from(activeGenerationTable)
 			.where(eq(activeGenerationTable.conversation_id, input.conversationId))
 			.orderBy(asc(activeGenerationTable.id))
 			.all();
@@ -614,18 +517,16 @@ export function stopConversationGenerations(
 			throw new InvalidConversationCommandError("The Conversation has no active Generations to stop.");
 		}
 		const timestamp = input.timestamp ?? new Date().toISOString();
-		const removedSiblings: StoppedSiblingTarget[] = [];
 		const touchedVariantIds: number[] = [];
 		const removedVariantIds: number[] = [];
 		let durableOutput = false;
-		for (const active of activeRows) {
-			const transition = stopActiveGenerationInTransaction(db, active, timestamp);
-			durableOutput ||= transition.durableOutput;
-			if (transition.removedSibling !== undefined) removedSiblings.push(transition.removedSibling);
-			if (transition.durableOutput) touchedVariantIds.push(active.variant_id);
+		for (const { id } of activeRows) {
+			const active = requireActiveGeneration(db, input.conversationId, id);
+			const retained = stopActiveGenerationInTransaction(db, active, timestamp, "user-stop");
+			durableOutput ||= retained;
+			if (retained) touchedVariantIds.push(active.variant_id);
 			else removedVariantIds.push(active.variant_id);
 		}
-		restoreStoppedSiblingSelection(db, removedSiblings);
 		reportChange({
 			conversationId: input.conversationId,
 			touchedVariantIds,

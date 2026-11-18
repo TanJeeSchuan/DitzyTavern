@@ -61,7 +61,7 @@ describe("Generation checkpoints", () => {
 	test("deltas end with the Generation and its capture ends with the retained inspection", () => {
 		const generation = accept();
 		generation.checkpoint(0, "Partial", 0, "", 1);
-		stopConversationGeneration(database, { conversationId: generation.conversationId, generationId: generation.generationId });
+		stopConversationGeneration(database, { cause: "user-stop", conversationId: generation.conversationId, generationId: generation.generationId });
 		expect(generation.rows("generation_checkpoint")).toBe(0);
 		expect(generation.details()).toMatchObject({ status: "interrupted", checkpoint: { content: "Partial", latestEventId: 1 } });
 		cleanupRetainedGenerationInspections(database, new Date(Date.now() + 24 * 60 * 60 * 1000));
@@ -71,7 +71,7 @@ describe("Generation checkpoints", () => {
 
 	test("a discarded target takes its capture with it", () => {
 		const generation = accept();
-		stopConversationGeneration(database, { conversationId: generation.conversationId, generationId: generation.generationId });
+		stopConversationGeneration(database, { cause: "user-stop", conversationId: generation.conversationId, generationId: generation.generationId });
 		expect(generation.rows("generation_capture")).toBe(0);
 	});
 
@@ -100,7 +100,7 @@ describe("Generation checkpoints", () => {
 			expectedRevision: readConversationRevision(database, generation.conversationId) ?? 0,
 			action: { type: "delete-message", messageId: generation.humanMessageId },
 		})).toThrow("Stop the running Generation");
-		stopConversationGeneration(database, { conversationId: generation.conversationId, generationId: generation.generationId });
+		stopConversationGeneration(database, { cause: "user-stop", conversationId: generation.conversationId, generationId: generation.generationId });
 		executeConversationCommand(database, {
 			conversationId: generation.conversationId,
 			expectedRevision: readConversationRevision(database, generation.conversationId) ?? 0,

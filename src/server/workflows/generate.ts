@@ -1,7 +1,7 @@
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import {
 	readConversationRevision,
-	removeConversationGeneration,
+	stopConversationGeneration,
 	resolveConversationGeneration,
 	checkpointUnstreamedOutcome,
 	acceptConversationTailGeneration,
@@ -62,7 +62,7 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 		// Acceptance is authoritative even when an observing caller disconnects.
 	}
 	return runAcceptedGeneration(input, modelRequestFor(capture, input), {
-		remove: () => { removeConversationGeneration(database, { conversationId: input.conversationId, generationId: accepted.generationId }); },
+		stop: (cause) => { stopConversationGeneration(database, { conversationId: input.conversationId, generationId: accepted.generationId, cause }); },
 		resolve: (outcome) => {
 			checkpointUnstreamedOutcome(database, { conversationId: input.conversationId, generationId: accepted.generationId, content: outcome.content, reasoning: outcome.reasoning });
 			const resolved = resolveConversationGeneration(database, {

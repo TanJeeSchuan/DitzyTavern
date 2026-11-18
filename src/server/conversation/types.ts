@@ -1,3 +1,4 @@
+import type { GenerationFailureKind } from "../../shared/contract/generation-events";
 import type { StoredGenerationIntent } from "../../shared/contract/generation-intent";
 import type { BoxMoves, BoxRecords } from "../../shared/contract/box-generation";
 import type { BoxTraces } from "../../shared/contract/box-generation";
@@ -343,17 +344,14 @@ export interface ResolveGenerationInput {
 	data?: readonly ConversationDataEntry[] | undefined;
 }
 
-// One canonical removal input. The Active Generation row's persisted intent
-// decides the mutation; the caller never selects one.
-export interface RemoveGenerationInput {
-	conversationId: number;
-	generationId: number;
-}
+/** @approved The only local terminal causes used by startup and graceful shutdown. */
+export type GenerationRecoveryCause = "server-restart" | "server-shutdown";
 
 // Explicit Stop is a server-owned lifecycle transition. The checkpoint is
 // read from the Active Generation row, so a client cannot forge partial
 // output or target another Conversation's Generation.
 export interface StopGenerationInput {
+	cause: GenerationFailureKind | "user-stop" | GenerationRecoveryCause;
 	conversationId: number;
 	generationId: number;
 	timestamp?: string | undefined;

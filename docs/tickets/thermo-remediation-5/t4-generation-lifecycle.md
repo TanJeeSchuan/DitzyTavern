@@ -1,6 +1,6 @@
 # T4: Generation lifecycle
 
-Status: READY
+Status: IN PROGRESS (slice a first implementation)
 
 Blocked By: T3
 
@@ -58,7 +58,9 @@ Report 11, findings 1 and 8.
 
 ## TODO
 
-- [ ] Slice a (Astra), then fixes (Sol), PR
+- [x] Slice a first implementation (Astra)
+- [x] Slice a review, fixes, and CI
+- [ ] Slice a PR merged
 - [ ] Slice b (Astra), then fixes (Sol), PR
 - [ ] Slice c (Sol), PR
 - [ ] Slice d (Sol), PR
@@ -68,3 +70,12 @@ Report 11, findings 1 and 8.
 `git grep -n -E 'removeConversationGeneration|acceptConversation(Tail|Continuation|Sibling)Generation|advanceConversationRevisionGuarded|AttemptConfiguration|assistantPrefill|budgetEditedPromptPlan|retainedContext' -- src` is empty. The recovery, Stop, acceptance and capture tests pass, and e2e passes in CI.
 
 ## Outcome
+
+Slice a first implementation:
+
+- Removed the separate Remove command/input, recovery's terminal-write branch, `interruptedGenerationData`, duplicate reasoning data, and sibling-selection chain walk.
+- Stop takes a required cause. Provider cleanup and recovery call Stop; Stop All re-reads each row after earlier removals repair prior selections.
+- Migrated removal coverage to `stop-generation-cleanup.test.ts`. Added workflow cases for provider failure and empty completion racing a final content/reasoning checkpoint.
+- Changed-file `bunx --no-install oxlint` and `git diff --check` passed. No unit tests, typecheck, or e2e ran locally, as requested; CI owns those checks.
+- Opus 5.5 high standards and spec reviews: no blockers. Fixed by the orchestrator (the Sol follow-up hit a Codex 429): `GenerationRecoveryCause` now has one home in `conversation/types.ts` and Stop's cause uses it; the scaffolding comment and the cleanup test names describe Stop instead of removal; one test's object formatting. Kept as is: recovery's counters read the row's checkpoint before Stop, because changing Stop's return to report retention would widen every caller for a log line.
+- CI on `914c436f`: check and e2e green. Slices b–d remain.

@@ -195,7 +195,7 @@ describe("permanent Lore Activation Records", () => {
 			generationId: accepted.generationId,
 			content: "The tower appeared.",
 		});
-		stopConversationGeneration(module, { conversationId: created.id, generationId: accepted.generationId });
+		stopConversationGeneration(module, { cause: "user-stop", conversationId: created.id, generationId: accepted.generationId });
 		const interrupted = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const interruptedVariant = interrupted.variants.at(-1)!;
 		expect(readVariantDetails(module, created.id, interrupted.id, interruptedVariant.id)?.loreActivation).toEqual(evidence);
@@ -215,7 +215,7 @@ describe("permanent Lore Activation Records", () => {
 			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
 		});
-		stopConversationGeneration(module, { conversationId: created.id, generationId: zeroOutput.generationId });
+		stopConversationGeneration(module, { cause: "user-stop", conversationId: created.id, generationId: zeroOutput.generationId });
 		const afterCleanup = readTestConversationSnapshot(module, created.id)!;
 		expect(afterCleanup.messages.at(-1)?.variants.at(-1)?.data).not.toContainEqual({
 			namespace: "lore-activation",

@@ -165,13 +165,13 @@ describe("permanent Box traces", () => {
 		const interruptedBase = readTestConversationSnapshot(module, created.id)!;
 		const interrupted = acceptConversationTailGeneration(module, { ...acceptedInput(interruptedBase, captured), expectedRevision: interruptedBase.revision, timestamp: "2026-09-23T00:06:00.000Z" });
 		checkpointFromStart(module, { conversationId: created.id, generationId: interrupted.generationId, content: "Retained partial output." });
-		stopConversationGeneration(module, { conversationId: created.id, generationId: interrupted.generationId });
+		stopConversationGeneration(module, { cause: "user-stop", conversationId: created.id, generationId: interrupted.generationId });
 		const interruptedTarget = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		expect(readVariantDetails(module, created.id, interruptedTarget.id, interruptedTarget.variants[0]!.id)?.boxTraces).toEqual(captured);
 
 		const fresh = readTestConversationSnapshot(module, created.id)!;
 		const empty = acceptConversationTailGeneration(module, { ...acceptedInput(fresh, captured), expectedRevision: fresh.revision, timestamp: "2026-09-23T00:07:00.000Z" });
-		stopConversationGeneration(module, { conversationId: created.id, generationId: empty.generationId });
+		stopConversationGeneration(module, { cause: "user-stop", conversationId: created.id, generationId: empty.generationId });
 		expect(readTestConversationSnapshot(module, created.id)!.messages.some(({ id }) => id === empty.messageId)).toBe(false);
 		expect(readVariantDetails(module, created.id, empty.messageId, empty.provisionalVariantId)).toBeUndefined();
 		expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);

@@ -44,6 +44,5 @@ export {
 	recoverActiveGenerations,
 	gracefullyShutdownGenerations,
 	shutdownActiveGenerations,
-	type GenerationRecoveryCause,
 	type GenerationRecoverySummary,
 } from "./generation-recovery";
