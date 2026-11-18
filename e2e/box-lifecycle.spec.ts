@@ -27,7 +27,7 @@ test.describe("a Box lifecycle change from a stale read", () => {
 	});
 });
 
-test("a new Chat starts with only the Author Note and Memory enabled", async ({ page, request }) => {
+test("a new Chat starts with only the Author Note, Memory and the Character Drafter enabled", async ({ page, request }) => {
 	const emptyPrompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 	const created = await (await request.post("/api/conversations/native", { data: {
 		name: "Fresh Chat",
@@ -37,7 +37,7 @@ test("a new Chat starts with only the Author Note and Memory enabled", async ({ 
 	expect(created.outcome).toBe("created");
 	await page.goto("/");
 	const boxes = await manager(page);
-	for (const title of ["Author Note", "Memory"]) await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).toBeChecked();
+	for (const title of ["Author Note", "Memory", "Character Drafter"]) await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).toBeChecked();
 	for (const title of ["World Clock", "Race", "Phone"]) {
 		await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).toHaveCount(0);
 		await expect(boxes.getByRole("button", { name: `Add ${title}`, exact: true })).toBeVisible();

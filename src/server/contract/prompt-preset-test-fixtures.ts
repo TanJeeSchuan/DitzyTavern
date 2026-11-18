@@ -96,10 +96,10 @@ export const createChat = (
 };
 
 // @approved
-// Each Box turned on lands right after history: the Author Note at creation,
-// then the fixture Chat's World Clock and Phone. Memory sits before history
-// in the Default recipe already.
-export const chatBoxBlocks = ["box:phone", "box:world-clock", "box:author-note"] as const;
+// Each Box turned on lands right after history: the Author Note and the
+// Character Drafter at creation, then the fixture Chat's World Clock and
+// Phone. Memory sits before history in the Default recipe already.
+export const chatBoxBlocks = ["box:phone", "box:world-clock", "box:character-drafter", "box:author-note"] as const;
 
 export const withProfile = (database: Database) => {
 	const settings = createConnectionSettingsModule(database, { masterKey: key });

@@ -81,6 +81,8 @@ describe("readConversationData", () => {
 			entries: [
 				{ namespace: "box:author-note", key: "enabled", value: "true" },
 				{ namespace: "box:author-note", key: "instance", value: expect.any(String) },
+				{ namespace: "box:character-drafter", key: "enabled", value: "true" },
+				{ namespace: "box:character-drafter", key: "instance", value: expect.any(String) },
 				{ namespace: "box:memory", key: "enabled", value: "true" },
 				{ namespace: "box:memory", key: "instance", value: expect.any(String) },
 				{ namespace: "first.namespace", key: "alpha", value: "1" },
