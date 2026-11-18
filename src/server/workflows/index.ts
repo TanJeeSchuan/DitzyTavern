@@ -22,7 +22,6 @@ export {
 export {
 	type GenerationInput,
 	type GenerationAttemptInput,
-	type ParticipantPreview,
 	runGenerationLifecycle,
 	startServerOwnedGeneration,
 	type ServerOwnedGeneration,

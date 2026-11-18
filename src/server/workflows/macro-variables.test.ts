@@ -8,10 +8,8 @@ import { macroInitialValuesToData, readMacroWrites } from "../prompt-macros";
 import type { MacroValue } from "../../shared/prompt-macro-engine";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { readVariantData } from "../conversation";
-import {
-	captureGeneration,
-	capturedAcceptanceFields,
-} from "./generate-capture";
+import { captureGeneration } from "./generate-capture";
+import { capturedAcceptanceFields } from "./generate-capture-projections";
 import { recoverActiveGenerations } from "./generation-recovery";
 
 describe("Conversation-persistent prompt macro variables", () => {
@@ -69,7 +67,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			{ name: "turn", value: "6", operation: "set" },
 		]);
 
-		const fields = capturedAcceptanceFields(first, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" });
+		const fields = capturedAcceptanceFields(first, "2026-09-12T00:00:00.000Z");
 		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: conversation.revision, content: "Hello" });
 		resolveConversationGeneration(database, {
 			conversationId: conversation.id,
@@ -149,7 +147,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 			control: { human: 0, model: 1 },
 		});
 		const capture = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: conversation.id });
-		const fields = capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" });
+		const fields = capturedAcceptanceFields(capture, "2026-09-12T00:00:00.000Z");
 		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: conversation.revision, content: "Hello" });
 		checkpointFromStart(database, {
 			conversationId: conversation.id,

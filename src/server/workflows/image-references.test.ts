@@ -30,7 +30,8 @@ import { acceptGeneration } from "../conversation";
 import { resolveConversationGeneration } from "../conversation";
 import { removeRetainedGenerationInspection } from "../conversation";
 import { createNativeConversation } from ".";
-import { captureGeneration, capturedAcceptanceFields } from "./generate-capture";
+import { captureGeneration } from "./generate-capture";
+import { capturedAcceptanceFields } from "./generate-capture-projections";
 
 const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const writer = { name: "Writer", prompt, sendAppearanceImages: true, openings: [] };
@@ -368,7 +369,7 @@ describe("Image Reference lifetime", () => {
 			control: { human: 0, model: 1 },
 		});
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
+		const fields = capturedAcceptanceFields(captured, timestamp);
 		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: target.revision, content: "Hello" });
 		resolveConversationGeneration(database, {
 			conversationId: target.id,
@@ -394,7 +395,7 @@ describe("Image Reference lifetime", () => {
 		const target = chat();
 		const art = await picture(4);
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
+		const fields = capturedAcceptanceFields(captured, timestamp);
 		const accepted = acceptGeneration(database, {
 			...fields,
 			promptPlan: { ...fields.promptPlan, blocks: [{ kind: "instruction", role: "system", content: `Show ${art.token}` }] },
@@ -481,7 +482,7 @@ describe("Image Reference lifetime", () => {
 		const target = chat();
 		const art = await picture(4);
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
+		const fields = capturedAcceptanceFields(captured, timestamp);
 		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: target.revision, content: "Hello" });
 		expect(orphanedAt(art.hash)).toBeNumber();
 		checkpointFromStart(database, { conversationId: target.id, generationId: accepted.generationId, content: art.token });

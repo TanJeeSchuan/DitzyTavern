@@ -64,7 +64,7 @@ Report 11, findings 1 and 8.
 - [x] Slice b first implementation (Astra)
 - [x] Slice b review, fixes (Sol), and CI
 - [ ] Slice b PR merged
-- [ ] Slice c (Sol), PR
+- [x] Slice c (Sol), PR
 - [ ] Slice d (Sol), PR
 
 ## Acceptance
@@ -97,3 +97,12 @@ Slice b first implementation:
 - Capture and acceptance share `promptIntentOf`. Persistence encodes a Send as `tail`, while the Send Prompt Plan still omits intent.
 - Split eligibility into `requireSiblingHistoricalControl` and `requireTerminalTarget`. The acceptance tests share a local assertion for the typed Continue refusal.
 - Traced the Continue start route on this branch and `master`. Capture-time and acceptance-time eligibility refusals both return HTTP 422 with `outcome: "invalid"` and a `reason` string. The acceptance-time `ContinuationUnavailableError` supplies the same reason text as capture. Master returned the same status and shape with the generic acceptance reason text.
+
+### Slice c implementation
+
+- Capture returns preparation, the Generation Plan, and macro writes. Acceptance derives provenance and author stamps from those facts.
+- Target capture supplies the history bound, gate, Moves, Box intent, seed, and pending Human-authored text. The preview fingerprint enumerates captured inputs and keeps Box image grants and Semantic Trigger settings.
+- The Model Client reads the prefill prefix and suffix from the Prompt Plan. The adapter tests cover suffixes, the final assistant position, and the anchor for an ungranted Box image.
+- The Opus spec review found no blockers. The standards review prompted removal of the duplicate Conversation ID and staged Moves and use of the named Box intent type. The fingerprint stays explicit per the ticket, with a type check for missing snapshot fields.
+- A change to Message or Variant identity alone now leaves a preview current when the captured inputs match.
+- Changed-file `bunx --no-install oxlint` and `git diff --check` passed. CI runs the unit tests, typecheck, and e2e. Slice d remains.

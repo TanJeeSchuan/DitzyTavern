@@ -1,90 +1,53 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { generationGate, promptIntentOf, requireSiblingHistoricalControl, requireTerminalTarget, type CapturedGenerationTarget } from "../conversation";
-import type { BoxRecords } from "../../shared/contract/box-generation";
-import { newVariantSeed, variantSeedOf } from "../box/seed";
-import { readVariantSeeds } from "../box/records";
-import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
-import { generationProvenanceEntry } from "./generate-capture-projections";
-export { capturedAcceptanceFields, modelRequestFor } from "./generate-capture-projections";
 import type { Database } from "bun:sqlite";
 import {
 	authorRoleOf,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
+	generationGate,
 	InvalidConversationCommandError,
-	type ConversationDataEntry,
-	type ConversationSummary,
+	promptIntentOf,
+	readConversationGenerationSettingsFromConnection,
+	readConversationSummaryFromConnection,
+	readSelectedHistoryFromConnection,
+	readVariantData,
+	requireSiblingHistoricalControl,
+	requireTerminalTarget,
+	runConversationReadTransaction,
+	type CapturedGenerationTarget,
+	type CastParticipantSnapshot,
+	type ConversationDatabase,
+	type ConversationGenerationSettings,
+	type HistoricalControlSnapshot,
+	type SelectedHistoryRead,
 } from "../conversation";
-import type { ConversationGenerationSettings } from "../conversation";
-import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
-import type { PromptPresetRecipe, PromptPresetSlot } from "../prompt-preset";
+import { readConversationPromptPresetRecipeFromConnection, type PromptPresetRecipe } from "../prompt-preset";
 import { evaluateScopedLore, evaluateScopedLoreAsync, noLoreEvaluation, type ScopedLoreEvaluation } from "../lorebook/evaluation";
-import type { CastParticipantSnapshot } from "../conversation";
-import { readConversationSummaryFromConnection } from "../conversation";
-import { readConversationGenerationSettingsFromConnection } from "../conversation";
-import { readSelectedHistoryFromConnection } from "../conversation";
-import { readVariantData } from "../conversation";
 import { promptImageResolutionFor } from "./prompt-image-resolution";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import { generationRuntimeFor } from "./generation-runtime";
 import { createSemanticTriggerSettingsModule } from "../lorebook/semantic-settings";
-import { runConversationReadTransaction } from "../conversation";
-import {
-	compileGenerationPlan,
-	continuationIntentFor,
-	effectiveGenerationSettingsFor,
-	type EffectiveGenerationSettings,
-	type GenerationPlan,
-} from "../generation-plan";
-import type {
-	GenerationIntent,
-	PromptContextEntry,
-	TokenEstimator,
-} from "../prompt-compiler";
-import {
-	type ConnectionSettingsModuleOptions,
-} from "../connection-settings";
-import {
-	type ModelClientConnectionSnapshot,
-} from "../model-client";
-import type { ModelFetch } from "../model-client/types";
+import { compileGenerationPlan, continuationIntentFor, type GenerationPlan } from "../generation-plan";
+import type { PromptContextEntry, PromptWarning, TokenEstimator } from "../prompt-compiler";
+import type { ConnectionSettingsModuleOptions } from "../connection-settings";
+import type { ModelClientConnectionSnapshot, ModelFetch } from "../model-client";
 import { hasEnabledLoreSlot } from "../../shared/contract/prompt-preset";
-import {
-	createAttemptEnvironment,
-	type AttemptEnvironment,
-} from "../../shared/prompt-macro-engine";
-import {
-	type GenerationFormattingContext,
-} from "../../shared/contract/conversation-schema";
-import type {
-	GenerationTarget,
-} from "../../shared/contract/conversation-schema";
+import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
+import type { GenerationFormattingContext, GenerationTarget } from "../../shared/contract/conversation-schema";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
 import { deriveMacroState, macroInitialValuePrefix } from "../prompt-macros";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
-import type { ConversationDatabase, SelectedHistoryRead } from "../conversation";
+import { MACRO_DATA_NAMESPACE } from "../../shared/variant-data-codecs";
 import { boxServices } from "../box/services";
+import type { CaptureRead } from "../box/contract";
 import { withBoxOperations, advanceBoxes, captureBoxes, chatBoxes, participatingBoxes, type BoxResults, type BoxInputs } from "../box/registry";
-import { readBoxFolds } from "../box/records";
+import { readBoxFolds, readVariantSeeds } from "../box/records";
+import { newVariantSeed, variantSeedOf } from "../box/seed";
 import { humanMessageText, readMessageMoves } from "../box/moves";
-import { boxMovesError, sameMoves, type BoxMoves } from "../../shared/contract/box-generation";
+import { boxMovesError, sameMoves, type BoxMoves, type BoxRecords } from "../../shared/contract/box-generation";
 import { readBoxLifecycles } from "../box/setup";
 import type { BoxImageGrants } from "../prompt-compiler/images";
 import { captureBoxPromptImages } from "../box/prompt-images";
-import type { PromptWarning } from "../prompt-compiler";
-
-// @approved
-//  Generation-start capture: from one authoritative Conversation preparation and
-// the captured configuration this module derives the complete Generation Plan
-// through the one Generation Plan Compiler, together with the captured
-// participants and Control pair and the provenance record every server-owned
-// Generation persists at start. The workflow entry points consume these
-// captures; nothing here contacts a transport or mutates Conversation state.
-
-export interface ParticipantPreview {
-	id: number;
-	name: string;
-}
 
 interface GenerationDerivation {
 	human: CastParticipantSnapshot;
@@ -92,109 +55,21 @@ interface GenerationDerivation {
 	context: readonly PromptContextEntry[];
 }
 
-interface ParticipatingHistory {
-	readonly messages: readonly ParticipatingHistoryMessage[];
-	readonly control: ConversationSummary["control"];
-}
-
-type ParticipatingHistoryMessage = SelectedHistoryRead["messages"][number];
-
-/** @approved
- * The one Generation Plan compilation. Every attempt and read-only
- * inspection compiles the same way from a derived Control pair, its ordered
- * writing context, and the captured configuration; only the Generation intent
- * and the estimator differ, so those are the only arguments a call site
- * states.
- */
-const compilePlanFrom = (
-	derivation: GenerationDerivation,
-	configuration: {
-		boxes: BoxResults;
-		boxWarnings: readonly PromptWarning[];
-		boxImages: BoxImageGrants;
-		settings: ConversationGenerationSettings;
-		slots: readonly PromptPresetSlot[];
-		attempt: AttemptEnvironment;
-		connection: ModelClientConnectionSnapshot | null;
-		lore: ScopedLoreEvaluation;
-	},
-	options: {
-		intent?: GenerationIntent | undefined;
-		estimator?: TokenEstimator | undefined;
-		database: Database;
-	},
-): GenerationPlan => {
-	const compiled = compileGenerationPlan({
-		boxes: configuration.boxes,
-		human: toCompilerDefinition(derivation.human),
-		model: toCompilerDefinition(derivation.model),
-		context: derivation.context,
-		recipe: configuration.slots,
-		lore: configuration.lore.candidates,
-		loreAllowance: configuration.lore.allowance,
-		loreActivation: configuration.lore.activation,
-		attempt: configuration.attempt,
-		intent: options.intent,
-		settings: configuration.settings,
-		connection: configuration.connection === null ? null : {
-			apiFormat: configuration.connection.apiFormat,
-			systemPlacement: configuration.connection.systemPlacement,
-		},
-		estimator: options.estimator,
-		images: { ...promptImageResolutionFor(options.database, configuration.connection, configuration.settings), boxGrants: configuration.boxImages },
-	});
-	compiled.promptPlan.warnings.push(...configuration.boxWarnings);
-	const automaticLoreText = compiled.promptPlan.blocks.find((block) => block.kind === "lore")?.content ?? "";
-	return {
-		...compiled,
-		loreActivation: compiled.loreActivation === null ? null : {
-			...compiled.loreActivation,
-			automaticLoreText,
-			finalLoreText: automaticLoreText,
-		},
-	};
-};
-
-const toCompilerDefinition = (participant: CastParticipantSnapshot) => ({
-	name: participant.name,
-	prompt: participant.prompt,
-	sendAppearanceImages: participant.sendAppearanceImages,
-});
-
-interface AttemptConfiguration {
-	boxes: BoxResults;
-	boxWarnings: readonly PromptWarning[];
-	boxImages: BoxImageGrants;
-	settings: ConversationGenerationSettings;
-	slots: readonly PromptPresetSlot[];
-	promptPresetId: number;
-	attempt: AttemptEnvironment;
-	connection: ModelClientConnectionSnapshot | null;
-	lore: ScopedLoreEvaluation;
-}
-
-interface GenerationPreparationBase {
+interface PreparationFields {
 	readonly conversationId: number;
 	readonly semanticTriggerRevision: number;
 	readonly formatting: GenerationFormattingContext;
 	readonly derivation: GenerationDerivation;
-	readonly participation: ParticipatingHistory;
 	readonly settings: ConversationGenerationSettings;
-	readonly effectiveSettings: EffectiveGenerationSettings;
 	readonly recipe: PromptPresetRecipe;
 	readonly connection: ModelClientConnectionSnapshot | null;
 	readonly macroState: ReadonlyMap<string, MacroValue>;
 	readonly lore: ScopedLoreEvaluation;
-}
-
-interface PreparationFields extends GenerationPreparationBase {
 	readonly boxWarnings: readonly PromptWarning[];
 	readonly boxImages: BoxImageGrants;
 	readonly seed: string;
 	readonly target: CapturedGenerationTarget;
 	readonly pendingHumanText: string | undefined;
-	/** @approved Selected history as Lore scans it, each Message's Moves rendered as the model reads them. */
-	readonly scanMessages: readonly { readonly id: number; readonly content: string }[];
 }
 
 export interface PreparationSnapshot extends PreparationFields {
@@ -208,7 +83,7 @@ export interface Preparation extends PreparationFields {
 }
 
 const reusableHumanMessageId = (
-	messages: readonly ParticipatingHistoryMessage[],
+	messages: readonly SelectedHistoryRead["messages"][number][],
 	humanParticipantId: number,
 	target: { readonly content: string; readonly moves?: BoxMoves | undefined },
 	moves: ReadonlyMap<number, BoxMoves>,
@@ -225,22 +100,76 @@ const reusableHumanMessageId = (
 		: undefined;
 };
 
+interface CapturedTargetFacts {
+	readonly captured: CapturedGenerationTarget;
+	readonly moves: BoxMoves;
+	readonly boxIntent: CaptureRead["intent"];
+	readonly seedDefault?: string | undefined;
+	readonly pendingHuman?: string | undefined;
+}
+
+/** @approved Gate the captured target before checking playability. Resolve terminal eligibility after rendering history. */
+interface TargetCapture {
+	readonly historyBound?: number;
+	readonly gate?: () => void;
+	resolve(inputs: {
+		history: SelectedHistoryRead;
+		control: HistoricalControlSnapshot;
+		messageMoves: ReadonlyMap<number, BoxMoves>;
+		chat: ReturnType<typeof chatBoxes>;
+	}): CapturedTargetFacts;
+}
+
 function captureTarget(
 	db: ConversationDatabase,
 	conversationId: number,
 	target: GenerationTarget,
-	participation: ParticipatingHistory,
-	human: CastParticipantSnapshot,
 	settings: ConversationGenerationSettings,
-	moves: ReadonlyMap<number, BoxMoves>,
-): CapturedGenerationTarget {
+): TargetCapture {
 	switch (target.kind) {
-		case "send": return { ...target, reuseHumanMessageId: reusableHumanMessageId(participation.messages, human.id, target, moves) };
-		case "sibling": return target;
-		case "continuation": {
-			const terminal = requireTerminalTarget(db, conversationId, settings.continuationStrategy);
-			return { ...target, precedingMessageId: terminal.messageId, precedingVariantId: terminal.variantId, intent: continuationIntentFor(settings) };
-		}
+		case "send": return {
+			resolve({ history, control, messageMoves, chat }) {
+				const reuseHumanMessageId = reusableHumanMessageId(history.messages, control.humanParticipantId, target, messageMoves);
+				const moves = target.moves ?? {};
+				const invalid = boxMovesError(moves, (id) => chat.get(id)?.descriptor);
+				if (invalid !== undefined) throw new InvalidConversationCommandError(invalid);
+				return {
+					captured: { ...target, reuseHumanMessageId },
+					boxIntent: "respond",
+					moves,
+					pendingHuman: reuseHumanMessageId === undefined ? target.content : undefined,
+				};
+			},
+		};
+		case "sibling": return {
+			historyBound: target.messageId,
+			gate: () => requireSiblingHistoricalControl(db, conversationId, target.messageId),
+			resolve({ history, control, messageMoves }) {
+				const preceding = history.messages.at(-1);
+				const responds = preceding === undefined || authorRoleOf(preceding, control) !== "model";
+				const variantId = history.target?.variant?.id;
+				const seedDefault = target.reroll || variantId === undefined
+					? undefined
+					: variantSeedOf(readVariantSeeds(db, [variantId]).get(variantId), variantId);
+				return {
+					captured: target,
+					boxIntent: responds ? "respond" : "continue",
+					moves: responds && preceding !== undefined ? messageMoves.get(preceding.id) ?? {} : {},
+					seedDefault,
+				};
+			},
+		};
+		case "continuation": return {
+			gate: () => generationGate(db, conversationId, { type: "accept-continuation" }),
+			resolve() {
+				const terminal = requireTerminalTarget(db, conversationId, settings.continuationStrategy);
+				return {
+					captured: { ...target, precedingMessageId: terminal.messageId, precedingVariantId: terminal.variantId, intent: continuationIntentFor(settings) },
+					boxIntent: "continue",
+					moves: {},
+				};
+			},
+		};
 	}
 }
 
@@ -294,37 +223,27 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	if (recipe === undefined || settings === undefined) {
 		throw new InvalidConversationCommandError("The Conversation's generation inputs are unavailable.");
 	}
+	const targetCapture = captureTarget(db, input.conversationId, target, settings);
 	const selected = readSelectedHistoryFromConnection(db, input.conversationId, {
-		targetMessageId: target.kind === "sibling" ? target.messageId : undefined,
+		targetMessageId: targetCapture.historyBound,
 		conversationDataNamespace: MACRO_DATA_NAMESPACE,
 		conversationDataKeyPrefix: macroInitialValuePrefix(recipe.id),
 	});
 	if (selected === undefined) throw new ConversationNotFoundError(input.conversationId);
 	const variantIds = selected.messages.flatMap((message) => message.variant === null ? [] : [message.variant.id]);
-	const siblingId = selected.target?.variant?.id;
 	const boxWarnings: PromptWarning[] = [];
 	const chat = chatBoxes(db, input.conversationId);
 	const boxImages = captureBoxPromptImages(db, chat);
 	const boxes = participatingBoxes(chat, recipe.slots, readBoxLifecycles(db, input.conversationId));
-	const siblingSeed = siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId);
 	const variantData = readVariantData(db, variantIds, ["macroWrites"]);
 	const folds = readBoxFolds(db, variantIds, summary.boxSetups, boxes);
 	const messageMoves = readMessageMoves(db, input.conversationId, selected.messages.map(({ id }) => id));
-	if (target.kind === "continuation") generationGate(db, input.conversationId, { type: "accept-continuation" });
-	if (target.kind === "sibling") requireSiblingHistoricalControl(db, input.conversationId, target.messageId);
-	const participation: ParticipatingHistory = {
-		messages: selected.messages,
-		control: {
-			humanParticipantId: selected.target?.historicalContext?.humanParticipantId
-				?? summary.control.humanParticipantId,
-			modelParticipantId: selected.target?.historicalContext?.modelParticipantId
-				?? summary.control.modelParticipantId,
-		},
-	};
+	targetCapture.gate?.();
+	const historicalControl = selected.target?.historicalContext;
 	const human = summary.cast.find((participant) =>
-		participant.id === participation.control.humanParticipantId);
+		participant.id === (historicalControl?.humanParticipantId ?? summary.control.humanParticipantId));
 	const model = summary.cast.find((participant) =>
-		participant.id === participation.control.modelParticipantId);
+		participant.id === (historicalControl?.modelParticipantId ?? summary.control.modelParticipantId));
 	if (human === undefined || model === undefined || human.id === model.id) {
 		throw new ConversationNotPlayableError(input.conversationId);
 	}
@@ -332,12 +251,13 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	//  The selected Messages as the model reads them, each Message's Moves
 	// rendered before its prose: prompt history, Lore scanning and each
 	// Box's capture all read this one projection.
-	const rendered = participation.messages.flatMap((message) => message.variant === null ? [] : [{
+	const control = { humanParticipantId: human.id, modelParticipantId: model.id };
+	const rendered = selected.messages.flatMap((message) => message.variant === null ? [] : [{
 		message,
 		variantId: message.variant.id,
 		prose: message.variant.content,
 		speakerName: message.author?.capturedName ?? null,
-		role: authorRoleOf(message, { humanParticipantId: human.id, modelParticipantId: model.id }),
+		role: authorRoleOf(message, control),
 		content: humanMessageText(messageMoves.get(message.id) ?? {}, message.variant.content, message.author?.capturedName ?? null, chat, summary.boxes, boxImages, boxWarnings),
 	}]);
 	const derivation: GenerationDerivation = {
@@ -345,17 +265,14 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		model,
 		context: rendered.map(({ speakerName, content, role }) => ({ kind: "message", speakerName, content, role })),
 	};
-	const captured = captureTarget(db, input.conversationId, target, participation, human, settings, messageMoves);
+	const { captured, pendingHuman, moves, boxIntent, seedDefault } = targetCapture.resolve({ history: selected, control, messageMoves, chat });
 	// @approved
-	//  Only an enabled Box accepts newly staged Moves; a resent Message keeps the Moves it already carries.
-	const staged = target.kind === "send" ? target.moves : undefined;
-	const invalid = staged === undefined ? undefined : boxMovesError(staged, (id) => chat.get(id)?.descriptor);
-	if (invalid !== undefined) throw new InvalidConversationCommandError(invalid);
-	const submitted = captured.kind === "send" && captured.reuseHumanMessageId === undefined ? captured : undefined;
-	const closed = submitted !== undefined
-		? Object.keys(staged ?? {}).find((id) => summary.boxes[id] !== "enabled") : undefined;
+	// Only an enabled Box accepts newly staged Moves. A resent Message keeps its Moves.
+	const closed = pendingHuman === undefined ? undefined : Object.keys(moves).find((id) => summary.boxes[id] !== "enabled");
 	if (closed !== undefined) throw new InvalidConversationCommandError(`The ${closed} Box is not enabled in this Chat, so it takes no Moves.`);
-	const pendingHumanText = submitted === undefined ? undefined : humanMessageText(submitted.moves ?? {}, submitted.content, human.name, chat, summary.boxes, boxImages, boxWarnings);
+	const pendingHumanText = pendingHuman === undefined
+		? undefined
+		: humanMessageText(moves, pendingHuman, human.name, chat, summary.boxes, boxImages, boxWarnings);
 	const scanMessages = rendered.map(({ message, content }) => ({ id: message.id, content }));
 	const lore = hasEnabledLoreSlot(recipe.slots)
 		? evaluateScopedLore({
@@ -366,25 +283,18 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 			connectionSettings: input.connectionSettings,
 		})
 		: noLoreEvaluation();
-	const effectiveSettings = effectiveGenerationSettingsFor(settings, promptIntentOf(captured), connection);
 	const macroState = new Map(deriveMacroState({
 		initialData: selected.initialData,
 		presetId: recipe.id,
-		selectedVariants: participation.messages.map((message) => ({
+		selectedVariants: selected.messages.map((message) => ({
 			selected: message.variant !== null,
 			macroWrites: message.variant === null ? [] : variantData.get(message.variant.id)?.macroWrites ?? [],
 		})),
 	}));
-	const seed = input.seed ?? (target.kind === "sibling" && !target.reroll ? siblingSeed : undefined) ?? newVariantSeed();
-	const preceding = participation.messages.at(-1);
-	const boxIntent = target.kind === "continuation" || (target.kind === "sibling" && preceding !== undefined
-		&& authorRoleOf(preceding, { humanParticipantId: human.id, modelParticipantId: model.id }) === "model") ? "continue" : "respond";
-	// @approved
-	//  Moves come from the triggering Human-authored Message: the one this Send
-	//  submits, or the one a Sibling answers. A Continuation has none.
-	const moves = boxIntent === "continue" ? {} : target.kind === "send" ? target.moves ?? {}
-		: preceding === undefined ? {} : messageMoves.get(preceding.id) ?? {};
-	const preparation = {
+	const seed = input.seed ?? seedDefault ?? newVariantSeed();
+	return {
+		target: captured,
+		pendingHumanText,
 		seed,
 		boxWarnings, boxImages,
 		conversationId: input.conversationId,
@@ -400,15 +310,12 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 			locale: input.formatting?.locale,
 		},
 		derivation,
-		participation,
 		settings,
-		effectiveSettings,
 		recipe,
 		connection,
 		macroState,
 		lore,
 	};
-	return { ...preparation, target: captured, pendingHumanText, scanMessages };
 }
 
 /** @approved
@@ -453,12 +360,22 @@ export const prepareGenerationInputsAsync = (input: PrepareGenerationInputs): Pr
 	return ready;
 });
 
-const captureConfigurationFromPreparation = (
-	preparation: Preparation,
-): AttemptConfiguration => {
+export interface CapturedGeneration {
+	readonly preparation: Preparation;
+	readonly plan: GenerationPlan;
+	readonly macroWrites: readonly MacroVariableWrite[];
+}
+
+export async function captureGeneration(
+	database: Database,
+	target: GenerationTarget,
+	options: GenerationCaptureOptions,
+): Promise<CapturedGeneration> {
+	const preparation = await prepareGenerationInputsAsync({ database, target, ...options });
+	const { human, model, context } = preparation.derivation;
 	const attempt = createAttemptEnvironment({
-		self: preparation.derivation.human.name,
-		other: preparation.derivation.model.name,
+		self: human.name,
+		other: model.name,
 		conversationId: preparation.conversationId,
 		promptPresetId: preparation.recipe.id,
 		now: new Date(),
@@ -466,106 +383,33 @@ const captureConfigurationFromPreparation = (
 		locale: preparation.formatting.locale,
 		variables: preparation.macroState,
 	});
-	return {
+	const compiled = compileGenerationPlan({
+		human,
+		model,
+		context: preparation.pendingHumanText === undefined ? context : [
+			...context, { kind: "message", speakerName: human.name, content: preparation.pendingHumanText, role: "human" },
+		],
 		boxes: preparation.boxes,
-		boxWarnings: preparation.boxWarnings,
-		boxImages: preparation.boxImages,
-		settings: preparation.settings,
-		slots: preparation.recipe.slots,
-		promptPresetId: preparation.recipe.id,
+		recipe: preparation.recipe.slots,
+		lore: preparation.lore.candidates,
+		loreAllowance: preparation.lore.allowance,
+		loreActivation: preparation.lore.activation,
 		attempt,
-		connection: preparation.connection,
-		lore: preparation.lore,
-	};
-};
-
-// @approved
-//  The retained provenance record: safe connection identity, model identity,
-// and the attempt's Effective Generation Settings. Only fields in the shared
-// provenance vocabulary are retained — an intent-inapplicable Continuation
-// operand is already absent from the plan — and Request Overrides are never
-// retained.
-/** @approved
- * The shared Generation-start capture every lifecycle builds: the
- * complete compiled Generation Plan, the Control pair, the model author stamp,
- * and the provenance capture. The lifecycle
- * facts of one kind ride on the same Generation Target union.
- */
-export interface CapturedGeneration {
-	readonly target: CapturedGenerationTarget;
-	readonly preparation: Preparation;
-	readonly plan: GenerationPlan;
-	readonly humanParticipant: ParticipantPreview;
-	readonly author: {
-		readonly participantId: number;
-		readonly capturedName: string;
-	};
-	readonly control: {
-		readonly humanParticipantId: number;
-		readonly modelParticipantId: number;
-	};
-	readonly connection: ModelClientConnectionSnapshot | null;
-	readonly macroPresetId: number;
-	readonly macroWrites: readonly MacroVariableWrite[];
-	readonly provenance: ConversationDataEntry;
-}
-
-/** @approved
- * Assemble the compiled Generation Plan, Control pair, model author stamp
- * and provenance into the shared Generation-start capture.
- */
-const toCapturedGeneration = (
-	preparation: Preparation,
-	derivation: GenerationDerivation,
-	configuration: AttemptConfiguration,
-	plan: GenerationPlan,
-): CapturedGeneration => ({
-	target: preparation.target,
-	preparation,
-	plan,
-	humanParticipant: { id: derivation.human.id, name: derivation.human.name },
-	author: {
-		participantId: derivation.model.id,
-		capturedName: derivation.model.name,
-	},
-	control: {
-		humanParticipantId: derivation.human.id,
-		modelParticipantId: derivation.model.id,
-	},
-	connection: configuration.connection,
-	macroPresetId: configuration.promptPresetId,
-	macroWrites: [...configuration.attempt.state.writes],
-	provenance: generationProvenanceEntry(plan, configuration.connection),
-});
-
-/** @approved
- * Capture one Generation attempt: prepare the immutable inputs, compile the
- * one Generation Plan, and assemble the shared capture whose lifecycle facts
- * ride on the attempt's own target. The three former per-kind capture
- * functions were the same preparation, compilation, and assembly with the
- * target's kind selecting only the intent, the submitted-writing context, and
- * the acceptance facts.
- */
-export async function captureGeneration(
-	database: Database,
-	target: GenerationTarget,
-	options: GenerationCaptureOptions,
-): Promise<CapturedGeneration> {
-	const preparation = await prepareGenerationInputsAsync({ database, target, ...options });
-	const { derivation } = preparation;
-	const configuration = captureConfigurationFromPreparation(preparation);
-	// @approved
-	//  A retry reuses the already accepted trailing human Message; a fresh
-	// Send appends the submitted human writing to the selected narrative path
-	// before budgeting. Continuation and Sibling compile the selected history
-	// as captured.
-	const context = preparation.pendingHumanText === undefined
-		? derivation.context
-		: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content: preparation.pendingHumanText, role: "human" as const }];
-	const plan = compilePlanFrom({ ...derivation, context }, configuration, {
 		intent: promptIntentOf(preparation.target),
+		settings: preparation.settings,
+		connection: preparation.connection,
 		estimator: options.tokenEstimator,
-		database,
+		images: { ...promptImageResolutionFor(database, preparation.connection, preparation.settings), boxGrants: preparation.boxImages },
 	});
-	return toCapturedGeneration(preparation, derivation, configuration, plan);
+	compiled.promptPlan.warnings.push(...preparation.boxWarnings);
+	const automaticLoreText = compiled.promptPlan.blocks.find((block) => block.kind === "lore")?.content ?? "";
+	const plan = {
+		...compiled,
+		loreActivation: compiled.loreActivation === null ? null : {
+			...compiled.loreActivation,
+			automaticLoreText,
+			finalLoreText: automaticLoreText,
+		},
+	};
+	return { preparation, plan, macroWrites: [...attempt.state.writes] };
 }
