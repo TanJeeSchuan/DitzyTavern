@@ -47,7 +47,7 @@ See [ADR-0055](../adr/0055-let-boxes-answer-each-other-through-exports.md).
 ## Implementation Decisions
 
 1. **Box Exports.** A built-in Box's descriptor gains an optional `exports` map: `{ [name]: { description, input, output } }` with TypeBox schemas, and its server gains `exports: { [name]: (input, { database, conversationId }) => output }`, synchronous. The loader refuses a Box whose server and descriptor Exports differ. A sandboxed Box may not declare Exports.
-2. **Reading Exports.** The server SDK gains `boxExports(database, conversationId)`. It returns `{ [boxId]: { [name]: (input) => output } }` for every Box enabled in that Chat, checks each input and output against the declared schemas, and fails naming the Box, the Export and the path. Only route handlers call it; nothing in `advance`, digests or `fold` may.
+2. **Reading Exports.** A Box's `routes(database, exportsOf)` receives `exportsOf(conversationId)`, which returns `{ [boxId]: { [name]: (input) => output } }` for every Box enabled in that Chat that declares Exports. It checks each input and output against the declared schemas and fails naming the Box, the Export and the path. The SDK exports no such function, so `advance`, digests and `fold` have no way to read Exports. A built-in Box types its Exports with `ExportsOf<typeof descriptor.exports>`, so each signature comes from the descriptor's schemas.
 3. **Memory's Exports.** `people()` returns the person labels on the Selected narrative path after label merges. `claimsAbout({ label })` returns the effective Claims on the Selected narrative path whose people include that label after merges, each with its claim, attribution, people, evidence and the Message that holds it. Memory's data shape doesn't change: the agent works out from a Claim's text whether the person is its subject, its holder or a witness.
 4. **Code agent.** The server SDK gains `runCodeAgent({ boxId, instructions, globals, submitSchema, verify, signal, onActivity })`. It runs a libfx agent on the Box's own agent selection, falling back to the host default (`resolveBoxDelegate`), so it needs a Chat Completions profile. It gives the agent two tools:
    - `run(code)` evaluates JavaScript in one QuickJS context that lasts for the whole run, holding `globals` frozen. 128 MiB heap per run, 2 s per call. It returns the logged output and the returned value as JSON, cut off at 8 KiB with a notice to narrow the query.
@@ -59,7 +59,7 @@ See [ADR-0055](../adr/0055-let-boxes-answer-each-other-through-exports.md).
 6. **Sandbox globals.** Captured when the run starts:
    - `messages`: the Selected narrative path as `{ id, index, author, authorParticipantId, text }`;
    - `cast`: `{ id, names }`;
-   - `exports`: `boxExports` for the Chat, without the Character Drafter's own entry.
+   - `exports`: `exportsOf(conversationId)`, without the Character Drafter's own entry.
 
    The agent's instructions say that `<thought>…</thought>` in the text marks unspoken thoughts.
 7. **Submit and verify.** The draft is `{ name, prompt: { systemInstruction, identity, appearance, scenario, exampleDialogue, postHistoryInstruction }, quotes: [{ messageId, text }] }`. `verify` refuses any quote whose text isn't a substring of that Message's text on the path, and refuses an `exampleDialogue` holding a line that isn't one of the quotes. Openings are empty and Appearance is text only.
@@ -69,7 +69,7 @@ See [ADR-0055](../adr/0055-let-boxes-answer-each-other-through-exports.md).
 
 ## Testing
 
-- Contract tests for `boxExports`: a disabled or absent provider is missing; a provider output that fails its schema fails naming the Box, the Export and the path.
+- Contract tests for `exportsOf`: a disabled or absent provider is missing; a provider output that fails its schema fails naming the Box, the Export and the path.
 - Memory Export tests: label merges apply; a Writer override's Claims are the ones returned; Claims off the Selected narrative path aren't.
 - `runCodeAgent` tests through the authoring fake: state persists between `run` calls; the heap and time limits fail the run with their reasons; output past 8 KiB is cut off; an invalid submit comes back as a tool error and a later valid one ends the run; the step cap fails the run; cancelling discards the context.
 - `verify` tests: a quote that isn't a substring is refused; an `exampleDialogue` line that isn't a quote is refused.
