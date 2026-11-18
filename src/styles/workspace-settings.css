@@ -143,14 +143,9 @@
 }
 
 .lore-match-result-heading span,
-.lore-match-scan-note,
 .lore-match-entry-body small {
 	color: var(--text-muted);
 	font-size: 0.7rem;
-}
-
-.lore-match-scan-note {
-	margin: 0;
 }
 
 .lore-match-entry {
