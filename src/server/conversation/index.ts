@@ -24,7 +24,6 @@ export {
 export {
 	checkpointConversationGeneration,
 	checkpointUnstreamedOutcome,
-	removeConversationGeneration,
 	resolveConversationGeneration,
 } from "./commands/active-generation";
 // @approved
@@ -99,7 +98,6 @@ export type {
 	ConversationGenerationSettings,
 	ConversationGenerationSettingsInput,
 	ContinuationPrefillSuffix,
-	RemoveGenerationInput,
 	StopGenerationInput,
 	StopGenerationsInput,
 	StoppedGenerations,

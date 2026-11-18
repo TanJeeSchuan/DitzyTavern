@@ -192,7 +192,7 @@ export class GenerationCoordinator {
 		//  A failed checkpoint must prevent a Stop from using stale output.
 		runtime?.dispatch({ type: "request-stop" });
 		try {
-			const snapshot = stopConversationGeneration(database, { conversationId, generationId });
+			const snapshot = stopConversationGeneration(database, { cause: "user-stop", conversationId, generationId });
 			return this.settleStoppedGeneration(generationId, runtime, snapshot);
 		} catch (error) {
 			runtime?.dispatch({ type: "release-stop" });

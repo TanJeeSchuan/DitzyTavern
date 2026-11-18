@@ -80,7 +80,7 @@ describe("Continuation Generation", () => {
 		const generationId = after?.activeGenerations[0]?.generationId;
 		if (generationId === undefined) throw new Error("Missing Generation.");
 		expect(readActiveGenerationDetails(module, conversationId, generationId)?.checkpoint.content).toBe("Keep the generated output.");
-		stopConversationGeneration(module, { conversationId, generationId });
+		stopConversationGeneration(module, { cause: "user-stop", conversationId, generationId });
 		expect(readTestConversationSnapshot(module, conversationId)?.activeGenerations).toHaveLength(0);
 		expect(readTestConversationSnapshot(module, conversationId)?.messages.at(-1)?.variants[0]?.content).toBe("Keep the generated output.");
 	});

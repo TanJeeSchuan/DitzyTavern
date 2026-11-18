@@ -76,6 +76,7 @@ describe("explicit Conversation Generation Stop", () => {
 		});
 
 		stopConversationGeneration(database, {
+			cause: "user-stop",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 			timestamp: "2026-08-27T00:00:01.000Z",
@@ -110,6 +111,7 @@ describe("explicit Conversation Generation Stop", () => {
 		const accepted = acceptTail(input, "Keep my input.");
 
 		stopConversationGeneration(database, {
+			cause: "user-stop",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
@@ -152,7 +154,7 @@ describe("explicit Conversation Generation Stop", () => {
 				action: { type: "delete-message", messageId },
 			})).toThrow("Stop the running Generation before deleting Messages or Variants.");
 			checkpointFromStart(database, { conversationId: input.created.id, generationId: accepted.generationId, content: "Still owned." });
-			stopConversationGeneration(database, { conversationId: input.created.id, generationId: accepted.generationId });
+			stopConversationGeneration(database, { cause: "user-stop", conversationId: input.created.id, generationId: accepted.generationId });
 			expect(requireSnapshot(database, input.created.id).messages.at(-1)?.variants[0]?.content).toBe("Still owned.");
 		});
 	}
@@ -166,7 +168,7 @@ describe("explicit Conversation Generation Stop", () => {
 				conversationId: input.created.id, expectedRevision: accepted.conversation.revision,
 				action: { type: "delete-variant", messageId: accepted.messageId, variantId },
 			})).toThrow("Stop the running Generation before deleting Messages or Variants.");
-			stopConversationGeneration(database, { conversationId: input.created.id, generationId: accepted.generationId });
+			stopConversationGeneration(database, { cause: "user-stop", conversationId: input.created.id, generationId: accepted.generationId });
 			expect(requireSnapshot(database, input.created.id).messages[0]?.variants).toMatchObject([{ content: "Original answer.", selected: true }]);
 		});
 	}
@@ -196,6 +198,7 @@ describe("explicit Conversation Generation Stop", () => {
 		});
 
 		stopConversationGeneration(database, {
+			cause: "user-stop",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
@@ -231,6 +234,7 @@ describe("explicit Conversation Generation Stop", () => {
 		const accepted = acceptSibling(input);
 
 		stopConversationGeneration(database, {
+			cause: "user-stop",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});

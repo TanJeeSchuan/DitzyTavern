@@ -1,6 +1,5 @@
 import { durableOutcome, type TerminalOutcome } from "../../shared/contract/generation-phase";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../shared/variant-data-codecs";
-import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import type { AcceptedGenerationRecord } from "./generate";
 import {
 	collectModelClientGeneration,
@@ -84,18 +83,13 @@ export interface ServerOwnedGenerationCallbacks {
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 }
 
-export type GenerationInterruptionCause =
-	| ModelClientFailureKind
-	| "server-restart"
-	| "server-shutdown";
-
 export interface GenerationOutcome {
 	content: string;
 	reasoning: string;
 	usage: ModelClientUsage | null;
 	finishReason: "stop" | "length" | "other" | null;
 	status: TerminalOutcome;
-	interruptionCause: GenerationInterruptionCause | null;
+	interruptionCause: ModelClientFailureKind | null;
 	error: string | null;
 }
 
@@ -138,8 +132,8 @@ export async function runGeneration(
 export interface AcceptedGenerationLifecycle {
 	/** @approved Commit the normalized terminal outcome to the accepted target. */
 	resolve(outcome: GenerationOutcome): AcceptedGenerationRecord | Promise<AcceptedGenerationRecord>;
-	/** @approved Remove the accepted target only after a confirmed zero-output result. */
-	remove(): void | Promise<void>;
+	/** @approved Stop a failed or empty attempt, retaining any checkpointed output. */
+	stop(cause: ModelClientFailureKind): void | Promise<void>;
 }
 
 /** @approved
@@ -163,12 +157,11 @@ export async function runAcceptedGeneration(
 		// @approved
 		//  Only a provider failure reaches this path: resolution runs
 		// outside the try, so a persistence error can never delete committed
-		// output. Removal stays a zero-output cleanup because removeGeneration
-		// refuses a target that already holds durable checkpointed output —
-		// such a target survives here for recovery to finish.
+		// output. Stop retains any checkpointed output even when the provider
+		// failure itself carries none.
 		await input.onBeforeTerminal?.();
 		try {
-			await lifecycle.remove();
+			await lifecycle.stop(error instanceof ModelClientGenerationError ? error.kind : "provider");
 		} catch {
 			// @approved
 			// Preserve the provider error; recovery owns any surviving target.
@@ -177,7 +170,7 @@ export async function runAcceptedGeneration(
 	}
 	await input.onBeforeTerminal?.();
 	if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
-		await lifecycle.remove();
+		await lifecycle.stop("provider");
 		throw new ModelClientGenerationError("provider", "Generation produced no usable output.");
 	}
 	return lifecycle.resolve(outcome);
@@ -187,9 +180,6 @@ export function generationOutcomeData(input: GenerationOutcome): ConversationDat
 	const data: ConversationDataEntry[] = [];
 	if (input.status !== "complete") {
 		data.push({ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.outcome, value: input.status });
-	}
-	if (input.reasoning.length > 0) {
-		data.push(toVariantDataEntry(variantDataCodecs.reasoning, variantDataCodecs.reasoning.encode(input.reasoning)));
 	}
 	if (input.usage !== null) {
 		data.push({
@@ -223,20 +213,3 @@ export function generationOutcomeData(input: GenerationOutcome): ConversationDat
 	}
 	return data;
 }
-
-/** @approved
- * Encode a recovered or gracefully stopped Generation with the same terminal
- * data vocabulary used by a live interrupted provider attempt.
- */
-export const interruptedGenerationData = (
-	cause: GenerationInterruptionCause,
-	reasoning: string,
-): ConversationDataEntry[] => generationOutcomeData({
-		content: "",
-		reasoning,
-		usage: null,
-		finishReason: null,
-		status: durableOutcome({ status: "stopped" }),
-		interruptionCause: cause,
-		error: null,
-});

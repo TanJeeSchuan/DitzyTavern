@@ -1,6 +1,6 @@
 # T4: Generation lifecycle
 
-Status: READY
+Status: IN PROGRESS (slice a first implementation)
 
 Blocked By: T3
 
@@ -58,7 +58,9 @@ Report 11, findings 1 and 8.
 
 ## TODO
 
-- [ ] Slice a (Astra), then fixes (Sol), PR
+- [x] Slice a first implementation (Astra)
+- [ ] Slice a review, fixes (Sol), and CI
+- [ ] Slice a PR merged
 - [ ] Slice b (Astra), then fixes (Sol), PR
 - [ ] Slice c (Sol), PR
 - [ ] Slice d (Sol), PR
@@ -68,3 +70,11 @@ Report 11, findings 1 and 8.
 `git grep -n -E 'removeConversationGeneration|acceptConversation(Tail|Continuation|Sibling)Generation|advanceConversationRevisionGuarded|AttemptConfiguration|assistantPrefill|budgetEditedPromptPlan|retainedContext' -- src` is empty. The recovery, Stop, acceptance and capture tests pass, and e2e passes in CI.
 
 ## Outcome
+
+Slice a first implementation:
+
+- Removed the separate Remove command/input, recovery's terminal-write branch, `interruptedGenerationData`, duplicate reasoning data, and sibling-selection chain walk.
+- Stop takes a required cause. Provider cleanup and recovery call Stop; Stop All re-reads each row after earlier removals repair prior selections.
+- Migrated removal coverage to `stop-generation-cleanup.test.ts`. Added workflow cases for provider failure and empty completion racing a final content/reasoning checkpoint.
+- Changed-file `bunx --no-install oxlint` and `git diff --check` passed. No unit tests, typecheck, or e2e ran locally, as requested; CI owns those checks.
+- Review findings and CI failures are left for the Sol follow-up. Slices b–d remain untouched.
