@@ -198,7 +198,7 @@ const terminalBoxTracesData = (active: ActiveGenerationRow): ConversationDataEnt
  * entries in order. Shared by resolve and stop so the row order and the
  * reasoning dedupe rule cannot drift.
  */
-export const persistTerminalVariantData = (
+const persistTerminalVariantData = (
 	db: ConversationDatabase,
 	variantId: number,
 	input: {

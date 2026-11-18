@@ -13,9 +13,9 @@ import {
 } from "./crypto-codecs";
 
 export const CONNECTION_SECRET_KEY_ENV = "CONNECTION_SECRET_KEY";
-export const CONNECTION_SECRET_KEY_BYTES = 32;
+const CONNECTION_SECRET_KEY_BYTES = 32;
 
-export type ConnectionSecretKeySource = "environment" | "env-file" | "generated";
+type ConnectionSecretKeySource = "environment" | "env-file" | "generated";
 
 export interface ConnectionSecretKeyBootstrapResult {
 	readonly bytes: Uint8Array;
@@ -81,7 +81,7 @@ export function bootstrapConnectionSecretKey(
 	return { bytes, encoded, source: "generated" };
 }
 
-export function decodeConnectionSecretKey(value: string): Uint8Array {
+function decodeConnectionSecretKey(value: string): Uint8Array {
 	const decoded = decodeStrictBase64(value, () =>
 		new ConnectionSecretBootstrapError(
 			`${CONNECTION_SECRET_KEY_ENV} must be canonical Base64.`,

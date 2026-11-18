@@ -17,8 +17,6 @@ import {
 	connectionProfileDraftOf,
 	connectionDiscoveryBody,
 	connectionDiscoveryResponse,
-	connectionInvalidResponse,
-	connectionNotFoundResponse,
 	connectionPresetsResponse,
 	connectionSettingsApplied,
 	connectionSettingsConflict,
@@ -27,29 +25,30 @@ import {
 	connectionTextOnlyBody,
 	connectionTestResponse,
 } from "../../shared/contract/connection-settings";
+import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 
 const commandResponse = {
 	200: connectionSettingsApplied,
 	409: connectionSettingsConflict,
-	404: connectionNotFoundResponse,
-	422: connectionInvalidResponse,
+	404: notFoundOutcome,
+	422: invalidOutcome,
 };
 
 const testConnectionResponse = {
 	200: connectionTestResponse,
-	422: connectionInvalidResponse,
+	422: invalidOutcome,
 };
 
 const textOnlyModelResponse = {
 	200: connectionSettingsApplied,
-	404: connectionNotFoundResponse,
-	422: connectionInvalidResponse,
+	404: notFoundOutcome,
+	422: invalidOutcome,
 };
 
 const discoveryResponse = {
 	200: connectionDiscoveryResponse,
-	404: connectionNotFoundResponse,
-	422: connectionInvalidResponse,
+	404: notFoundOutcome,
+	422: invalidOutcome,
 	409: connectionSettingsConflict,
 };
 

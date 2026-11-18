@@ -5,7 +5,7 @@ import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, assertChecked, boxHookOutputs, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";

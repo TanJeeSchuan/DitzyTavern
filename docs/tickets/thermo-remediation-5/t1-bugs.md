@@ -1,6 +1,6 @@
 # T1: Bugs
 
-Status: IN REVIEW (CI pending)
+Status: DONE
 
 Blocked By: None
 
@@ -45,7 +45,7 @@ Bug 8 in `bugs.md` (paint preset commands with no revision) is fixed in T5c.
 - [x] Item 8
 - [x] Thermo-nuclear review of items 1, 7, 10
 - [x] Touched test files and changed-file lint
-- [ ] Typecheck and full checks through CI
+- [x] Typecheck and full checks through CI
 
 ## Acceptance
 
@@ -72,3 +72,5 @@ Local validation: 102 tests passed across the 11 touched test files; changed-fil
 Claude Opus 5.5 high completed the Standards/Box-boundary thermo and Spec reviews. Both identified reseeding after a retained tombstone; the extended regression reproduced the skipped seed. The seed guard now checks live Characters, and the test covers reseeding and repeated seeding. The setup test also reproduced host corruption being misclassified as an invalid command; shared `boxSetupRefusal` now catches only the Box hook and is used by setup writes and upgrade validation. Removed redundant caller redirect flags so all three transport tests exercise the shared policy. Tidied duplicate imports and blank lines.
 
 Kept test database scratch files in `.scratch`, as the host instructions explicitly require. Kept the descriptor's parseable `values.chat` field so loader rejection explains why it is unsupported, as item 10 requires. Draft PR: https://github.com/TanJeeSchuan/DitzyTavern/pull/266. CI now owns typecheck, full tests, build, and e2e.
+
+CI on `d96141bb`: check and e2e green; NitFX (gpt-6.1-sol high) LGTM. Merged as PR #266 (`bdfe9fb2`).

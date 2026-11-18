@@ -3,7 +3,7 @@ import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createChatImportRoutes } from "../server/contract";
+import { createChatImportRoutes } from "../server/contract/chat-import";
 import { createCharacterLibraryModule } from "../server/character-library";
 import {
 	headerFixture as header,

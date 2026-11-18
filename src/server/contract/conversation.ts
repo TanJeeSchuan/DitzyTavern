@@ -35,9 +35,8 @@ import {
 	generationRuntimeFor,
 	saveParticipantAsCharacter,
 } from "../workflows";
-import { toCharacterPayload } from "./character-library";
 import { notFoundResponse } from "./responses";
-import { toConversationSummary } from "./projections";
+import { toCharacterPayload, toConversationSummary } from "./projections";
 import {
 	activeGenerationDetails,
 	addCharacterToCastBody,

@@ -1,6 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
-import type { GenerationJsonObject, GenerationJsonValue } from "../generation-json";
+import type { GenerationJsonObject, GenerationJsonValue } from "./json-value";
 
 // Macro values and writes are shared by the evaluator, persistence seam, and
 // transport contract. Keeping their vocabulary in this leaf module prevents

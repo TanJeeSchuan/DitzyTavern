@@ -360,7 +360,8 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const addressed = setup();
 		const owner = setup();
 		const accepted = acceptTail(owner, "Owned elsewhere.");
-		const runtime = startRuntime(owner.conversation.id, accepted);
+		let cancelled = false;
+		const runtime = startRuntime(owner.conversation.id, accepted, { onStop: () => { cancelled = true; } });
 		const coordinator = createGenerationCoordinator(database);
 
 		const outcome = await coordinator.stopGeneration(addressed.conversation.id, accepted.generationId);
@@ -370,7 +371,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		// never consulted under another Conversation's name.
 		expect(readTestConversationSnapshot(owner.module, owner.conversation.id)?.activeGenerations).toHaveLength(1);
 		expect(runtime.state.status).toBe("active");
-		expect(runtime.isStopRequested).toBe(false);
+		expect(cancelled).toBe(false);
 	});
 
 	test("Stop does not commit stale output when the runtime checkpoint fails", async () => {

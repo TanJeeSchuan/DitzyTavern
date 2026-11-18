@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openInitializedDatabase } from "../database/database";
-import { importSillyTavernChat } from "../sillytavern";
+import { importSillyTavernChat } from "../sillytavern/import";
 import { headerFixture as header, jsonl, rulershipFixture, writerFixture as writer } from "../sillytavern/fixtures";
 import { createChatImportRoutes } from "./chat-import";
 import { createConversationRoutes } from "./conversation";

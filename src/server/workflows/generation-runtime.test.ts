@@ -29,23 +29,22 @@ describe("Generation runtime", () => {
 
 	test("a failed final checkpoint prevents cancellation and preserves retryable output", () => {
 		let unavailable = true;
-		let persisted = "";
+		const effects: string[] = [];
 		const runtime = new GenerationRuntimeRegistry().start({
 			generationId: 1, conversationId: 1, messageId: 1, variantId: 1,
 			startedAt: "2026-09-05T00:00:00Z",
 			onCheckpoint: (output) => {
 				if (unavailable) throw new Error("Checkpoint unavailable.");
-				persisted = output.contentDelta;
+				effects.push(output.contentDelta);
 			},
+			onStop: () => effects.push("cancelled"),
 		});
 		runtime.publish({ type: "content", text: "Keep this." });
 		expect(() => runtime.dispatch({ type: "request-stop" })).toThrow("Checkpoint unavailable.");
-		expect(runtime.isStopRequested).toBe(false);
-		expect(runtime.signal.aborted).toBe(false);
+		expect(effects).toEqual([]);
 		unavailable = false;
 		runtime.dispatch({ type: "request-stop" });
-		expect(persisted).toBe("Keep this.");
-		expect(runtime.signal.aborted).toBe(true);
+		expect(effects).toEqual(["Keep this.", "cancelled"]);
 	});
 
 	test("rejects a duplicate active generation id", () => {
@@ -110,20 +109,26 @@ describe("Generation runtime", () => {
 		expect(events).toEqual([]);
 	});
 
-	test("a disconnected subscriber does not abort the provider-owned signal", () => {
+	test("a disconnected subscriber leaves provider output available to a reconnect", () => {
 		const registry = new GenerationRuntimeRegistry();
+		let stopped = false;
 		const runtime = registry.start({
 			generationId: 9,
 			conversationId: 3,
 			messageId: 12,
 			variantId: 18,
 			startedAt: "2026-08-27T00:00:00.000Z",
+			onStop: () => { stopped = true; },
 		});
-		const subscription = runtime.subscribe(0, () => {});
+		const disconnected: number[] = [];
+		const subscription = runtime.subscribe(0, (event) => disconnected.push(event.eventId));
 		subscription.close();
-		expect(runtime.signal.aborted).toBe(false);
 		runtime.publish({ type: "content", text: "still running" });
-		expect(runtime.state.content).toBe("still running");
+		const replayed: number[] = [];
+		runtime.subscribe(0, (event) => replayed.push(event.eventId));
+		expect(stopped).toBe(false);
+		expect(disconnected).toEqual([]);
+		expect(replayed).toEqual([1]);
 	});
 
 	test("checkpoints visible streams at a bounded cadence and can be flushed deterministically", () => {
@@ -252,6 +257,7 @@ describe("Generation runtime", () => {
 
 	test("stop flushes the latest output, aborts the provider, and wins a terminal race", () => {
 		const checkpoints: CheckpointOutput[] = [];
+		const checkpointCountsAtStop: number[] = [];
 		const runtime = new GenerationRuntimeRegistry().start({
 			generationId: 11,
 			conversationId: 3,
@@ -260,13 +266,12 @@ describe("Generation runtime", () => {
 			startedAt: "2026-08-27T00:00:00.000Z",
 			checkpoint: { eventInterval: 99, intervalMs: 0 },
 			onCheckpoint: (checkpoint) => checkpoints.push(checkpoint),
+			onStop: () => checkpointCountsAtStop.push(checkpoints.length),
 		});
 
 		runtime.publish({ type: "content", text: "partial" });
 		runtime.dispatch({ type: "request-stop" });
 
-		expect(runtime.signal.aborted).toBe(true);
-		expect(runtime.isStopRequested).toBe(true);
 		expect(checkpoints).toEqual([{ contentOffset: 0, contentDelta: "partial", reasoningOffset: 0, reasoningDelta: "", latestEventId: 1 }]);
 		expect(runtime.state.status).toBe("active");
 
@@ -281,6 +286,7 @@ describe("Generation runtime", () => {
 		expect(runtime.state.status).toBe("stopped");
 		expect(runtime.state.content).toBe("partial");
 		expect(checkpoints).toHaveLength(1);
+		expect(checkpointCountsAtStop).toEqual([1]);
 	});
 
 	test("graceful shutdown flushes and stops the application registry", async () => {
@@ -307,7 +313,6 @@ describe("Generation runtime", () => {
 
 			expect(checkpoints).toEqual(["production partial"]);
 			expect(stopped).toBe(true);
-			expect(runtime.signal.aborted).toBe(true);
 		} finally {
 			registry.remove(generationId);
 			processStateFor(database).dispose();
@@ -337,15 +342,18 @@ describe("Generation runtime", () => {
 
 	test("drain refuses new work and joins cancelled work before releasing state", async () => {
 		let released = false;
+		let cancelled = false;
 		const registry = new GenerationRuntimeRegistry();
 		const work = Promise.withResolvers<void>();
 		registry.track(work.promise);
 		const runtime = registry.start({
 			generationId: 1, conversationId: 1, messageId: 1, variantId: 1,
-			startedAt: new Date().toISOString(), onRetentionExpired: () => { released = true; },
+			startedAt: new Date().toISOString(),
+			onStop: () => { cancelled = true; },
+			onRetentionExpired: () => { released = true; },
 		});
 		const draining = registry.drain();
-		expect(runtime.signal.aborted).toBe(true);
+		expect(cancelled).toBe(true);
 		expect(released).toBe(false);
 		expect(() => registry.assertAccepting()).toThrow("shutting down");
 		runtime.publish({ type: "content", text: "late provider output" });

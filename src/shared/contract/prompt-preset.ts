@@ -423,7 +423,6 @@ export const promptPresetCommandApplied = Type.Union([
 		result: promptPresetDeletionResult,
 	}),
 ]);
-export type PromptPresetCommandApplied = Static<typeof promptPresetCommandApplied>;
 
 export const promptPresetRecipeApplied = Type.Object({
 	outcome: Type.Literal("applied"),

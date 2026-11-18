@@ -4,14 +4,14 @@ import { presentDomainError } from "./domain-error";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../box/decision-settings";
 import { applyBoxDelegateSettings, readBoxDelegateSettings } from "../box/delegate-settings";
 import {
-	boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandBody, boxDecisionSettingsConflict, boxDecisionSettingsInvalid,
+	boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandBody, boxDecisionSettingsConflict,
 	DEFAULT_BOX_DELEGATE, boxDelegateSettings, boxDelegateSettingsApplied, boxDelegateSettingsCommandBody, boxDelegateSettingsConflict, boxParams as params, isDelegateBox, isDigestBox,
 } from "../../shared/contract/box";
-import { notFoundOutcome } from "../../shared/contract/outcomes";
+import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { notFoundResponse } from "./responses";
 
-const commandResponse = { 200: boxDecisionSettingsApplied, 404: notFoundOutcome, 409: boxDecisionSettingsConflict, 422: boxDecisionSettingsInvalid };
-const delegateResponse = { 200: boxDelegateSettingsApplied, 404: notFoundOutcome, 409: boxDelegateSettingsConflict, 422: boxDecisionSettingsInvalid };
+const commandResponse = { 200: boxDecisionSettingsApplied, 404: notFoundOutcome, 409: boxDecisionSettingsConflict, 422: invalidOutcome };
+const delegateResponse = { 200: boxDelegateSettingsApplied, 404: notFoundOutcome, 409: boxDelegateSettingsConflict, 422: invalidOutcome };
 
 export const createBoxDecisionSettingsRoutes = (database: Database) => new Elysia()
 	.get("/api/boxes/:box/decision-settings", ({ params }) => isDigestBox(params.box) ? readBoxDecisionSettings(database, params.box) : notFoundResponse(),

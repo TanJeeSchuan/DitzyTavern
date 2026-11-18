@@ -384,11 +384,9 @@ export function createChatImportModule(
 				phase: "staged",
 				expiresAt: Date.now() + STAGED_IMPORT_SESSION_TTL_MS,
 				record: {
-					token,
 					originalFilename: filename,
 					byteLength: staged.byteLength,
 					sha256: staged.sha256,
-					integrity: inspection.report.source.integrity ?? null,
 					stagedPath,
 					relativePath,
 					preview,

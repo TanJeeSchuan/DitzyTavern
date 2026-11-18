@@ -18,10 +18,10 @@ import {
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
 	IMPORTER_VERSION,
-	UNKNOWN_IMPORTED_AUTHOR_NAME,
 	VARIANT_KEYS,
-	importSillyTavernChat,
-} from "./index";
+} from "./adapter";
+import { importSillyTavernChat } from "./import";
+import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "../../shared/imported-author";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import {
 	blankNameFixture as blankName,

@@ -24,8 +24,8 @@ import {
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
-	importSillyTavernChat,
-} from "./index";
+} from "./adapter";
+import { importSillyTavernChat } from "./import";
 import {
 	blankNameFixture as blankName,
 	headerFixture as header,

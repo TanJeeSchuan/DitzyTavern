@@ -2,7 +2,7 @@ import { terminalOutcome } from "./contract/generation-phase";
 import { Value } from "@sinclair/typebox/value";
 import type { Static, TSchema } from "@sinclair/typebox";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "./variant-data-codecs";
-import type { GenerationJsonObject, GenerationJsonValue } from "./generation-json";
+import type { GenerationJsonObject, GenerationJsonValue } from "./contract/json-value";
 import { generationUsage } from "./contract/generation-events";
 import {
 	generationFinish,
@@ -33,20 +33,6 @@ export const generationJsonObject = (
 	// value is used as a named-field map.
 	return value as GenerationJsonObject;
 };
-
-export const generationJsonNumber = (value: GenerationJsonValue | undefined): number | null => {
-	if (Object.prototype.toString.call(value) !== "[object Number]") return null;
-	const number = Number(value);
-	return Number.isFinite(number) ? number : null;
-};
-
-export const generationJsonInteger = (value: GenerationJsonValue | undefined): number | null => {
-	const number = generationJsonNumber(value);
-	return number !== null && Number.isInteger(number) ? number : null;
-};
-
-export const generationJsonString = (value: GenerationJsonValue | undefined): string | null =>
-	Object.prototype.toString.call(value) === "[object String]" ? String(value) : null;
 
 export const parseGenerationJson = (
 	value: string,

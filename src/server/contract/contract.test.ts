@@ -10,11 +10,9 @@ import {
 import type { ConversationAction } from "../conversation";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { createNativeConversation } from "../workflows";
-import {
-	createCharacterLibraryRoutes,
-	createConversationRoutes,
-	createNativeConversationRoutes,
-} from "./index";
+import { createCharacterLibraryRoutes } from "./character-library";
+import { createConversationRoutes } from "./conversation";
+import { createNativeConversationRoutes } from "./native-conversation";
 
 const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",

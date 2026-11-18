@@ -40,18 +40,12 @@ export const connectConversationDatabase = (database: Database) => drizzle(datab
 export type ConversationDatabase = ReturnType<typeof connectConversationDatabase>;
 
 // @approved
-//  The Control assignment state aliases the shared ControlAssignment
-// declaration (ADR-0032) so the domain read model can never drift from the
-// snapshot and client derivations.
-export type ControlAssignmentState = ControlAssignment;
-
-// @approved
 //  Reads the current Control assignment. A Conversation is playable only when
 // both distinct seats are occupied; this derived state is never stored.
 export const readControlAssignment = (
 	db: ConversationDatabase,
 	conversationId: number,
-): ControlAssignmentState => {
+): ControlAssignment => {
 	const rows = db
 		.select({
 			seat: conversationControlTable.seat,
@@ -61,7 +55,7 @@ export const readControlAssignment = (
 		.where(eq(conversationControlTable.conversation_id, conversationId))
 		.all();
 
-	const state: ControlAssignmentState = {
+	const state: ControlAssignment = {
 		humanParticipantId: null,
 		modelParticipantId: null,
 	};
@@ -72,7 +66,7 @@ export const readControlAssignment = (
 	return state;
 };
 
-export const isPlayable = (control: ControlAssignmentState): boolean =>
+export const isPlayable = (control: ControlAssignment): boolean =>
 	control.humanParticipantId !== null &&
 	control.modelParticipantId !== null;
 
@@ -153,14 +147,6 @@ export const groupRowsByNumber = <Row, Value>(
 	return grouped;
 };
 
-export const groupVariantsByMessage = <
-	Row extends { message_id: number },
-	Value,
->(
-	rows: readonly Row[],
-	toValue: (row: Row) => Value,
-): Map<number, Value[]> => groupRowsByNumber(rows, (row) => row.message_id, toValue);
-
 // @approved
 //  Writes a complete Control assignment by deleting the Conversation's rows
 // and reinserting the occupied seats. Replace-all avoids a temporary unique
@@ -170,7 +156,7 @@ export const groupVariantsByMessage = <
 export const writeControlAssignment = (
 	db: ConversationDatabase,
 	conversationId: number,
-	assignment: ControlAssignmentState,
+	assignment: ControlAssignment,
 ) => {
 	db.delete(conversationControlTable)
 		.where(eq(conversationControlTable.conversation_id, conversationId))

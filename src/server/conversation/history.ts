@@ -28,7 +28,7 @@ import {
 import { DEFAULT_CONTINUATION_STRATEGY } from "./generation-settings";
 import {
 	connectConversationDatabase,
-	groupVariantsByMessage,
+	groupRowsByNumber,
 	readActiveCast,
 	readControlAssignment,
 } from "./internal";
@@ -169,8 +169,9 @@ export function readChatHistory(
 					}] as const),
 	);
 
-	const variantsByMessage = groupVariantsByMessage(
+	const variantsByMessage = groupRowsByNumber(
 		variantRows,
+		(variant) => variant.message_id,
 		(variant): ChatHistoryVariant => {
 			const liveGeneration = liveGenerationByVariant.get(variant.id);
 			const historyVariant: ChatHistoryVariant = {

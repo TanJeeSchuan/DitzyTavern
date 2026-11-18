@@ -13,13 +13,12 @@ import type {
 import {
 	connectionCommandErrors,
 	connectionDiscoveryResponse,
-	connectionInvalidResponse,
 	connectionPresetsResponse,
 	connectionSettingsResponse,
 	connectionSettingsApplied,
 	connectionTestResponse,
 } from "../shared/contract/connection-settings";
-import { readOutcomeErrors } from "../shared/contract/outcomes";
+import { invalidOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
 
 export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];
@@ -54,7 +53,7 @@ export type DiscoveryResult = RequestOutcome<
 // passes it as the single-member error union directly.
 export type TestConnectionResult = RequestOutcome<
 	StaticDecode<typeof connectionTestResponse>,
-	StaticDecode<typeof connectionInvalidResponse>
+	StaticDecode<typeof invalidOutcome>
 >;
 
 export type TestConnectionDraftInput = ConnectionTestDraftPayload;
@@ -83,7 +82,7 @@ export async function testConnectionDraft(input: TestConnectionDraftInput): Prom
 	return requestOutcome(
 		api.api["connection-settings"]["test-connection"].post(input),
 		connectionTestResponse,
-		connectionInvalidResponse,
+		invalidOutcome,
 	);
 }
 

@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { BoxId } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { readConversationSummaryFromConnection, readSelectedHistoryFromConnection, runConversationReadTransaction } from "../conversation";
 import type { BoxWindowRead } from "./contract";
 import { readBoxFold } from "./records";

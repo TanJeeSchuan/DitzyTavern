@@ -13,7 +13,6 @@ import {
 	key,
 	moveBlock,
 	profile,
-	readActiveInspection,
 	readConversation,
 	readOperation,
 	readPreset,
@@ -26,6 +25,23 @@ import {
 	startGeneration,
 	withProfile,
 } from "./prompt-preset-test-fixtures";
+
+const readActiveInspection = async (
+	app: ReturnType<typeof createConversationRoutes>,
+	conversationId: number,
+	generationId: number,
+): Promise<{ kind: string }[]> => {
+	const inspected = await app.handle(new Request(
+		`http://localhost/api/conversations/${conversationId}/generations/${generationId}/inspection`,
+	));
+	expect(inspected.status).toBe(200);
+	// @approved
+	//  SAFETY: the route's response schema is the active inspection payload.
+	const inspection = await inspected.json() as {
+		promptPlan: { blocks: { kind: string }[] };
+	};
+	return inspection.promptPlan.blocks;
+};
 
 const phoneItem = "Write each text on its own line as <sms from=\"Maren\" to=\"Writer\">message</sms>, with the sender in from and the recipient in to. Narrate around a text; never restate it in the prose.\nWriter has a phone and can text Maren.";
 

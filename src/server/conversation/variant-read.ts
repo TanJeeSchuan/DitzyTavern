@@ -1,5 +1,5 @@
 import type { Database } from "bun:sqlite";
-import { and, asc, desc, eq, inArray, isNull, lte, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNull, lte } from "drizzle-orm";
 import { activeGenerationTable, messageTable, messageVariantTable, messageVariantDataTable, participantTable } from "../database/schema";
 import { connectConversationDatabase } from "./internal";
 import { readSelectedHistory } from "./selected-history";
@@ -20,10 +20,9 @@ export interface ChatVariant {
 export function readChatVariants(
 	database: Database,
 	conversationId: number,
-	options: { variantIds?: readonly number[]; selectedOrVariantIds?: readonly number[]; includeActive?: boolean } = {},
+	options: { variantIds?: readonly number[]; includeActive?: boolean } = {},
 ): ChatVariant[] {
 	if (options.variantIds?.length === 0) return [];
-	const kept = options.selectedOrVariantIds;
 	return connectConversationDatabase(database).select({
 		messageId: messageTable.id,
 		position: messageTable.position,
@@ -40,7 +39,6 @@ export function readChatVariants(
 		.where(and(
 			eq(messageTable.conversation_id, conversationId),
 			options.variantIds === undefined ? undefined : inArray(messageVariantTable.id, [...options.variantIds]),
-			kept === undefined ? undefined : or(eq(messageVariantTable.selected, true), kept.length === 0 ? undefined : inArray(messageVariantTable.id, [...kept])),
 			options.includeActive ? undefined : isNull(activeGenerationTable.id),
 		))
 		.orderBy(asc(messageTable.position), asc(messageVariantTable.position))

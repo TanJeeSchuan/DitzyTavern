@@ -16,7 +16,7 @@ import {
 	macroVariablesAppliedResponse,
 	type MacroVariablesEditBody,
 } from "../../shared/contract/macro-variables";
-import type { GenerationJsonObject } from "../../shared/generation-json";
+import type { GenerationJsonObject } from "../../shared/contract/json-value";
 
 const prompt = {
 	systemInstruction: "",
