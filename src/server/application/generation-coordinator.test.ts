@@ -276,7 +276,6 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		acceptGeneration(input.module, {
 			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
-			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
 			humanParticipantId: input.human.id,
 			modelParticipantId: input.model.id,
@@ -285,11 +284,10 @@ describe("Generation Coordinator Stop lifecycle", () => {
 			promptPlan: { blocks: [], warnings: [], images: [] },
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		}, { kind: "send", content: content });
+		}, { kind: "send", expectedRevision: input.conversation.revision, content: content });
 
 	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
 		acceptGeneration(input.module, {
-			expectedRevision: 0,
 			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
 			timestamp,
@@ -544,7 +542,6 @@ describe("Generation Coordinator terminal races", () => {
 		acceptGeneration(input.module, {
 			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
-			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
 			humanParticipantId: input.human.id,
 			modelParticipantId: input.model.id,
@@ -553,7 +550,7 @@ describe("Generation Coordinator terminal races", () => {
 			promptPlan: { blocks: [], warnings: [], images: [] },
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		}, { kind: "send", content: content });
+		}, { kind: "send", expectedRevision: input.conversation.revision, content: content });
 
 	test("Stop releases terminal ownership when the provider wins during cancellation", async () => {
 		const input = setup();

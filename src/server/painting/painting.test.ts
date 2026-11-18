@@ -254,7 +254,6 @@ test("the gallery includes live Image References while a Generation is active", 
 	const active = acceptGeneration(database, {
 		seed: "gallery-generation",
 		conversationId: chat.id,
-		expectedRevision: chat.revision,
 		timestamp: "2026-11-12T00:00:00Z",
 		humanParticipantId: chat.control.humanParticipantId!,
 		modelParticipantId: chat.control.modelParticipantId!,
@@ -263,7 +262,7 @@ test("the gallery includes live Image References while a Generation is active", 
 		modelId: "fixture-model",
 		promptPlan: { blocks: [], warnings: [], images: [] },
 		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-	}, { kind: "continuation", intent: { type: "continuation", strategy: "instruction", instruction: "Continue." }, precedingMessageId: opening.id, precedingVariantId: opening.variants[0]!.id });
+	}, { kind: "continuation", expectedRevision: chat.revision, intent: { type: "continuation", strategy: "instruction", instruction: "Continue." }, precedingMessageId: opening.id, precedingVariantId: opening.variants[0]!.id });
 	checkpointFromStart(database, { conversationId: chat.id, generationId: active.generationId, content: formatImageReference("Live picture", image.hash) });
 	expect(createPaintingModule(database).gallery(chat.id)).toEqual([{ hash: image.hash, name: "Live picture" }]);
 });

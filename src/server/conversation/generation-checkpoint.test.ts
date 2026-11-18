@@ -19,7 +19,6 @@ describe("Generation checkpoints", () => {
 		const accepted = acceptGeneration(database, {
 			seed: "seed",
 			conversationId: created.id,
-			expectedRevision: created.revision,
 			timestamp: "2026-10-25T00:00:00.000Z",
 			humanParticipantId: created.cast[0]!.id,
 			modelParticipantId: created.cast[1]!.id,
@@ -28,7 +27,7 @@ describe("Generation checkpoints", () => {
 			promptPlan: { blocks: [{ kind: "instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
-		}, { kind: "send", content: "Go on." });
+		}, { kind: "send", expectedRevision: created.revision, content: "Go on." });
 		const { humanMessageId } = accepted;
 		if (humanMessageId === null) throw new Error("Send did not retain its Human Message.");
 		const checkpoint = (contentOffset: number, contentDelta: string, reasoningOffset: number, reasoningDelta: string, latestEventId: number) =>

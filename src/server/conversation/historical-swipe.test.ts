@@ -185,7 +185,6 @@ describe("Sibling Generation acceptance and resolution", () => {
 		control: ReturnType<typeof seats>,
 	) =>
 		acceptGeneration(module, {
-			expectedRevision: 0,
 			seed: "test-generation-seed",
 			...input,
 			humanParticipantId: control.humanId,
@@ -442,7 +441,6 @@ describe("Sibling Generation acceptance and resolution", () => {
 
 		expect(() =>
 			acceptGeneration(module, {
-				expectedRevision: 0,
 				seed: "test-generation-seed",
 				conversationId: snapshot.id,
 				timestamp: "2026-08-20T14:00:00Z",

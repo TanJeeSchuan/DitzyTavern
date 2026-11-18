@@ -170,7 +170,6 @@ test("a Variant still generating takes no Writer override, so its own record can
 	const accepted = acceptGeneration(database, {
 		seed: "override-seed",
 		conversationId: chat.id,
-		expectedRevision: chat.revision,
 		timestamp: "2026-08-27T00:00:00.000Z",
 		humanParticipantId: human.id,
 		modelParticipantId: model.id,
@@ -179,7 +178,7 @@ test("a Variant still generating takes no Writer override, so its own record can
 		promptPlan: { blocks: [], warnings: [], images: [] },
 		modelId: "fixture-model",
 		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-	}, { kind: "send", content: "Go." });
+	}, { kind: "send", expectedRevision: chat.revision, content: "Go." });
 	const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
 	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] })?.record;
 	if (record === undefined) throw new Error("The Stretch produced no record.");

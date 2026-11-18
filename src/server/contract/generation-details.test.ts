@@ -36,7 +36,6 @@ describe("Generation detail transport", () => {
 		const accepted = acceptGeneration(module, {
 			seed: "test-generation-seed",
 			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
 			timestamp: "2026-08-27T10:00:00Z",
 			humanParticipantId: conversation.cast[0]!.id,
 			modelParticipantId: conversation.cast[1]!.id,
@@ -90,7 +89,7 @@ describe("Generation detail transport", () => {
 					interruptionCause: null,
 				}),
 			},
-		}, { kind: "send", content: "Guide the scene." });
+		}, { kind: "send", expectedRevision: conversation.revision, content: "Guide the scene." });
 		const app = createConversationRoutes(database);
 
 		return app.handle(new Request(

@@ -101,7 +101,6 @@ describe("Chat rename and deletion", () => {
 		acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: busy.id,
-			expectedRevision: busy.revision,
 			timestamp: "2026-09-26T10:00:00.000Z",
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
@@ -110,7 +109,7 @@ describe("Chat rename and deletion", () => {
 			promptPlan: { blocks: [], warnings: [], images: [] },
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		}, { kind: "send", content: "Keep going." });
+		}, { kind: "send", expectedRevision: busy.revision, content: "Keep going." });
 		const remove = (id: number) => app.handle(new Request(`http://localhost/api/conversations/${id}`, { method: "DELETE" }));
 
 		const deleted = await remove(idle.id);

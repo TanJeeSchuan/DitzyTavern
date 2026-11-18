@@ -17,7 +17,7 @@ export {
 	DEFAULT_SIBLING_GENERATION_LIMIT,
 } from "./generation-settings";
 export { acceptGeneration } from "./commands/accept-generation";
-export { requireGenerationTarget } from "./generation-target";
+export { promptIntentOf, requireSiblingHistoricalControl, requireTerminalTarget } from "./generation-target";
 export {
 	checkpointConversationGeneration,
 	checkpointUnstreamedOutcome,

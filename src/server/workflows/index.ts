@@ -20,7 +20,6 @@ export {
 	type NewChatSeat,
 } from "./native-chat";
 export {
-	type AcceptedGenerationRecord,
 	type GenerationInput,
 	type GenerationAttemptInput,
 	type ParticipantPreview,

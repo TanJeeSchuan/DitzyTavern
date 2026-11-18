@@ -368,10 +368,8 @@ describe("Image Reference lifetime", () => {
 			control: { human: 0, model: 1 },
 		});
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const accepted = acceptGeneration(database, {
-			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
-			expectedRevision: target.revision,
-		}, { kind: "send", content: "Hello" });
+		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
+		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: target.revision, content: "Hello" });
 		resolveConversationGeneration(database, {
 			conversationId: target.id,
 			generationId: accepted.generationId,
@@ -400,8 +398,7 @@ describe("Image Reference lifetime", () => {
 		const accepted = acceptGeneration(database, {
 			...fields,
 			promptPlan: { ...fields.promptPlan, blocks: [{ kind: "instruction", role: "system", content: `Show ${art.token}` }] },
-			expectedRevision: target.revision,
-		}, { kind: "send", content: "Hello" });
+		}, { kind: "send", expectedRevision: target.revision, content: "Hello" });
 		expect(referenced()).toEqual([art.hash]);
 
 		resolveConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, timestamp, content: "Done" });
@@ -484,10 +481,8 @@ describe("Image Reference lifetime", () => {
 		const target = chat();
 		const art = await picture(4);
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const accepted = acceptGeneration(database, {
-			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
-			expectedRevision: target.revision,
-		}, { kind: "send", content: "Hello" });
+		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
+		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: target.revision, content: "Hello" });
 		expect(orphanedAt(art.hash)).toBeNumber();
 		checkpointFromStart(database, { conversationId: target.id, generationId: accepted.generationId, content: art.token });
 		expect(orphanedAt(art.hash)).toBeNull();

@@ -49,7 +49,6 @@ const createChat = (database: Database) => {
 const acceptedInput = (conversation: ReturnType<typeof createChat>, boxTraces: BoxTraces) => ({
 	seed: "test-generation-seed",
 	conversationId: conversation.id,
-	expectedRevision: conversation.revision,
 	timestamp: "2026-09-23T00:01:00.000Z",
 	humanParticipantId: conversation.cast[0]!.id,
 	modelParticipantId: conversation.cast[1]!.id,
@@ -74,7 +73,7 @@ describe("permanent Box traces", () => {
 		const sourceVariant = source.variants[0]!;
 		const captured = traces(source.id, sourceVariant.id);
 		const module = database;
-		const accepted = acceptGeneration(module, acceptedInput(created, captured), { kind: "send", content: "Ask about the key." });
+		const accepted = acceptGeneration(module, acceptedInput(created, captured), { kind: "send", expectedRevision: created.revision, content: "Ask about the key." });
 		const app = createConversationRoutes(database);
 		const inspected = await app.handle(new Request(`http://localhost/api/conversations/${created.id}/generations/${accepted.generationId}/inspection`));
 		expect(inspected.status).toBe(200);
@@ -119,14 +118,13 @@ describe("permanent Box traces", () => {
 		const source = created.messages[0]!;
 		const captured = traces(source.id, source.variants[0]!.id);
 		const module = database;
-		const base = acceptGeneration(module, acceptedInput(created, captured), { kind: "send", content: "Ask about the key." });
+		const base = acceptGeneration(module, acceptedInput(created, captured), { kind: "send", expectedRevision: created.revision, content: "Ask about the key." });
 		resolveConversationGeneration(module, { conversationId: created.id, generationId: base.generationId, timestamp: "2026-09-23T00:02:00.000Z", content: "Maren pockets the key." });
 		const model = created.cast[1]!;
 		const human = created.cast[0]!;
 		const baseMessage = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
 		const siblingTraces = (finalText: string) => traces(source.id, source.variants[0]!.id, finalText);
 		const acceptSibling = (record: BoxTraces) => acceptGeneration(module, {
-			expectedRevision: 0,
 			seed: "test-generation-seed",
 			conversationId: created.id,
 			timestamp: "2026-09-23T00:03:00.000Z",
@@ -158,9 +156,8 @@ describe("permanent Box traces", () => {
 		const interruptedBase = readTestConversationSnapshot(module, created.id)!;
 		const interrupted = acceptGeneration(module, {
 			...acceptedInput(interruptedBase, captured),
-			expectedRevision: interruptedBase.revision,
 			timestamp: "2026-09-23T00:06:00.000Z",
-		}, { kind: "send", content: "Ask about the key." });
+		}, { kind: "send", expectedRevision: interruptedBase.revision, content: "Ask about the key." });
 		checkpointFromStart(module, { conversationId: created.id, generationId: interrupted.generationId, content: "Retained partial output." });
 		stopConversationGeneration(module, { cause: "user-stop", conversationId: created.id, generationId: interrupted.generationId });
 		const interruptedTarget = readTestConversationSnapshot(module, created.id)!.messages.at(-1)!;
@@ -169,9 +166,8 @@ describe("permanent Box traces", () => {
 		const fresh = readTestConversationSnapshot(module, created.id)!;
 		const empty = acceptGeneration(module, {
 			...acceptedInput(fresh, captured),
-			expectedRevision: fresh.revision,
 			timestamp: "2026-09-23T00:07:00.000Z",
-		}, { kind: "send", content: "Ask about the key." });
+		}, { kind: "send", expectedRevision: fresh.revision, content: "Ask about the key." });
 		stopConversationGeneration(module, { cause: "user-stop", conversationId: created.id, generationId: empty.generationId });
 		expect(readTestConversationSnapshot(module, created.id)!.messages.some(({ id }) => id === empty.messageId)).toBe(false);
 		expect(readVariantDetails(module, created.id, empty.messageId, empty.provisionalVariantId)).toBeUndefined();
@@ -188,7 +184,7 @@ describe("permanent Box traces", () => {
 			expectedRevision: created.revision,
 			action: { type: "put-data", scope: { type: "conversation" }, namespace: "generation-box", key: "traces", value: "{}" },
 		})).toThrow("server-owned provenance");
-		const accepted = acceptGeneration(module, acceptedInput(created, captured), { kind: "send", content: "Ask about the key." });
+		const accepted = acceptGeneration(module, acceptedInput(created, captured), { kind: "send", expectedRevision: created.revision, content: "Ask about the key." });
 		database.run("UPDATE active_generation SET box_traces_json = ? WHERE id = ?", [JSON.stringify({ "box:memory": { trace: {} } }), accepted.generationId]);
 		const inspection = await createConversationRoutes(database).handle(new Request(`http://localhost/api/conversations/${created.id}/generations/${accepted.generationId}/inspection`));
 		expect(inspection.status).toBe(422);

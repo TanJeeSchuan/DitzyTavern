@@ -5,12 +5,10 @@ import {
 	resolveConversationGeneration,
 	checkpointUnstreamedOutcome,
 	acceptGeneration,
-} from "../conversation";
-import type { Database } from "bun:sqlite";
-import {
 	ConversationNotFoundError,
 	type AcceptedGeneration,
 } from "../conversation";
+import type { Database } from "bun:sqlite";
 import { StaleRevisionError } from "../revision";
 import { generationRuntimeFor } from "./generation-runtime";
 import {
@@ -28,15 +26,13 @@ import type { GenerationTarget } from "../../shared/contract/conversation-schema
 export type { GenerationAttemptInput, ServerOwnedGenerationControl, ServerOwnedGeneration, ServerOwnedGenerationCallbacks } from "./generate-server-owned";
 export type { ParticipantPreview } from "./generate-capture";
 
-export type AcceptedGenerationRecord = AcceptedGeneration;
-
 export interface GenerationInput extends GenerationAttemptInput {
 	readonly target: GenerationTarget;
 	readonly preview?: GenerationPreviewAcceptance;
-	readonly onAccepted?: (accepted: AcceptedGenerationRecord) => void | Promise<void>;
+	readonly onAccepted?: (accepted: AcceptedGeneration) => void | Promise<void>;
 }
 
-export async function runGenerationLifecycle(database: Database, input: GenerationInput): Promise<AcceptedGenerationRecord> {
+export async function runGenerationLifecycle(database: Database, input: GenerationInput): Promise<AcceptedGeneration> {
 	const revision = readConversationRevision(database, input.conversationId);
 	if (revision === undefined) throw new ConversationNotFoundError(input.conversationId);
 	if (input.expectedRevision !== undefined && revision !== input.expectedRevision) {
@@ -49,7 +45,9 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	generationRuntimeFor(database).assertAccepting();
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
-	const accepted = acceptGeneration(database, { ...capturedAcceptanceFields(capture, { conversationId: input.conversationId, timestamp }), expectedRevision: revision }, capture.target);
+	const { target } = capture;
+	const acceptanceTarget = target.kind === "sibling" ? target : { ...target, expectedRevision: revision };
+	const accepted = acceptGeneration(database, capturedAcceptanceFields(capture, { conversationId: input.conversationId, timestamp }), acceptanceTarget);
 	if (input.preview !== undefined) consumeGenerationPreview(database, input.preview.record);
 	try {
 		await input.onAccepted?.(accepted);
@@ -89,7 +87,7 @@ export async function runGenerationLifecycle(database: Database, input: Generati
  */
 export function startServerOwnedGeneration(database: Database, input: Omit<GenerationInput, "onAccepted" | "onEvent">, callbacks: ServerOwnedGenerationCallbacks = {}): ServerOwnedGeneration {
 	const controller = new AbortController();
-	const accepted = Promise.withResolvers<AcceptedGenerationRecord>();
+	const accepted = Promise.withResolvers<AcceptedGeneration>();
 	const result = runGenerationLifecycle(database, {
 		...input,
 		signal: controller.signal,

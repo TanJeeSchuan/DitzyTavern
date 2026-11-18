@@ -298,7 +298,6 @@ export type VariantDetails = SharedVariantDetails;
 // domain treats the plan/settings/connection values as opaque JSON so this
 // seam never imports provider protocol types.
 export interface GenerationAcceptanceCapture {
-	expectedRevision: number;
 	seed: string;
 	boxRecords?: BoxRecords;
 	conversationId: number;
@@ -323,6 +322,10 @@ export type CapturedGenerationTarget =
 	| Extract<GenerationTarget, { kind: "send" }> & { readonly reuseHumanMessageId?: number | undefined }
 	| Extract<GenerationTarget, { kind: "continuation" }> & { readonly precedingMessageId: number; readonly precedingVariantId: number; readonly intent: Extract<StoredGenerationIntent, { type: "continuation" }> }
 	| Extract<GenerationTarget, { kind: "sibling" }>;
+
+export type GenerationAcceptanceTarget =
+	| Extract<CapturedGenerationTarget, { kind: "sibling" }>
+	| (Exclude<CapturedGenerationTarget, { kind: "sibling" }> & { readonly expectedRevision: number });
 
 export interface AcceptedGeneration {
 	generationId: number;

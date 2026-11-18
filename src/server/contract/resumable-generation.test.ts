@@ -411,7 +411,6 @@ describe("Resumable generation transport", () => {
 		const accepted = acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
@@ -420,7 +419,7 @@ describe("Resumable generation transport", () => {
 			promptPlan: { blocks: [], warnings: [], images: [] },
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		}, { kind: "send", content: "Keep the recovered scene." });
+		}, { kind: "send", expectedRevision: conversation.revision, content: "Keep the recovered scene." });
 		checkpointFromStart(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,

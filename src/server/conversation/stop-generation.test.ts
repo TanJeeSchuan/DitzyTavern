@@ -50,7 +50,6 @@ describe("explicit Conversation Generation Stop", () => {
 		acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
@@ -59,7 +58,7 @@ describe("explicit Conversation Generation Stop", () => {
 			promptPlan: { blocks: [], warnings: [], images: [] },
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		}, { kind: "send", content: content });
+		}, { kind: "send", expectedRevision: input.created.revision, content: content });
 
 	test("persists partial Tail output as an interrupted Variant", () => {
 		const input = setup();
@@ -126,7 +125,6 @@ describe("explicit Conversation Generation Stop", () => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		return acceptGeneration(database, {
-			expectedRevision: 0,
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
@@ -250,7 +248,6 @@ describe("explicit Conversation Generation Stop", () => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		const accept = (timestamp: string) => acceptGeneration(input.module, {
-			expectedRevision: 0,
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			timestamp,

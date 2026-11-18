@@ -48,7 +48,6 @@ describe("permanent Lore Activation Records", () => {
 		const accepted = acceptGeneration(module, {
 			seed: "test-generation-seed",
 			conversationId: created.id,
-			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
 			humanParticipantId: created.cast[0]!.id,
 			modelParticipantId: created.cast[1]!.id,
@@ -58,7 +57,7 @@ describe("permanent Lore Activation Records", () => {
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
-		}, { kind: "send", content: "Mention the tower." });
+		}, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." });
 		resolveConversationGeneration(module, {
 			conversationId: created.id,
 			generationId: accepted.generationId,
@@ -112,7 +111,6 @@ describe("permanent Lore Activation Records", () => {
 		const accepted = acceptGeneration(module, {
 			seed: "test-generation-seed",
 			conversationId: created.id,
-			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
 			humanParticipantId: created.cast[0]!.id,
 			modelParticipantId: created.cast[1]!.id,
@@ -122,7 +120,7 @@ describe("permanent Lore Activation Records", () => {
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
-		}, { kind: "send", content: "Mention the tower." });
+		}, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." });
 		database.run("UPDATE active_generation SET lore_activation_json = ? WHERE id = ?", ["{", accepted.generationId]);
 		const app = createConversationRoutes(database);
 		const inspection = await app.handle(new Request(
@@ -173,7 +171,6 @@ describe("permanent Lore Activation Records", () => {
 		const accepted = acceptGeneration(module, {
 			seed: "test-generation-seed",
 			conversationId: created.id,
-			expectedRevision: created.revision,
 			timestamp: "2026-09-17T10:00:00Z",
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
@@ -183,7 +180,7 @@ describe("permanent Lore Activation Records", () => {
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
-		}, { kind: "send", content: "Mention the tower." });
+		}, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." });
 		checkpointFromStart(module, {
 			conversationId: created.id,
 			generationId: accepted.generationId,
@@ -198,7 +195,6 @@ describe("permanent Lore Activation Records", () => {
 		const zeroOutput = acceptGeneration(module, {
 			seed: "test-generation-seed",
 			conversationId: created.id,
-			expectedRevision: fresh.revision,
 			timestamp: "2026-09-17T10:00:02Z",
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
@@ -208,7 +204,7 @@ describe("permanent Lore Activation Records", () => {
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
-		}, { kind: "send", content: "Try again." });
+		}, { kind: "send", expectedRevision: fresh.revision, content: "Try again." });
 		stopConversationGeneration(module, { cause: "user-stop", conversationId: created.id, generationId: zeroOutput.generationId });
 		const afterCleanup = readTestConversationSnapshot(module, created.id)!;
 		expect(afterCleanup.messages.at(-1)?.variants.at(-1)?.data).not.toContainEqual({

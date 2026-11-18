@@ -222,7 +222,6 @@ test("a Generation holding a record of a Box no longer loaded still settles on r
 		const accepted = acceptGeneration(database, {
 			seed: "lantern-seed",
 			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
 			timestamp: "2026-10-14T00:00:00.000Z",
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
@@ -232,7 +231,7 @@ test("a Generation holding a record of a Box no longer loaded still settles on r
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			boxRecords: { lantern: { instance, record: { lit: true } } },
-		}, { kind: "send", content: "Light it." });
+		}, { kind: "send", expectedRevision: conversation.revision, content: "Light it." });
 		checkpointFromStart(database, { conversationId: conversation.id, generationId: accepted.generationId, content: "The wick catches." });
 		await loadBoxes([builtInBoxes]);
 		expect(recoverActiveGenerations(database)).toMatchObject({ interrupted: 1, failed: 0 });

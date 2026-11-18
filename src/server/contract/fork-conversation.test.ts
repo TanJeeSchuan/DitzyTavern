@@ -128,7 +128,6 @@ test("fork is refused during an Active Generation", () => {
 	acceptGeneration(database, {
 		seed: "seed",
 		conversationId: source.id,
-		expectedRevision: 1,
 		timestamp: "2026-01-01T00:01:00Z",
 		humanParticipantId: source.cast[0]!.id,
 		modelParticipantId: source.cast[1]!.id,
@@ -137,7 +136,7 @@ test("fork is refused during an Active Generation", () => {
 		promptPlan: { blocks: [], warnings: [], images: [] },
 		modelId: "fixture-model",
 		promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
-	}, { kind: "send", content: "Go on" });
+	}, { kind: "send", expectedRevision: 1, content: "Go on" });
 	const revision = readConversationSummary(database, source.id)!.revision;
 	expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: revision, at: { through: message.id }, name: "Fork", trimVariants: false })).toThrow("Active Generation");
 	expect(database.query<{ count: number }, []>("SELECT count(*) AS count FROM conversation").get()!.count).toBe(1);

@@ -50,7 +50,7 @@ export const generationProvenanceEntry = (
 export function capturedAcceptanceFields(
 	capture: CapturedGeneration,
 	input: { conversationId: number; timestamp: string },
-) {
+): GenerationAcceptanceCapture {
 	return {
 		seed: capture.preparation.seed,
 		boxRecords: capture.preparation.boxRecords,
@@ -67,13 +67,7 @@ export function capturedAcceptanceFields(
 		boxTraces: capture.plan.boxTraces,
 		provenance: capture.provenance,
 		macro: { presetId: capture.macroPresetId, writes: capture.macroWrites },
-	} satisfies Pick<
-		GenerationAcceptanceCapture,
-		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
-		"capturedHumanName" | "capturedModelName" | "modelId" | "promptPlan" | "promptInspection" |
-		"loreActivation" | "boxTraces" | "provenance" |
-		"macro" | "seed" | "boxRecords"
-	>;
+	};
 }
 
 /** @approved Build the common provider-neutral request for an accepted Generation.

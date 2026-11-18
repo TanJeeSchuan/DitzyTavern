@@ -1,5 +1,6 @@
 import type { Database } from "bun:sqlite";
 import { and, eq, max } from "drizzle-orm";
+import type { StoredGenerationIntent } from "../../../shared/contract/generation-intent";
 import {
 	activeGenerationTable,
 	generationCaptureTable,
@@ -31,8 +32,8 @@ import {
 	runConversationTransaction,
 } from "./transaction";
 import { generationGate } from "../generation-gate";
-import type { AcceptedGeneration, CapturedGenerationTarget, GenerationAcceptanceCapture, ConversationJsonValue } from "../types";
-import { requireGenerationTarget } from "../generation-target";
+import type { AcceptedGeneration, GenerationAcceptanceTarget, GenerationAcceptanceCapture, ConversationJsonValue } from "../types";
+import { promptIntentOf, requireSiblingHistoricalControl, requireTerminalTarget } from "../generation-target";
 import { encodeMacroVariableWrite } from "../../../shared/contract/macro-variable-write";
 import { isLoreActivationRecord } from "../../../shared/contract/lore-activation";
 import { Value } from "@sinclair/typebox/value";
@@ -59,7 +60,7 @@ interface PersistActiveGenerationInput extends GenerationAcceptanceCapture {
 	messageId: number;
 	variantId: number;
 	priorVariantId?: number | null;
-	generationIntent: ConversationJsonValue;
+	generationIntent: StoredGenerationIntent;
 }
 
 /** @approved Persist the common server-owned Generation record after target creation. */
@@ -217,11 +218,11 @@ const tailHumanChange = (
 export function acceptGeneration(
 	database: Database,
 	input: GenerationAcceptanceCapture,
-	target: CapturedGenerationTarget,
+	target: GenerationAcceptanceTarget,
 ): AcceptedGeneration {
 	return runConversationTransaction(database, (db, reportChange) => {
 		if (target.kind === "sibling") requireConversation(db, input.conversationId);
-		else requireConversationRevision(db, input.conversationId, input.expectedRevision, "generation");
+		else requireConversationRevision(db, input.conversationId, target.expectedRevision, "generation");
 		if (target.kind === "send" && target.content.trim() === "" && !hasMoves(target.moves)) {
 			throw new InvalidConversationCommandError("Send requires composer content or Moves.");
 		}
@@ -308,17 +309,14 @@ export function acceptGeneration(
 			}
 			case "continuation": {
 				generationGate(db, input.conversationId, { type: "accept-continuation" });
-				const preceding = requireGenerationTarget(db, input.conversationId, {
-					kind: "continuation", strategy: target.intent.strategy,
-					preceding: { messageId: target.precedingMessageId, variantId: target.precedingVariantId },
-				});
+				const preceding = requireTerminalTarget(db, input.conversationId, target.intent.strategy, target);
 				const provisional = createProvisionalModelTarget(db, { ...input, position: preceding.position + 1 });
 				messageId = provisional.modelMessageId;
 				provisionalVariantId = provisional.provisionalVariantId;
 				break;
 			}
 			case "sibling": {
-				const historicalContext = requireGenerationTarget(db, input.conversationId, target);
+				const historicalContext = requireSiblingHistoricalControl(db, input.conversationId, target.messageId);
 				if (historicalContext.humanParticipantId !== input.humanParticipantId || historicalContext.modelParticipantId !== input.modelParticipantId) {
 					throw new InvalidConversationCommandError("The captured historical Control pair does not match the target Message.");
 				}
@@ -330,7 +328,7 @@ export function acceptGeneration(
 		}
 		const generationId = persistActiveGeneration(db, {
 			...input, humanMessageId, messageId, variantId: provisionalVariantId, priorVariantId,
-			generationIntent: target.kind === "continuation" ? target.intent : { type: target.kind === "send" ? "tail" : "sibling" },
+			generationIntent: promptIntentOf(target) ?? { type: "tail" },
 		});
 		const conversation = advanceConversationRevision(db, input.conversationId, input.timestamp);
 		if (humanMessageId !== null) reportChange(tailHumanChange(db, input.conversationId, humanMessageId));

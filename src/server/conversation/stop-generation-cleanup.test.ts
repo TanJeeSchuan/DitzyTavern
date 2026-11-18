@@ -50,7 +50,6 @@ describe("Stop with no checkpointed output", () => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
 		return acceptGeneration(database, {
-			expectedRevision: 0,
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
@@ -133,7 +132,6 @@ describe("Stop with no checkpointed output", () => {
 		const accepted = acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
@@ -142,7 +140,7 @@ describe("Stop with no checkpointed output", () => {
 			promptPlan: { blocks: [], warnings: [], images: [] },
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		}, { kind: "send", content: "Keep my input." });
+		}, { kind: "send", expectedRevision: input.created.revision, content: "Keep my input." });
 
 		stopConversationGeneration(input.module, {
 			cause: "provider",
@@ -184,7 +182,6 @@ describe("Stop with no checkpointed output", () => {
 	const tail = acceptGeneration(database, {
 		seed: "test-generation-seed",
 		conversationId: input.created.id,
-		expectedRevision: revision,
 		timestamp: "2026-08-27T00:00:02.000Z",
 		humanParticipantId: input.humanId,
 		modelParticipantId: input.modelId,
@@ -193,7 +190,7 @@ describe("Stop with no checkpointed output", () => {
 		promptPlan: { blocks: [], warnings: [], images: [] },
 		modelId: "fixture-model",
 		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-	}, { kind: "send", content: "Keep my input." });
+	}, { kind: "send", expectedRevision: revision, content: "Keep my input." });
 	delivered.splice(0);
 	stopConversationGeneration(input.module, { cause: "provider", conversationId: input.created.id, generationId: tail.generationId });
 	expect(delivered).toHaveLength(1);
@@ -209,7 +206,6 @@ test("stopping an empty Continuation Generation removes only its provisional Mes
 		const accepted = acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
@@ -218,7 +214,7 @@ test("stopping an empty Continuation Generation removes only its provisional Mes
 			promptPlan: { blocks: [], warnings: [], images: [] },
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		}, { kind: "continuation", intent: { type: "continuation", strategy: "instruction", instruction: "Continue." }, precedingMessageId: opening.id, precedingVariantId: openingVariant.id });
+		}, { kind: "continuation", expectedRevision: input.created.revision, intent: { type: "continuation", strategy: "instruction", instruction: "Continue." }, precedingMessageId: opening.id, precedingVariantId: openingVariant.id });
 
 		stopConversationGeneration(input.module, {
 			cause: "provider",

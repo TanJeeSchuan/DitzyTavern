@@ -247,7 +247,6 @@ for (const upgraded of [false, true]) {
 		const accepted = acceptGeneration(database, {
 			seed: "seed",
 			conversationId: chat.id,
-			expectedRevision: readConversationSummary(database, chat.id)!.revision,
 			timestamp: "2026-11-05T00:00:00.000Z",
 			humanParticipantId: human!.id,
 			modelParticipantId: model!.id,
@@ -257,7 +256,7 @@ for (const upgraded of [false, true]) {
 			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			boxRecords: { tally: { instance: instanceOf(chat.id), version: box.v1, record: { coins: 4 } } },
-		}, { kind: "send", content: "Tip it." });
+		}, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip it." });
 		if (upgraded) upgrade(chat.id, box.v2);
 		checkpointFromStart(database, { conversationId: chat.id, generationId: accepted.generationId, content: "Coins clink." });
 		recoverActiveGenerations(database);
@@ -341,7 +340,6 @@ for (const deleteHistory of [false, true]) test(`a Generation resolving after re
 	const accepted = acceptGeneration(database, {
 		seed: "remove-history",
 		conversationId: chat.id,
-		expectedRevision: readConversationSummary(database, chat.id)!.revision,
 		timestamp: "2026-11-10T00:00:00Z",
 		humanParticipantId: chat.cast[0]!.id,
 		modelParticipantId: chat.cast[1]!.id,
@@ -352,7 +350,7 @@ for (const deleteHistory of [false, true]) test(`a Generation resolving after re
 		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		boxTraces: traces,
 		boxRecords: { tally: { instance: oldInstance, version: box.v1, record: { coins: 4 } }, memory: { instance: "other", record: { kept: true } } },
-	}, { kind: "send", content: "Tip." });
+	}, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip." });
 	command(chat.id, { type: "set-box-state", box: "tally", state: "absent", deleteHistory });
 	command(chat.id, { type: "set-box-state", box: "tally", state: "enabled" });
 	resolveConversationGeneration(database, { conversationId: chat.id, generationId: accepted.generationId, content: "The tip lands.", timestamp: "2026-11-10T00:01:00Z" });

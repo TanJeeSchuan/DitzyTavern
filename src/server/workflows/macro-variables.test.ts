@@ -69,10 +69,8 @@ describe("Conversation-persistent prompt macro variables", () => {
 			{ name: "turn", value: "6", operation: "set" },
 		]);
 
-		const accepted = acceptGeneration(database, {
-			...capturedAcceptanceFields(first, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
-			expectedRevision: conversation.revision,
-		}, { kind: "send", content: "Hello" });
+		const fields = capturedAcceptanceFields(first, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" });
+		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: conversation.revision, content: "Hello" });
 		resolveConversationGeneration(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,
@@ -151,10 +149,8 @@ describe("Conversation-persistent prompt macro variables", () => {
 			control: { human: 0, model: 1 },
 		});
 		const capture = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: conversation.id });
-		const accepted = acceptGeneration(database, {
-			...capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
-			expectedRevision: conversation.revision,
-		}, { kind: "send", content: "Hello" });
+		const fields = capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" });
+		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: conversation.revision, content: "Hello" });
 		checkpointFromStart(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,

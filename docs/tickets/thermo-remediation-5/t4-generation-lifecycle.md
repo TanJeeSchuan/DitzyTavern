@@ -1,6 +1,6 @@
 # T4: Generation lifecycle
 
-Status: IN PROGRESS (slice b first implementation; review and CI fixes pending)
+Status: IN PROGRESS
 
 Blocked By: T3
 
@@ -62,7 +62,7 @@ Report 11, findings 1 and 8.
 - [x] Slice a review, fixes, and CI
 - [ ] Slice a PR merged
 - [x] Slice b first implementation (Astra)
-- [ ] Slice b review, fixes (Sol), and CI
+- [x] Slice b review, fixes (Sol), and CI
 - [ ] Slice b PR merged
 - [ ] Slice c (Sol), PR
 - [ ] Slice d (Sol), PR
@@ -89,4 +89,11 @@ Slice b first implementation:
 - Removed `advanceConversationRevisionGuarded`; commands and macro edits use the transaction's initial revision check and one revision advance. Macro edits now call `requireConversationRevision`.
 - Strengthened the reasoning-only Continue test to assert the typed reason and added checks for revision, author-stamp, active-generation, and terminal-eligibility error precedence.
 - Changed-file `bunx --no-install oxlint` passed with two existing unused-variable warnings; `git diff --check` passed. No unit tests, typecheck, or e2e ran locally. The new assertions have not been executed on the base or head locally; CI owns execution.
-- Draft PR targets `thermo-5/t4a-lifecycle`. Standards/spec reviews use Opus 5.5 high after the first push. Review findings and CI failures are left for the Sol follow-up; slices c and d remain.
+- CI `check` and `e2e` passed on `e206a209`. The PR now targets `master`. [PR #275](https://github.com/TanJeeSchuan/DitzyTavern/pull/275)
+
+### Slice b review fixes
+
+- Removed `AcceptedGenerationRecord`. Send and Continue acceptance targets carry the captured revision. Sibling takes no revision, and the capture projection returns `GenerationAcceptanceCapture` directly.
+- Capture and acceptance share `promptIntentOf`. Persistence encodes a Send as `tail`, while the Send Prompt Plan still omits intent.
+- Split eligibility into `requireSiblingHistoricalControl` and `requireTerminalTarget`. The acceptance tests share a local assertion for the typed Continue refusal.
+- Traced the Continue start route on this branch and `master`. Capture-time and acceptance-time eligibility refusals both return HTTP 422 with `outcome: "invalid"` and a `reason` string. The acceptance-time `ContinuationUnavailableError` supplies the same reason text as capture. Master returned the same status and shape with the generic acceptance reason text.

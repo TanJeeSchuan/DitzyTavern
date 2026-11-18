@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { generationGate, requireGenerationTarget, type CapturedGenerationTarget } from "../conversation";
+import { generationGate, promptIntentOf, requireSiblingHistoricalControl, requireTerminalTarget, type CapturedGenerationTarget } from "../conversation";
 import type { BoxRecords } from "../../shared/contract/box-generation";
 import { newVariantSeed, variantSeedOf } from "../box/seed";
 import { readVariantSeeds } from "../box/records";
@@ -187,9 +187,6 @@ interface GenerationPreparationBase {
 	readonly lore: ScopedLoreEvaluation;
 }
 
-export const generationIntentOf = (target: CapturedGenerationTarget): GenerationIntent | undefined =>
-	target.kind === "continuation" ? target.intent : target.kind === "sibling" ? { type: "sibling" } : undefined;
-
 interface PreparationFields extends GenerationPreparationBase {
 	readonly boxWarnings: readonly PromptWarning[];
 	readonly boxImages: BoxImageGrants;
@@ -241,7 +238,7 @@ function captureTarget(
 		case "send": return { ...target, reuseHumanMessageId: reusableHumanMessageId(participation.messages, human.id, target, moves) };
 		case "sibling": return target;
 		case "continuation": {
-			const terminal = requireGenerationTarget(db, conversationId, { kind: "continuation", strategy: settings.continuationStrategy });
+			const terminal = requireTerminalTarget(db, conversationId, settings.continuationStrategy);
 			return { ...target, precedingMessageId: terminal.messageId, precedingVariantId: terminal.variantId, intent: continuationIntentFor(settings) };
 		}
 	}
@@ -314,7 +311,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	const folds = readBoxFolds(db, variantIds, summary.boxSetups, boxes);
 	const messageMoves = readMessageMoves(db, input.conversationId, selected.messages.map(({ id }) => id));
 	if (target.kind === "continuation") generationGate(db, input.conversationId, { type: "accept-continuation" });
-	if (target.kind === "sibling") requireGenerationTarget(db, input.conversationId, target);
+	if (target.kind === "sibling") requireSiblingHistoricalControl(db, input.conversationId, target.messageId);
 	const participation: ParticipatingHistory = {
 		messages: selected.messages,
 		control: {
@@ -369,7 +366,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 			connectionSettings: input.connectionSettings,
 		})
 		: noLoreEvaluation();
-	const effectiveSettings = effectiveGenerationSettingsFor(settings, generationIntentOf(captured), connection);
+	const effectiveSettings = effectiveGenerationSettingsFor(settings, promptIntentOf(captured), connection);
 	const macroState = new Map(deriveMacroState({
 		initialData: selected.initialData,
 		presetId: recipe.id,
@@ -566,7 +563,7 @@ export async function captureGeneration(
 		? derivation.context
 		: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content: preparation.pendingHumanText, role: "human" as const }];
 	const plan = compilePlanFrom({ ...derivation, context }, configuration, {
-		intent: generationIntentOf(preparation.target),
+		intent: promptIntentOf(preparation.target),
 		estimator: options.tokenEstimator,
 		database,
 	});
