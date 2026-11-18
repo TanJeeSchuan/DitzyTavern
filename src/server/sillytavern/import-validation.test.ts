@@ -11,7 +11,7 @@ import {
 	messageTable,
 	messageVariantTable,
 } from "../database/schema";
-import { importSillyTavernChat } from "./index";
+import { importSillyTavernChat } from "./import";
 import { SillyTavernImportError } from "./errors";
 import {
 	headerFixture as header,

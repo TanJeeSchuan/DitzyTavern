@@ -11,8 +11,8 @@ import {
 } from "node:crypto";
 
 export const CONNECTION_SECRET_FORMAT_VERSION = 1 as const;
-export const CONNECTION_SECRET_NONCE_BYTES = 12;
-export const CONNECTION_SECRET_TAG_BYTES = 16;
+const CONNECTION_SECRET_NONCE_BYTES = 12;
+const CONNECTION_SECRET_TAG_BYTES = 16;
 const CONNECTION_SECRET_KEY_BYTES = 32;
 
 type JsonValue = string | number | boolean | null | JsonValue[] | JsonObject;
@@ -20,12 +20,12 @@ interface JsonObject {
 	[key: string]: JsonValue;
 }
 
-export interface ConnectionSecretPayload extends JsonObject {
+interface ConnectionSecretPayload extends JsonObject {
 	credential: string | null;
 	headers: Record<string, string>;
 }
 
-export interface EncryptedConnectionSecret {
+interface EncryptedConnectionSecret {
 	formatVersion: typeof CONNECTION_SECRET_FORMAT_VERSION;
 	keyId: string;
 	nonce: string;
@@ -33,11 +33,11 @@ export interface EncryptedConnectionSecret {
 	tag: string;
 }
 
-export interface EncryptConnectionSecretOptions {
+interface EncryptConnectionSecretOptions {
 	randomBytes?: (length: number) => Uint8Array;
 }
 
-export class ConnectionSecretEncryptionError extends Error {
+class ConnectionSecretEncryptionError extends Error {
 	constructor(message: string) {
 		super(message);
 		this.name = "ConnectionSecretEncryptionError";

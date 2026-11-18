@@ -44,7 +44,7 @@ export const emptyImportedDefinition = (name: string): ParticipantDefinition => 
 //  Zero-, one-, and two-Participant imports start at the human seat so that
 // adding a missing Participant later preserves it. Resolutions carry no
 // Control field, so the projection derives Control from the count alone.
-export const deterministicImportControl = (
+const deterministicImportControl = (
 	groupCount: number,
 ): ConversationControlSeed | undefined => {
 	if (groupCount === 0) return undefined;
@@ -55,7 +55,7 @@ export const deterministicImportControl = (
 // @approved
 //  One initial author group keyed on the resolved (trimmed) captured author
 // name.
-export interface ImportAuthorGroup {
+interface ImportAuthorGroup {
 	key: string | null;
 	positions: number[];
 	variantCounts: number[];
@@ -92,7 +92,7 @@ export const groupImportedAuthors = (
 // @approved
 //  One resulting native Participant: the complete Definition plus the
 // staged-only Character provenance flags.
-export interface ImportProjectionParticipant {
+interface ImportProjectionParticipant {
 	definition: ParticipantDefinition;
 	sourceCharacterId?: number | undefined;
 	createCharacter?: boolean | undefined;
@@ -146,7 +146,7 @@ const duplicateCopyWarnings = (
 // @approved
 //  The native creation data plus the report; staging, plan validation,
 // Profile resolution, and artifact storage never enter this module.
-export interface ProjectedImport {
+interface ProjectedImport {
 	input: {
 		participants: (ConversationParticipantSeed & {
 			createCharacter?: boolean | undefined;
@@ -163,7 +163,7 @@ export interface ProjectedImport {
 // duplicate-warning composition so persisted warnings and report match. The
 // namespace is import-owned: generic data commands can never address these
 // entries afterwards.
-export const importProvenanceEntries = (
+const importProvenanceEntries = (
 	report: SillyTavernImportReport,
 ): ConversationDataEntry[] => {
 	const entries: ConversationDataEntry[] = [];
