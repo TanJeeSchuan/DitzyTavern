@@ -6,7 +6,7 @@ import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxReference, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { ParticipantKey } from "../../shared/contract/box-row-reference";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { openInitializedDatabase } from "../database/database";
 import { conversationDataTable, conversationTable, messageDataTable, messageTable, messageVariantDataTable, messageVariantTable, participantDataTable, participantTable } from "../database/schema";
 import type { LoadedBox } from "../box/registry";

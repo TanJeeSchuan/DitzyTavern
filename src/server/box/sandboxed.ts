@@ -7,7 +7,7 @@ import { assertChecked } from "../../shared/contract/box-descriptor";
 import { sandboxedDeclaration, sandboxedDecideInput, sandboxedFailure, sandboxedOutcome, sandboxedReadOutput, type SandboxedFailure } from "../../shared/contract/box-sandboxed";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { Portrait } from "../../shared/contract/image";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import type { DecisionJson, DecisionQuestions } from "../decision-model";
 import type { AdvanceInput, BoxWindowRead, CaptureRead, DelegateInput, DigestContext, DigestWindow } from "./contract";
 import { boxSnapshot } from "./snapshot";

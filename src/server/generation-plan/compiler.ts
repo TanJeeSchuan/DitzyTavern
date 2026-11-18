@@ -25,7 +25,7 @@ import {
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { hasEnabledLoreSlot } from "../../shared/contract/prompt-preset";
 import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import type {
 	CompileGenerationPlanInput,
 	EffectiveGenerationSettings,

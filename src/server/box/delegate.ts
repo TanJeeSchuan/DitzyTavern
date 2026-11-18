@@ -4,7 +4,7 @@ import { Value } from "@sinclair/typebox/value";
 import { createFxAgent, memory } from "libfx/node";
 import { delegateApplyInput } from "../../shared/contract/box-descriptor";
 import type { BoxValue } from "../../shared/contract/box-value";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import type { LibfxOptions } from "../authoring/provider";
 
 /** @approved The steps one delegate run may take: model requests and tool calls count against the same cap. */

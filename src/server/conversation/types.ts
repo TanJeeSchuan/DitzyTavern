@@ -2,7 +2,7 @@ import type { StoredGenerationIntent } from "../../shared/contract/generation-in
 import type { BoxMoves, BoxRecords } from "../../shared/contract/box-generation";
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { Static } from "@sinclair/typebox";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import type { GenerationProvenance as SharedGenerationProvenance } from "../../shared/contract/generation-provenance";
 import type { artifactMetadata } from "../../shared/contract/chat-import";
 import type {
@@ -67,7 +67,7 @@ export type ConversationGenerationSettings = SharedConversationGenerationSetting
 
 export type {
 	GenerationJsonObject as GenerationRequestOverrides,
-} from "../../shared/generation-json";
+} from "../../shared/contract/json-value";
 
 // Suffixes are intentionally a closed set. They are request-time formatting
 // choices, not authored Conversation content. The domain alias stays derived

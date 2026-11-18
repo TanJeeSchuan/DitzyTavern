@@ -4,7 +4,7 @@ import type { BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import type { AnyElysia } from "elysia";
 import type { BoxDescriptor } from "../../shared/contract/box-descriptor";
 import type { BoxValue } from "../../shared/contract/box-value";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import type { ConversationSummary, SelectedHistoryRead } from "../conversation";
 import type { DecisionJson, DecisionQuestions, requestDecisions } from "../decision-model";
 import type { RecordSlot } from "./records";

@@ -21,7 +21,7 @@ import {
 import { renderMemoryClaim } from "./shared";
 import { formatImageReference } from "../../shared/image-reference";
 import type { ModelFetch } from "../../server/model-client";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import { generationPreview, type PromptPlan } from "../../shared/contract/conversation-schema";
 import { configureDecisionModels } from "../../server/contract/decision-model-test-fixtures";
