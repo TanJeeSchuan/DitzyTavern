@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openInitializedDatabase } from "../database/database";
-import { importSillyTavernChat } from "../sillytavern/import";
+import { processStateFor } from "../application/process-state";
+import { createChatImportModule } from "../sillytavern/staged";
+import { importChatFixture } from "../test-fixtures/chat-import";
 import { headerFixture as header, jsonl, rulershipFixture, writerFixture as writer } from "../sillytavern/fixtures";
 import { createChatImportRoutes } from "./chat-import";
 import { createConversationRoutes } from "./conversation";
@@ -28,6 +30,7 @@ describe("Chat import transport adapters", () => {
 		app = createChatImportRoutes(database, artifactDirectory);
 	});
 	afterEach(() => {
+		processStateFor(database).dispose();
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});
@@ -399,9 +402,8 @@ describe("Chat import transport adapters", () => {
 
 	test("requires the explicit duplicate copy confirmation over the transport", async () => {
 		// A committed prior Chat provides the exact duplicate evidence.
-		const priorPath = join(files[0] ?? "", "prior-duplicate.jsonl");
-		writeFileSync(priorPath, jsonl([header, writer]), "utf8");
-		const prior = importSillyTavernChat(database, priorPath, artifactDirectory).conversation;
+		const module = createChatImportModule(database, { artifactDirectory });
+		const { conversation: prior } = await importChatFixture(module, jsonl([header, writer]), "prior-duplicate.jsonl");
 
 		const staged = await stage(
 			Buffer.from(jsonl([header, writer]), "utf8"),

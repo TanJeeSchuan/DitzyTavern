@@ -1,28 +1,17 @@
-import { readConversationSummary } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { eq } from "drizzle-orm";
-import {
-	conversationTable,
-	conversationControlTable,
-	participantTable,
-} from "../database/schema";
-import {
-	ARCHIVE_KEY,
-	ARCHIVE_NAMESPACE,
-	IMPORT_KEYS,
-	IMPORT_NAMESPACE,
-	IMPORTER_VERSION,
-	VARIANT_KEYS,
-} from "./adapter";
-import { importSillyTavernChat } from "./import";
+import { drizzle } from "drizzle-orm/bun-sqlite";
 import { UNKNOWN_IMPORTED_AUTHOR_NAME } from "../../shared/imported-author";
+import { processStateFor } from "../application/process-state";
+import { readConversationSummary } from "../conversation";
+import { conversationControlTable, conversationTable, participantTable } from "../database/schema";
+import { importChatFixture } from "../test-fixtures/chat-import";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
+import { IMPORT_KEYS, IMPORT_NAMESPACE, VARIANT_KEYS } from "./adapter";
 import {
 	blankNameFixture as blankName,
 	headerFixture as header,
@@ -32,357 +21,109 @@ import {
 	swipeRecordFixture as swiped,
 	writerFixture as first,
 } from "./fixtures";
-
-const findEntry = (
-	entries: { namespace: string; key: string; value: string }[] | undefined,
-	namespace: string,
-	key: string,
-) => entries?.find((entry) => entry.namespace === namespace && entry.key === key);
+import { createChatImportModule, type ChatImportModule } from "./staged";
 
 describe("SillyTavern chat import", () => {
 	let database: Database;
-	let files: string[];
-	let artifactDirectory: string;
+	let directory: string;
+	let module: ChatImportModule;
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
-		files = [directory];
-		artifactDirectory = join(directory, "managed-artifacts");
+		directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
+		module = createChatImportModule(database, { artifactDirectory: directory });
 	});
 	afterEach(() => {
+		processStateFor(database).dispose();
 		database.close();
-		for (const path of files) rmSync(path, { recursive: true, force: true });
+		rmSync(directory, { recursive: true, force: true });
 	});
 
-	// Every import call in these tests preserves the exact source bytes in
-	// an isolated managed artifact directory, through the same public
-	// signature the developer command uses.
-	const importChat = (sourcePath: string) =>
-		importSillyTavernChat(database, sourcePath, artifactDirectory);
+	const importChat = (records: unknown[]) => importChatFixture(module, jsonl(records));
+	const chatRow = (id: number) => drizzle(database).select().from(conversationTable).where(eq(conversationTable.id, id)).get();
 
-	const writeSource = (records: unknown[], filename = "lantern-house.jsonl") => {
-		const path = join(files[0] ?? "", filename);
-		writeFileSync(path, jsonl(records), "utf8");
-		return path;
-	};
+	test("persists a payload-only import with Author Stamps and no historical Control", async () => {
+		const { conversation } = await importChat([header, first, second, blankName]);
+		const { id, cast } = conversation;
+		const { messages } = requireSnapshot(database, id);
 
-	const sha256Of = (records: unknown[]) =>
-		createHash("sha256")
-			.update(Buffer.from(jsonl(records), "utf8"))
-			.digest("hex");
-
-	test("imports a payload-only JSONL file end to end as a Participant Conversation", () => {
-		const path = writeSource([header, first, second, blankName]);
-		const result = importChat(path);
-		const conversation = result.conversation;
-
-		// The Chat takes its temporary name from the filename stem.
-		expect(conversation.name).toBe("lantern-house");
-		expect(conversation.revision).toBe(0);
-		// Every exact resolved source-author group becomes a named
-		// Participant in first-appearance order with an empty typed Prompt
-		// and no openings: Writer, Rulership, and the shared blank-resolved
-		// group using the imported-author placeholder.
-		expect(conversation.cast.map((participant) => participant.name)).toEqual([
-			"Writer",
-			"Rulership",
-			UNKNOWN_IMPORTED_AUTHOR_NAME,
+		expect(conversation).toMatchObject({ name: "lantern-house", revision: 0, playable: true });
+		expect(messages.map((message) => message.position)).toEqual([1, 2, 3]);
+		expect(messages.map((message) => message.author)).toEqual([
+			{ participantId: cast[0]?.id, capturedName: "Writer", inCast: true },
+			{ participantId: cast[1]?.id, capturedName: "Rulership", inCast: true },
+			{ participantId: cast[2]?.id, capturedName: UNKNOWN_IMPORTED_AUTHOR_NAME, inCast: true },
 		]);
-		expect(conversation.cast.map((participant) => participant.position)).toEqual([
-			1, 2, 3,
-		]);
-		for (const participant of conversation.cast) {
-			expect(participant.prompt).toEqual({
-				systemInstruction: "",
-				identity: "",
-				appearance: "",
-				scenario: "",
-				exampleDialogue: "",
-				postHistoryInstruction: "",
-			});
-			expect(participant.openings).toEqual([]);
-			expect(participant.sourceCharacterId).toBeNull();
-		}
-
-		// Deterministic Control by first resolved appearance: Writer human,
-		// Rulership model, the blank-resolved Participant unseated.
-		const [writer, rulership, blankAuthor] = conversation.cast;
-		expect(writer).toBeDefined();
-		expect(rulership).toBeDefined();
-		expect(blankAuthor).toBeDefined();
-		expect(conversation.control).toEqual({
-			humanParticipantId: writer?.id ?? null,
-			modelParticipantId: rulership?.id ?? null,
-		});
-		expect(conversation.controlValidity).toEqual({
-			valid: true,
-			reason: null,
-		});
-		expect(conversation.playable).toBe(true);
-		expect(conversation.capabilities).toEqual({
-			compose: { available: true, reason: null },
-			generate: { available: true, reason: null },
-			swipe: { available: true, reason: null },
-		});
-
-		expect(requireSnapshot(database, conversation.id).messages).toHaveLength(3);
-		expect(requireSnapshot(database, conversation.id).messages.map((message) => message.position)).toEqual([
-			1, 2, 3,
-		]);
-		expect(
-			requireSnapshot(database, conversation.id).messages[2]?.variants[0]?.content,
-		).toBe("🔥 Wait, truly?");
-
-		// Every imported Message receives a native immutable Author Stamp
-		// for its resolved Participant while the exact raw source author
-		// value — including the blank string — stays untouched in the
-		// message-level preserved data.
-		expect(
-			requireSnapshot(database, conversation.id).messages.map((message) => message.author?.participantId),
-		).toEqual([writer?.id, rulership?.id, blankAuthor?.id]);
-		expect(
-			requireSnapshot(database, conversation.id).messages.map((message) => message.author?.capturedName),
-		).toEqual(["Writer", "Rulership", UNKNOWN_IMPORTED_AUTHOR_NAME]);
-		expect(
-			requireSnapshot(database, conversation.id).messages.every((message) => message.author?.inCast === true),
-		).toBe(true);
-		expect(requireSnapshot(database, conversation.id).messages[0]?.data).toEqual([
-			{
-				namespace: IMPORT_NAMESPACE,
-				key: IMPORT_KEYS.authorName,
-				value: "Writer",
-			},
-		]);
-		expect(requireSnapshot(database, conversation.id).messages[2]?.data).toEqual([
-			{
-				namespace: IMPORT_NAMESPACE,
-				key: IMPORT_KEYS.authorName,
-				value: "",
-			},
-		]);
-
-		// No historical Control context is ever fabricated for imported
-		// Messages: deterministic current Control does not reinterpret
-		// history, so targeted Swipe reports the missing-context denial.
-		expect(
-			requireSnapshot(database, conversation.id).messages.every((message) => message.historicalContext === null),
-		).toBe(true);
-		expect(
-			requireSnapshot(database, conversation.id).messages.every(
-				(message) =>
-					message.swipe.eligible === false &&
-					message.swipe.reason === "missing-historical-context",
-			),
-		).toBe(true);
-
-		// Chat and activity times are derived from the mapped timestamps.
-		const chatRow = drizzle(database)
-			.select()
-			.from(conversationTable)
-			.where(eq(conversationTable.id, conversation.id))
-			.get();
-		expect(chatRow?.creation_time).toBe("2026-08-08T12:53:02.008Z");
-		expect(chatRow?.last_message_time).toBe("2026-08-08T13:10:00.000Z");
-
-		// The canonical archive round-trips the entire parsed source.
-		const archive = findEntry(
-			requireSnapshot(database, conversation.id).data,
-			ARCHIVE_NAMESPACE,
-			ARCHIVE_KEY,
+		expect(messages[2]?.data).toContainEqual({ namespace: IMPORT_NAMESPACE, key: IMPORT_KEYS.authorName, value: "" });
+		expect(messages.map((message) => message.historicalContext)).toEqual([null, null, null]);
+		expect(messages.map((message) => message.swipe)).toEqual(
+			Array.from({ length: 3 }, () => ({ eligible: false, reason: "missing-historical-context" })),
 		);
-		expect(JSON.parse(archive?.value ?? "")).toEqual({
-			header,
-			messages: [first, second, blankName],
+		expect(chatRow(id)).toMatchObject({
+			creation_time: "2026-08-08T12:53:02.008Z",
+			last_message_time: "2026-08-08T13:10:00.000Z",
 		});
-
-		// Source identity, counts, importer version, warnings, and the JSON
-		// report remain separate entries in the import namespace.
-		const sha256 = sha256Of([header, first, second, blankName]);
-		expect(
-			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.sha256)
-				?.value,
-		).toBe(sha256);
-		expect(
-			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.integrity)
-				?.value,
-		).toBe("9543f21f-8aab-42c8-92a4-1f6453d4b63c");
-		expect(
-			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.filename)
-				?.value,
-		).toBe("lantern-house.jsonl");
-		expect(
-			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.importerVersion)
-				?.value,
-		).toBe(IMPORTER_VERSION);
-		expect(
-			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.countsMessages)
-				?.value,
-		).toBe("3");
-		expect(
-			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.countsVariants)
-				?.value,
-		).toBe("3");
-		expect(
-			JSON.parse(
-				findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.warnings)
-					?.value ?? "",
-			),
-		).toEqual([
-			"Message at position 3 has a blank captured author name.",
-		]);
-		expect(
-			JSON.parse(
-				findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson)
-					?.value ?? "",
-			),
-		).toEqual(result.report);
-
-		// The result is readable through the public snapshot seam.
-		expect(
-			readConversationSummary(database, conversation.id),
-		).toEqual(conversation);
+		expect(readConversationSummary(database, id)).toEqual(conversation);
 	});
 
-	test("commits a zero-Participant source atomically as an incomplete archive", () => {
-		const path = writeSource([header]);
-		const result = importChat(path);
-		const conversation = result.conversation;
-
-		expect(conversation.cast).toEqual([]);
+	test("commits a zero-Participant source as an incomplete archive without Control rows", async () => {
+		const { conversation } = await importChat([header]);
+		expect(conversation).toMatchObject({
+			cast: [],
+			control: { humanParticipantId: null, modelParticipantId: null },
+			controlValidity: { valid: false, reason: "missing-seat" },
+			playable: false,
+			capabilities: {
+				compose: { available: false, reason: "conversation-not-playable" },
+				generate: { available: false, reason: "conversation-not-playable" },
+				swipe: { available: false, reason: "conversation-not-playable" },
+			},
+		});
 		expect(requireSnapshot(database, conversation.id).messages).toEqual([]);
-		expect(conversation.control).toEqual({
-			humanParticipantId: null,
-			modelParticipantId: null,
-		});
-		expect(conversation.controlValidity).toEqual({
-			valid: false,
-			reason: "missing-seat",
-		});
-		expect(conversation.playable).toBe(false);
-		expect(conversation.capabilities).toEqual({
-			compose: { available: false, reason: "conversation-not-playable" },
-			generate: { available: false, reason: "conversation-not-playable" },
-			swipe: { available: false, reason: "conversation-not-playable" },
-		});
-		// No Control rows are invented for an empty archive.
-		expect(
-			drizzle(database).select().from(conversationControlTable).all().length,
-		).toBe(0);
-		expect(
-			drizzle(database).select().from(participantTable).all().length,
-		).toBe(0);
-
-		// The canonical archive and counts still preserve the source.
-		const archive = findEntry(
-			requireSnapshot(database, conversation.id).data,
-			ARCHIVE_NAMESPACE,
-			ARCHIVE_KEY,
-		);
-		expect(JSON.parse(archive?.value ?? "")).toEqual({
-			header,
-			messages: [],
-		});
-		expect(result.report.counts).toEqual({ messages: 0, variants: 0 });
-		expect(
-			readConversationSummary(database, conversation.id),
-		).toEqual(conversation);
+		expect(drizzle(database).select().from(conversationControlTable).all()).toHaveLength(0);
+		expect(drizzle(database).select().from(participantTable).all()).toHaveLength(0);
 	});
 
-	test("reserves only the human seat for a one-Participant source and commits it incomplete", () => {
-		const path = writeSource([header, first]);
-		const result = importChat(path);
-		const conversation = result.conversation;
-
-		expect(conversation.cast.map((participant) => participant.name)).toEqual([
-			"Writer",
-		]);
-		const writer = conversation.cast[0];
-		expect(writer).toBeDefined();
-		expect(conversation.control).toEqual({
-			humanParticipantId: writer?.id ?? null,
-			modelParticipantId: null,
+	test("reserves only the human seat for a one-Participant source and commits it incomplete", async () => {
+		const { conversation } = await importChat([header, first]);
+		const [writer] = conversation.cast;
+		expect(conversation).toMatchObject({
+			control: { humanParticipantId: writer?.id, modelParticipantId: null },
+			playable: false,
 		});
-		expect(conversation.playable).toBe(false);
-		expect(conversation.capabilities).toEqual({
-			compose: { available: false, reason: "conversation-not-playable" },
-			generate: { available: false, reason: "conversation-not-playable" },
-			swipe: { available: false, reason: "conversation-not-playable" },
+		expect(drizzle(database).select().from(conversationControlTable).all()).toHaveLength(1);
+		const { messages } = requireSnapshot(database, conversation.id);
+		expect(messages).toHaveLength(1);
+		expect(messages[0]).toMatchObject({
+			author: { participantId: writer?.id, capturedName: "Writer", inCast: true },
+			historicalContext: null,
+			swipe: { eligible: false, reason: "conversation-not-playable" },
 		});
-		expect(
-			drizzle(database).select().from(conversationControlTable).all().length,
-		).toBe(1);
-
-		// The preserved history is still readable with its resolved author
-		// stamp; no historical pair is fabricated.
-		expect(requireSnapshot(database, conversation.id).messages).toHaveLength(1);
-		expect(requireSnapshot(database, conversation.id).messages[0]?.author).toEqual({
-			participantId: writer?.id ?? null,
-			capturedName: "Writer",
-			inCast: true,
-		});
-		expect(requireSnapshot(database, conversation.id).messages[0]?.historicalContext).toBeNull();
-		expect(requireSnapshot(database, conversation.id).messages[0]?.variants).toHaveLength(1);
-		expect(requireSnapshot(database, conversation.id).messages[0]?.swipe).toEqual({
-			eligible: false,
-			reason: "conversation-not-playable",
-		});
-
-		// The report promises the preserved single Message.
-		expect(result.report.counts).toEqual({ messages: 1, variants: 1 });
-		expect(
-			readConversationSummary(database, conversation.id),
-		).toEqual(conversation);
 	});
 
-	test("assigns Control by first resolved appearance and ignores role hints", () => {
-		// Rulership (is_user false) appears first and becomes the human
-		// seat; Writer (is_user true) appears second and becomes the model
-		// seat — legacy role hints never drive identity or Control.
-		const path = writeSource([header, second, first]);
-		const { conversation } = importChat(path);
-
-		expect(conversation.cast.map((participant) => participant.name)).toEqual([
-			"Rulership",
-			"Writer",
-		]);
+	test("persists Control in resolved order regardless of source role hints", async () => {
+		const { conversation } = await importChat([header, second, first]);
 		const [rulership, writer] = conversation.cast;
-		expect(rulership).toBeDefined();
-		expect(writer).toBeDefined();
+		expect([rulership?.name, writer?.name]).toEqual(["Rulership", "Writer"]);
 		expect(conversation.control).toEqual({
 			humanParticipantId: rulership?.id ?? null,
 			modelParticipantId: writer?.id ?? null,
 		});
-		expect(conversation.playable).toBe(true);
 	});
 
-	test("keeps later resolved Participants unseated with plain removal eligibility", () => {
+	test("keeps later resolved Participants unseated with removal eligibility", async () => {
 		const records = [
-			{ name: "Alpha", is_user: true, send_date: "2026-08-08T12:00:00.000Z", mes: "a" },
-			{ name: "Beta", is_user: false, send_date: "2026-08-08T12:01:00.000Z", mes: "b" },
-			{ name: "Gamma", is_user: true, send_date: "2026-08-08T12:02:00.000Z", mes: "c" },
-			{ name: "Delta", is_user: false, send_date: "2026-08-08T12:03:00.000Z", mes: "d" },
+			{ ...first, name: "Alpha" },
+			{ ...second, name: "Beta" },
+			{ ...first, name: "Gamma" },
+			{ ...second, name: "Delta" },
 		];
-		const { conversation } = importChat(
-			writeSource([header, ...records]),
-		);
-
-		expect(conversation.cast.map((participant) => participant.name)).toEqual([
-			"Alpha", "Beta", "Gamma", "Delta",
-		]);
+		const { conversation } = await importChat([header, ...records]);
 		const [alpha, beta, gamma, delta] = conversation.cast;
-		expect(alpha).toBeDefined();
-		expect(beta).toBeDefined();
-		expect(gamma).toBeDefined();
-		expect(delta).toBeDefined();
-		// First human, second model, later Participants unseated.
 		expect(conversation.control).toEqual({
 			humanParticipantId: alpha?.id ?? null,
 			modelParticipantId: beta?.id ?? null,
 		});
-		expect(conversation.playable).toBe(true);
-		// The unseated Participants are removable (their own Messages demand
-		// a tombstone) while the seated pair is protected.
 		expect(gamma?.removal).toEqual({
 			eligible: true,
 			reason: null,
@@ -394,226 +135,65 @@ describe("SillyTavern chat import", () => {
 		expect(beta?.removal.eligible).toBe(false);
 	});
 
-	test("collapses duplicate and surrounding-whitespace author names while preserving case", () => {
-		const trailingSpace = {
-			...first,
-			send_date: "2026-08-08T12:54:00.000Z",
-			mes: "same author, spaces around the captured name",
-		};
-		// The source fixture has name " Writer " here: trimming resolves it
-		// to the same group as "Writer" while the exact raw value stays in
-		// the preserved data.
-		trailingSpace.name = " Writer ";
-		const lowerCase = {
-			name: "writer",
-			is_user: false,
-			send_date: "2026-08-08T12:55:00.000Z",
-			mes: "case-preserved separate group",
-		};
-		const { conversation } = importChat(
-			writeSource([header, first, trailingSpace, lowerCase]),
-		);
-
-		expect(conversation.cast.map((participant) => participant.name)).toEqual([
-			"Writer",
-			"writer",
-		]);
+	test("persists one author for whitespace variants and keeps case distinct", async () => {
+		const { conversation } = await importChat([header, first, { ...first, name: " Writer " }, { ...first, name: "writer" }]);
 		const [writer, lowercaseWriter] = conversation.cast;
-		expect(writer).toBeDefined();
-		expect(lowercaseWriter).toBeDefined();
-		expect(conversation.control).toEqual({
-			humanParticipantId: writer?.id ?? null,
-			modelParticipantId: lowercaseWriter?.id ?? null,
-		});
-		// Both "Writer" and " Writer " share one Participant and one stamp;
-		// the lowercase writer is a distinct identity. Each Message keeps its
-		// exact raw source value untouched in the preserved data.
-		expect(
-			requireSnapshot(database, conversation.id).messages.map((message) => message.author?.participantId),
-		).toEqual([writer?.id, writer?.id, lowercaseWriter?.id]);
-		expect(
-			requireSnapshot(database, conversation.id).messages.map((message) => message.data[0]?.value),
-		).toEqual(["Writer", " Writer ", "writer"]);
+		expect(conversation.cast.map((participant) => participant.name)).toEqual(["Writer", "writer"]);
+		const { messages } = requireSnapshot(database, conversation.id);
+		expect(messages.map((message) => message.author?.participantId)).toEqual([writer?.id, writer?.id, lowercaseWriter?.id]);
+		expect(messages.map((message) => message.data[0]?.value)).toEqual(["Writer", " Writer ", "writer"]);
 	});
 
-	test("collapses all blank source author names into one shared Participant", () => {
-		const anotherBlank = {
-			name: "",
-			is_user: false,
-			send_date: "2026-08-08T13:11:00.000Z",
-			mes: "also missing an author name",
-		};
-		const { conversation, report } = importChat(
-			writeSource([header, blankName, anotherBlank]),
-		);
-
-		expect(conversation.cast.map((participant) => participant.name)).toEqual([
-			UNKNOWN_IMPORTED_AUTHOR_NAME,
-		]);
-		const blankAuthor = conversation.cast[0];
-		expect(blankAuthor).toBeDefined();
-		// Blank values resolve to one shared Participant; the native name is
-		// nonblank while each Message keeps its raw empty value.
-		expect(
-			requireSnapshot(database, conversation.id).messages.every(
-				(message) => message.author?.participantId === blankAuthor?.id,
-			),
-		).toBe(true);
-		expect(
-			requireSnapshot(database, conversation.id).messages.map((message) => message.data[0]?.value),
-		).toEqual(["", ""]);
-		expect(requireSnapshot(database, conversation.id).messages[0]?.author?.capturedName).toBe(
-			UNKNOWN_IMPORTED_AUTHOR_NAME,
-		);
-		expect(report.warnings).toHaveLength(2);
-		expect(report.warnings[0]).toContain("position 1");
-		expect(report.warnings[1]).toContain("position 2");
+	test("persists one shared Participant for blank authors and keeps the raw values", async () => {
+		const { conversation } = await importChat([header, blankName, { ...blankName, mes: "Another blank author." }]);
+		const [participant] = conversation.cast;
+		expect(conversation.cast.map((entry) => entry.name)).toEqual([UNKNOWN_IMPORTED_AUTHOR_NAME]);
+		const { messages } = requireSnapshot(database, conversation.id);
+		expect(messages.map((message) => message.author?.participantId)).toEqual([participant?.id, participant?.id]);
+		expect(messages.map((message) => message.data[0]?.value)).toEqual(["", ""]);
 	});
 
-	test("keeps a blank group and a literal Blank Author group as distinct Participants", () => {
-		const literalBlankAuthor = {
-			name: "Blank Author",
-			is_user: false,
-			send_date: "2026-08-08T13:12:00.000Z",
-			mes: "a real captured author named like the resolved fallback",
-		};
-		const { conversation, report } = importChat(
-			writeSource([header, blankName, literalBlankAuthor]),
-		);
-
-		// The blank group (resolved key null) and the literal "Blank Author"
-		// group (key "Blank Author") never collapse into one identity: both
-		// stay separate native Participants with distinct names — a name is
-		// never an identity key, and the placeholder is just another name.
-		expect(conversation.cast.map((participant) => participant.name)).toEqual([
-			UNKNOWN_IMPORTED_AUTHOR_NAME,
-			"Blank Author",
-		]);
-		expect(
-			conversation.cast.map((participant) => participant.duplicateLabel),
-		).toEqual([UNKNOWN_IMPORTED_AUTHOR_NAME, "Blank Author"]);
+	test("keeps a blank group and a literal Blank Author group as distinct Participants", async () => {
+		const { conversation } = await importChat([header, blankName, { ...second, name: "Blank Author" }]);
 		const [blankGroup, literalGroup] = conversation.cast;
+		expect(conversation.cast.map((participant) => participant.duplicateLabel)).toEqual([UNKNOWN_IMPORTED_AUTHOR_NAME, "Blank Author"]);
 		expect(blankGroup?.id).not.toBe(literalGroup?.id);
-		expect(requireSnapshot(database, conversation.id).messages[0]?.author?.participantId).toBe(blankGroup?.id);
-		expect(requireSnapshot(database, conversation.id).messages[1]?.author?.participantId).toBe(literalGroup?.id);
-		// Each Message keeps its exact raw source author value untouched.
-		expect(
-			requireSnapshot(database, conversation.id).messages.map((message) => message.data[0]?.value),
-		).toEqual(["", "Blank Author"]);
-		expect(requireSnapshot(database, conversation.id).messages[0]?.author?.inCast).toBe(true);
-		expect(requireSnapshot(database, conversation.id).messages[1]?.author?.inCast).toBe(true);
-		expect(report.warnings).toEqual([
-			"Message at position 1 has a blank captured author name.",
-		]);
+		const { messages } = requireSnapshot(database, conversation.id);
+		expect(messages.map((message) => message.author?.participantId)).toEqual([blankGroup?.id, literalGroup?.id]);
+		expect(messages.map((message) => message.data[0]?.value)).toEqual(["", "Blank Author"]);
 	});
 
-	test("allows re-importing the same source as an independent Chat with a warning", () => {
-		const path = writeSource([header, first, second]);
-		const firstImport = importChat(path);
-		const secondImport = importChat(path);
+	test("commits a confirmed exact duplicate as an independent Chat with a warning", async () => {
+		const { conversation: prior, receipt: priorReceipt } = await importChat([header, first, second]);
+		const { conversation, receipt } = await importChat([header, first, second]);
 
-		expect(secondImport.conversation.id).not.toBe(firstImport.conversation.id);
-		expect(secondImport.duplicateChatIds).toEqual([firstImport.conversation.id]);
-		expect(secondImport.report.warnings).toEqual([
-			`Source was already imported as chat ${firstImport.conversation.id} ("lantern-house"); this import creates an independent copy.`,
-		]);
-		expect(firstImport.report.warnings).toEqual([]);
-		expect(
-			findEntry(
-				requireSnapshot(database, firstImport.conversation.id).data,
-				IMPORT_NAMESPACE,
-				IMPORT_KEYS.sha256,
-			)?.value,
-		).toBe(
-			findEntry(
-				requireSnapshot(database, secondImport.conversation.id).data,
-				IMPORT_NAMESPACE,
-				IMPORT_KEYS.sha256,
-			)?.value,
-		);
+		expect(conversation.id).not.toBe(prior.id);
+		expect(receipt.duplicates.exact).toEqual([{ id: prior.id, name: prior.name }]);
+		const warning = `Source was already imported as chat ${prior.id} ("lantern-house"); this import creates an independent copy.`;
+		expect(receipt.warnings).toEqual([warning]);
+		expect(priorReceipt.warnings).toEqual([]);
+		const { data } = requireSnapshot(database, conversation.id);
+		expect(data).toContainEqual({ namespace: IMPORT_NAMESPACE, key: IMPORT_KEYS.warnings, value: JSON.stringify([warning]) });
 	});
 
-	test("imports Swipes end to end with exact selection and derived chronology", () => {
-		const path = writeSource([header, swiped, provenancedPayload]);
-		const result = importChat(path);
-		const conversation = result.conversation;
-
-		// 2 Messages; the Swipe record owns 4 Variants in source order and
-		// the payload-only record owns 1.
-		expect(result.report.counts).toEqual({ messages: 2, variants: 5 });
-		expect(requireSnapshot(database, conversation.id).messages).toHaveLength(2);
-
-		const [swipeMessage, payloadMessage] = requireSnapshot(database, conversation.id).messages;
-		expect(swipeMessage?.variants.map((variant) => variant.content)).toEqual([
-			"First alternative text",
-			"Second alternative, still saved",
-			"Second alternative, still saved",
-			"",
-		]);
-		expect(
-			swipeMessage?.variants.map((variant) => variant.selected),
-		).toEqual([false, true, false, false]);
-		// Message time is the earliest owned Variant time.
-		expect(swipeMessage?.timestamp).toBe("2026-08-08T13:04:50.000Z");
-		expect(payloadMessage?.timestamp).toBe("2026-08-08T13:30:00.000Z");
-
-		// Promoted provenance persists as Variant-scoped data rows. The
-		// snapshot orders scoped data by namespace and key.
-		const expectedFirstVariantData = [
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.swipeIndex, value: "0" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.api, value: "custom" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.model, value: "deepseek-v4-flash" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationId, value: "1786194665138" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationStarted, value: "2026-08-08T13:04:48.000Z" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationFinished, value: "2026-08-08T13:04:49.500Z" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.generationDuration, value: "1500" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.timeToFirstToken, value: "1235" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.finishReason, value: "stop" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningDuration, value: "25407" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningType, value: "model" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningText, value: "reasoning for the first alternative" },
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.reasoningSignature, value: "signature-abc" },
-		].sort((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
-		expect(swipeMessage?.variants[0]?.data).toEqual(expectedFirstVariantData);
-		expect(
-			swipeMessage?.variants[3]?.data,
-		).toEqual([
-			{ namespace: IMPORT_NAMESPACE, key: VARIANT_KEYS.swipeIndex, value: "3" },
-		]);
+	test("persists imported Swipe selection, scoped provenance, and Chat chronology", async () => {
+		const { conversation } = await importChat([header, swiped, provenancedPayload]);
+		const { messages } = requireSnapshot(database, conversation.id);
+		const [swipeMessage, payloadMessage] = messages;
+		expect(swipeMessage?.variants.map((variant) => variant.selected)).toEqual([false, true, false, false]);
+		expect(swipeMessage?.variants[0]?.data).toContainEqual({
+			namespace: IMPORT_NAMESPACE,
+			key: VARIANT_KEYS.reasoningSignature,
+			value: "signature-abc",
+		});
 		expect(payloadMessage?.variants[0]?.data).toContainEqual({
 			namespace: IMPORT_NAMESPACE,
 			key: VARIANT_KEYS.reasoningSignature,
 			value: "signature-row",
 		});
-
-		// Chat creation time is the earliest Message time; activity time is
-		// the latest timestamp across every Variant.
-		const chatRow = drizzle(database)
-			.select()
-			.from(conversationTable)
-			.where(eq(conversationTable.id, conversation.id))
-			.get();
-		expect(chatRow?.creation_time).toBe("2026-08-08T13:04:50.000Z");
-		expect(chatRow?.last_message_time).toBe("2026-08-08T13:30:00.000Z");
-
-		// The canonical archive still holds the complete parsed source,
-		// including the duplicated top-level assistant payload.
-		const archive = findEntry(
-			requireSnapshot(database, conversation.id).data,
-			ARCHIVE_NAMESPACE,
-			ARCHIVE_KEY,
-		);
-		expect(JSON.parse(archive?.value ?? "")).toEqual({
-			header,
-			messages: [swiped, provenancedPayload],
+		expect(chatRow(conversation.id)).toMatchObject({
+			creation_time: "2026-08-08T13:04:50.000Z",
+			last_message_time: "2026-08-08T13:30:00.000Z",
 		});
-
-		expect(
-			findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.countsVariants)
-				?.value,
-		).toBe("5");
-		expect(
-			readConversationSummary(database, conversation.id),
-		).toEqual(conversation);
 	});
 });

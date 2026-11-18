@@ -1,9 +1,6 @@
 // @approved
-//  Canonical Import Projection: the pure source-to-native derivation shared
-// by the developer import and the Staged Import. It owns author ownership,
-// Message stamping, Control derivation, report/data entries, and warnings;
-// the paths that own staging, Profile resolution, and artifact storage keep
-// their concerns out of it.
+//  The Staged Import projection maps the confirmed Participant plan onto
+// Messages and derives Control, report entries, and duplicate warnings.
 import type {
 	ConversationControlSeed,
 	ConversationCreationMessage,
@@ -62,9 +59,7 @@ interface ImportAuthorGroup {
 }
 
 // @approved
-//  Both import paths group on this one primitive; whitespace variants and
-// blank names collapse into one group each, and nothing is case-folded or
-// aliased.
+//  The preview groups captured names after trimming, preserving case and Unicode.
 export const groupImportedAuthors = (
 	authors: readonly SillyTavernExactAuthor[],
 ): ImportAuthorGroup[] => {
@@ -107,29 +102,6 @@ export interface ImportProjectionResolution {
 	//  1-based record position → zero-based Participant index, assigned once.
 	messageOwners: ReadonlyMap<number, number>;
 }
-
-// @approved
-//  The developer import's implicit author-resolution rules: one Participant
-// per trimmed group in first-appearance order, with the exact
-// Message-to-Participant mapping the command always committed. The Staged
-// Import never calls this.
-export const defaultImportResolution = (
-	decoded: Pick<SillyTavernDecodedImportSource, "authors">,
-): ImportProjectionResolution => {
-	const groups = groupImportedAuthors(decoded.authors);
-	const messageOwners = new Map<number, number>();
-	groups.forEach((group, index) => {
-		for (const position of group.positions) {
-			messageOwners.set(position, index);
-		}
-	});
-	return {
-		participants: groups.map((group) => ({
-			definition: emptyImportedDefinition(group.key ?? UNKNOWN_IMPORTED_AUTHOR_NAME),
-		})),
-		messageOwners,
-	};
-};
 
 // @approved
 //  One copy warning per matching prior Chat. Exact matches (raw SHA-256) and
@@ -223,7 +195,7 @@ const noteSetups = (note: string) => note === "" ? [] : [...serverBoxes()].flatM
 // @approved
 //  Maps decoded source and one resolution into native creation data,
 // stamping every retained Message and deriving Control from the count.
-// Every Message must be assigned; the resolutions guarantee it.
+// The confirmed plan assigns every Message to a Participant.
 export function projectImport(
 	decoded: SillyTavernDecodedImportSource,
 	resolution: ImportProjectionResolution,
@@ -239,9 +211,7 @@ export function projectImport(
 		// so the author row for this Message always exists.
 		const author = decoded.authors[index] as SillyTavernExactAuthor;
 		// @approved
-		//  SAFETY: every resolution assigns every retained position to
-		// exactly one Participant (grouping for the default policy, plan
-		// validation for the staged path).
+		//  SAFETY: plan validation assigns every retained position to exactly one Participant.
 		const owner = resolution.messageOwners.get(author.position) as number;
 		return { ...message, authorParticipantIndex: owner };
 	});

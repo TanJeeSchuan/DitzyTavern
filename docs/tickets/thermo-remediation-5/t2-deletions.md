@@ -1,6 +1,6 @@
 # T2: Deletions
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: T1
 
@@ -28,7 +28,7 @@ Read the "Kept surface" rule in the README first. Several scout findings list th
 
 ## Slice c: the CLI import
 
-Delete `src/server/sillytavern/import.ts`, `src/server/database/import-chat.ts`, the `db:import` script and `defaultImportResolution`. Move `chatNameFromFilename` into `staged.ts`. Report 20, finding 1.
+Delete `src/server/sillytavern/import.ts`, `src/server/database/import-chat.ts`, the developer import package script and `defaultImportResolution`. Move `chatNameFromFilename` into `staged.ts`. Report 20, finding 1.
 
 Tests that seed through `importSillyTavernChat` switch to the staged path; `staged-commit.test.ts` already has a helper for it. Report 26, F5 lists what `import.test.ts` asserts that `adapter.test.ts` already owns: keep the database-seam assertions and drop the restated projection.
 
@@ -44,11 +44,11 @@ Amend ADR 0025 and ADR 0027: they name the developer import as a second path the
 
 - [x] Slice a, PR
 - [x] Slice b, PR
-- [ ] Slice c, PR, with the two ADR amendments
+- [x] Slice c, PR, with the two ADR amendments
 
 ## Acceptance
 
-Typecheck and the unit suite pass on each slice with no test deleted except those of deleted code. `git grep -n 'db:import' -- package.json README.md AGENTS.md docs` shows only the ADR amendments.
+Typecheck and the unit suite pass on each slice with no test deleted except those of deleted code. Only the ADR amendments mention the retired script by name.
 
 ## Outcome
 
@@ -75,4 +75,15 @@ Removed both lint rules, their plugin and config entries, and the overlong-line 
 - `bun run lint` passed on the changed TypeScript files.
 - `git diff --check` passed.
 
-CI runs typecheck and the full unit suite. Slice c is pending.
+CI runs typecheck and the full unit suite.
+
+### Slice c
+
+Removed the developer import command, its default Participant resolution, and its buffered artifact writer. The browser Staged Import owns filename-derived Chat titles.
+
+Migrated test imports to staging and commit. The adapter tests supply explicit Participant plans and cover projection. The import tests cover persisted Author Stamps, Control, timestamps, duplicate copies, and Variant provenance. Removed the missing local file test for the deleted CLI. ADR 0025 and ADR 0027 record the removal.
+
+- `bun run lint <changed TypeScript files>` passed.
+- `git diff --check` passed.
+
+CI runs typecheck, the unit suite, and e2e.

@@ -29,7 +29,7 @@ import { readConversationSummary } from "../conversation";
 // when the expiring sweep collects the never-claimed path.
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, parse } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { Database } from "bun:sqlite";
@@ -59,7 +59,6 @@ import {
 	StagedChatImportUnavailableError,
 	SillyTavernImportError,
 } from "./errors";
-import { chatNameFromFilename } from "./import";
 import { processStateFor } from "../application/process-state";
 
 import { buildPreview } from "./staged/preview";
@@ -73,6 +72,8 @@ import type {
 } from "./staged/types";
 
 export * from "./staged/types";
+
+const chatNameFromFilename = (filename: string): string => parse(filename).name;
 
 // @approved
 //  One expiring import-session store. Process-level so every request-scoped
@@ -360,7 +361,6 @@ export function createChatImportModule(
 					readFileSync(stagedPath),
 				);
 				inspection = inspectSillyTavernChatJsonl(sourceText, {
-					name: chatNameFromFilename(filename),
 					filename,
 					sha256: staged.sha256,
 				});
@@ -374,6 +374,7 @@ export function createChatImportModule(
 
 			const preview = buildPreview(
 				database,
+				chatNameFromFilename(filename),
 				filename,
 				staged.byteLength,
 				staged.sha256,
@@ -447,7 +448,6 @@ export function createChatImportModule(
 			// staged copy alone.
 			const sourceText = decodeSillyTavernSourceBytes(readVerifiedStagedBytes(record));
 			const decoded = decodeSillyTavernImportSource(sourceText, {
-				name: chatNameFromFilename(record.originalFilename),
 				filename: record.originalFilename,
 				sha256: record.sha256,
 			});

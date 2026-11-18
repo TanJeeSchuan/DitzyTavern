@@ -7,7 +7,6 @@ import type {
 	SillyTavernChatInspection,
 	SillyTavernExactAuthor,
 } from "../adapter";
-import { chatNameFromFilename } from "../import";
 import { findPriorImportsBySource } from "../prior-imports";
 import {
 	groupImportedAuthors,
@@ -109,6 +108,7 @@ const buildGroups = (
 
 export const buildPreview = (
 	database: Database,
+	title: string,
 	originalFilename: string,
 	byteLength: number,
 	sha256: string,
@@ -117,7 +117,7 @@ export const buildPreview = (
 	const characters = createCharacterLibraryModule(database).list();
 	const matches = findPriorImportsBySource(database, inspection.report.source);
 	return {
-		title: chatNameFromFilename(originalFilename),
+		title,
 		originalFilename,
 		sha256,
 		byteLength,

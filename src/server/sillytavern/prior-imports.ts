@@ -1,6 +1,6 @@
 // @approved
-//  Prior-import duplicate classification shared by the developer import path
-// and the staged preview. A matching raw-byte SHA-256 means an exact
+//  Prior-import duplicate classification for the staged preview and Import Details.
+// A matching raw-byte SHA-256 means an exact
 // duplicate of the selected source; a match only on the source-declared
 // integrity (which remains advisory, never a verified content digest) is a
 // related source. Both kinds are presented as matching prior imports, but
