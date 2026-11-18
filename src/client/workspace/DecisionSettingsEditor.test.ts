@@ -18,7 +18,7 @@ test("a save that lost to a change elsewhere does not overwrite it on the next s
 		server = settings(server.revision + 1, decisionModel);
 		return { outcome: "available" as const, value: { settings: server } };
 	};
-	const hook = await renderHook(() => useSettingsDraft("Test Settings", load, apply), new QueryClient());
+	const hook = await renderHook(() => useSettingsDraft<Settings>("Test Settings", load, apply), new QueryClient());
 	await flushHook();
 	await hook.act(async () => { hook.current.update({ decisionModel: "mine" }); });
 	server = settings(2, "theirs");
@@ -39,7 +39,7 @@ test("Load saved replaces a conflicted draft with the settings it lost to", asyn
 	let server = settings(1, "start");
 	const load = () => Promise.resolve(server);
 	const apply = async ({ expectedRevision }: { expectedRevision: number }) => ({ outcome: "conflict" as const, reason: "stale-revision" as const, expectedRevision, actualRevision: server.revision, current: server });
-	const hook = await renderHook(() => useSettingsDraft("Test Settings", load, apply), new QueryClient());
+	const hook = await renderHook(() => useSettingsDraft<Settings>("Test Settings", load, apply), new QueryClient());
 	await flushHook();
 	await hook.act(async () => { hook.current.update({ decisionModel: "mine" }); });
 	server = settings(2, "theirs");
@@ -56,7 +56,7 @@ test("the settings a summary reads follow a successful save", async () => {
 		server = settings(expectedRevision + 1, decisionModel);
 		return { outcome: "available" as const, value: { settings: server } };
 	};
-	const hook = await renderHook(() => useSettingsDraft("Test Settings", load, apply), new QueryClient());
+	const hook = await renderHook(() => useSettingsDraft<Settings>("Test Settings", load, apply), new QueryClient());
 	await flushHook();
 	await hook.act(async () => { hook.current.update({ decisionModel: "mine" }); });
 	await hook.act(async () => { await hook.current.save(); });
