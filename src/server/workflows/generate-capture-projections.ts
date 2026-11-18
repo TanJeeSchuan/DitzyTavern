@@ -3,7 +3,7 @@ import type { CapturedGeneration } from "./generate-capture";
 import type { GenerationAttemptInput } from "./generate-server-owned";
 import type { GenerationAcceptanceCapture, ConversationDataEntry } from "../conversation";
 import type { GenerationPlan } from "../generation-plan";
-import type { PromptBudgetResult, PromptPlan } from "../prompt-compiler";
+import type { PromptBudgetResult } from "../prompt-compiler";
 import type { GenerationBudgetInspection } from "../../shared/contract/conversation-schema";
 import { projectModelClientGenerationSettings, type ModelClientConnectionSnapshot, type ModelClientGenerationInput } from "../model-client";
 import {
@@ -12,7 +12,7 @@ import {
 } from "../../shared/contract/generation-provenance";
 
 
-export const generationProvenanceEntry = (
+const generationProvenanceEntry = (
 	plan: GenerationPlan,
 	connection: ModelClientConnectionSnapshot | null,
 ): ConversationDataEntry => {
@@ -48,60 +48,41 @@ export const generationProvenanceEntry = (
 
 /** @approved Project the captured plan and participants into Conversation's acceptance input. */
 export function capturedAcceptanceFields(
-	capture: CapturedGeneration,
-	input: { conversationId: number; timestamp: string },
+	{ preparation, plan, macroWrites }: CapturedGeneration,
+	timestamp: string,
 ): GenerationAcceptanceCapture {
+	const { human, model } = preparation.derivation;
 	return {
-		seed: capture.preparation.seed,
-		boxRecords: capture.preparation.boxRecords,
-		conversationId: input.conversationId,
-		timestamp: input.timestamp,
-		humanParticipantId: capture.control.humanParticipantId,
-		modelParticipantId: capture.control.modelParticipantId,
-		capturedHumanName: capture.humanParticipant.name,
-		capturedModelName: capture.author.capturedName,
-		modelId: capture.plan.effectiveSettings.modelId,
-		promptPlan: capture.plan.promptPlan,
-		promptInspection: promptInspectionOf(capture.plan.budget),
-		loreActivation: capture.plan.loreActivation,
-		boxTraces: capture.plan.boxTraces,
-		provenance: capture.provenance,
-		macro: { presetId: capture.macroPresetId, writes: capture.macroWrites },
+		seed: preparation.seed,
+		boxRecords: preparation.boxRecords,
+		conversationId: preparation.conversationId,
+		timestamp,
+		humanParticipantId: human.id,
+		modelParticipantId: model.id,
+		capturedHumanName: human.name,
+		capturedModelName: model.name,
+		modelId: plan.effectiveSettings.modelId,
+		promptPlan: plan.promptPlan,
+		promptInspection: promptInspectionOf(plan.budget),
+		loreActivation: plan.loreActivation,
+		boxTraces: plan.boxTraces,
+		provenance: generationProvenanceEntry(plan, preparation.connection),
+		macro: { presetId: preparation.recipe.id, writes: macroWrites },
 	};
 }
 
-/** @approved Build the common provider-neutral request for an accepted Generation.
- * The assistant prefill of a Continuation is request intent, derived from the
- * compiled plan instead of retained separately: the compiler protects the
- * prefixed model entry for an assistant-prefill Continuation, so the plan's
- * final model history block is the prefix and the plan's own intent carries
- * the suffix. */
 export function modelRequestFor(
-	capture: CapturedGeneration,
+	{ preparation, plan }: CapturedGeneration,
 	input: Pick<GenerationAttemptInput, "signal">,
 ): ModelClientGenerationInput {
-	const continuationIntent = capture.plan.promptPlan.intent?.type === "continuation"
-		? capture.plan.promptPlan.intent
-		: undefined;
 	return {
-		promptPlan: capture.plan.promptPlan,
-		modelId: capture.plan.effectiveSettings.modelId,
-		generationSettings: projectModelClientGenerationSettings(capture.plan.effectiveSettings),
-		connection: capture.connection,
-		assistantPrefill: continuationIntent?.strategy === "assistant-prefill"
-			? { prefix: finalModelHistoryContent(capture.plan.promptPlan), suffix: continuationIntent.suffix }
-			: undefined,
+		promptPlan: plan.promptPlan,
+		modelId: plan.effectiveSettings.modelId,
+		generationSettings: projectModelClientGenerationSettings(plan.effectiveSettings),
+		connection: preparation.connection,
 		signal: input.signal,
 	};
 }
-
-const finalModelHistoryContent = (plan: PromptPlan): string => {
-	let content = "";
-	for (const block of plan.blocks) {
-		if (block.kind === "history" && block.role === "model") content = block.content;
-	}
-	return content;
-};
 
 // @approved
 //  Active inspection keeps the exact budget decision made at Generation

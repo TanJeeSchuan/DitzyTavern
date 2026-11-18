@@ -238,16 +238,17 @@ describe("OpenAI Compatible Model Client", () => {
 					blocks: [
 						{ kind: "system-instruction", role: "system", content: "System" },
 						{ kind: "history", speakerName: "Maren", content: "Previous model text.", role: "model" },
+						{ kind: "post-history-instruction", role: "human", content: "Keep writing." },
 					],
 					warnings: [], images: [],
 					intent: { type: "continuation", strategy: "assistant-prefill", suffix },
 				},
-				assistantPrefill: { prefix: "Previous model text.", suffix },
 				modelId: "local-model",
 				generationSettings: settings,
 			});
 			expect(body?.messages).toEqual([
 				{ role: "system", content: "System" },
+				{ role: "user", content: "Keep writing." },
 				{ role: "assistant", content: `Previous model text.${suffix}` },
 			]);
 		}

@@ -72,7 +72,7 @@ const readable = (message: WireMessage) => ({
 });
 
 const sentTo = async (
-	input: Pick<ModelClientGenerationInput, "promptPlan" | "assistantPrefill">,
+	input: Pick<ModelClientGenerationInput, "promptPlan">,
 	options: { textOnlyModels?: string[]; loadable?: boolean } = {},
 ) => {
 	let calls = 0;

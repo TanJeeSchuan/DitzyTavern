@@ -63,13 +63,13 @@ const sendPreview = async (
 		content: options.content ?? "Draft",
 		tokenEstimator: options.tokenEstimator,
 	});
-	if (preview.capture.target.kind !== "send") throw new Error("Expected a Send preview.");
+	if (preview.capture.preparation.target.kind !== "send") throw new Error("Expected a Send preview.");
 	return preview.capture;
 };
 
 const continuationPreview = async (database: Database, conversationId: number) => {
 	const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, kind: "continuation" });
-	if (preview.capture.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
+	if (preview.capture.preparation.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
 	return preview.capture;
 };
 
@@ -110,8 +110,10 @@ describe("Generation runtime behavior", () => {
 		const capture = await sendPreview(database, conversationId);
 		const plan = capture.plan.promptPlan;
 
-		expect(capture.humanParticipant).toEqual({ id: humanId, name: "Writer" });
-		expect(capture.author).toEqual({ participantId: modelId, capturedName: "Maren Voss" });
+		expect(capture.preparation.derivation).toMatchObject({
+			human: { id: humanId, name: "Writer" },
+			model: { id: modelId, name: "Maren Voss" },
+		});
 		expect(plan.blocks.map((block) => block.kind)).toEqual([
 			"system-instruction",
 			"identity",

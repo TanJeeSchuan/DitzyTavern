@@ -1,6 +1,5 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation";
-import { effectiveGenerationSettingsFor } from "../generation-plan";
 import type { PreparationSnapshot } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import type { SemanticSettingsSnapshot } from "../lorebook/semantic";
@@ -37,7 +36,6 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 	return {
 		seed: "preview-seed",
 		target: { kind: "send", content: "", reuseHumanMessageId: undefined },
-		scanMessages: [],
 		conversationId: 1,
 		boxes: [],
 		boxWarnings: [],
@@ -49,13 +47,8 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			model: participant(2, "Maren"),
 			context: [],
 		},
-		participation: {
-			messages: [],
-			control: { humanParticipantId: 1, modelParticipantId: 2 },
-		},
 		settings,
 		pendingHumanText: undefined,
-		effectiveSettings: effectiveGenerationSettingsFor(settings, undefined, null),
 		recipe: { id: 1, name: "Default", slots: [] },
 		connection: null,
 		macroState: new Map<string, never>(),

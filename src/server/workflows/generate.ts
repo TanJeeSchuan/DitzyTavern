@@ -18,13 +18,13 @@ import {
 	type ServerOwnedGeneration,
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
-import { withGenerationBoxOperations, captureGeneration, capturedAcceptanceFields, modelRequestFor } from "./generate-capture";
+import { withGenerationBoxOperations, captureGeneration } from "./generate-capture";
+import { capturedAcceptanceFields, modelRequestFor } from "./generate-capture-projections";
 import { consumeGenerationPreview, captureGenerationPreview, type GenerationPreviewAcceptance } from "./generation-preview";
 import { assertGenerationPlan } from "../generation-plan";
 import type { GenerationTarget } from "../../shared/contract/conversation-schema";
 
 export type { GenerationAttemptInput, ServerOwnedGenerationControl, ServerOwnedGeneration, ServerOwnedGenerationCallbacks } from "./generate-server-owned";
-export type { ParticipantPreview } from "./generate-capture";
 
 export interface GenerationInput extends GenerationAttemptInput {
 	readonly target: GenerationTarget;
@@ -45,9 +45,9 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	generationRuntimeFor(database).assertAccepting();
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
-	const { target } = capture;
+	const { target } = capture.preparation;
 	const acceptanceTarget = target.kind === "sibling" ? target : { ...target, expectedRevision: revision };
-	const accepted = acceptGeneration(database, capturedAcceptanceFields(capture, { conversationId: input.conversationId, timestamp }), acceptanceTarget);
+	const accepted = acceptGeneration(database, capturedAcceptanceFields(capture, timestamp), acceptanceTarget);
 	if (input.preview !== undefined) consumeGenerationPreview(database, input.preview.record);
 	try {
 		await input.onAccepted?.(accepted);
@@ -66,7 +66,7 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 				content: outcome.content,
 				reasoning: outcome.reasoning,
 				data: [
-					...(capture.target.kind === "continuation" ? [toVariantDataEntry(variantDataCodecs.intent, variantDataCodecs.intent.encode(capture.target.intent))] : []),
+					...(target.kind === "continuation" ? [toVariantDataEntry(variantDataCodecs.intent, variantDataCodecs.intent.encode(target.intent))] : []),
 					...generationOutcomeData(outcome),
 				],
 			});

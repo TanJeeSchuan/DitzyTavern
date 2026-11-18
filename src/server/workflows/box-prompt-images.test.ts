@@ -11,7 +11,8 @@ import { uploadImage } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
 import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
-import { captureGeneration, modelRequestFor, withGenerationBoxOperations } from "./generate-capture";
+import { toMessages } from "../model-client/chat-messages";
+import { captureGeneration, withGenerationBoxOperations } from "./generate-capture";
 import { captureGenerationPreview, createGenerationPreviewAsync } from "./generation-preview";
 
 const macroReference = (name: string, hash: string) => `![${name}](image:{{trim}}${hash})`;
@@ -209,7 +210,10 @@ test.each(["send", "sibling", "continuation"] as const)("%s keeps rendered Moves
 	}
 	const capture = await captureGeneration(database, target, options);
 	const { plan } = capture;
-	if (kind === "continuation") expect(modelRequestFor(capture, { signal: undefined }).assistantPrefill?.prefix).toBe("[Image: prefix]\nEarlier prose.");
+	if (kind === "continuation") {
+		expect(toMessages({ promptPlan: plan.promptPlan }, () => undefined).at(-1))
+			.toMatchObject({ role: "assistant", content: "[Image: prefix]\nEarlier prose." });
+	}
 	expect(plan.promptPlan.images.every(({ name }) => name === "scene" || name === "writer")).toBe(true);
 	expect(plan.promptPlan.images.some(({ name, disposition }) => name === "writer" && disposition === "send")).toBe(true);
 	expect(plan.promptPlan.blocks.find(({ kind }) => kind === "history")?.content).toBe(`${formatImageReference("scene", owned.hash)} [Image: blocked] ${macroReference("literal", portrait.hash)}\n${prose}`);

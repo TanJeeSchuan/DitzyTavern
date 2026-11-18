@@ -252,7 +252,7 @@ describe("Continuation Generation", () => {
 		});
 		let received: ModelClientGenerationInput | undefined;
 		const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, kind: "continuation" });
-		if (preview.capture.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
+		if (preview.capture.preparation.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
 		const promptPlan = preview.capture.plan.promptPlan;
 		expect(promptPlan.intent).toEqual({
 			type: "continuation",

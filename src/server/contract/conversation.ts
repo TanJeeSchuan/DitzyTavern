@@ -319,15 +319,16 @@ export const createConversationRoutes = (
 							: { ...common, kind: body.kind };
 					const preview = await createGenerationPreviewAsync(database, input);
 					const capture = preview.capture;
+					const { human, model } = capture.preparation.derivation;
 					return {
 						outcome: "available" as const,
 						previewId: preview.id,
-						conversationId: preview.conversationId,
-						kind: preview.capture.target.kind,
+						conversationId: capture.preparation.conversationId,
+						kind: capture.preparation.target.kind,
 						promptPlan: capture.plan.promptPlan,
 						participants: {
-							human: capture.humanParticipant,
-							model: { id: capture.author.participantId, name: capture.author.capturedName },
+							human: { id: human.id, name: human.name },
+							model: { id: model.id, name: model.name },
 						},
 						effectiveSettings: capture.plan.effectiveSettings,
 						pendingWrites: [...capture.macroWrites],

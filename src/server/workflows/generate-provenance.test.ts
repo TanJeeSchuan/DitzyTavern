@@ -247,7 +247,7 @@ describe("Generation capture and provenance", () => {
 			content: "Send with narrowed overrides.",
 			connectionSettings: { masterKey: key },
 		});
-		if (preview.capture.target.kind !== "send") throw new Error("Expected a Send preview.");
+		if (preview.capture.preparation.target.kind !== "send") throw new Error("Expected a Send preview.");
 		const effectiveSettings = preview.capture.plan.effectiveSettings;
 
 		let receivedSettings: ModelClientGenerationInput["generationSettings"] | undefined;

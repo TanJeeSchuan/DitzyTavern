@@ -17,12 +17,25 @@ const loreFingerprintOf = (snapshot: PreparationSnapshot) => ({
 
 export const generationPreparationFingerprint = (
 	snapshot: PreparationSnapshot,
-): string => JSON.stringify({
-	...snapshot,
-	lore: loreFingerprintOf(snapshot),
-	boxes: fingerprintBoxes(snapshot.boxes),
-	boxImages: [...snapshot.boxImages].sort(([left], [right]) => left.localeCompare(right))
-		.map(([reference, { label, hashes }]) => [reference, { label, hashes: [...hashes].sort() }]),
-	macroState: [...snapshot.macroState.entries()]
-		.sort(([left], [right]) => left.localeCompare(right)),
-});
+): string => {
+	const fields = {
+		conversationId: snapshot.conversationId,
+		target: snapshot.target,
+		seed: snapshot.seed,
+		settings: snapshot.settings,
+		connection: snapshot.connection,
+		recipe: snapshot.recipe,
+		formatting: snapshot.formatting,
+		derivation: snapshot.derivation,
+		pendingHumanText: snapshot.pendingHumanText,
+		semanticTriggerRevision: snapshot.semanticTriggerRevision,
+		boxWarnings: snapshot.boxWarnings,
+		lore: loreFingerprintOf(snapshot),
+		boxes: fingerprintBoxes(snapshot.boxes),
+		boxImages: [...snapshot.boxImages].sort(([left], [right]) => left.localeCompare(right))
+			.map(([reference, { label, hashes }]) => [reference, { label, hashes: [...hashes].sort() }]),
+		macroState: [...snapshot.macroState.entries()]
+			.sort(([left], [right]) => left.localeCompare(right)),
+	};
+	return JSON.stringify(fields satisfies Record<keyof PreparationSnapshot, typeof fields[keyof typeof fields]>);
+};

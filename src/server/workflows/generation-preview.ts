@@ -28,19 +28,10 @@ import type { LoreActivationRecord } from "../../shared/contract/lore-activation
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import { processStateFor } from "../application/process-state";
 
-export interface GenerationPreviewRecordFields {
+export interface GenerationPreviewRecord {
 	readonly id: string;
-	readonly conversationId: number;
-	readonly fingerprint: string;
 	readonly createdAt: number;
 	readonly expiresAt: number;
-}
-
-// @approved
-//  The preview record retains the captured Generation of one attempt kind;
-// the kind lives on the capture itself, riding the one Generation Target
-// union.
-export interface GenerationPreviewRecord extends GenerationPreviewRecordFields {
 	readonly capture: CapturedGeneration;
 }
 
@@ -96,11 +87,11 @@ export const previewRecordFor = (database: Database, id: string, conversationId:
 
 export const consumeGenerationPreview = (
 	database: Database,
-	record: Pick<GenerationPreviewRecord, "id" | "conversationId">,
+	record: Pick<GenerationPreviewRecord, "id" | "capture">,
 ): void => {
 	const { previews } = previewStore(database);
-	const current = previews.get(record.conversationId);
-	if (current?.id === record.id) previews.delete(record.conversationId);
+	const { conversationId } = record.capture.preparation;
+	if (previews.get(conversationId)?.id === record.id) previews.delete(conversationId);
 };
 
 const assertEditedPlanStructure = (source: PromptPlan, edited: PromptPlan): void => {
@@ -129,8 +120,9 @@ export const createGenerationPreviewAsync = async (
 ): Promise<GenerationPreviewRecord> => {
 	const store = previewStore(database);
 	store.sweep();
-	const requestVersion = (store.versions.get(input.conversationId) ?? 0) + 1;
-	store.versions.set(input.conversationId, requestVersion);
+	const { conversationId } = input;
+	const requestVersion = (store.versions.get(conversationId) ?? 0) + 1;
+	store.versions.set(conversationId, requestVersion);
 	const target: GenerationTarget = input.kind === "send"
 		? { kind: input.kind, content: input.content, moves: input.moves }
 		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId, reroll: input.reroll } : { kind: input.kind };
@@ -138,13 +130,11 @@ export const createGenerationPreviewAsync = async (
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
 		id: crypto.randomUUID(),
-		conversationId: input.conversationId,
-		fingerprint: capture.preparation.fingerprint,
 		capture,
 		createdAt: now,
 		expiresAt: now + GENERATION_PREVIEW_SESSION_TTL_MS,
 	};
-	if (store.versions.get(record.conversationId) === requestVersion) store.previews.set(record.conversationId, record);
+	if (store.versions.get(conversationId) === requestVersion) store.previews.set(conversationId, record);
 	return record;
 };
 
@@ -158,7 +148,7 @@ const acceptedEditedPlan = (
 	}
 	assertEditedPlanStructure(record.capture.plan.promptPlan, submittedPlan);
 	const settings = record.capture.plan.effectiveSettings;
-	const editedPlan = resolvePromptImages(submittedPlan, promptImageResolutionFor(database, record.capture.connection, settings));
+	const editedPlan = resolvePromptImages(submittedPlan, promptImageResolutionFor(database, record.capture.preparation.connection, settings));
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
@@ -242,10 +232,11 @@ export const captureGenerationPreview = (
 	target: GenerationTarget,
 ): CapturedGeneration => {
 	const { record } = preview;
+	const { preparation } = record.capture;
 	previewRecordFor(context.database, record.id, context.conversationId);
-	if (!sameGenerationTarget(record.capture.target, target)) {
+	if (!sameGenerationTarget(preparation.target, target)) {
 		throw new InvalidConversationCommandError("The submitted Generation target changed. Refresh the Prompt Plan before sending.");
 	}
-	assertPreviewCurrent(context, record.fingerprint, target, record.capture.preparation.seed);
+	assertPreviewCurrent(context, preparation.fingerprint, target, preparation.seed);
 	return { ...record.capture, plan: acceptedEditedPlan(context.database, record, preview.editedPlan) };
 };
