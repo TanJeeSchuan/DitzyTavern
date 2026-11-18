@@ -61,9 +61,10 @@ Report 18, finding 5; report 20, finding 5.
 
 ## Acceptance
 
-Core HTTP conflicts and their readers use `current` in place of the old aggregate-specific fields. Memory retains its Box-specific envelopes. `git grep -n -E 'continue/generations|sibling/generations' -- src e2e scripts` is empty. Typecheck, unit tests and e2e pass in CI on each slice.
+`git grep -n -E 'current(Settings|Preset|Book|State|Character|Conversation)\b' -- src e2e` is empty. `git grep -n -E 'continue/generations|sibling/generations' -- src e2e scripts` is empty. Typecheck, unit tests and e2e pass in CI on each slice.
 
 ## Outcome
 
 - Slice a puts stale-revision responses on one schema and migrates every caller in the same change. Prompt Preset deletion impact uses `current` and keeps its own reason. Generation starts still send prose, and Memory keeps its Box contracts.
-- Slice a changed-file lint passed with three existing warnings. `git diff --check` passed. Unit tests, typecheck, and e2e run in CI.
+- The old-field search finds Memory's explicit exception and one local `currentState` variable in the Prompt Preset editor. No core HTTP wire fields match.
+- Slice a changed-file lint passed with three existing warnings. `git diff --check` passed. The first CI check stopped at typecheck. The follow-up uses the concrete shared fields for the generic editor type and preserves the literal tags in the test expectation.

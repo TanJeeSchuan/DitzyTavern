@@ -26,7 +26,7 @@ describe("domain error presentation", () => {
 		const preset = { id: 9, name: "Changed", revision: 3, isBuiltIn: false, conversationCount: 1 };
 		const settingsConflict = presentDomainError(new StaleRevisionError("settings", 2, 3, settings), { 409: modelSelectionConflict });
 		const presetConflict = presentDomainError(new StaleRevisionError("preset", 2, 3, preset), { 409: promptPresetCommandConflict });
-		const conflict = { outcome: "conflict", reason: "stale-revision", expectedRevision: 2, actualRevision: 3 };
+		const conflict = { outcome: "conflict", reason: "stale-revision", expectedRevision: 2, actualRevision: 3 } as const;
 
 		expect(settingsConflict.code).toBe(409);
 		expect(settingsConflict.response).toEqual({ ...conflict, current: settings });
