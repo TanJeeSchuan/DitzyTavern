@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { PromptContextEntry, PromptPlan } from ".";
 import {
 	budgetPromptPlan,
-	budgetEditedPromptPlan,
+	measurePromptPlan,
 	toEstimationTranscript,
 } from "./budget";
 
@@ -46,14 +46,10 @@ describe("Prompt Plan budget", () => {
 		});
 
 		expect(calls).toEqual([toEstimationTranscript(planFor(history))]);
-		expect(result).toMatchObject({
+		expect(result.omittedContext).toEqual([]);
+		expect(result.budget).toMatchObject({
 			fits: true,
-			tokenEstimate: 3,
-			responseBudget: 8,
-			safetyAllowance: 2,
-			totalRequiredTokens: 13,
-			omittedContext: [],
-			retainedContext: history,
+			breakdown: { tokenEstimate: 3, responseBudget: 8, safetyAllowance: 2, totalRequiredTokens: 13 },
 		});
 	});
 
@@ -74,10 +70,9 @@ describe("Prompt Plan budget", () => {
 			estimator,
 		});
 
-		expect(result.fits).toBe(true);
+		expect(result.budget.fits).toBe(true);
 		expect(result.omittedContext).toEqual([history[0]!]);
-		expect(result.retainedContext).toEqual([history[1]!]);
-		expect(result.plan.blocks.filter((block) => block.kind === "history")).toEqual([
+		expect(result.promptPlan.blocks.filter((block) => block.kind === "history")).toEqual([
 			{ kind: "history", speakerName: "Writer", content: "latest human input", role: "human" },
 		]);
 	});
@@ -95,9 +90,9 @@ describe("Prompt Plan budget", () => {
 			estimator,
 		});
 
-		expect(result.fits).toBe(false);
-		expect(result.failure?.reason).toBe("protected-history-too-large");
-		expect(result.failure?.breakdown).toMatchObject({
+		expect(result.budget.fits).toBe(false);
+		expect(result.budget.failure).toBe("protected-history-too-large");
+		expect(result.budget.breakdown).toMatchObject({
 			tokenEstimate: 20,
 			responseBudget: 7,
 			safetyAllowance: 5,
@@ -129,9 +124,10 @@ describe("Prompt Plan budget", () => {
 			estimator,
 		});
 
-		expect(result.retainedContext).toHaveLength(8);
-		expect(result.retainedContext[0]).toBe(history[1_016]);
-		expect(result.retainedContext.at(-1)).toBe(history.at(-1));
+		const historyBlocks = result.promptPlan.blocks.filter((block) => block.kind === "history");
+		expect(historyBlocks).toHaveLength(8);
+		expect(historyBlocks[0]?.content).toBe("History 1016");
+		expect(historyBlocks.at(-1)?.content).toBe("History 1023");
 		expect(estimateCalls).toBeLessThanOrEqual(12);
 	});
 
@@ -144,8 +140,8 @@ describe("Prompt Plan budget", () => {
 		const oldestRetained = (length: number) => {
 			const history = historyOf(length);
 			const result = budgetPromptPlan({ plan: planFor(history), context: history, compile: planFor, contextLimit: 400, responseBudget: 1, safetyAllowance: 0, estimator });
-			expect(result.fits).toBe(true);
-			return result.retainedContext[0]!.content;
+			expect(result.budget.fits).toBe(true);
+			return result.promptPlan.blocks.find((block) => block.kind === "history")?.content;
 		};
 
 		expect(oldestRetained(62)).toBe(oldestRetained(60));
@@ -173,7 +169,7 @@ describe("Prompt Plan budget", () => {
 			...planFor([]),
 			intent: { type: "continuation" as const, strategy: "instruction" as const, instruction },
 		};
-		const result = budgetEditedPromptPlan({
+		const result = measurePromptPlan({
 			plan,
 			contextLimit: 20,
 			responseBudget: 2,

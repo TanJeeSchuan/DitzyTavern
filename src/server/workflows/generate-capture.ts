@@ -379,6 +379,7 @@ export async function captureGeneration(
 		conversationId: preparation.conversationId,
 		promptPresetId: preparation.recipe.id,
 		now: new Date(),
+		random: Math.random,
 		timeZone: preparation.formatting.timeZone,
 		locale: preparation.formatting.locale,
 		variables: preparation.macroState,

@@ -110,22 +110,22 @@ const extractCandidates = async (
 	const promptOf = (retained: readonly CapturedMemoryMessage[]) =>
 		`${instructions}${identities ? `\n${identities}` : ""}${guidance ? `\n\n${guidance}` : ""}\n\nCaptured source and reference context:\n${JSON.stringify({ source, precedingSelectedMessages: retained })}`;
 	const exceedsContext = (retained: readonly CapturedMemoryMessage[]) => tokenxEstimator(promptOf(retained)) + memory.outputReserve + memory.safetyAllowance > memory.contextLimit;
-	const retainedContext = [...context];
-	while (retainedContext.length > 0 && (tokenxEstimator(JSON.stringify(retainedContext)) > 2_048 || exceedsContext(retainedContext) || !fitsDecision(retainedContext))) {
-		retainedContext.shift();
+	const budgetedContext = [...context];
+	while (budgetedContext.length > 0 && (tokenxEstimator(JSON.stringify(budgetedContext)) > 2_048 || exceedsContext(budgetedContext) || !fitsDecision(budgetedContext))) {
+		budgetedContext.shift();
 	}
-	if (exceedsContext(retainedContext)) {
+	if (exceedsContext(budgetedContext)) {
 		const { outputReserve, safetyAllowance, contextLimit } = memory;
-		const budget = `About ${tokenxEstimator(promptOf(retainedContext))} prompt tokens plus ${outputReserve} reserved for output and ${safetyAllowance} of safety allowance`;
+		const budget = `About ${tokenxEstimator(promptOf(budgetedContext))} prompt tokens plus ${outputReserve} reserved for output and ${safetyAllowance} of safety allowance`;
 		throw new Error(`${budget} exceed the ${contextLimit}-token Memory extraction context. Raise the extraction context limit or shorten the source.`);
 	}
-	if (!fitsDecision(retainedContext)) throw new Error("The Memory source exceeds the Decision Model state token limit.");
+	if (!fitsDecision(budgetedContext)) throw new Error("The Memory source exceeds the Decision Model state token limit.");
 	const encoder = new TextEncoder();
 	let collectedOutputBytes = 0;
 	const deadline = AbortSignal.timeout(EXTRACTION_DEADLINE_MS);
 	const result = await model.complete({
 		model: memory.extractionModel,
-		prompt: promptOf(retainedContext),
+		prompt: promptOf(budgetedContext),
 		contextLimit: memory.contextLimit,
 		responseBudget: memory.outputReserve,
 		signal: deadline,
@@ -149,7 +149,7 @@ const extractCandidates = async (
 	try { parsed = Value.Parse(memoryExtractionResponse, JSON.parse(result.content)); } catch (error) {
 		throw new Error("Memory extraction returned malformed or invalid JSON. Retry this source.", { cause: `${error instanceof Error ? error.message : String(error)}\n${cause}` });
 	}
-	return { candidates: validateMemoryCandidates(parsed, [source, ...retainedContext], source.messageId).candidates, context: retainedContext, settings: memory };
+	return { candidates: validateMemoryCandidates(parsed, [source, ...budgetedContext], source.messageId).candidates, context: budgetedContext, settings: memory };
 };
 
 const isChoiceLabel = <const Labels extends readonly string[]>(labels: Labels, value: string): value is Labels[number] =>

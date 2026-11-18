@@ -3,7 +3,6 @@ import type { CapturedGeneration } from "./generate-capture";
 import type { GenerationAttemptInput } from "./generate-server-owned";
 import type { GenerationAcceptanceCapture, ConversationDataEntry } from "../conversation";
 import type { GenerationPlan } from "../generation-plan";
-import type { PromptBudgetResult } from "../prompt-compiler";
 import type { GenerationBudgetInspection } from "../../shared/contract/conversation-schema";
 import { projectModelClientGenerationSettings, type ModelClientConnectionSnapshot, type ModelClientGenerationInput } from "../model-client";
 import {
@@ -63,7 +62,7 @@ export function capturedAcceptanceFields(
 		capturedModelName: model.name,
 		modelId: plan.effectiveSettings.modelId,
 		promptPlan: plan.promptPlan,
-		promptInspection: promptInspectionOf(plan.budget),
+		promptInspection: promptInspectionOf(plan),
 		loreActivation: plan.loreActivation,
 		boxTraces: plan.boxTraces,
 		provenance: generationProvenanceEntry(plan, preparation.connection),
@@ -88,11 +87,11 @@ export function modelRequestFor(
 //  Active inspection keeps the exact budget decision made at Generation
 // start, including the whole history entries omitted during preflight. It is
 // deliberately not copied into terminal Variant provenance.
-const promptInspectionOf = (budget: PromptBudgetResult): GenerationBudgetInspection => ({
-	tokenEstimate: budget.tokenEstimate,
-	responseBudget: budget.responseBudget,
-	safetyAllowance: budget.safetyAllowance,
-	contextLimit: budget.contextLimit,
-	totalRequiredTokens: budget.totalRequiredTokens,
-	omittedContext: [...budget.omittedContext],
+const promptInspectionOf = ({ budget: { breakdown }, omittedContext }: GenerationPlan): GenerationBudgetInspection => ({
+	tokenEstimate: breakdown.tokenEstimate,
+	responseBudget: breakdown.responseBudget,
+	safetyAllowance: breakdown.safetyAllowance,
+	contextLimit: breakdown.contextLimit,
+	totalRequiredTokens: breakdown.totalRequiredTokens,
+	omittedContext: [...omittedContext],
 });

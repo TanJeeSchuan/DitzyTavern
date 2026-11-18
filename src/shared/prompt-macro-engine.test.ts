@@ -1,41 +1,25 @@
 import { describe, expect, test } from "bun:test";
 import {
-	createMacroAttemptState,
 	expandMacroText as expandMacroTextWithState,
 	validateMacroText,
-	type MacroEnvironment,
+	type AttemptEnvironmentInput,
 } from "./prompt-macro-engine";
-
-type TestMacroEnvironment = MacroEnvironment & {
-	variables?: ReadonlyMap<string, import("./prompt-macro-engine").MacroValue>;
-};
+import { testMacroAttempt } from "./test-fixtures/prompt-macros";
 
 const expandMacroText = (
 	source: string,
-	environment: TestMacroEnvironment,
+	overrides: Partial<AttemptEnvironmentInput>,
 	blockLabel: string,
-) => expandMacroTextWithState(
-	source,
-	environment,
-	createMacroAttemptState(environment.variables),
-	blockLabel,
-);
-
-const environment = {
-	self: "Writer",
-	other: "Maren",
-	conversationId: 42,
-	promptPresetId: 7,
-	now: new Date("2026-01-02T15:04:05.000Z"),
-	timeZone: "UTC",
-	locale: "en-US",
+) => {
+	const { environment, state } = testMacroAttempt(overrides);
+	return expandMacroTextWithState(source, environment, state, blockLabel);
 };
 
 describe("Prompt macro engine", () => {
 	test("resolves case-insensitive names, nested arguments, and text utilities", () => {
 		const result = expandMacroText(
 			"{{SELF}} {{random::left::{{other}}}} {{space::2}}{{newline}}x{{reverse::abc}}",
-			{ ...environment, random: () => 0.99 },
+			{ random: () => 0.99 },
 			"instruction",
 		);
 		expect(result.text).toBe("Writer Maren   \nxcba");
@@ -45,7 +29,7 @@ describe("Prompt macro engine", () => {
 	test("trims and dedents scoped content unless the hash flag preserves it", () => {
 		const result = expandMacroText(
 			"{{trim}}\nA\n{{if::yes}}\n    one\n    two\n{{/if}}\n{{#if::yes}}\n    three\n{{/if}}",
-			environment,
+			{},
 			"instruction",
 		);
 		expect(result.text).toBe("A\none\ntwo\n\n    three\n");
@@ -53,14 +37,14 @@ describe("Prompt macro engine", () => {
 
 	test("trims without consuming authored sentinel-like text", () => {
 		const authored = "__DITZY_TRIM_SENTINEL__";
-		const result = expandMacroText(`{{trim}}\n${authored}`, environment, "instruction");
+		const result = expandMacroText(`{{trim}}\n${authored}`, {}, "instruction");
 		expect(result.text).toBe(authored);
 	});
 
 	test("does not execute comments and treats split braces as escaped text", () => {
 		const result = expandMacroText(
 			"before {{// {{setvar::hidden::value}} }}after \\{\\{self\\}\\} {{/if}}",
-			environment,
+			{},
 			"instruction",
 		);
 		expect(result.text).toBe("before after {{self}} {{/if}}");
@@ -70,7 +54,7 @@ describe("Prompt macro engine", () => {
 	test("keeps escaped nested delimiters from closing their parent macro", () => {
 		const result = expandMacroText(
 			"{{if::\\{{self}}::yes}}",
-			environment,
+			{},
 			"instruction",
 		);
 		expect(result.text).toBe("yes");
@@ -79,7 +63,7 @@ describe("Prompt macro engine", () => {
 	test("does not pair an escaped scope opener with a later close", () => {
 		const result = expandMacroText(
 			"\\{{if::yes}}body{{/if}}",
-			environment,
+			{},
 			"instruction",
 		);
 		expect(result.text).toBe("\\body{{/if}}");
@@ -88,7 +72,7 @@ describe("Prompt macro engine", () => {
 	test("threads variable writes and applies shorthand arithmetic", () => {
 		const result = expandMacroText(
 			"{{setvar::count::2}}{{.count++}}{{.count+=3}}{{getvar::count}}",
-			{ ...environment, variables: new Map() },
+			{ variables: new Map() },
 			"instruction",
 		);
 		expect(result.text).toBe("36");
@@ -102,7 +86,7 @@ describe("Prompt macro engine", () => {
 		]);
 		const result = expandMacroText(
 			"{{getvar::Count}}/{{getvar::count}}/{{addlocalvar::items::two}}{{getvar::items}}/{{.Count++}}",
-			{ ...environment, variables },
+			{ variables },
 			"instruction",
 		);
 		expect(result.text).toBe("2//[\"one\",\"two\"]/3");
@@ -111,7 +95,6 @@ describe("Prompt macro engine", () => {
 			{ name: "Count", value: 3, operation: "set" },
 		]);
 		const coerced = expandMacroText("{{incvar::text}}/{{addvar::text::!}}", {
-			...environment,
 			variables: new Map([["text", "raw"]]),
 		}, "instruction");
 		expect(coerced.text).toBe("raw1/");
@@ -122,23 +105,23 @@ describe("Prompt macro engine", () => {
 	});
 
 	test("appending to a variable that holds a changing value keeps one copy of what changes it", () => {
-		const state = createMacroAttemptState();
+		const { environment, state } = testMacroAttempt();
 		expandMacroTextWithState(`{{setvar::clock::{{time}}}}${"{{addvar::clock::x}}".repeat(12)}`, environment, state, "instruction");
 		expect(state.changingVariables.get("clock")).toEqual(["{{time}}"]);
 	});
 
 	test("does not execute global shorthand operations", () => {
-		const result = expandMacroText("{{$count=3}}", environment, "instruction");
+		const result = expandMacroText("{{$count=3}}", {}, "instruction");
 		expect(result.text).toBe("{{$count=3}}");
 		expect(result.writes).toEqual([]);
 		expect(result.warnings).toEqual([{ block: "instruction", macro: "{{$count=3}}" }]);
-		const conditional = expandMacroText("{{if::$count}}yes{{else}}no{{/if}}", environment, "instruction");
+		const conditional = expandMacroText("{{if::$count}}yes{{else}}no{{/if}}", {}, "instruction");
 		expect(conditional.text).toBe("{{if::$count}}yes{{else}}no{{/if}}");
 		expect(conditional.writes).toEqual([]);
 	});
 
 	test("keeps malformed variable names literal instead of persisting invalid state", () => {
-		const result = expandMacroText("{{setvar::::x}}/{{getvar::bad.name}}", environment, "instruction");
+		const result = expandMacroText("{{setvar::::x}}/{{getvar::bad.name}}", {}, "instruction");
 		expect(result.text).toBe("{{setvar::::x}}/{{getvar::bad.name}}");
 		expect(result.writes).toEqual([]);
 		expect(result.warnings).toHaveLength(2);
@@ -147,8 +130,8 @@ describe("Prompt macro engine", () => {
 	test("keeps random fresh while pick stays stable for one source position", () => {
 		let calls = 0;
 		const input = "{{random::a::b}}/{{pick::a::b}}/{{pick::a::b}}";
-		const first = expandMacroText(input, { ...environment, random: () => (calls += 1) * 0.1 }, "instruction");
-		const second = expandMacroText(input, { ...environment, random: () => (calls += 1) * 0.1 }, "instruction");
+		const first = expandMacroText(input, { random: () => (calls += 1) * 0.1 }, "instruction");
+		const second = expandMacroText(input, { random: () => (calls += 1) * 0.1 }, "instruction");
 		expect(first.text.slice(2)).toBe(second.text.slice(2));
 		expect(calls).toBe(2);
 	});
@@ -156,7 +139,7 @@ describe("Prompt macro engine", () => {
 	test("uses the captured clock and client formatting context", () => {
 		const result = expandMacroText(
 			"{{isodate}} {{isotime}} {{datetimeformat::YYYY/MM/DD HH:mm}} {{weekday}}",
-			environment,
+			{},
 			"instruction",
 		);
 		expect(result.text).toBe("2026-01-02 15:04 2026/01/02 15:04 Friday");
@@ -165,14 +148,14 @@ describe("Prompt macro engine", () => {
 	test("honors fractional explicit UTC offsets", () => {
 		const result = expandMacroText(
 			"{{isotime::UTC+05:30}} {{isotime::UTC-04:30}} {{isotime UTC+05:30}} {{isotime:UTC-04:30}} {{datetimeformat:YYYY-MM-DD HH:mm}}",
-			environment,
+			{},
 			"instruction",
 		);
 		expect(result.text).toBe("20:34 10:34 20:34 10:34 2026-01-02 15:04");
 	});
 
 	test("reports unknown macros without blocking expansion and keeps unmatched closes", () => {
-		const result = expandMacroText("{{wat::{{other}}}} {{/wat}} {{self}}", environment, "instruction");
+		const result = expandMacroText("{{wat::{{other}}}} {{/wat}} {{self}}", {}, "instruction");
 		expect(result.text).toBe("{{wat::Maren}} {{/wat}} Writer");
 		expect(result.warnings).toEqual([{ block: "instruction", macro: "{{wat::{{other}}}} {{/wat}}" }]);
 	});
@@ -183,7 +166,7 @@ describe("Prompt macro engine", () => {
 	});
 
 	test("evaluates nested arguments and scopes without executing the unchosen branch", () => {
-		const state = createMacroAttemptState();
+		const { environment, state } = testMacroAttempt();
 		const result = expandMacroTextWithState(
 			"{{if::yes}}{{if::true}}{{setvar::chosen::{{self}}}}{{getvar::chosen}}{{/if}}{{else}}{{setvar::chosen::wrong}}{{/if}}",
 			environment,

@@ -1,6 +1,6 @@
 # T4: Generation lifecycle
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: T3
 
@@ -65,7 +65,7 @@ Report 11, findings 1 and 8.
 - [x] Slice b review, fixes (Sol), and CI
 - [ ] Slice b PR merged
 - [x] Slice c (Sol), PR
-- [ ] Slice d (Sol), PR
+- [x] Slice d (Sol), PR
 
 ## Acceptance
 
@@ -106,3 +106,9 @@ Slice b first implementation:
 - The Opus spec review found no blockers. The standards review prompted removal of the duplicate Conversation ID and staged Moves and use of the named Box intent type. The fingerprint stays explicit per the ticket, with a type check for missing snapshot fields.
 - A change to Message or Variant identity alone now leaves a preview current when the captured inputs match.
 - Changed-file `bunx --no-install oxlint` and `git diff --check` passed. CI runs the unit tests, typecheck, and e2e. Slice d remains.
+
+### Slice d implementation
+
+- Generation Plans carry the compile-time history omissions separately from the budget measurement. Preview acceptance remeasures the edited Prompt Plan and keeps the original omissions. The T1 regression still checks the omissions stored by acceptance.
+- Both compilers take explicit lore and macro attempts. Production callers supply the attempt clock and random source, and compiler tests use one deterministic attempt factory.
+- The Acceptance grep reports zero matches. The Memory extraction local variable was renamed because it matched the same grep.

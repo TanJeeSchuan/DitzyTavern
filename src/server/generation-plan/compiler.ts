@@ -24,7 +24,6 @@ import {
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { hasEnabledLoreSlot } from "../../shared/contract/prompt-preset";
-import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
 import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import type {
 	CompileGenerationPlanInput,
@@ -129,11 +128,7 @@ export const effectiveGenerationSettingsFor = (
 export const compileGenerationPlan = (
 	input: CompileGenerationPlanInput,
 ): GenerationPlan => {
-	const intent = input.intent;
-	const attempt = input.attempt ?? {
-		environment: { self: input.human.name, other: input.model.name },
-		state: createMacroAttemptState(),
-	};
+	const { attempt, intent, loreAllowance } = input;
 	const systemPlacement = input.connection?.systemPlacement ?? "none";
 	const placedIntent = intent?.type === "continuation" && intent.strategy === "instruction" && systemPlacement === "strict"
 		? { ...intent, demoted: true as const }
@@ -143,8 +138,7 @@ export const compileGenerationPlan = (
 	// with the attempt's intent attached, so an omitted-history candidate
 	// keeps describing the same Generation.
 	const loreSlotEnabled = hasEnabledLoreSlot(input.recipe);
-	const candidates = loreSlotEnabled ? orderedLore(input.lore ?? []) : [];
-	const loreAllowance = input.loreAllowance ?? 2_048;
+	const candidates = loreSlotEnabled ? orderedLore(input.lore) : [];
 	if (!Number.isInteger(loreAllowance) || loreAllowance < 0) {
 		throw new Error("Lore allowance must be a non-negative whole number.");
 	}
@@ -204,7 +198,7 @@ export const compileGenerationPlan = (
 	});
 	const compile = (context: readonly PromptContextEntry[]): PromptPlan =>
 		compileWith(context, admissions.lore.selected, admissions.boxes);
-	const budget = budgetPromptPlan({
+	const budgeted = budgetPromptPlan({
 		plan: compile(input.context),
 		compile,
 		context: input.context,
@@ -215,12 +209,11 @@ export const compileGenerationPlan = (
 		protectedHistoryIndex,
 	});
 	return {
-		promptPlan: budget.plan,
-		budget,
+		...budgeted,
 		loreActivation: input.loreActivation === undefined || input.loreActivation === null
 			? null
 			: withLoreBudgetEvidence(input.loreActivation, candidates, admissions.lore.decisions, loreAllowance),
-		boxTraces: boxBudgetEvidence(input.boxes, admissions.decisions, budget.plan),
+		boxTraces: boxBudgetEvidence(input.boxes, admissions.decisions, budgeted.promptPlan),
 		effectiveSettings: effectiveGenerationSettingsFor(
 			input.settings,
 			intent,
