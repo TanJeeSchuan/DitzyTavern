@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
-import { Elysia, sse } from "elysia";
-import { subscriptionEvents, type BoxExports } from "@/box-sdk/server";
+import { Elysia, sse, status } from "elysia";
+import { conversationExists, subscriptionEvents, type BoxExports } from "@/box-sdk/server";
+import { notFoundOutcome } from "@/box-sdk/shared";
 import { draftRequest, drafterConversationParams, drafterRead, type DraftEvent } from "./contract";
 import { draftPerson, readDrafter } from "./server-draft";
 
@@ -10,7 +11,8 @@ import { draftPerson, readDrafter } from "./server-draft";
 // then the draft or why it failed, and closing it cancels the run; nothing
 // is stored.
 export const drafterRoutes = (database: Database, exportsOf: (conversationId: number) => BoxExports) => new Elysia()
-	.get("/conversations/:id", ({ params }) => readDrafter(database, exportsOf(params.id)), { params: drafterConversationParams, response: drafterRead })
+	.get("/conversations/:id", ({ params }) => conversationExists(database, params.id) ? readDrafter(database, exportsOf(params.id)) : status(404, { outcome: "not-found" as const }),
+		{ params: drafterConversationParams, response: { 200: drafterRead, 404: notFoundOutcome } })
 	.post("/draft", ({ body, request, set }) => subscriptionEvents({ request, set }, (emit, close) => {
 		const run = new AbortController();
 		const send = (event: DraftEvent) => emit(sse({ data: event }));

@@ -150,14 +150,17 @@ export function CharactersPanel({
 	}
 
 	if (view.kind === "draft") {
+		const { request } = view;
 		return <DraftDefinitionEditor
 			key={view.serial}
 			conversation={conversation}
-			request={view.request}
+			request={request}
 			onConversationChange={onConversationChange}
 			onKept={({ kind, id }) => {
 				if (kind === "character") loadCharacters();
-				setView({ kind, id, fresh: false });
+				// @approved
+				//  A save that lands after the writer left this draft has no view to change.
+				setView((current) => current.kind === "draft" && current.request === request ? { kind, id, fresh: false } : current);
 			}}
 			onBack={openList}
 		/>;

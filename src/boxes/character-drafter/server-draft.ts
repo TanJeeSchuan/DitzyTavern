@@ -1,9 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { codeAgentUnavailable, conversationExists, readBoxLifecycles, readChatVariants, readParticipants, runCodeAgent, type BoxExports, type CodeAgentActivity } from "@/box-sdk/server";
+import {
+	codeAgentUnavailable, conversationExists, readBoxLifecycles, readChatVariants, readParticipants, runCodeAgent, type BoxExports, type CodeAgentActivity, type CodeAgentGlobal,
+} from "@/box-sdk/server";
 import descriptor from "./shared-descriptor";
-import { characterDraft, draftCast, draftExports, draftMessages, draftPeople, type CharacterDraft, type DraftCast, type DraftMessages, type DraftRequest, type DrafterRead } from "./contract";
+import { characterDraft, draftCast, draftMemory, draftMessages, draftPeople, type CharacterDraft, type DraftCast, type DraftMessages, type DraftRequest, type DrafterRead } from "./contract";
 
 /** @approved The Selected narrative path as the agent reads it, a settled Variant per Message. */
 export const readDraftMessages = (database: Database, conversationId: number): DraftMessages =>
@@ -15,31 +17,47 @@ const readDraftCast = (database: Database, conversationId: number, messages: Dra
 		id, names: [...new Set([name, ...messages.flatMap(({ author, authorParticipantId }) => authorParticipantId === id && author !== null ? [author] : [])])],
 	}));
 
+/** @approved A Message's text with each closed `<thought>…</thought>` span cut out, so nothing spoken runs across one; unclosed markup stays text, as the lens leaves it. */
+const spoken = (text: string) => text.replaceAll(/<thought>[\s\S]*?<\/thought>/g, "\u0000");
+
 // @approved
 //  Why the draft is refused, or undefined: every quote is copied word for
-// word from a Message on the path, and every line of `exampleDialogue` is one
-// of the quotes, so the person's voice is never invented.
+// word from a Message on the path, outside its unspoken thoughts, and every
+// line of `exampleDialogue` is one of the quotes, so the person's voice is
+// never invented. Who speaks a quote is the agent's judgement.
 export const draftRefusal = (messages: DraftMessages, draft: CharacterDraft): string | undefined => {
 	const texts = new Map(messages.map(({ id, text }) => [id, text]));
 	for (const quote of draft.quotes) {
 		const text = texts.get(quote.messageId);
 		if (text === undefined) return `Message ${quote.messageId} is not on the story's path.`;
 		if (!text.includes(quote.text)) return `The quote "${quote.text}" is not in Message ${quote.messageId} word for word.`;
+		if (!spoken(text).includes(quote.text)) return `The quote "${quote.text}" is inside a <thought> in Message ${quote.messageId}; a thought is never said aloud.`;
 	}
 	const quoted = new Set(draft.quotes.map(({ text }) => text.trim()));
 	const stray = draft.prompt.exampleDialogue.split("\n").map((line) => line.trim()).find((line) => line !== "" && !quoted.has(line));
 	return stray === undefined ? undefined : `The exampleDialogue line "${stray}" is not one of the quotes; every line must be a quote's text.`;
 };
 
-/** @approved What other enabled Boxes answer about this Chat, without the drafter's own entry, each Export with the signature its Box declares. */
-const exportsGlobal = (exports: BoxExports) => {
-	const others = Object.fromEntries(Object.entries(exports).filter(([id]) => id !== descriptor.id));
-	const described = Object.entries(others).flatMap(([id, box]) => Object.entries(box).map(([name, ask]) => `exports.${id}.${name}: ${ask.description}`));
-	return {
-		description: described.length === 0 ? "What other Boxes answer about this Chat; none enabled here answers anything." : `What other Boxes answer about this Chat. ${described.join(" ")}`,
-		schema: draftExports(others),
-		value: others,
-	};
+const MEMORY = "What Memory knew when the draft started: `people` lists the person labels on the story's path, and `claims[label]` holds the Claims about that person, each with the Message that holds it.";
+
+// @approved
+//  What Memory knows, asked once when the run starts so it answers for the
+// same story as `messages`: its people, and the Claims about each. The schema
+// comes from the Exports Memory declares, so the agent sees their shape.
+// Without Memory there is nothing to ask, and a Memory that fails to answer
+// leaves the draft to the raw history, saying why.
+const memoryGlobal = (exports: BoxExports): CodeAgentGlobal => {
+	const people = exports.memory?.people;
+	const claimsAbout = exports.memory?.claimsAbout;
+	if (people === undefined || claimsAbout === undefined) return { description: "Null: Memory is not enabled in this Chat.", schema: draftMemory(), value: null };
+	const schema = draftMemory({ people: people.output, claims: claimsAbout.output });
+	try {
+		const labels = people();
+		if (!Value.Check(draftPeople, labels)) throw new Error("its people are not a list of labels.");
+		return { description: MEMORY, schema, value: { people: labels, claims: Object.fromEntries(labels.map((label) => [label, claimsAbout({ label })])) } };
+	} catch (error) {
+		return { description: `Null: Memory could not answer: ${error instanceof Error ? error.message : String(error)}`, schema, value: null };
+	}
 };
 
 /** @approved Memory's person labels, empty when Memory is not enabled in the Chat or its answer fails. */
@@ -52,7 +70,7 @@ const memoryPeople = (exports: BoxExports): readonly string[] => {
 
 /** @approved The window's read: the people Memory knows, and why a draft cannot start. */
 export const readDrafter = (database: Database, exports: BoxExports): DrafterRead =>
-	({ people: [...memoryPeople(exports)], unavailable: codeAgentUnavailable(database, descriptor.id) ?? null });
+	({ people: [...memoryPeople(exports)], unavailable: codeAgentUnavailable(database) ?? null });
 
 const MESSAGES = "The story's Selected narrative path, in order: each Message's id, its index on the path, its author's name and Participant id as written, and its text.";
 const CAST = "The Chat's Cast: each Participant's id and the names it has been written under, its current name first.";
@@ -67,7 +85,7 @@ const instructions = ({ person, instruction, participantId }: DraftRequest, cast
 			...steer === "" ? [] : [`The writer asks: ${steer}`],
 		].join(" "),
 		"",
-		"Read the story with the run tool before you write. `messages` is the Selected narrative path in order, `cast` lists the Chat's Participants, and `exports` holds what other Boxes answer about this Chat, such as the Claims Memory holds about a person. Text inside <thought>…</thought> is a character's unspoken thought: nobody else heard it.",
+		"Read the story with the run tool before you write. `messages` is the Selected narrative path in order, `cast` lists the Chat's Participants, and `memory` holds the people Memory knows and its Claims about each, when Memory is enabled. Text inside <thought>…</thought> is a character's unspoken thought: nobody else heard it.",
 		"Find every place the person appears, under each of their names. When the story gives a fuller name, such as Bartholomew Crane for Bob, use the fuller name as `name`.",
 		"",
 		"Write the prompt:",
@@ -83,8 +101,8 @@ const instructions = ({ person, instruction, participantId }: DraftRequest, cast
 };
 
 // @approved
-//  One draft: the path, the Cast and the other Boxes' Exports captured when
-// it starts, explored by the Box's code agent until it submits a draft whose
+//  One draft: the path, the Cast and what Memory knows, captured together in
+// one read transaction when it starts, explored by the Box's code agent until it submits a draft whose
 // quotes and example dialogue hold up against the path. Nothing is stored;
 // the draft goes back to the writer, whose choice in the Definition editor
 // is the only write.
@@ -92,8 +110,10 @@ export const draftPerson = async (database: Database, exports: BoxExports, reque
 	const { conversationId, participantId } = request;
 	if (!conversationExists(database, conversationId)) throw new Error("The Chat is no longer available.");
 	if (readBoxLifecycles(drizzle(database), conversationId)[descriptor.id]?.state !== "enabled") throw new Error("The Character Drafter is off in this Chat.");
-	const messages = readDraftMessages(database, conversationId);
-	const cast = readDraftCast(database, conversationId, messages);
+	const { messages, cast, memory } = database.transaction(() => {
+		const path = readDraftMessages(database, conversationId);
+		return { messages: path, cast: readDraftCast(database, conversationId, path), memory: memoryGlobal(exports) };
+	})();
 	if (participantId !== undefined && !cast.some(({ id }) => id === participantId)) throw new Error("That Participant is no longer in the Cast.");
 	return await runCodeAgent(database, {
 		boxId: descriptor.id,
@@ -101,7 +121,7 @@ export const draftPerson = async (database: Database, exports: BoxExports, reque
 		globals: {
 			messages: { description: MESSAGES, schema: draftMessages, value: messages },
 			cast: { description: CAST, schema: draftCast, value: cast },
-			exports: exportsGlobal(exports),
+			memory,
 		},
 		submitSchema: characterDraft,
 		verify: (draft) => draftRefusal(messages, draft),

@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { Button, Field, Input, openDefinitionDraft, Textarea, type ConversationSummary } from "@/box-sdk/client";
+import { Button, Field, Input, Textarea, type ConversationSummary } from "@/box-sdk/client";
 import { ActivityFeed } from "./client-activity";
 import { useDrafterRead, useDraftRun, type DraftRun } from "./client-api";
+import { INSTRUCTION_MAX, PERSON_MAX, PERSON_TOO_LONG } from "./contract";
 import descriptor from "./shared-descriptor";
 
 const STEER = "Optional, such as: as she was before the war";
@@ -13,6 +14,7 @@ const runLine = (run: DraftRun) => {
 		case "cancelled": return "Cancelled.";
 		case "failed": return run.reason;
 		case "drafted": return `Drafted ${run.draft.name}.`;
+		case "opened": return `Opened the draft of ${run.name} in the Characters panel.`;
 	}
 };
 
@@ -29,7 +31,7 @@ export function DraftStatus({ run, unavailable }: { run: DraftRun; unavailable: 
 // and, once it submits, the draft to open in the Definition editor.
 export function DrafterWindow({ conversation }: { conversation: ConversationSummary }) {
 	const read = useDrafterRead(conversation);
-	const { run, start, cancel } = useDraftRun();
+	const { run, start, cancel, open } = useDraftRun({ conversationId: conversation.id });
 	const [person, setPerson] = useState("");
 	const [instruction, setInstruction] = useState("");
 	const enabled = conversation.boxes[descriptor.id] === "enabled";
@@ -40,15 +42,24 @@ export function DrafterWindow({ conversation }: { conversation: ConversationSumm
 	const drafted = run.status === "drafted" ? run.draft : undefined;
 	return <div className="character-drafter-window">
 		<Field label="Person" htmlFor="character-drafter-person" helper={people.length === 0 ? "Type a name as the story writes it." : undefined}>
-			<Input id="character-drafter-person" value={person} placeholder="Name" disabled={running} onChange={(event) => setPerson(event.target.value)} />
+			<Input id="character-drafter-person" value={person} placeholder="Name" maxLength={PERSON_MAX} disabled={running} onChange={(event) => setPerson(event.target.value)} />
 		</Field>
 		{people.length > 0 && <div className="character-drafter-people" role="group" aria-label="People Memory knows">
-			{people.map((label) => <Button key={label} type="button" size="xs" variant="ghost" aria-pressed={person === label} disabled={running} onClick={() => setPerson(label)}>
+			{people.map((label) => <Button key={label} type="button" size="xs" variant="ghost" aria-pressed={person === label} disabled={running || label.length > PERSON_MAX} onClick={() => setPerson(label)}>
 				{label}
 			</Button>)}
 		</div>}
+		{people.some((label) => label.length > PERSON_MAX) && <p className="character-drafter-status">{PERSON_TOO_LONG}</p>}
 		<Field label="Instruction" htmlFor="character-drafter-instruction">
-			<Textarea id="character-drafter-instruction" value={instruction} rows={2} placeholder={STEER} disabled={running} onChange={(event) => setInstruction(event.target.value)} />
+			<Textarea
+				id="character-drafter-instruction"
+				value={instruction}
+				rows={2}
+				placeholder={STEER}
+				maxLength={INSTRUCTION_MAX}
+				disabled={running}
+				onChange={(event) => setInstruction(event.target.value)}
+			/>
 		</Field>
 		<div className="character-drafter-actions">
 			{running
@@ -56,7 +67,7 @@ export function DrafterWindow({ conversation }: { conversation: ConversationSumm
 				: <Button type="button" variant={drafted === undefined ? "default" : "outline"} disabled={!enabled || unavailable !== null || person.trim() === ""} onClick={draft}>
 					{run.status === "idle" ? "Draft" : "Draft again"}
 				</Button>}
-			{drafted !== undefined && <Button type="button" onClick={() => openDefinitionDraft(drafted, { conversationId: conversation.id })}>Open draft</Button>}
+			{drafted !== undefined && <Button type="button" onClick={() => open(drafted)}>Open draft</Button>}
 		</div>
 		<DraftStatus run={run} unavailable={unavailable} />
 		{run.status !== "idle" && <ActivityFeed activities={run.activities} />}

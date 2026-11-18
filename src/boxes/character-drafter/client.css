@@ -11,6 +11,12 @@
 	margin-top: -0.5rem;
 }
 
+.character-drafter-people button {
+	max-width: 100%;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
 .character-drafter-people [aria-pressed="true"] {
 	background: var(--accent-soft);
 	color: var(--foreground);

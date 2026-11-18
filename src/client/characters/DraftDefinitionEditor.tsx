@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { applyCommand, LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
+import { ConflictBanner } from "../ConflictBanner";
 import type { ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
@@ -21,8 +22,10 @@ export type DraftKept = { readonly kind: "participant" | "character"; readonly i
 //  A Box's draft in the core Definition editor. Nothing is written until the
 // writer picks an action: Add to Cast, Save as Character, or, for a draft of
 // a Cast member, Replace, which keeps that Participant's Portrait and
-// Openings, shown here from the start, and asks first. Leaving the editor
-// discards the draft.
+// Openings, shown here from the start, and asks first. Replace is sent at the
+// revision those were copied from, so a change made elsewhere since conflicts
+// instead of being reverted, and the writer keeps theirs or loads the saved
+// ones. Leaving the editor discards the draft.
 export function DraftDefinitionEditor({ conversation, request, onConversationChange, onKept, onBack }: {
 	conversation: ConversationSummary;
 	request: DefinitionDraftRequest;
@@ -31,10 +34,11 @@ export function DraftDefinitionEditor({ conversation, request, onConversationCha
 	onBack: () => void;
 }) {
 	const replaced = conversation.cast.find(({ id }) => id === request.replaces);
-	const [draft, setDraft] = useState<ParticipantDefinition>(() => definitionOf({
-		name: request.draft.name, prompt: request.draft.prompt,
-		sendAppearanceImages: replaced?.sendAppearanceImages ?? true, openings: replaced?.openings ?? [], portrait: replaced?.portrait,
-	}));
+	const kept = (current: typeof replaced) =>
+		({ sendAppearanceImages: current?.sendAppearanceImages ?? true, openings: current?.openings ?? [], portrait: current?.portrait });
+	const [draft, setDraft] = useState<ParticipantDefinition>(() => definitionOf({ name: request.draft.name, prompt: request.draft.prompt, ...kept(replaced) }));
+	const [keptRevision, setKeptRevision] = useState(conversation.revision);
+	const [conflict, setConflict] = useState(false);
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [confirming, setConfirming] = useState(false);
@@ -58,11 +62,20 @@ export function DraftDefinitionEditor({ conversation, request, onConversationCha
 		else setNotice(outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE);
 	});
 	const replace = (participantId: number) => pend(async () => {
-		await runConversationCommand(surface, { type: "update-participant-definition", participantId, definition: submittableDefinition(draft) }, {
+		await runConversationCommand({ ...surface, revision: () => keptRevision, exact: true }, {
+			type: "update-participant-definition", participantId, definition: submittableDefinition(draft),
+		}, {
 			notices: { ...NOTICES, notFound: "That Participant is no longer in this Cast." },
 			onApplied: () => onKept({ kind: "participant", id: participantId }),
+			onConflict: () => setConflict(true),
 		});
 	});
+	const resolve = (load: boolean) => {
+		if (load) setDraft((current) => ({ ...current, ...kept(replaced) }));
+		setKeptRevision(conversation.revision);
+		setConflict(false);
+		setNotice(null);
+	};
 
 	return <>
 		<DefinitionEditor
@@ -70,15 +83,20 @@ export function DraftDefinitionEditor({ conversation, request, onConversationCha
 			onDraftChange={setDraft}
 			subtitle={replaced === undefined ? "Draft · Not kept until you choose" : `Draft of ${replaced.duplicateLabel} · Not kept until you choose`}
 			onBack={onBack}
+			banner={conflict && replaced !== undefined && <ConflictBanner
+				message={`${replaced.duplicateLabel} changed elsewhere after this draft opened, so nothing was replaced. Keep the Portrait and Openings shown here, or load the saved ones.`}
+				onKeepMine={() => resolve(false)}
+				onLoadSaved={() => resolve(true)}
+			/>}
 			footer={(named) => <div className="save-footer">
-				<span role={notice === null ? "status" : "alert"}>{notice ?? (pending ? "Saving…" : "")}</span>
+				<span role={notice === null || conflict ? "status" : "alert"}>{conflict ? "" : notice ?? (pending ? "Saving…" : "")}</span>
 				<div className="flex flex-wrap justify-end gap-2">
 					<Button type="button" size="sm" variant="outline" disabled={!named || pending} onClick={() => void saveAsCharacter()}>Save as Character</Button>
 					{replaced === undefined
 						? <Button type="button" size="sm" disabled={!named || pending} onClick={() => void addToCast()}>Add to Cast</Button>
 						: <>
 							<Button type="button" size="sm" variant="outline" disabled={!named || pending} onClick={() => void addToCast()}>Add to Cast</Button>
-							<Button type="button" size="sm" disabled={!named || pending} onClick={() => setConfirming(true)}>Replace {replaced.duplicateLabel}'s Definition</Button>
+							<Button type="button" size="sm" disabled={!named || pending || conflict} onClick={() => setConfirming(true)}>Replace {replaced.duplicateLabel}'s Definition</Button>
 						</>}
 				</div>
 			</div>}

@@ -4,7 +4,7 @@ import { TypeGuard, type Static, type TSchema } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { createFxAgent, memory } from "libfx/node";
 import type { QuickJSHandle } from "quickjs-emscripten-core";
-import type { BoxId } from "../../shared/contract/box";
+import { DEFAULT_BOX_DELEGATE, type BoxId } from "../../shared/contract/box";
 import { codeAgentRunInput, codeAgentSubmitInput } from "../../shared/contract/box-descriptor";
 import { sandboxedFailure, type SandboxedFailure } from "../../shared/contract/box-sandboxed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
@@ -311,17 +311,21 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 	return { run, dispose };
 };
 
-const unavailableReason = (boxId: BoxId, setting: Exclude<ReturnType<typeof resolveBoxDelegate>, { kind: "ready" }>) =>
-	setting.kind === "broken" ? setting.reason : `The ${boxId} Box's agent is off; choose its model in Connection Settings.`;
+// @approved
+//  Every code agent runs on the default delegate model; no Box has a model
+// of its own for it.
+const agentModel = (database: Database) => resolveBoxDelegate(database, DEFAULT_BOX_DELEGATE);
+const unavailableReason = (setting: Exclude<ReturnType<typeof agentModel>, { kind: "ready" }>) =>
+	setting.kind === "broken" ? setting.reason : "No agent model is chosen; choose the Default delegate model in Connections.";
 
-/** @approved Why a code-agent run for this Box would be refused before it starts, or undefined when its model is ready, for a control to say before the writer starts one. */
-export const codeAgentUnavailable = (database: Database, boxId: BoxId): string | undefined => {
-	const setting = resolveBoxDelegate(database, boxId);
-	return setting.kind === "ready" ? undefined : unavailableReason(boxId, setting);
+/** @approved Why a code-agent run would be refused before it starts, or undefined when the default delegate model is ready, for a control to say before the writer starts one. */
+export const codeAgentUnavailable = (database: Database): string | undefined => {
+	const setting = agentModel(database);
+	return setting.kind === "ready" ? undefined : unavailableReason(setting);
 };
 
 // @approved
-//  One code-agent run: a libfx agent on the Box's delegate setting, built
+//  One code-agent run: a libfx agent on the default delegate model, built
 // for this run and closed with it, whose two tools work one QuickJS context
 // the run owns and disposes however it ends. `run` explores the frozen
 // globals; `submit` checks the draft against `submitSchema`, then the Box's
@@ -332,8 +336,8 @@ export const codeAgentUnavailable = (database: Database, boxId: BoxId): string |
 // The run's signal cancels the turn and its fetches, and a run that ends,
 // fails or is cancelled leaves no QuickJS context behind.
 export const runCodeAgent = async <Draft extends TSchema>(database: Database, { boxId, instructions, globals, submitSchema, verify, signal, onActivity }: CodeAgentCall<Draft>): Promise<Static<Draft>> => {
-	const setting = resolveBoxDelegate(database, boxId);
-	if (setting.kind !== "ready") throw new Error(unavailableReason(boxId, setting));
+	const setting = agentModel(database);
+	if (setting.kind !== "ready") throw new Error(unavailableReason(setting));
 	signal.throwIfAborted();
 	const guest = await codeGuest(boxId, globals);
 	const submitInput = codeAgentSubmitInput(submitSchema);

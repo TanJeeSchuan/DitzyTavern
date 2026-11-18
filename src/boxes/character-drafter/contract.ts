@@ -1,11 +1,18 @@
 import { Type, type Static, type TSchema } from "@sinclair/typebox";
 import { numericWire, promptChannels } from "@/box-sdk/shared";
 
+/** @approved The longest person name a draft takes; the picker and the Participant entry offer none longer. */
+export const PERSON_MAX = 256;
+/** @approved The longest steer a draft takes. */
+export const INSTRUCTION_MAX = 2048;
+/** @approved Why a name cannot be drafted, shown wherever one is offered. */
+export const PERSON_TOO_LONG = `Names over ${PERSON_MAX} characters can't be drafted.`;
+
 /** @approved What the window or a Participant editor asks for: whom to draft in which Chat, the writer's steer, and the Cast member being drafted, if any. */
 export const draftRequest = Type.Object({
 	conversationId: Type.Integer(),
-	person: Type.String({ minLength: 1, maxLength: 256, pattern: "\\S" }),
-	instruction: Type.Optional(Type.String({ maxLength: 2048 })),
+	person: Type.String({ minLength: 1, maxLength: PERSON_MAX, pattern: "\\S" }),
+	instruction: Type.Optional(Type.String({ maxLength: INSTRUCTION_MAX })),
 	participantId: Type.Optional(Type.Integer()),
 });
 export type DraftRequest = Static<typeof draftRequest>;
@@ -34,6 +41,8 @@ export type DraftEvent = Static<typeof draftEvent>;
 export const drafterRead = Type.Object({ people: Type.Array(Type.String()), unavailable: Type.Union([Type.String(), Type.Null()]) });
 export type DrafterRead = Static<typeof drafterRead>;
 export const drafterConversationParams = Type.Object({ id: numericWire });
+/** @approved The summary Elysia's validation answer carries when a draft request fails its schema. */
+export const draftRequestRefusal = Type.Object({ summary: Type.String() });
 
 /** @approved The `messages` global: the Selected narrative path, in order. */
 export const draftMessages = Type.Array(Type.Object({
@@ -46,7 +55,6 @@ export type DraftCast = Static<typeof draftCast>;
 /** @approved People labels as Memory's `people()` answers them. */
 export const draftPeople = Type.Array(Type.String());
 
-/** @approved The `exports` global's schema: each Box's Exports as functions typed by the schemas that Box declares. */
-export const draftExports = (boxes: Readonly<Record<string, Readonly<Record<string, { readonly input: TSchema; readonly output: TSchema }>>>>) =>
-	Type.Object(Object.fromEntries(Object.entries(boxes).map(([id, exports]) =>
-		[id, Type.Object(Object.fromEntries(Object.entries(exports).map(([name, { input, output }]) => [name, Type.Function([input], output)])))])));
+/** @approved The `memory` global's schema: Memory's people and the Claims about each, typed by the schemas Memory's Exports declare, or null when Memory is not there to ask. */
+export const draftMemory = (declared?: { readonly people: TSchema; readonly claims: TSchema }) => declared === undefined ? Type.Null()
+	: Type.Union([Type.Object({ people: declared.people, claims: Type.Record(Type.String(), declared.claims) }), Type.Null()]);

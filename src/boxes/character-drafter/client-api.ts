@@ -2,18 +2,23 @@ import { useQuery } from "@tanstack/react-query";
 import { Value } from "@sinclair/typebox/value";
 import { createParser } from "eventsource-parser";
 import { useEffect, useRef, useState } from "react";
-import { boxApi, requestData, type ConversationSummary } from "@/box-sdk/client";
-import { draftEvent, drafterRead, type CharacterDraft, type DraftActivity, type DraftRequest } from "./contract";
+import { boxApi, followsChanges, openDefinitionDraft, requestData, type ConversationSummary } from "@/box-sdk/client";
+import { draftEvent, drafterRead, draftRequestRefusal, type CharacterDraft, type DraftActivity, type DraftRequest } from "./contract";
 import descriptor from "./shared-descriptor";
 import type { DrafterRoutes } from "./server-routes";
 
 const drafter = boxApi<DrafterRoutes>(descriptor.id);
 
-/** @approved The people Memory knows in this Chat and why a draft cannot start, read again whenever the Chat changes. */
+// @approved
+//  The people Memory knows in this Chat and why a draft cannot start. It
+// follows every committed change, since Memory's digests and label edits and
+// the delegate setting change it without a Chat revision; no command is sent
+// at a revision it supplies.
 export const useDrafterRead = (conversation: ConversationSummary) => useQuery({
-	queryKey: ["box", descriptor.id, conversation.id, conversation.revision],
+	queryKey: ["box", descriptor.id, conversation.id],
 	queryFn: ({ signal }) => requestData(drafter.conversations({ id: String(conversation.id) }).get({ fetch: { signal } }), drafterRead),
 	placeholderData: (previous) => previous,
+	meta: followsChanges,
 });
 
 /** @approved One draft as the writer watches it: the steps the agent ran, and how it ended once it has. */
@@ -21,19 +26,33 @@ export type DraftRun =
 	| { readonly status: "idle" }
 	| { readonly status: "running" | "cancelled"; readonly activities: readonly DraftActivity[] }
 	| { readonly status: "drafted"; readonly activities: readonly DraftActivity[]; readonly draft: CharacterDraft }
+	| { readonly status: "opened"; readonly activities: readonly DraftActivity[]; readonly name: string }
 	| { readonly status: "failed"; readonly activities: readonly DraftActivity[]; readonly reason: string };
 
 const activitiesOf = (run: DraftRun) => run.status === "idle" ? [] : run.activities;
+
+/** @approved Why the server refused to start a draft: the failed check's summary for a request its schema rejects. */
+const refusal = async (response: Response) => {
+	const body: unknown = await response.json().catch(() => null);
+	return Value.Check(draftRequestRefusal, body) ? `The draft could not start: ${body.summary}` : "The draft could not start. Try again.";
+};
 
 // @approved
 //  Starts a draft and follows its stream: each step joins the feed, and the
 // draft or the failure ends it. Cancelling, starting again or unmounting
 // closes the stream, which cancels the run on the server; a closed stream's
-// late frames have nowhere to land.
-export function useDraftRun(onDraft?: (draft: CharacterDraft) => void) {
+// late frames have nowhere to land. Opening a draft hands it to the
+// Definition editor and lets go of it here, so one draft is kept at most
+// once and closing the editor discards it. With `opensOnDraft`, the draft
+// opens as soon as it arrives.
+export function useDraftRun({ conversationId, replaces, opensOnDraft = false }: { conversationId: number; replaces?: number; opensOnDraft?: boolean }) {
 	const controller = useRef<AbortController | null>(null);
 	const [run, setRun] = useState<DraftRun>({ status: "idle" });
 	useEffect(() => () => controller.current?.abort(), []);
+	const open = (draft: CharacterDraft) => {
+		openDefinitionDraft(draft, { conversationId, replaces });
+		setRun((current) => ({ status: "opened", activities: activitiesOf(current), name: draft.name }));
+	};
 	const start = async (request: DraftRequest) => {
 		controller.current?.abort();
 		const active = new AbortController();
@@ -43,15 +62,17 @@ export function useDraftRun(onDraft?: (draft: CharacterDraft) => void) {
 		let ended = false;
 		try {
 			const response = await fetch(`/api/boxes/${descriptor.id}/draft`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request), signal: active.signal });
-			if (!response.ok || response.body === null) throw new Error("The draft could not start. Try again.");
+			if (!response.ok) throw new Error(await refusal(response));
+			if (response.body === null) throw new Error("The draft could not start. Try again.");
 			const parser = createParser({ onEvent: ({ data }) => {
 				const event: unknown = JSON.parse(data);
 				if (!Value.Check(draftEvent, event)) throw new Error("The draft stream sent something unreadable. Try again.");
 				if (event.type === "activity") return update((current) => ({ status: "running", activities: [...activitiesOf(current), event.activity] }));
 				ended = true;
 				if (event.type === "failed") return update((current) => ({ status: "failed", activities: activitiesOf(current), reason: event.message }));
-				update((current) => ({ status: "drafted", activities: activitiesOf(current), draft: event.draft }));
-				if (controller.current === active) onDraft?.(event.draft);
+				if (controller.current !== active) return;
+				if (opensOnDraft) open(event.draft);
+				else setRun((current) => ({ status: "drafted", activities: activitiesOf(current), draft: event.draft }));
 			} });
 			const reader = response.body.getReader();
 			const decoder = new TextDecoder();
@@ -70,5 +91,5 @@ export function useDraftRun(onDraft?: (draft: CharacterDraft) => void) {
 		controller.current = null;
 		setRun((current) => ({ status: "cancelled", activities: activitiesOf(current) }));
 	};
-	return { run, start, cancel };
+	return { run, start, cancel, open };
 }

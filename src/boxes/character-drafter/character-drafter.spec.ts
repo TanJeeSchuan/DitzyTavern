@@ -48,7 +48,7 @@ test("a person Memory knows is drafted from the window and added to the Cast onl
 	await expect.poll(async () => (await (await request.get(`/api/boxes/character-drafter/conversations/${activeChatId}`)).json()).people, { timeout: 15_000 }).toEqual(["Old Pell"]);
 	const reply = (await (await request.get(`${url}/history`)).json()).messages.at(-1).id;
 	await llm.authoring(
-		{ tools: [{ name: "run", arguments: { code: "exports.memory.claimsAbout({ label: \"Old Pell\" }).map((found) => found.claim)" } }] },
+		{ tools: [{ name: "run", arguments: { code: "memory.claims[\"Old Pell\"].map((found) => found.claim)" } }] },
 		{ tools: [{ name: "submit", arguments: { draft: {
 			name: "Old Pell",
 			prompt: { ...blank, identity: "Old Pell is the observatory's night porter.\n\nReputation: Theodora says he keeps the spare keys.", exampleDialogue: "\"Dome's humming again,\"" },
@@ -62,12 +62,15 @@ test("a person Memory knows is drafted from the window and added to the Cast onl
 	await expect(window.getByRole("textbox", { name: "Person" })).toHaveValue("Old Pell");
 	await window.getByRole("button", { name: "Draft", exact: true }).click();
 	await expect(window.getByText("Drafted Old Pell.")).toBeVisible();
-	await window.getByRole("list", { name: "Agent steps" }).getByText("exports.memory.claimsAbout", { exact: false }).click();
+	await window.getByRole("list", { name: "Agent steps" }).getByText("memory.claims", { exact: false }).click();
 	await expect(window.getByRole("textbox", { name: "Step 1 output" })).toContainText("Old Pell keeps the observatory's spare keys.");
 	expect((await (await request.get(url)).json()).cast.map(({ name }: { name: string }) => name)).not.toContain("Old Pell");
 
 	await window.getByRole("button", { name: "Open draft", exact: true }).click();
 	await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Old Pell");
+	// A draft is handed to the editor once, so it cannot be kept twice.
+	await expect(window.getByText("Opened the draft of Old Pell in the Characters panel.")).toBeVisible();
+	await expect(window.getByRole("button", { name: "Open draft", exact: true })).toHaveCount(0);
 	await expect(page.getByRole("textbox", { name: "Identity" })).toContainText("Reputation: Theodora says he keeps the spare keys.");
 	await page.getByRole("button", { name: "Add to Cast", exact: true }).click();
 	await expect(page.getByText("Chat only · Changes stay in this Chat")).toBeVisible();
@@ -107,4 +110,49 @@ test("a Cast member drafted from their Participant editor replaces their Definit
 	expect(replaced.prompt.identity).toBe("She runs the night shift now.");
 	expect(replaced.portrait.hash).toBe(hash);
 	expect(replaced.openings).toEqual(openings);
+});
+
+test.describe("a Replace sent after the Participant changed elsewhere", () => {
+	test.use({ allowedBrowserErrors: /status of 409/ });
+
+	test("conflicts instead of reverting the newer Openings, and replaces once the writer loads them", async ({ page, request, llm }) => {
+		await chooseAgentModel(request, llm.url);
+		const { activeChatId } = await (await request.get("/api/workspace")).json();
+		const url = `/api/conversations/${activeChatId}`;
+		await llm.authoring({ tools: [{ name: "submit", arguments: { draft: { name: "Dr. Theodora Kline", prompt: { ...blank, identity: "She runs the night shift now." }, quotes: [] } } }] });
+		await page.goto("/");
+		await page.getByRole("button", { name: "Characters" }).click();
+		// The Cast row button precedes its row menu, so first() opens the editor.
+		await page.getByRole("button", { name: /Theodora Kline maps coastlines/ }).first().click();
+		await page.getByRole("region", { name: "Character Drafter" }).getByRole("button", { name: "Draft from story", exact: true }).click();
+		await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Dr. Theodora Kline");
+
+		const opened = await (await request.get(url)).json();
+		const theodora = opened.cast.find(({ name }: { name: string }) => name === "Theodora Kline");
+		const openings = [...theodora.openings, "The dome creaks open."];
+		expect((await request.post(`${url}/commands`, { data: { expectedRevision: opened.revision, action: {
+			type: "update-participant-definition", participantId: theodora.id, definition: { name: theodora.name, prompt: theodora.prompt, sendAppearanceImages: theodora.sendAppearanceImages, openings },
+		} } })).ok()).toBe(true);
+		const refreshed = page.waitForResponse((response) => new URL(response.url()).pathname === url);
+		await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
+		await refreshed;
+
+		const replace = async () => {
+			await page.getByRole("button", { name: "Replace Theodora Kline's Definition", exact: true }).click();
+			await page.getByRole("dialog", { name: "Replace Theodora Kline's Definition?" }).getByRole("button", { name: "Replace", exact: true }).click();
+		};
+		await replace();
+		await expect(page.getByText("Theodora Kline changed elsewhere after this draft opened, so nothing was replaced.", { exact: false })).toBeVisible();
+		const kept = (await (await request.get(url)).json()).cast.find(({ id }: { id: number }) => id === theodora.id);
+		expect(kept.name).toBe("Theodora Kline");
+		expect(kept.openings).toEqual(openings);
+
+		await page.getByRole("button", { name: "Load saved version", exact: true }).click();
+		await expect(page.getByRole("textbox", { name: `Opening ${openings.length}` })).toContainText("The dome creaks open.");
+		await replace();
+		await expect(page.getByText("Changes stay in this Chat", { exact: false })).toBeVisible();
+		const replaced = (await (await request.get(url)).json()).cast.find(({ id }: { id: number }) => id === theodora.id);
+		expect(replaced.name).toBe("Dr. Theodora Kline");
+		expect(replaced.openings).toEqual(openings);
+	});
 });

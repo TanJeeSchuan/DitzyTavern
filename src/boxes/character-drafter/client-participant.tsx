@@ -1,7 +1,8 @@
-import { Button, openDefinitionDraft, type CastParticipant, type ConversationSummary } from "@/box-sdk/client";
+import { Button, type CastParticipant, type ConversationSummary } from "@/box-sdk/client";
 import { ActivityFeed } from "./client-activity";
 import { useDrafterRead, useDraftRun } from "./client-api";
 import { DraftStatus } from "./client-window";
+import { PERSON_MAX, PERSON_TOO_LONG } from "./contract";
 import descriptor from "./shared-descriptor";
 
 // @approved
@@ -9,9 +10,9 @@ import descriptor from "./shared-descriptor";
 // has become and opens the draft offering to replace their Definition.
 export function DraftFromStory({ conversation, participant }: { conversation: ConversationSummary; participant: CastParticipant }) {
 	const read = useDrafterRead(conversation);
-	const { run, start, cancel } = useDraftRun((draft) => openDefinitionDraft(draft, { conversationId: conversation.id, replaces: participant.id }));
-	const enabled = conversation.boxes[descriptor.id] === "enabled";
-	const unavailable = enabled ? read.data?.unavailable ?? null : "The Character Drafter is off in this Chat.";
+	const { run, start, cancel } = useDraftRun({ conversationId: conversation.id, replaces: participant.id, opensOnDraft: true });
+	const unavailable = conversation.boxes[descriptor.id] !== "enabled" ? "The Character Drafter is off in this Chat."
+		: participant.name.length > PERSON_MAX ? PERSON_TOO_LONG : read.data?.unavailable ?? null;
 	return <section className="character-drafter-participant" aria-label="Character Drafter">
 		<div className="character-drafter-participant-row">
 			<div className="character-drafter-participant-text">

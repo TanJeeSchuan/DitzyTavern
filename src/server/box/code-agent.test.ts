@@ -8,6 +8,7 @@ import { key, profile } from "../contract/prompt-preset-test-fixtures";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { CODE_AGENT_OUTPUT_BYTES, CODE_AGENT_STEPS, runCodeAgent, type CodeAgentActivity, type CodeAgentCall, type CodeAgentFunction } from "./code-agent";
 import { applyBoxDelegateSettings, readBoxDelegateSettings } from "./delegate-settings";
+import { DEFAULT_BOX_DELEGATE } from "../../shared/contract/box";
 import { QuickJSContext, QuickJSRuntime } from "quickjs-emscripten-core";
 
 // @approved
@@ -68,12 +69,13 @@ beforeEach(() => {
 });
 afterEach(() => database.close());
 
-/** @approved The drafter Box's agent, pointed at the fake model. */
-const chooseModel = (requestUrl = `http://127.0.0.1:${server.port}/v1/`) => {
+/** @approved The default delegate model every code agent runs on, or a model set for one Box alone, pointed at the fake model. */
+const chooseModel = (requestUrl = `http://127.0.0.1:${server.port}/v1/`, box: string = DEFAULT_BOX_DELEGATE) => {
 	const connections = createConnectionSettingsModule(database, { masterKey: key });
-	const profileId = connections.createProfile({ expectedRevision: connections.get().revision, profile: { ...profile, displayName: "Stage", requestUrl }, credential: "stage-secret" })
-		.profiles.find(({ displayName }) => displayName === "Stage")!.id; // @approved The profile was just created.
-	applyBoxDelegateSettings(database, "drafter", { type: "apply", expectedRevision: readBoxDelegateSettings(database, "drafter").revision, profileId, model: "stage-1" });
+	const displayName = box === DEFAULT_BOX_DELEGATE ? "Stage" : `Stage for ${box}`;
+	const profileId = connections.createProfile({ expectedRevision: connections.get().revision, profile: { ...profile, displayName, requestUrl }, credential: "stage-secret" })
+		.profiles.find((created) => created.displayName === displayName)!.id; // @approved The profile was just created.
+	applyBoxDelegateSettings(database, box, { type: "apply", expectedRevision: readBoxDelegateSettings(database, box).revision, profileId, model: "stage-1" });
 };
 
 const run = (over: Partial<CodeAgentCall<typeof submitSchema>> = {}) => runCodeAgent(database, {
@@ -237,8 +239,9 @@ test("a global function refuses an argument that is not JSON, before the host se
 	]);
 });
 
-test("an off delegate setting refuses the run with what to choose; a broken one with its reason", async () => {
-	await expect(run()).rejects.toThrow("The drafter Box's agent is off; choose its model in Connection Settings.");
+test("an off default delegate refuses the run with what to choose, even beside a model set for the Box itself; a broken one with its reason", async () => {
+	chooseModel(undefined, "drafter");
+	await expect(run()).rejects.toThrow("No agent model is chosen; choose the Default delegate model in Connections.");
 	chooseModel("http://192.168.1.4:8080/v1/");
 	await expect(run()).rejects.toThrow("Stage uses HTTP; an agent sends HTTP only to localhost, so use HTTPS.");
 	expect(bodies).toHaveLength(0);
