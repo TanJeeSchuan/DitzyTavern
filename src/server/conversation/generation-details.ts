@@ -19,7 +19,6 @@ import {
 	connectConversationDatabase,
 	findConversation,
 	readActiveCast,
-	type ConversationDatabase,
 } from "./internal";
 import { checkpointColumns, liveVariantContent, selectActiveGenerations } from "./generation-checkpoint";
 import { decodeGenerationCapture } from "./generation-capture";
@@ -38,18 +37,7 @@ export function readActiveGenerationDetails(
 	conversationId: number,
 	generationId: number,
 ): ActiveGenerationDetails | undefined {
-	return readActiveGenerationDetailsFromConnection(
-		connectConversationDatabase(database),
-		conversationId,
-		generationId,
-	);
-}
-
-export function readActiveGenerationDetailsFromConnection(
-	db: ConversationDatabase,
-	conversationId: number,
-	generationId: number,
-): ActiveGenerationDetails | undefined {
+	const db = connectConversationDatabase(database);
 	const active = selectActiveGenerations(db).where(and(
 		eq(activeGenerationTable.id, generationId),
 		eq(activeGenerationTable.conversation_id, conversationId),
@@ -108,20 +96,7 @@ export function readVariantDetails(
 	messageId: number,
 	variantId: number,
 ): VariantDetails | undefined {
-	return readVariantDetailsFromConnection(
-		connectConversationDatabase(database),
-		conversationId,
-		messageId,
-		variantId,
-	);
-}
-
-export function readVariantDetailsFromConnection(
-	db: ConversationDatabase,
-	conversationId: number,
-	messageId: number,
-	variantId: number,
-): VariantDetails | undefined {
+	const db = connectConversationDatabase(database);
 	const message = db.select().from(messageTable).where(and(
 		eq(messageTable.id, messageId),
 		eq(messageTable.conversation_id, conversationId),

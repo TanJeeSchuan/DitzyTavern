@@ -87,11 +87,6 @@ export interface StartGenerationRuntimeInput {
 	checkpoint?: GenerationCheckpointOptions;
 }
 
-export interface GenerationRuntimeScheduler {
-	/** @approved Injectable clock for deterministic lifecycle tests. */
-	readonly now?: () => number;
-}
-
 type Subscriber = (envelope: GenerationEventEnvelope) => void;
 type StateSubscriber = (state: GenerationRuntimeState) => void;
 
@@ -114,14 +109,9 @@ export class GenerationRuntimeRegistry {
 	static readonly TERMINAL_REPLAY_RETENTION_MS = GENERATION_REPLAY_RETENTION_MS;
 
 	private readonly runtimes = new Map<number, GenerationRuntime>();
-	private readonly now: () => number;
 	private readonly pending = new Set<Promise<unknown>>();
 	private readonly shutdown = new AbortController();
 	private phase: "accepting" | "draining" | "closed" = "accepting";
-
-	constructor(scheduler: GenerationRuntimeScheduler = {}) {
-		this.now = scheduler.now ?? Date.now;
-	}
 
 	assertAccepting(): void {
 		if (this.phase !== "accepting") throw this.shutdownSignal.reason;
@@ -181,7 +171,7 @@ export class GenerationRuntimeRegistry {
 	 * Called lazily on registry access and by the process-state sweep tick
 	 * while the process is idle; retention is also enforced independently by
 	 * the persisted expiry boundary in Conversation. */
-	cleanup(now = this.now()): void {
+	cleanup(now = Date.now()): void {
 		for (const [generationId, runtime] of this.runtimes) {
 			const terminalAt = runtime.terminalTime;
 			if (terminalAt !== null && now - terminalAt >= GenerationRuntimeRegistry.TERMINAL_REPLAY_RETENTION_MS) {
@@ -223,7 +213,6 @@ export class GenerationRuntime {
 	private checkpointPending = false;
 	private progress: MutableRuntimeProgress;
 	private phase: GenerationPhase = { kind: "active" };
-	private readonly controller = new AbortController();
 
 	constructor(input: StartGenerationRuntimeInput) {
 		this.onCheckpoint = input.onCheckpoint;
@@ -245,20 +234,12 @@ export class GenerationRuntime {
 		};
 	}
 
-	get signal(): AbortSignal {
-		return this.controller.signal;
-	}
-
 	get state(): GenerationRuntimeState {
 		const outcome = this.phase.kind === "terminal" ? this.phase.outcome : { status: "active" } as const;
 		const status: GenerationStatus = outcome.status === "failed"
 			? { status: "failed", reason: outcome.failure.reason, imageModel: outcome.failure.imageModel }
 			: { status: outcome.status };
 		return { ...this.progress, ...status };
-	}
-
-	get retainedEvents(): readonly GenerationEventEnvelope[] {
-		return this.events;
 	}
 
 	publish(event: ModelClientEvent): GenerationEventEnvelope {
@@ -332,7 +313,6 @@ export class GenerationRuntime {
 		this.phase = next;
 		if (event.type === "request-stop") {
 			try { this.onStop?.(); } catch { /* @approved provider cancellation remains best effort */ }
-			if (!this.signal.aborted) this.controller.abort();
 		}
 		if (next.kind === "terminal") this.notifyState();
 	}
@@ -365,10 +345,6 @@ export class GenerationRuntime {
 
 	expireRetention(): void {
 		try { this.onRetentionExpired?.(); } catch { /* @approved cleanup is retried by the persisted expiry boundary */ }
-	}
-
-	get isStopRequested(): boolean {
-		return this.phase.kind === "stopping";
 	}
 
 	subscribe(afterEventId: number, onEvent: Subscriber, onState?: StateSubscriber): GenerationRuntimeSubscription {

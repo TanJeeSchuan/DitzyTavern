@@ -1,3 +1,5 @@
+/* oxlint-disable ditzy/no-conversation-internal-imports -- The test snapshot combines raw rows with the production live-text projection. */
+import { asc, eq, getTableColumns } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	checkpointConversationGeneration,
@@ -6,11 +8,14 @@ import {
 	readConversationSummary,
 	readSelectedHistory,
 	readConversationData,
-	loadMessageRows,
 	deriveMessageSwipeEligibility,
 } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
+import { messageDataTable, messageTable, messageVariantTable } from "../database/schema";
+import { liveVariantContent } from "../conversation/generation-checkpoint";
+import { groupRowsByNumber } from "../conversation/internal";
+import { loadVariantDataRows, toDataEntry } from "../conversation/message-rows";
 import type { BoxId, BoxState } from "../../shared/contract/box";
 import { boxInstanceEntry, boxStateEntry } from "../box/setup";
 import { installBoxBlocks } from "../prompt-preset";
@@ -83,28 +88,38 @@ export interface TestConversationSnapshot extends ConversationSummary {
  data: ConversationDataEntry[];
 }
 // @approved
-// Tests assert on every sibling Variant's raw data and on Message-scoped data,
-// which no product read returns (product reads are selected-path or paginated),
-// so this assembles the snapshot from the shared row loader.
+// Tests inspect every sibling Variant's raw data and all Message-scoped data.
+// The fixture reads these rows alongside the selected path's author stamps.
 export function readTestConversationSnapshot(database: Database, conversationId: number): TestConversationSnapshot | undefined {
  const summary = readConversationSummary(database, conversationId);
  if (summary === undefined) return undefined;
- const rows = loadMessageRows(drizzle(database), conversationId, { variantData: true, messageData: true });
+ const db = drizzle(database);
+ const messages = db.select().from(messageTable).where(eq(messageTable.conversation_id, conversationId))
+  .orderBy(asc(messageTable.position)).all();
+ const variants = db.select({ ...getTableColumns(messageVariantTable), content: liveVariantContent }).from(messageVariantTable)
+  .innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id)).where(eq(messageTable.conversation_id, conversationId))
+  .orderBy(asc(messageVariantTable.position)).all();
+ const messageData = db.select(getTableColumns(messageDataTable)).from(messageDataTable)
+  .innerJoin(messageTable, eq(messageTable.id, messageDataTable.message_id)).where(eq(messageTable.conversation_id, conversationId))
+  .orderBy(asc(messageDataTable.namespace), asc(messageDataTable.key)).all();
+ const variantsByMessage = Map.groupBy(variants, (variant) => variant.message_id);
+ const variantData = loadVariantDataRows(db, variants.map((variant) => variant.id));
+ const messageDataByMessage = groupRowsByNumber(messageData, (row) => row.message_id, toDataEntry);
  const path = new Map(readSelectedHistory(database, conversationId)!.messages.map((message) => [message.id, message]));
  return {
   ...summary,
   data: readConversationData(database, conversationId)!.entries,
-  messages: rows.messages.map((message) => {
+  messages: messages.map((message) => {
    const identity = path.get(message.id)!;
    return {
     id: message.id, position: message.position, timestamp: message.timestamp,
     author: identity.author, historicalContext: identity.historicalContext,
     swipe: deriveMessageSwipeEligibility(summary.playable, identity.historicalContext, summary.cast.map((participant) => participant.id)),
-    data: rows.messageData.get(message.id) ?? [],
-    variants: (rows.variantsByMessage.get(message.id) ?? []).map((variant) => ({
+    data: messageDataByMessage.get(message.id) ?? [],
+    variants: (variantsByMessage.get(message.id) ?? []).map((variant) => ({
      id: variant.id, position: variant.position, content: variant.content,
      timestamp: variant.timestamp, selected: variant.selected,
-     data: rows.variantData.get(variant.id) ?? [],
+     data: variantData.get(variant.id) ?? [],
     })),
    };
   }),

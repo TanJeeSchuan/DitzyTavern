@@ -120,7 +120,6 @@ export type {
 export { authorRoleOf, continuationEligibility } from "./continuation";
 
 export type { ConversationDatabase } from "./internal";
-export { attachConversationLorebook, saveConversationLoreSettings } from "./commands/lore-attachments";
 export { deleteConversation } from "./delete";
 export type { EditMacroVariablesInput, EditedMacroVariables, ReadMacroVariablesInput } from "./macro-variables";
 export type { SelectedHistoryMessage, SelectedHistoryRead, SelectedHistoryReadRequest, SelectedHistoryVariant } from "./selected-history";
@@ -142,7 +141,6 @@ export { readActiveGenerationsForRecovery } from "./generation-details";
 export type { GenerationRequestOverrides } from "./types";
 export { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
 
-export { loadMessageRows } from "./message-rows";
 
 export { readVariantData } from "./variant-data";
 export type { VariantDataRecords } from "./variant-data";

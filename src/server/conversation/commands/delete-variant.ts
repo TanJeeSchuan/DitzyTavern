@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq, ne } from "drizzle-orm";
 import { messageVariantTable } from "../../database/schema";
 import { resequence } from "../../database/resequence";
 import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
@@ -15,7 +15,7 @@ export interface DeleteVariantInput {
 export function deleteVariant(
 	db: ConversationDatabase,
 	input: DeleteVariantInput,
-): ConversationWriteChange | void {
+): ConversationWriteChange {
 	const variant = requireVariant(
 		db,
 		input.conversationId,
@@ -23,35 +23,28 @@ export function deleteVariant(
 		input.variantId,
 	);
 	const siblings = db
-		.select()
+		.select({ id: messageVariantTable.id })
 		.from(messageVariantTable)
-		.where(eq(messageVariantTable.message_id, input.messageId))
+		.where(and(eq(messageVariantTable.message_id, input.messageId), ne(messageVariantTable.id, variant.id)))
 		.orderBy(asc(messageVariantTable.position))
 		.all();
-	let replacementId: number | undefined;
-
-	if (siblings.length === 1) {
+	const [firstSibling] = siblings;
+	if (firstSibling === undefined) {
 		throw new InvalidConversationCommandError(
 			"The final Variant of a Message cannot be deleted.",
 		);
 	}
 
-	if (variant.selected) {
-		const replacement = siblings.find((sibling) => sibling.id !== input.variantId);
-		if (replacement === undefined) {
-			throw new InvalidConversationCommandError(
-				"A replacement Variant is required.",
-			);
-		}
+	const replacementId = variant.selected ? firstSibling.id : undefined;
+	if (replacementId !== undefined) {
 		db.update(messageVariantTable)
 			.set({ selected: false })
 			.where(eq(messageVariantTable.id, variant.id))
 			.run();
 		db.update(messageVariantTable)
 			.set({ selected: true })
-			.where(eq(messageVariantTable.id, replacement.id))
+			.where(eq(messageVariantTable.id, replacementId))
 			.run();
-		replacementId = replacement.id;
 	}
 
 	db.delete(messageVariantTable)
@@ -62,24 +55,15 @@ export function deleteVariant(
 		messageVariantTable,
 		messageVariantTable.message_id,
 		input.messageId,
-		siblings
-			.filter((sibling) => sibling.id !== input.variantId)
-			.map((sibling) => sibling.id),
+		siblings.map((sibling) => sibling.id),
 	);
 	// @approved
 	//  The replacing Swipe re-derives its Memory collection; the
 	// removed Variant's in-flight work is abandoned in both cases so a deleted
 	// source never keeps a provider call or a Memory worker slot alive.
-	if (replacementId === undefined) {
-		return {
-			conversationId: input.conversationId,
-			touchedVariantIds: [],
-			removedVariantIds: [input.variantId],
-		};
-	}
 	return {
 		conversationId: input.conversationId,
-		touchedVariantIds: [replacementId],
+		touchedVariantIds: replacementId === undefined ? [] : [replacementId],
 		removedVariantIds: [input.variantId],
 	};
 }
