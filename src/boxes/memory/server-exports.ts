@@ -1,32 +1,26 @@
 import type { Database } from "bun:sqlite";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { effectiveRecord, readBoxLifecycles, readChatVariants, readRecordSlots, type ExportsOf } from "@/box-sdk/server";
+import { effectiveRecord, type ExportsOf } from "@/box-sdk/server";
 import descriptor from "./shared-descriptor";
-import { memoryRecord, type MemoryClaimsAbout, type MemoryPeople } from "./contract";
-import { isExcludedAuthor, readMemoryLabelState } from "./server-chat";
+import type { MemoryClaimsAbout, MemoryPeople } from "./contract";
+import { readMemoryLabelState } from "./server-chat";
+import { readMemorySources } from "./server-memories";
 import { applyMemoryPeople } from "./shared";
 
 // @approved
 //  The effective Claims on the Selected narrative path, each with the Message
 // that holds it and its people resolved under the Chat's Cast labels: the
-// same effective records the Memories panel lists — only the Selected
-// Variants, a nonempty passage each — so an unselected Variant's records and
-// an author who is not in the story are left out, and a Writer override
-// wins.
+// selected sources the Memories panel lists, so an unselected Variant's
+// records and an author who is not in the story are left out, and a Writer
+// override wins.
 const readSelectedPathClaims = (database: Database, conversationId: number) => {
 	const labels = readMemoryLabelState(database, conversationId);
-	const variants = readChatVariants(database, conversationId)
-		.filter(({ selected, authorParticipantId }) => selected && !isExcludedAuthor(labels, authorParticipantId));
-	const db = drizzle(database);
-	const slots = readRecordSlots(db, "memory", memoryRecord, readBoxLifecycles(db, conversationId).memory?.instance, variants.map(({ variantId }) => variantId));
-	const claims = variants.flatMap(({ messageId, variantId, content }) => content.trim() === "" ? [] : (effectiveRecord(slots.get(variantId))?.claims ?? []).map((claim) => ({
+	return readMemorySources(database, conversationId, labels).filter(({ selected }) => selected).flatMap(({ messageId, slot }) => (effectiveRecord(slot)?.claims ?? []).map((claim) => ({
 		messageId,
 		claim: claim.claim,
 		attribution: claim.attribution,
 		people: applyMemoryPeople(claim.people, labels.cast, labels.identities, labels.merges),
 		evidence: claim.evidence,
 	})));
-	return claims;
 };
 
 /** @approved The `people` Export: each person label on the Selected narrative path, in first-appearance order, after the Chat's label merges. */

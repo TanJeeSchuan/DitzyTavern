@@ -6,6 +6,7 @@ import { dirname, join } from "node:path";
 import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
+import { assertJson } from "../../shared/contract/json-value";
 import { boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, assertChecked, boxHookOutputs, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
@@ -83,7 +84,9 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	//  Each Export the descriptor declares is wrapped, so the host checks both
 	// crossings: the caller's input against the Export's input schema, and the
 	// Box's answer against its output schema, failing naming the Box, the
-	// Export and the path as a hook's failure does.
+	// Export and the path as a hook's failure does. The answer must be plain
+	// JSON first, since an Export answers synchronously and a loose output
+	// schema would let a Promise or a class instance through.
 	const exports = declaredExports.size === 0 ? undefined : Object.fromEntries([...declaredExports].flatMap(([name, { input, output }]) => {
 		return [[name, (value: BoxValue | undefined, context: BoxExportContext): BoxValue => {
 			assertChecked(input, value, `The ${id} Box's ${name} Export input`);
@@ -91,7 +94,12 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 			//  Checked just before: the loader refused a Box whose two sides name
 			// different Exports, so `host.exports` holds this one, and the call
 			// runs on the object that declares it, as every hook does.
-			const answered: BoxValue = host.exports![name]!(value, context);
+			const answered: unknown = host.exports![name]!(value, context);
+			if (answered instanceof Promise) {
+				void answered.catch(() => undefined);
+				throw new Error(`The ${id} Box's ${name} Export answered with a Promise; an Export answers synchronously.`);
+			}
+			assertJson(answered, `The ${id} Box's ${name} Export output`);
 			assertChecked(output, answered, `The ${id} Box's ${name} Export output`);
 			return answered;
 		}]];

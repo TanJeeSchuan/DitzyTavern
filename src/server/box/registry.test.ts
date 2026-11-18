@@ -200,6 +200,27 @@ test("an Export's input and output are checked against its declared schemas, fai
 	}
 });
 
+test("an Export whose loose output schema would pass a Promise or a class instance is refused when called, naming the Box, the Export and where", async () => {
+	const looseExports = `exports: { greet: { description: "Greets.", input: ${objectField(`name: ${stringField}`, "name")}, output: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} } } }`;
+	const plugins = installPlugins({
+		eager: { fields: looseExports, server: "export default { exports: { greet: async ({ name }) => ({ greeting: name }) } };" },
+		dated: { fields: looseExports, server: "export default { exports: { greet: ({ name }) => ({ greeting: name, at: [new Date(0)] }) } };" },
+	});
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins]);
+		const chat = createChat(database);
+		insertBox(database, chat.id, "eager");
+		insertBox(database, chat.id, "dated");
+		const exports = boxExports(database, chat.id);
+		expect(() => exports.eager?.greet?.({ name: "Ann" })).toThrow("The eager Box's greet Export answered with a Promise; an Export answers synchronously.");
+		expect(() => exports.dated?.greet?.({ name: "Ann" })).toThrow("The dated Box's greet Export output is not JSON at /at/0.");
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
 test("a Box's routes read another Box's Exports through the exportsOf the host hands them", async () => {
 	const plugins = installPlugins({
 		greeter: { fields: exportsField, server: "export default { exports: { greet: ({ name }) => ({ greeting: `Hello, ${name}.` }) } };" },

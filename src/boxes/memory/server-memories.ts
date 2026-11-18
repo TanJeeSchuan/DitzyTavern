@@ -5,30 +5,35 @@ import {
 	readChatVariants, readConversationRevision, readMessageAuthors, readParticipants, readRecordSlots, slotStatus,
 } from "@/box-sdk/server";
 import { memoryRecord, type ConversationMemories, type ConversationMemoryAllowanceCommand, type MemoryIdentityCommand, type MemoryLabelMerge, type MemoryLabelMergeCommand } from "./contract";
-import { isExcludedAuthor, putMemoryChatSettings, putMemoryLabels, readMemoryChatSettings, readMemoryLabelState } from "./server-chat";
+import { isExcludedAuthor, putMemoryChatSettings, putMemoryLabels, readMemoryChatSettings, readMemoryLabelState, type MemoryLabelState } from "./server-chat";
 import { InvalidMemoryCommandError, memoryGuard } from "./server-errors";
 import { readMemoryEmbedding } from "./server-settings";
 
 // @approved
-//  The Memories panel's read: every selected nonempty Variant on the path,
-//  then each unselected Variant that still holds Memories, each with its
-//  Memory record slot. An author who is not in the story is left out.
+//  What Memory holds sources for: every selected nonempty Variant on the
+//  path, in path order, then each unselected Variant that still holds
+//  Memories, each with its Memory record slot in the current instance. An
+//  author who is not in the story is left out. The Memories panel lists
+//  these, and the Exports answer from the selected ones, so the two never
+//  disagree about what Memory knows.
+export const readMemorySources = (database: Database, conversationId: number, state: MemoryLabelState) => {
+	const db = drizzle(database);
+	const variants = readChatVariants(database, conversationId);
+	const slots = readRecordSlots(db, "memory", memoryRecord, readBoxLifecycles(db, conversationId).memory?.instance, variants.map(({ variantId }) => variantId));
+	return variants.map((variant) => ({ ...variant, slot: slots.get(variant.variantId) }))
+		.filter(({ authorParticipantId, selected, content, slot }) => !isExcludedAuthor(state, authorParticipantId)
+			&& (selected ? content.trim() !== "" : effectiveRecord(slot) !== undefined))
+		.sort((left, right) => Number(right.selected) - Number(left.selected) || left.position - right.position || left.variantPosition - right.variantPosition);
+};
+
+/** @approved The Memories panel's read: Memory's sources, each with its effective Claims and slot status. */
 export function readConversationMemories(database: Database, conversationId: number): ConversationMemories {
 	const state = readMemoryLabelState(database, conversationId);
-	const variants = readChatVariants(database, conversationId);
-	const slots = readRecordSlots(drizzle(database), "memory", memoryRecord, readBoxLifecycles(drizzle(database), conversationId).memory?.instance, variants.map(({ variantId }) => variantId));
-	const sources = variants
-		.filter((variant) => !isExcludedAuthor(state, variant.authorParticipantId)
-			&& (variant.selected ? variant.content.trim() !== "" : effectiveRecord(slots.get(variant.variantId)) !== undefined))
-		.sort((left, right) => Number(right.selected) - Number(left.selected) || left.position - right.position || left.variantPosition - right.variantPosition)
-		.map(({ messageId, variantId, selected, content }) => {
-			const slot = slots.get(variantId);
-			return {
-				messageId, variantId, selected,
-				claims: effectiveRecord(slot)?.claims ?? null,
-				status: slotStatus(slot, content),
-			};
-		});
+	const sources = readMemorySources(database, conversationId, state).map(({ messageId, variantId, selected, content, slot }) => ({
+		messageId, variantId, selected,
+		claims: effectiveRecord(slot)?.claims ?? null,
+		status: slotStatus(slot, content),
+	}));
 	return {
 		revision: readConversationRevision(database, conversationId) ?? 0,
 		labelRevision: state.revision,
