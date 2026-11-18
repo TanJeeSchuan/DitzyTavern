@@ -7,6 +7,7 @@ import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
 import { useRevisionedDraft, type DraftSaveResult } from "../lib/revisioned-draft";
 import { ConflictBanner } from "../ConflictBanner";
+import { SaveFooter } from "../SaveFooter";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
@@ -76,12 +77,8 @@ export function ParticipantEditor({
 			onDraftChange={editor.edit}
 			subtitle={subtitle}
 			actions={actions}
-			dirty={editor.dirty}
-			saving={editor.saving}
-			error={editor.conflict ? null : notice}
-			valid={!editor.conflict}
+			footer={(named) => <SaveFooter dirty={editor.dirty} saving={editor.saving} valid={named && !editor.conflict} error={editor.conflict ? null : notice} onSave={() => void save()} />}
 			autoSelectName={autoSelectName}
-			onSave={() => void save()}
 			onBack={onBack}
 			banner={editor.conflict && <ConflictBanner
 				message="This Participant changed elsewhere after you opened it. Your edits were not saved and are still here."

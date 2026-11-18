@@ -8,6 +8,7 @@ This covers the built-in Boxes and the worked Race example; start at the [Box sy
 |---|---|---|
 | Author Note | yes | `setup`, `advance` |
 | Memory | yes | `record`, `decision`, `dependencies`, `records.digest`, `advance` with `trace` and `fingerprint`, `routes`, `exports` (`people`, `claimsAbout`); no window, its own side panel |
+| Character Drafter | yes | `routes` only: a read of Memory's people and a draft stream running `runCodeAgent`; window, `ParticipantSection`; drafts open through `openDefinitionDraft` |
 | World Clock | no | `setup`, `record`, `decision`, `setupError`, `records.digest`, `advance`, `status`; `digestWindow` with `Panel` and `describe`, and `header` |
 | Race | no | sandboxed: `setup`, `record`, `moves`, `setupError`, `dependencies`, `records`, `advance`, `read`; frame window |
 | Phone | no | `instructions`, `lens`, `moves` (seat-bound), `dependencies`, `advance`, `read`; window and lens |

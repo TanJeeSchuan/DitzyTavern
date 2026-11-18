@@ -7,6 +7,7 @@ import type { QuickJSHandle } from "quickjs-emscripten-core";
 import type { BoxId } from "../../shared/contract/box";
 import { codeAgentRunInput, codeAgentSubmitInput } from "../../shared/contract/box-descriptor";
 import { sandboxedFailure, type SandboxedFailure } from "../../shared/contract/box-sandboxed";
+import type { GenerationJsonValue } from "../../shared/generation-json";
 import { resolveBoxDelegate } from "./delegate-settings";
 import { determinism, guestError, guestLimit, guestRuntime, type GuestLimits } from "./sandboxed";
 
@@ -25,7 +26,7 @@ const CODE_AGENT_LIMITS: GuestLimits = { ms: CODE_AGENT_CALL_MS, heapBytes: CODE
 const OUTPUT_NOTE = "\n[Output cut off at 8 KiB; narrow your query]";
 
 /** @approved A function a global may hold: the guest calls it with JSON (or nothing) and it returns JSON. */
-export type CodeAgentFunction = (input: CodeAgentValue | undefined) => CodeAgentValue | undefined;
+export type CodeAgentFunction = (input: GenerationJsonValue | undefined) => CodeAgentValue | undefined;
 /** @approved A value a global may hold: JSON, or a function the guest calls with JSON, nested in objects and arrays. */
 export type CodeAgentValue = null | boolean | number | string | readonly CodeAgentValue[] | { readonly [key: string]: CodeAgentValue } | CodeAgentFunction;
 /** @approved One global the agent explores: a sentence about it, its TypeBox schema and its frozen value. */
@@ -310,6 +311,15 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 	return { run, dispose };
 };
 
+const unavailableReason = (boxId: BoxId, setting: Exclude<ReturnType<typeof resolveBoxDelegate>, { kind: "ready" }>) =>
+	setting.kind === "broken" ? setting.reason : `The ${boxId} Box's agent is off; choose its model in Connection Settings.`;
+
+/** @approved Why a code-agent run for this Box would be refused before it starts, or undefined when its model is ready, for a control to say before the writer starts one. */
+export const codeAgentUnavailable = (database: Database, boxId: BoxId): string | undefined => {
+	const setting = resolveBoxDelegate(database, boxId);
+	return setting.kind === "ready" ? undefined : unavailableReason(boxId, setting);
+};
+
 // @approved
 //  One code-agent run: a libfx agent on the Box's delegate setting, built
 // for this run and closed with it, whose two tools work one QuickJS context
@@ -323,7 +333,7 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 // fails or is cancelled leaves no QuickJS context behind.
 export const runCodeAgent = async <Draft extends TSchema>(database: Database, { boxId, instructions, globals, submitSchema, verify, signal, onActivity }: CodeAgentCall<Draft>): Promise<Static<Draft>> => {
 	const setting = resolveBoxDelegate(database, boxId);
-	if (setting.kind !== "ready") throw new Error(setting.kind === "broken" ? setting.reason : `The ${boxId} Box's agent is off; choose its model in Connection Settings.`);
+	if (setting.kind !== "ready") throw new Error(unavailableReason(boxId, setting));
 	signal.throwIfAborted();
 	const guest = await codeGuest(boxId, globals);
 	const submitInput = codeAgentSubmitInput(submitSchema);

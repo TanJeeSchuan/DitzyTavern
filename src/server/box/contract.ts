@@ -82,8 +82,11 @@ export type StoredBoxValue =
 /** @approved What an Export answers for: the Chat's database, and the Chat it answers in. */
 export type BoxExportContext = { readonly database: Database; readonly conversationId: number };
 
-/** @approved The Exports a route handler reaches through the `exportsOf` the host hands a Box's `routes`: one map per enabled Box that declares them, each Export taking its input and answering for one Chat. */
-export type BoxExports = Readonly<Record<string, Readonly<Record<string, (input?: BoxValue) => BoxValue>>>>;
+/** @approved One Export as a route handler reaches it: a function taking its input and answering for one Chat, carrying the description and schemas its descriptor declares. */
+export type BoxExport = ((input?: BoxValue) => BoxValue) & { readonly description: string; readonly input: TSchema; readonly output: TSchema };
+
+/** @approved The Exports a route handler reaches through the `exportsOf` the host hands a Box's `routes`: one map per enabled Box that declares them. */
+export type BoxExports = Readonly<Record<string, Readonly<Record<string, BoxExport>>>>;
 
 // @approved
 //  What one declared Export's server side must be, derived from the

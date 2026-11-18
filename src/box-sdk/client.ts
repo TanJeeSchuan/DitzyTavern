@@ -34,3 +34,5 @@ export { cancelBoxCatchUp, digestBoxPassage, startBoxCatchUp, type BoxDigest } f
 export type { BoxClientDefinition, BoxInspectorProps } from "../client/box-windows/registry";
 export type { BoxTrace } from "../shared/contract/box-generation";
 export { createBoxLens } from "../client/box-windows/lens";
+export { openDefinitionDraft, type DefinitionDraft } from "../client/characters/definition-draft";
+export { CodeView } from "../client/box-windows/CodeView";

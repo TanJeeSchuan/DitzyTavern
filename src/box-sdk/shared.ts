@@ -10,3 +10,4 @@ export { invalidOutcome } from "../shared/contract/outcomes";
 export { numericWire } from "../shared/contract/wire";
 export { projectImageAnchors } from "../shared/image-reference";
 export { MessageId, VariantId, ParticipantId, ParticipantKey } from "../shared/contract/box-row-reference";
+export { promptChannels, type PromptChannels } from "../shared/contract/prompt-schema";

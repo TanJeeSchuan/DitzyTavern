@@ -56,6 +56,7 @@ import { runConversationCommand } from "../conversation-command-runner";
 import type { ForkConversationBody } from "../../shared/contract/conversation-schema";
 import { hasMoves } from "../../shared/contract/box-generation";
 import { VariantStreamsContext } from "../story/variant-streams";
+import { openedDefinitionDraft, requestedDefinitionDraft } from "../characters/definition-draft";
 
 const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
 
@@ -156,6 +157,20 @@ export function ActiveWritingWorkspace({
 		setDelegateTarget(undefined);
 		dispatchPanel({ type: "primary-toggled", panel });
 	};
+
+	// @approved
+	//  A Box's draft for this Chat opens in the Characters panel once unsaved
+	// edits are dealt with; a draft for another Chat has nowhere to open.
+	useEffect(() => requestedDefinitionDraft.subscribe(() => {
+		const request = requestedDefinitionDraft.get();
+		if (request === null) return;
+		requestedDefinitionDraft.set(null);
+		if (String(request.conversationId) !== session.activeChatId) return;
+		saveNavigation.requestNavigation(() => {
+			openedDefinitionDraft.set(request);
+			dispatchPanel({ type: "primary-opened", panel: "characters" });
+		});
+	}), [session.activeChatId, saveNavigation.requestNavigation]);
 
 	const openConnections = (box?: BoxId) => saveNavigation.requestNavigation(() => {
 		if (box !== undefined) connectionSettings.closeEditor();

@@ -1,5 +1,5 @@
 import { Check, Pin, Plus, Search, Sparkles, UserRound } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { libraryPickerEntries } from "../cast";
@@ -11,6 +11,8 @@ import { emptyPromptChannels, promptPreview } from "../../shared/definition";
 import { Portrait } from "../story/Portrait";
 import { AddParticipantMenu } from "./AddParticipantMenu";
 import { CharacterEditor } from "./CharacterEditor";
+import { openedDefinitionDraft, type DefinitionDraftRequest } from "./definition-draft";
+import { DraftDefinitionEditor } from "./DraftDefinitionEditor";
 import { ParticipantEditor } from "./ParticipantEditor";
 import { ParticipantMenu, type Seat } from "./ParticipantMenu";
 import { useCastActions } from "./useCastActions";
@@ -18,7 +20,8 @@ import { useCastActions } from "./useCastActions";
 type View =
 	| { kind: "list" }
 	| { kind: "participant"; id: number; fresh: boolean }
-	| { kind: "character"; id: number; fresh: boolean };
+	| { kind: "character"; id: number; fresh: boolean }
+	| { kind: "draft"; request: DefinitionDraftRequest; serial: number };
 
 type CastParticipant = ConversationSummary["cast"][number];
 
@@ -49,6 +52,16 @@ export function CharactersPanel({
 		void listCharacters().then(setCharacters, () => { setCharacters([]); setLibraryNotice(LIBRARY_UNREACHABLE_NOTICE); });
 	}, []);
 	useEffect(loadCharacters, [loadCharacters]);
+
+	// @approved
+	//  A draft the workspace opened for this Chat becomes this panel's view, so
+	// it lives only while its editor does; each new one starts a fresh editor.
+	const offered = useSyncExternalStore(openedDefinitionDraft.subscribe, openedDefinitionDraft.get);
+	useEffect(() => {
+		if (offered === null || conversationId === 0) return;
+		openedDefinitionDraft.set(null);
+		if (offered.conversationId === conversationId) setView((current) => ({ kind: "draft", request: offered, serial: current.kind === "draft" ? current.serial + 1 : 0 }));
+	}, [offered, conversationId]);
 
 	const pickerEntries = useMemo(() => libraryPickerEntries(characters ?? [], cast), [characters, cast]);
 	const needle = query.trim().toLocaleLowerCase();
@@ -134,6 +147,20 @@ export function CharactersPanel({
 			{castActions.notice !== null && <p role="alert" className="px-3 text-sm text-destructive">{castActions.notice}</p>}
 			{removeDialog}
 		</>;
+	}
+
+	if (view.kind === "draft") {
+		return <DraftDefinitionEditor
+			key={view.serial}
+			conversation={conversation}
+			request={view.request}
+			onConversationChange={onConversationChange}
+			onKept={({ kind, id }) => {
+				if (kind === "character") loadCharacters();
+				setView({ kind, id, fresh: false });
+			}}
+			onBack={openList}
+		/>;
 	}
 
 	if (view.kind === "character") {
