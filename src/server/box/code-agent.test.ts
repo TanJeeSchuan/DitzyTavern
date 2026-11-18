@@ -30,6 +30,9 @@ type Body = {
 	readonly messages: readonly Message[];
 	readonly tools?: readonly { readonly function?: { readonly name?: string; readonly description?: string } }[];
 };
+/** @approved The messages libfx sent, as JSON, so a test can find the declarations its instructions carry; `encoded` writes an expected line the way that JSON escapes it. */
+const instructionsOf = (body: Body | undefined) => JSON.stringify(body?.messages ?? []);
+const encoded = (line: string) => JSON.stringify(line).slice(1, -1);
 const replies: Reply[] = [];
 const bodies: Body[] = [];
 const activities: CodeAgentActivity[] = [];
@@ -126,10 +129,10 @@ test("one context lasts the run: a variable set in one call is there in the next
 	]);
 	expect(activities.at(0)?.summary).toBe('answers.open ? "open" : "closed"');
 	expect(activities.at(0)?.code).toBe('answers.open ? "open" : "closed"');
-	const described = bodies[0]?.tools?.find(({ function: fn }) => fn?.name === "run")?.function?.description ?? "";
-	expect(described).toContain("declare const messages: { id: number; text: string }[];");
-	expect(described).toContain("declare const lookup: (input: number) => { doubled: number };");
-	expect(described).toContain("declare const console: { log(...values: unknown[]): void };");
+	const described = instructionsOf(bodies[0]);
+	expect(described).toContain(encoded("declare const messages: { id: number; text: string }[];"));
+	expect(described).toContain(encoded("declare const lookup: (input: number) => { doubled: number };"));
+	expect(described).toContain(encoded("declare const console: { log(...values: unknown[]): void };"));
 });
 
 test("what the code logs comes back with its final value, and a guest error is the call's output", async () => {
@@ -267,8 +270,8 @@ test("the declarations quote a key that is not an identifier and group a union i
 	const exportsSchema = Type.Object({ "world-clock": Type.Object({ seasons: Type.Array(Type.Union([Type.String(), Type.Null()])) }) });
 	replies.push({ submit: { name: "Maren" } });
 	expect(await run({ globals: { ...globals, exports: { description: "Other Boxes.", schema: exportsSchema, value: { "world-clock": { seasons: ["spring", null] } } } } })).toEqual({ name: "Maren" });
-	const described = bodies[0]?.tools?.find(({ function: fn }) => fn?.name === "run")?.function?.description ?? "";
-	expect(described).toContain('declare const exports: { "world-clock": { seasons: (string | null)[] } };');
+	const described = instructionsOf(bodies[0]);
+	expect(described).toContain(encoded('declare const exports: { "world-clock": { seasons: (string | null)[] } };'));
 });
 
 test("an off default delegate refuses the run with what to choose, even beside a model set for the Box itself; a broken one with its reason", async () => {

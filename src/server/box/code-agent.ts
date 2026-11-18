@@ -59,7 +59,7 @@ const fit = (text: string): string => {
 };
 
 // @approved
-//  The short `.d.ts` the `run` tool's description carries, printed from the
+//  The short `.d.ts` the agent's instructions carry, printed from the
 // globals' schemas. Only the kinds a built-in Box's own schemas use are
 // printed; anything else reads as `unknown`, which is what the guest can
 // tell the model about it.
@@ -401,15 +401,17 @@ export const runCodeAgent = async <Draft extends TSchema>(database: Database, { 
 	};
 	try {
 		const agent = createFxAgent({
-			backend: "wasm", durability: memory(), name: "code-agent", instructions,
+			// @approved
+			//  The declarations go in the instructions, not the run tool's
+			// description: libfx cuts every tool description at 1024 characters.
+			backend: "wasm", durability: memory(), name: "code-agent",
+			instructions: `${instructions}\n\nThe code the run tool runs sees only these globals:\n\n${declarations(globals)}`,
 			tools: [{
 				name: "run", idempotent: false, writes: true,
 				description: [
 					`Runs JavaScript in a sandbox and returns what console.log printed and the code's final value as JSON, cut off at ${CODE_AGENT_OUTPUT_BYTES / 1024} KiB.`,
 					"One context lasts the whole run, so a variable set in one call is there in the next. There is no network, filesystem, clock or randomness.",
-					"The code sees only:",
-					"",
-					declarations(globals),
+					"The globals it sees are declared in the instructions.",
 				].join("\n"),
 				inputSchema: JSON.parse(JSON.stringify(runInput)),
 				execute: (proposed: unknown) => {
