@@ -57,10 +57,13 @@ test("a provider error that fails before the client subscribes is still reported
 		expect(await terminal.text()).toContain('"reason":"The provider request failed with HTTP 401."');
 		await route.fulfill({ response });
 	});
+	await page.clock.install();
 	await page.goto("/");
 	await send(page, "Hello?");
 	const failure = page.getByText("The provider request failed with HTTP 401.", { exact: true });
 	await expect(failure).toBeVisible();
+	await page.clock.fastForward(10_000);
+	await page.clock.resume();
 	await expect(failure).toHaveCount(1);
 	await expect(story(page).getByText("Hello?", { exact: true })).toBeVisible();
 	await page.getByRole("textbox", { name: "Message draft" }).fill("Still here.");
