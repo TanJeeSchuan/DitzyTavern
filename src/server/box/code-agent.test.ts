@@ -1,5 +1,5 @@
 /* eslint-disable ditzy/no-contract-definition-outside-contract -- The globals and the submitted draft are this agent's own fixtures, not wire contracts. */
-import { afterAll, afterEach, beforeEach, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeEach, expect, spyOn, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Type } from "@sinclair/typebox";
 import { createConnectionSettingsModule } from "../connection-settings";
@@ -8,14 +8,17 @@ import { key, profile } from "../contract/prompt-preset-test-fixtures";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { CODE_AGENT_OUTPUT_BYTES, CODE_AGENT_STEPS, runCodeAgent, type CodeAgentActivity, type CodeAgentCall, type CodeAgentFunction } from "./code-agent";
 import { applyBoxDelegateSettings, readBoxDelegateSettings } from "./delegate-settings";
+import { QuickJSContext, QuickJSRuntime } from "quickjs-emscripten-core";
 
 // @approved
 //  The agent's model, a localhost fake speaking Chat Completions: each
 // request takes the next scripted reply, a call to `run` with its code, a
-// call to `submit` with its draft or plain text, and a reply may be held
-// until the test releases it. Each request's body is kept, so a test reads
-// the tools it declared and the tool results it carried back.
-type Reply = { readonly run: string } | { readonly submit: unknown } | { readonly calls: readonly string[] } | { readonly text: string; readonly finish?: string } | { readonly held: Promise<void>; readonly then: Reply };
+// call to `submit` with its draft, several calls in one response, or plain
+// text, and a reply may be held until the test releases it. Each request's
+// body is kept, so a test reads the tools it declared and the tool results
+// it carried back.
+type Scripted = { readonly name: string; readonly arguments: string };
+type Reply = { readonly run: string } | { readonly submit: unknown } | { readonly calls: readonly Scripted[] } | { readonly text: string; readonly finish?: string } | { readonly held: Promise<void>; readonly then: Reply };
 type Body = { readonly messages: readonly { readonly role: string; readonly content: unknown }[]; readonly tools?: readonly { readonly function?: { readonly name?: string; readonly description?: string } }[] };
 const replies: Reply[] = [];
 const bodies: Body[] = [];
@@ -30,7 +33,7 @@ const answer = async (reply: Reply | undefined): Promise<Response> => {
 		return await answer(reply.then);
 	}
 	const chunks = "text" in reply ? [chunk({ role: "assistant", content: reply.text }, null), chunk({}, reply.finish ?? "stop")]
-		: "calls" in reply ? [chunk({ role: "assistant", tool_calls: reply.calls.map((name, index) => ({ index, id: `call_${bodies.length}_${index}`, type: "function" as const, function: { name, arguments: "{}" } })) }, null), chunk({}, "tool_calls")]
+		: "calls" in reply ? [chunk({ role: "assistant", tool_calls: reply.calls.map((tool, index) => ({ index, id: `call_${bodies.length}_${index}`, type: "function" as const, function: { name: tool.name, arguments: tool.arguments } })) }, null), chunk({}, "tool_calls")]
 		: "run" in reply ? [chunk(call("run", JSON.stringify({ code: reply.run })), null), chunk({}, "tool_calls")]
 		: [chunk(call("submit", JSON.stringify({ draft: reply.submit })), null), chunk({}, "tool_calls")];
 	return new Response(`${chunks.join("")}data: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
@@ -47,11 +50,12 @@ const settled = async (condition: () => boolean) => {
 };
 
 const submitSchema = Type.Object({ name: Type.String() }, { additionalProperties: false });
+const lookupSchema = Type.Function([Type.Integer()], Type.Object({ doubled: Type.Integer() }, { additionalProperties: false }));
 const lookup: CodeAgentFunction = (input) => ({ doubled: Number(input ?? 0) * 2 });
 const globals = {
 	messages: { description: "The story's messages.", schema: Type.Array(Type.Object({ id: Type.Integer(), text: Type.String() }, { additionalProperties: false })), value: [{ id: 0, text: "Maren waits." }, { id: 1, text: "The lantern is lit." }] },
 	answers: { description: "Answers the host already holds.", schema: Type.Object({ open: Type.Boolean() }, { additionalProperties: false }), value: { open: true } },
-	lookup: { description: "Doubles a number.", schema: Type.Function([Type.Integer()], Type.Object({ doubled: Type.Integer() }, { additionalProperties: false })), value: lookup },
+	lookup: { description: "Doubles a number.", schema: lookupSchema, value: lookup },
 };
 
 let database: Database;
@@ -78,13 +82,14 @@ const run = (over: Partial<CodeAgentCall<typeof submitSchema>> = {}) => runCodeA
 	signal: new AbortController().signal, onActivity: (activity) => activities.push(activity), ...over,
 });
 
-test("one context lasts the run: a variable set in one call is there in the next, the globals are frozen, and a call can reach a function global", async () => {
+test("one context lasts the run: a variable set in one call is there in the next, the globals are frozen and their names un-writable, and a call can reach a function global", async () => {
 	chooseModel();
 	replies.push(
 		{ run: 'answers.open ? "open" : "closed"' },
 		{ run: 'mark = 3; "set"' },
 		{ run: "mark + 1" },
 		{ run: "answers.open = false; answers.open" },
+		{ run: 'messages = 5; messages.length' },
 		{ run: "lookup(21).doubled" },
 		{ submit: { name: "Maren" } },
 	);
@@ -94,6 +99,7 @@ test("one context lasts the run: a variable set in one call is there in the next
 		'Returned:\n"set"',
 		"Returned:\n4",
 		"Returned:\ntrue",
+		"Returned:\n2",
 		"Returned:\n42",
 	]);
 	expect(activities.at(0)?.summary).toBe('answers.open ? "open" : "closed"');
@@ -109,19 +115,37 @@ test("what the code logs comes back with its final value, and a guest error is t
 	replies.push({ run: 'console.log("note", { a: 1 }); nope' }, { run: 'console.log("second", 2); 2' }, { submit: { name: "Maren" } });
 	expect(await run()).toEqual({ name: "Maren" });
 	expect(activities.map(({ output }) => output)).toEqual([
-		"Logged:\nnote {\"a\":1}\n\nThe code threw ReferenceError: 'nope' is not defined",
+		"Logged:\nnote {\"a\":1}\n\nThe drafter Box's code threw ReferenceError: 'nope' is not defined",
 		"Logged:\nsecond 2\n\nReturned:\n2",
 	]);
 });
 
-test("output past the limit is cut off with a notice to narrow the query", async () => {
+test("a huge log line is clipped in the guest, not dropped with the value it hid", async () => {
 	chooseModel();
-	replies.push({ run: `"${"x".repeat(20 * 1024)}"` }, { submit: { name: "Maren" } });
+	replies.push({ run: 'console.log("x".repeat(30 * 1000 * 1000)); 1' }, { submit: { name: "Maren" } });
 	expect(await run()).toEqual({ name: "Maren" });
-	for (const { output } of activities) {
-		expect(output.length).toBeLessThanOrEqual(CODE_AGENT_OUTPUT_BYTES + 60);
-		expect(output.endsWith("[Output cut off at 8 KiB; narrow your query]")).toBe(true);
-	}
+	const output = activities.at(0)?.output ?? "";
+	expect(output.startsWith("Logged:\nxxxxxxxx")).toBe(true);
+	expect(output.endsWith("[Output cut off at 8 KiB; narrow your query]")).toBe(true);
+});
+
+test("a million console.log calls are buffered in the guest and stay inside one call", async () => {
+	chooseModel();
+	replies.push({ run: 'for (let index = 0; index < 1000000; index += 1) console.log("tick"); "done"' }, { submit: { name: "Maren" } });
+	expect(await run()).toEqual({ name: "Maren" });
+	const output = activities.at(0)?.output ?? "";
+	expect(output.startsWith("Logged:\ntick")).toBe(true);
+	expect(output.endsWith("[Output cut off at 8 KiB; narrow your query]")).toBe(true);
+});
+
+test("output past the limit is cut off at exactly the byte limit, notice inside", async () => {
+	chooseModel();
+	replies.push({ run: `"${"é".repeat(20 * 1024)}"` }, { submit: { name: "Maren" } });
+	expect(await run()).toEqual({ name: "Maren" });
+	expect(activities).toHaveLength(1);
+	const output = activities.at(0)?.output ?? "";
+	expect(Buffer.byteLength(output)).toBe(CODE_AGENT_OUTPUT_BYTES);
+	expect(output.endsWith("[Output cut off at 8 KiB; narrow your query]")).toBe(true);
 });
 
 test("a runaway allocation fails the run with the heap reason, and an endless loop with the time reason", async () => {
@@ -130,9 +154,9 @@ test("a runaway allocation fails the run with the heap reason, and an endless lo
 	await expect(run()).rejects.toThrow("The drafter Box's code ran out of its 128 MiB heap.");
 	replies.push({ run: "while (true) {}" });
 	const started = performance.now();
-	await expect(run()).rejects.toThrow("The drafter Box's code ran past its 2 s limit.");
+	await expect(run()).rejects.toThrow("The drafter Box's code ran past its 2000 ms limit.");
 	expect(performance.now() - started).toBeLessThan(10_000);
-	expect(activities.at(-1)?.output).toBe("The drafter Box's code ran past its 2 s limit.");
+	expect(activities.at(-1)?.output).toBe("The drafter Box's code ran past its 2000 ms limit.");
 });
 
 test("a submit outside the schema or the Box's own check returns a tool error, and the first valid one ends the run", async () => {
@@ -158,19 +182,59 @@ test(`model requests and tool calls past ${CODE_AGENT_STEPS} steps fail the run`
 	expect(bodies).toHaveLength(12);
 });
 
-test("cancelling the signal ends the run with its reason, and a later run starts a fresh context", async () => {
+test("a valid submit arriving as the step past the cap fails the run instead of ending it", async () => {
+	chooseModel();
+	replies.push(
+		...Array.from({ length: 11 }, (_, index) => ({ run: String(index) })),
+		{ calls: [{ name: "run", arguments: JSON.stringify({ code: "1" }) }, { name: "submit", arguments: JSON.stringify({ draft: { name: "Maren" } }) }] },
+	);
+	await expect(run()).rejects.toThrow(`The agent passed its ${CODE_AGENT_STEPS}-step limit.`);
+	expect(bodies).toHaveLength(12);
+});
+
+test("cancelling the signal disposes the run's QuickJS context and runtime", async () => {
 	chooseModel();
 	const held = Promise.withResolvers<void>();
 	replies.push({ run: 'kept = "kept"; "set"' }, { held: held.promise, then: { submit: { name: "Maren" } } });
 	const cancelled = new AbortController();
-	const stopping = run({ signal: cancelled.signal });
-	await settled(() => bodies.length === 2);
-	cancelled.abort(new Error("The writer cancelled the draft."));
-	await expect(stopping).rejects.toThrow("The writer cancelled the draft.");
-	held.resolve();
-	replies.push({ run: 'typeof kept === "undefined" ? "fresh" : "stale"' }, { submit: { name: "Maren" } });
-	expect(await run()).toEqual({ name: "Maren" });
-	expect(activities.at(-1)?.output).toBe('Returned:\n"fresh"');
+	const contextDispose = spyOn(QuickJSContext.prototype, "dispose");
+	const runtimeDispose = spyOn(QuickJSRuntime.prototype, "dispose");
+	try {
+		const stopping = run({ signal: cancelled.signal });
+		await settled(() => bodies.length === 2);
+		cancelled.abort(new Error("The writer cancelled the draft."));
+		await expect(stopping).rejects.toThrow("The writer cancelled the draft.");
+		expect(contextDispose.mock.calls.length).toBe(1);
+		expect(runtimeDispose.mock.calls.length).toBe(1);
+	} finally {
+		held.resolve();
+		contextDispose.mockRestore();
+		runtimeDispose.mockRestore();
+	}
+});
+
+test("an onActivity that throws does not mask the failure that already stopped the run", async () => {
+	chooseModel();
+	replies.push({ run: "while (true) {}" });
+	await expect(run({ onActivity: () => {
+		throw new Error("The stream closed.");
+	} })).rejects.toThrow("The drafter Box's code ran past its 2000 ms limit.");
+});
+
+test("a global function refuses an argument that is not JSON, before the host sees it", async () => {
+	chooseModel();
+	const seen: unknown[] = [];
+	const watching: CodeAgentFunction = (input) => {
+		seen.push(input);
+		return { doubled: Number(input ?? 0) * 2 };
+	};
+	replies.push({ run: "lookup(10n).doubled" }, { run: "lookup(3).doubled" }, { submit: { name: "Maren" } });
+	expect(await run({ globals: { ...globals, lookup: { description: "Doubles a number.", schema: lookupSchema, value: watching } } })).toEqual({ name: "Maren" });
+	expect(seen).toEqual([3]);
+	expect(activities.map(({ output }) => output)).toEqual([
+		"The drafter Box's code threw TypeError: Do not know how to serialize a BigInt",
+		"Returned:\n6",
+	]);
 });
 
 test("an off delegate setting refuses the run with what to choose; a broken one with its reason", async () => {

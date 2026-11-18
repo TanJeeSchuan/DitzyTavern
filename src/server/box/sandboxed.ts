@@ -19,6 +19,8 @@ export const SANDBOX_HEAP_BYTES = 64 * 1024 * 1024;
 const WASM_PAGE_BYTES = 64 * 1024;
 /** @approved Guest execution per entry into the guest: evaluating `logic.js`, each hook call and each job pump. */
 export const SANDBOX_ENTRY_MS = 100;
+/** @approved The limits that stop a sandboxed Box's guest, as its failures are worded. */
+const SANDBOX_LIMITS: GuestLimits = { ms: SANDBOX_ENTRY_MS, heapBytes: SANDBOX_HEAP_BYTES };
 
 /** @approved The hooks a sandboxed Box may declare in this SDK; any other key its `logic.js` exports is refused. */
 const supportedHooks = ["setupError", "dependencies", "moves.render", "records.initial", "records.fold", "records.digest.window", "records.digest.run", "advance.run", "read", "status", "delegate.apply"];
@@ -107,10 +109,17 @@ export const guestRuntime = async (heapBytes: number, entryMs: number) => {
 };
 type GuestRuntime = Awaited<ReturnType<typeof guestRuntime>>;
 
-/** @approved A guest failure as the host words it, naming the Box and the hook it stopped. */
-const guestError = (id: BoxId, hook: string, { name, message }: SandboxedFailure) =>
-	new Error(name === "InternalError" && message === "interrupted" ? `The ${id} Box's ${hook} ran past its ${SANDBOX_ENTRY_MS} ms limit.`
-		: name === "InternalError" && message === "out of memory" ? `The ${id} Box's ${hook} ran out of its ${mebibytes(SANDBOX_HEAP_BYTES)} heap.`
+/** @approved The guest failures that mean a limit stopped it: the entry deadline or the heap. */
+export const guestLimit = ({ name, message }: SandboxedFailure): boolean =>
+	name === "InternalError" && (message === "interrupted" || message === "out of memory");
+
+/** @approved The limits that stop a guest, as its failures are worded: each entry's deadline and the run's heap. */
+export type GuestLimits = { readonly ms: number; readonly heapBytes: number };
+
+/** @approved A guest failure as the host words it, naming the Box, the entry it stopped and the limits that stop one. */
+export const guestError = (id: BoxId, hook: string, limits: GuestLimits, { name, message }: SandboxedFailure) =>
+	new Error(name === "InternalError" && message === "interrupted" ? `The ${id} Box's ${hook} ran past its ${limits.ms} ms limit.`
+		: name === "InternalError" && message === "out of memory" ? `The ${id} Box's ${hook} ran out of its ${mebibytes(limits.heapBytes)} heap.`
 		: `The ${id} Box's ${hook} threw ${name}: ${message}`);
 
 /** @approved What a sandboxed Box's `read` gets: its setup and folded state, the Cast with each Portrait and source Character, and the human seat. */
@@ -153,7 +162,7 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			} finally { handle.dispose(); }
 		};
 		const unwrap = (hook: string, result: { error?: QuickJSHandle; value?: QuickJSHandle }): QuickJSHandle => {
-			if (result.error !== undefined) throw guestError(id, hook, failure(result.error));
+			if (result.error !== undefined) throw guestError(id, hook, SANDBOX_LIMITS, failure(result.error));
 			return result.value!; // @approved A call result holds a value exactly when it holds no error.
 		};
 		// @approved
@@ -166,11 +175,11 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 				// @approved
 				// A module without top-level await evaluates to its namespace, which reads as already fulfilled with the same handle.
 				if (state.type === "fulfilled") return state.notAPromise === true ? promise.dup() : state.value;
-				if (state.type === "rejected") throw guestError(id, hook, failure(state.error));
+				if (state.type === "rejected") throw guestError(id, hook, SANDBOX_LIMITS, failure(state.error));
 				if (idle) return undefined;
 				enter();
 				const jobs = runtime.executePendingJobs();
-				if (jobs.error !== undefined) throw guestError(id, hook, failure(jobs.error));
+				if (jobs.error !== undefined) throw guestError(id, hook, SANDBOX_LIMITS, failure(jobs.error));
 				idle = jobs.value === 0;
 			}
 		};
@@ -285,7 +294,7 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 		if (!(error instanceof WebAssembly.RuntimeError)) return error;
 		const scope = current.getStore();
 		if (scope !== undefined) scope.discard = true;
-		return guestError(id, hook, { name: error.name, message: error.message });
+		return guestError(id, hook, SANDBOX_LIMITS, { name: error.name, message: error.message });
 	};
 	const synchronous = <T>(hook: string, run: () => T): T => {
 		if (current.getStore() !== undefined) return run();
@@ -322,7 +331,7 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 		const outcome = (hook: string, reply: string): GenerationJsonValue | undefined => {
 			const parsed: unknown = JSON.parse(reply);
 			assertChecked(sandboxedOutcome, parsed, `The ${id} Box's ${hook} outcome`);
-			if (parsed.kind === "error") throw guestError(id, hook, parsed);
+			if (parsed.kind === "error") throw guestError(id, hook, SANDBOX_LIMITS, parsed);
 			// @approved
 			// SAFETY: JSON.parse returns only JSON values, and the registry checks this one against the hook's output schema.
 			return parsed.value as GenerationJsonValue | undefined;

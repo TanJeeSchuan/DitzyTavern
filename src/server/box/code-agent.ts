@@ -8,7 +8,7 @@ import type { BoxId } from "../../shared/contract/box";
 import { codeAgentRunInput, codeAgentSubmitInput } from "../../shared/contract/box-descriptor";
 import { sandboxedFailure, type SandboxedFailure } from "../../shared/contract/box-sandboxed";
 import { resolveBoxDelegate } from "./delegate-settings";
-import { determinism, guestRuntime } from "./sandboxed";
+import { determinism, guestError, guestLimit, guestRuntime, type GuestLimits } from "./sandboxed";
 
 /** @approved The steps one code-agent run may take: model requests and tool calls count against the same cap. */
 export const CODE_AGENT_STEPS = 24;
@@ -16,10 +16,13 @@ export const CODE_AGENT_STEPS = 24;
 export const CODE_AGENT_HEAP_BYTES = 128 * 1024 * 1024;
 /** @approved The guest time one `run` call may take. */
 export const CODE_AGENT_CALL_MS = 2_000;
-/** @approved What one `run` call may return to the model, with a notice when it cuts anything off. */
+/** @approved What one `run` call may return to the model, notice included, cut by its UTF-8 bytes. */
 export const CODE_AGENT_OUTPUT_BYTES = 8 * 1024;
-/** @approved What one `run` call may log before further lines are dropped, so the host copy stays bounded. */
-const CODE_AGENT_LOG_BYTES = 1024 * 1024;
+
+/** @approved The limits that stop the agent's code, as its failures are worded. */
+const CODE_AGENT_LIMITS: GuestLimits = { ms: CODE_AGENT_CALL_MS, heapBytes: CODE_AGENT_HEAP_BYTES };
+/** @approved The notice a cut-off reply ends with, inside the byte limit rather than past it. */
+const OUTPUT_NOTE = "\n[Output cut off at 8 KiB; narrow your query]";
 
 /** @approved A function a global may hold: the guest calls it with JSON (or nothing) and it returns JSON. */
 export type CodeAgentFunction = (input: CodeAgentValue | undefined) => CodeAgentValue | undefined;
@@ -41,6 +44,17 @@ export type CodeAgentCall<Draft extends TSchema = TSchema> = {
 	readonly verify: (draft: Static<Draft>) => string | undefined;
 	readonly signal: AbortSignal;
 	readonly onActivity: (activity: CodeAgentActivity) => void;
+};
+
+// @approved
+//  One `run` call's reply, cut at the byte limit with the notice inside it.
+//  UTF-8 never encodes a character as a shorter prefix of another, so a cut
+//  never passes the limit, and the replacement characters a partial one
+//  leaves at its end are dropped.
+const fit = (text: string): string => {
+	if (Buffer.byteLength(text) <= CODE_AGENT_OUTPUT_BYTES) return text;
+	const cut = Buffer.byteLength(OUTPUT_NOTE);
+	return Buffer.from(text).subarray(0, CODE_AGENT_OUTPUT_BYTES - cut).toString("utf8").replace(/\uFFFD+$/, "") + OUTPUT_NOTE;
 };
 
 // @approved
@@ -78,21 +92,35 @@ const declarations = (globals: Readonly<Record<string, CodeAgentGlobal>>) => [
 ].join("\n");
 
 // @approved
-//  The guest side of the run tool: `console.log` strings its arguments and
-// hands one line to the host's capture, and `show` renders a value as JSON,
-// capped at the output limit. `determinism` (sandboxed.ts) has already taken
-// the clock and `Math.random`, so equal inputs give equal outcomes.
-const prelude = `(log) => {
+//  The guest side of the run tool: `console.log` renders each argument and
+// buffers the line, clipped to the output limit, so a huge log never crosses
+// the boundary whole and a million logs never cross one by one. `determinism`
+// (sandboxed.ts) has already taken the clock and `Math.random`, so equal
+// inputs give equal outcomes.
+const prelude = `(() => {
+	let output = "";
+	const limit = ${CODE_AGENT_OUTPUT_BYTES};
 	const show = (value) => {
-		try { return typeof value === "string" ? value : JSON.stringify(value) ?? String(value); } catch { return "a value that cannot be shown"; }
+		try {
+			const shown = typeof value === "string" ? value : JSON.stringify(value) ?? String(value);
+			return shown.length > limit ? shown.slice(0, limit) : shown;
+		} catch { return "a value that cannot be shown"; }
 	};
-	globalThis.console = { log: (...values) => log(values.length === 0 ? "undefined" : values.map(show).join(" ")) };
-}`;
+	globalThis.console = { log: (...values) => {
+		if (output.length >= limit) return;
+		const line = (values.length === 0 ? ["undefined"] : values).map(show).join(" ");
+		output += (output === "" ? "" : "\\n") + line.slice(0, limit - output.length);
+	} };
+	return { take: () => { const text = output; output = ""; return text; } };
+})()`;
 
 // @approved
-//  The guest helpers the host calls with handles: `show` returns a run's
-// final value as JSON (or why it cannot), capped at the output limit, and
-// `freeze` freezes an injected global deeply, in place.
+//  The guest helpers the host calls with handles, never named in the guest:
+// `take` empties the log buffer into one string the host reads once per
+// `run`, `show` returns a run's final value as JSON (or why it cannot),
+// capped at the output limit, `json` refuses a global function's argument
+// unless it is JSON, before anything crosses, and `freeze` freezes an
+// injected global deeply, in place.
 const helpers = `({
 	show: (value, limit) => {
 		if (value === undefined) return "undefined";
@@ -100,6 +128,11 @@ const helpers = `({
 		try { shown = JSON.stringify(value); } catch { return "a value JSON cannot show; return a JSON value"; }
 		if (shown === undefined) return "a value JSON cannot show; return a JSON value";
 		return shown.length > limit ? shown.slice(0, limit) : shown;
+	},
+	json: (value) => {
+		const text = JSON.stringify(value);
+		if (text === undefined) throw new TypeError("a global function takes JSON, and this argument is a " + typeof value);
+		return text;
 	},
 	freeze: (value) => {
 		const freeze = (item) => {
@@ -114,35 +147,27 @@ const isFunction = (value: CodeAgentValue): value is CodeAgentFunction => typeof
 const isNumber = (value: CodeAgentValue): value is number => typeof value === "number";
 const isText = (value: CodeAgentValue): value is string => typeof value === "string";
 
-/** @approved A guest failure that ends the run: the limits, with their reasons; any other throw is the tool's output instead. */
-const runFailure = (id: BoxId, { name, message }: SandboxedFailure): Error | undefined =>
-	name === "InternalError" && message === "interrupted" ? new Error(`The ${id} Box's code ran past its ${CODE_AGENT_CALL_MS / 1000} s limit.`)
-	: name === "InternalError" && message === "out of memory" ? new Error(`The ${id} Box's code ran out of its ${CODE_AGENT_HEAP_BYTES / 1024 / 1024} MiB heap.`)
-	: undefined;
-
 // @approved
 //  The agent's QuickJS guest: one runtime and context for the whole run, on
 // the sandboxed Boxes' module instance and memory cap, holding the frozen
-// `globals` and a `console.log` that captures what the code logs. Each `run`
+// `globals` and a `console.log` that buffers what the code logs. Each `run`
 // call evaluates its code in the global scope under the deadline, so a
 // variable set in one call is there in the next, and answers the logged
 // lines and the code's final value as JSON, cut off at the output limit.
-// Nothing host-side but the log capture is reachable: the wasmfile build has
-// no network or filesystem, `determinism` removes the clock and
-// `Math.random`, and the helpers the host calls are never named in the
-// guest, so the only host function the code can reach is `console.log`.
+// Nothing host-side but the log capture and the function values the Box
+// itself handed it is reachable: the wasmfile build has no network or
+// filesystem, `determinism` removes the clock and `Math.random`, and the
+// helpers the host calls are never named in the guest.
 const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGlobal>>) => {
 	const { runtime, enter } = await guestRuntime(CODE_AGENT_HEAP_BYTES, CODE_AGENT_CALL_MS);
 	const vm = runtime.newContext();
 	const kept: QuickJSHandle[] = [];
-	const logs: string[] = [];
-	let loggedBytes = 0;
 	const dispose = () => {
-		try {
-			for (const handle of kept) handle.dispose();
-			vm.dispose();
-			runtime.dispose();
-		} catch { /* @approved A trapped heap is reclaimed whole by the host GC. */ }
+		for (const handle of kept.splice(0)) {
+			try { handle.dispose(); } catch { /* @approved A trapped heap owns handles the host can no longer free. */ }
+		}
+		try { vm.dispose(); } catch { /* @approved A failed run drops its context; the host GC reclaims what cannot be freed. */ }
+		try { runtime.dispose(); } catch { /* @approved A trapped Wasm heap is reclaimed whole by the host GC. */ }
 	};
 	const failureOf = (handle: QuickJSHandle): SandboxedFailure => {
 		try {
@@ -150,7 +175,7 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 			return Value.Check(sandboxedFailure, dumped) ? dumped : { name: "Error", message: String(dumped) };
 		} finally { handle.dispose(); }
 	};
-	const failed = (failure: SandboxedFailure): Error => runFailure(id, failure) ?? new Error(`The ${id} Box's code threw ${failure.name}: ${failure.message}.`);
+	const failed = (failure: SandboxedFailure): Error => guestError(id, "code", CODE_AGENT_LIMITS, failure);
 	const evaluate = (code: string, file: string): QuickJSHandle => {
 		enter();
 		const result = vm.evalCode(code, file, { type: "global" });
@@ -165,11 +190,23 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 	// @approved
 	//  One global's value as guest handles: JSON leaves become guest values,
 	// and a function leaf becomes a host function the guest calls with JSON it
-	// dumps in and builds out again, so a call crosses as JSON alone.
+	// proves in the guest first, dumping the proved text in and building the
+	// answer out again, so a call crosses as JSON alone.
 	const build = (value: CodeAgentValue, name: string): QuickJSHandle => {
 		if (isFunction(value)) return vm.newFunction(name, (input) => {
-			const answer = value(input === undefined ? undefined : vm.dump(input));
-			return answer === undefined ? vm.undefined : build(answer, name);
+			// @approved
+			//  A call with no argument, or an explicit undefined one, hands the Box
+			// undefined.
+			if (input === undefined || vm.typeof(input) === "undefined") return through(value(undefined), name);
+			// @approved
+			//  The argument is proved JSON in the guest first, so a refusal the
+			//  guest can see crosses nothing and the Box's own function never
+			//  runs; its error is handed straight back to the guest caller.
+			const guarded = vm.callFunction(json, vm.undefined, input);
+			if (guarded.error !== undefined) return guarded;
+			const text = vm.getString(guarded.value!);
+			guarded.value!.dispose();
+			return through(value(JSON.parse(text)), name);
 		});
 		if (value === null) return vm.null;
 		if (isNumber(value)) return vm.newNumber(value);
@@ -192,68 +229,78 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 		}
 		return object;
 	};
-	const cut = (text: string): string =>
-		text.length > CODE_AGENT_OUTPUT_BYTES ? `${text.slice(0, CODE_AGENT_OUTPUT_BYTES)}\n\n[Output cut off at ${CODE_AGENT_OUTPUT_BYTES / 1024} KiB; narrow your query]` : text;
+	// @approved
+	//  A host function's answer, or a value the guest refused to prove JSON:
+	//  the guest sees it as `undefined` when the Box gave none.
+	const through = (answer: CodeAgentValue | undefined, name: string): QuickJSHandle => answer === undefined ? vm.undefined : build(answer, name);
+	// @approved
+	//  The buffered logs, emptied once per `run` call: the guest hands the
+	//  whole buffer over as one string, so no log crosses on its own.
+	const readLogs = (): string => {
+		enter();
+		const logs = call(take);
+		const text = vm.getString(logs);
+		logs.dispose();
+		return text;
+	};
+	const logged = (logs: string): string => logs === "" ? "" : `Logged:\n${logs}\n\n`;
 	// @approved
 	//  One `run` call: the code evaluates in the global scope under one
-	// deadline, and the reply is the logged lines and the final value, or why
-	// the code stopped. The heap and time limits end the run; a guest throw is
-	// the call's output, so the model can fix its code and go on.
+	// deadline, and the reply is the buffered logs and the final value, or why
+	// the code stopped. The heap and time limits end the run, answered with
+	// their reason alone: after an exhausted heap, no guest call can be
+	// counted on to run. A guest throw is the call's output, so the model can
+	// fix its code and go on.
 	const run = (code: string): CodeAgentRun => {
-		logs.length = 0;
-		loggedBytes = 0;
-		const logged = () => logs.length === 0 ? "" : `Logged:\n${logs.join("\n")}\n\n`;
 		try {
 			enter();
 			const result = vm.evalCode(code, "run.js", { type: "global" });
 			if (result.error !== undefined) {
 				const failure = failureOf(result.error);
-				const limited = runFailure(id, failure);
-				return limited === undefined ? { output: cut(`${logged()}The code threw ${failure.name}: ${failure.message}`) } : { output: limited.message, failure: limited };
+				const error = failed(failure);
+				if (guestLimit(failure)) return { output: error.message, failure: error };
+				return { output: fit(`${logged(readLogs())}${error.message}`) };
 			}
 			const value = result.value!; // @approved A call result holds a value exactly when it holds no error.
 			try {
+				const logs = readLogs();
 				const shown = call(show, value, limit);
 				const reply = vm.getString(shown);
 				shown.dispose();
-				return { output: cut(`${logged()}Returned:\n${reply}`) };
+				return { output: fit(`${logged(logs)}Returned:\n${reply}`) };
 			} finally { value.dispose(); }
 		} catch (error) {
 			if (!(error instanceof WebAssembly.RuntimeError)) throw error;
-			const trapped = new Error(`The ${id} Box's code threw ${error.name}: ${error.message}.`);
+			const trapped = failed({ name: error.name, message: error.message });
 			return { output: trapped.message, failure: trapped };
 		}
 	};
 	let show: QuickJSHandle;
 	let limit: QuickJSHandle;
+	let json: QuickJSHandle;
+	let take: QuickJSHandle;
 	try {
 		evaluate(determinism, "determinism.js").dispose();
-		const capture = vm.newFunction("log", (text) => {
-			const length = vm.getProp(text, "length");
-			const units = vm.getNumber(length);
-			length.dispose();
-			if (loggedBytes >= CODE_AGENT_LOG_BYTES || units > CODE_AGENT_LOG_BYTES) return;
-			const line = vm.getString(text);
-			logs.push(line);
-			loggedBytes += line.length;
-		});
-		kept.push(capture);
-		const preludeFn = evaluate(prelude, "prelude.js");
-		const installed = call(preludeFn, capture);
-		preludeFn.dispose();
-		installed.dispose();
+		const bridge = evaluate(prelude, "prelude.js");
+		take = vm.getProp(bridge, "take");
+		bridge.dispose();
+		kept.push(take);
 		const helperObject = evaluate(helpers, "helpers.js");
 		show = vm.getProp(helperObject, "show");
+		json = vm.getProp(helperObject, "json");
 		const freeze = vm.getProp(helperObject, "freeze");
 		helperObject.dispose();
-		kept.push(show, freeze);
+		kept.push(show, json, freeze);
 		limit = vm.newNumber(CODE_AGENT_OUTPUT_BYTES);
 		kept.push(limit);
 		for (const [name, global] of Object.entries(globals)) {
 			const handle = build(global.value, name);
 			const frozen = call(freeze, handle);
 			frozen.dispose();
-			vm.setProp(vm.global, name, handle);
+			// @approved
+			//  The name is defined, not set: the agent cannot write over or
+			//  delete its own globals, though the values were already frozen.
+			vm.defineProp(vm.global, name, { value: handle, configurable: false, enumerable: true });
 			handle.dispose();
 		}
 	} catch (error) {
@@ -270,9 +317,10 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 // globals; `submit` checks the draft against `submitSchema`, then the Box's
 // own `verify`, and either refusal goes back to the model as a tool error,
 // so the first valid draft ends the run and is its result. A model request
-// and a tool call count against the same step cap, the run's signal cancels
-// the turn and its fetches, and a run that ends, fails or is cancelled
-// leaves no QuickJS context behind.
+// and a tool call count against the same step cap, which no valid submit
+// can pass: a run that failed fails, whatever its last tool call returned.
+// The run's signal cancels the turn and its fetches, and a run that ends,
+// fails or is cancelled leaves no QuickJS context behind.
 export const runCodeAgent = async <Draft extends TSchema>(database: Database, { boxId, instructions, globals, submitSchema, verify, signal, onActivity }: CodeAgentCall<Draft>): Promise<Static<Draft>> => {
 	const setting = resolveBoxDelegate(database, boxId);
 	if (setting.kind !== "ready") throw new Error(setting.kind === "broken" ? setting.reason : `The ${boxId} Box's agent is off; choose its model in Connection Settings.`);
@@ -303,80 +351,88 @@ export const runCodeAgent = async <Draft extends TSchema>(database: Database, { 
 		const line = code.replaceAll(/\s+/g, " ").trim();
 		return line.length > 80 ? `${line.slice(0, 80)}…` : line;
 	};
-	const agent = createFxAgent({
-		backend: "wasm", durability: memory(), name: "code-agent", instructions,
-		tools: [{
-			name: "run", idempotent: false, writes: true,
-			description: [
-				`Runs JavaScript in a sandbox and returns what console.log printed and the code's final value as JSON, cut off at ${CODE_AGENT_OUTPUT_BYTES / 1024} KiB.`,
-				"One context lasts the whole run, so a variable set in one call is there in the next. There is no network, filesystem, clock or randomness.",
-				"The code sees only:",
-				"",
-				declarations(globals),
-			].join("\n"),
-			inputSchema: JSON.parse(JSON.stringify(runInput)),
-			execute: (proposed: unknown) => {
-				if (!Value.Check(runInput, proposed)) {
-					const error = Value.Errors(runInput, proposed).First();
-					return { type: "libfx.tool-result", text: `The run call is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`, images: [], isError: true };
-				}
-				let outcome: CodeAgentRun;
-				try {
-					outcome = guest.run(proposed.code);
-				} catch (error) {
-					const failure = error instanceof Error ? error : new Error(String(error));
-					outcome = { output: failure.message, failure };
-				}
-				onActivity({ summary: summarized(proposed.code), code: proposed.code, output: outcome.output });
-				if (outcome.failure !== undefined) fail(outcome.failure.message);
-				return outcome.output;
-			},
-		}, {
-			name: "submit", idempotent: false, writes: true,
-			description: "Submits the run's result and ends the run. The draft is checked against its schema and the Box's own rules; either refusal comes back with its reason, and the first valid draft is the run's result.",
-			inputSchema: JSON.parse(JSON.stringify(submitInput)),
-			execute: (proposed: unknown) => {
-				if (submitted !== undefined) fail("The agent called submit after its draft was accepted.");
-				if (Value.Check(submitInput, proposed)) {
-					let reason: string | undefined;
-					try {
-						reason = verify(proposed.draft);
-					} catch (error) {
-						fail(`The ${boxId} Box's verify threw ${error instanceof Error ? error.message : String(error)}.`);
-					}
-					if (reason !== undefined) {
-						refusal = `The draft was refused: ${reason}`;
-						return { type: "libfx.tool-result", text: refusal, images: [], isError: true };
-					}
-					submitted = proposed.draft;
-					turn.abort();
-					return "Submitted; the run is complete.";
-				}
-				const error = Value.Errors(submitInput, proposed).First();
-				refusal = `The draft is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`;
-				return { type: "libfx.tool-result", text: refusal, images: [], isError: true };
-			},
-		}],
-		// @approved
-		//  Every tool call the model makes is a step, a call to a tool the agent
-		// does not have included, which libfx refuses before any tool runs, so
-		// the steps are counted where libfx reports each call starting.
-		hooks: { onEvent: (event) => { if (event.type === "tool.start" && !event.data.rerun && over()) stop(limit); } },
-		...setting.options,
-		fetch: async (input: string, init: RequestInit) => {
-			if (over()) fail(limit);
-			return await setting.options.fetch(input, { ...init, signal: init.signal === undefined || init.signal === null ? aborted : AbortSignal.any([init.signal, aborted]) });
-		},
-	});
 	try {
-		const result = await agent.session().prompt("Begin.", { signal: aborted }).result.catch((error: unknown) => ({ stopReason: "error" as const, error: { message: error instanceof Error ? error.message : String(error) } }));
-		signal.throwIfAborted();
-		if (submitted !== undefined) return submitted;
-		if (failure !== undefined) throw new Error(failure);
-		if (result.stopReason === "error") throw new Error(`The agent's model request failed: ${result.error?.message ?? "no reason given"}`);
-		throw new Error(refusal ?? "The agent ended without submitting a draft.");
+		const agent = createFxAgent({
+			backend: "wasm", durability: memory(), name: "code-agent", instructions,
+			tools: [{
+				name: "run", idempotent: false, writes: true,
+				description: [
+					`Runs JavaScript in a sandbox and returns what console.log printed and the code's final value as JSON, cut off at ${CODE_AGENT_OUTPUT_BYTES / 1024} KiB.`,
+					"One context lasts the whole run, so a variable set in one call is there in the next. There is no network, filesystem, clock or randomness.",
+					"The code sees only:",
+					"",
+					declarations(globals),
+				].join("\n"),
+				inputSchema: JSON.parse(JSON.stringify(runInput)),
+				execute: (proposed: unknown) => {
+					if (!Value.Check(runInput, proposed)) {
+						const error = Value.Errors(runInput, proposed).First();
+						return { type: "libfx.tool-result", text: `The run call is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`, images: [], isError: true };
+					}
+					let outcome: CodeAgentRun;
+					try {
+						outcome = guest.run(proposed.code);
+					} catch (error) {
+						const failure = error instanceof Error ? error : new Error(String(error));
+						outcome = { output: failure.message, failure };
+					}
+					// @approved
+					//  A limit failure is recorded before the writer's window
+					//  onto it opens, so an onActivity that throws cannot leave
+					//  the run running past the limit it already passed.
+					if (outcome.failure !== undefined) stop(outcome.failure.message);
+					onActivity({ summary: summarized(proposed.code), code: proposed.code, output: outcome.output });
+					if (outcome.failure !== undefined) fail(outcome.failure.message);
+					return outcome.output;
+				},
+			}, {
+				name: "submit", idempotent: false, writes: true,
+				description: "Submits the run's result and ends the run. The draft is checked against its schema and the Box's own rules; either refusal comes back with its reason, and the first valid draft is the run's result.",
+				inputSchema: JSON.parse(JSON.stringify(submitInput)),
+				execute: (proposed: unknown) => {
+					if (submitted !== undefined) fail("The agent called submit after its draft was accepted.");
+					if (Value.Check(submitInput, proposed)) {
+						let reason: string | undefined;
+						try {
+							reason = verify(proposed.draft);
+						} catch (error) {
+							fail(`The ${boxId} Box's verify threw ${error instanceof Error ? error.message : String(error)}.`);
+						}
+						if (reason !== undefined) {
+							refusal = `The draft was refused: ${reason}`;
+							return { type: "libfx.tool-result", text: refusal, images: [], isError: true };
+						}
+						submitted = proposed.draft;
+						turn.abort();
+						return "Submitted; the run is complete.";
+					}
+					const error = Value.Errors(submitInput, proposed).First();
+					refusal = `The draft is invalid${error === undefined ? "" : ` at ${error.path || "/"}: ${error.message}`}.`;
+					return { type: "libfx.tool-result", text: refusal, images: [], isError: true };
+				},
+			}],
+			// @approved
+			//  Every tool call the model makes is a step, a call to a tool the agent
+			// does not have included, which libfx refuses before any tool runs, so
+			// the steps are counted where libfx reports each call starting.
+			hooks: { onEvent: (event) => { if (event.type === "tool.start" && !event.data.rerun && over()) stop(limit); } },
+			...setting.options,
+			fetch: async (input: string, init: RequestInit) => {
+				if (over()) fail(limit);
+				return await setting.options.fetch(input, { ...init, signal: init.signal === undefined || init.signal === null ? aborted : AbortSignal.any([init.signal, aborted]) });
+			},
+		});
+		try {
+			const result = await agent.session().prompt("Begin.", { signal: aborted }).result.catch((error: unknown) => ({ stopReason: "error" as const, error: { message: error instanceof Error ? error.message : String(error) } }));
+			signal.throwIfAborted();
+			if (failure !== undefined) throw new Error(failure);
+			if (submitted !== undefined) return submitted;
+			if (result.stopReason === "error") throw new Error(`The agent's model request failed: ${result.error?.message ?? "no reason given"}`);
+			throw new Error(refusal ?? "The agent ended without submitting a draft.");
+		} finally {
+			await agent.close().catch(() => undefined);
+		}
 	} finally {
 		guest.dispose();
-		await agent.close().catch(() => undefined);
 	}
 };
