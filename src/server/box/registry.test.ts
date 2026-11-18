@@ -13,7 +13,7 @@ import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { acceptConversationTailGeneration, InvalidConversationCommandError, observeConversationWrites } from "../conversation";
+import { acceptGeneration, InvalidConversationCommandError, observeConversationWrites } from "../conversation";
 import { openInitializedDatabase } from "../database/database";
 import { applyCommand, createConversationWithHistory, insertBox, openObservedDatabase, setBoxState, checkpointFromStart } from "../test-fixtures/conversation";
 import { setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
@@ -219,12 +219,20 @@ test("a Generation holding a record of a Box no longer loaded still settles on r
 		const instance = insertBox(database, conversation.id, "lantern");
 		const [human, model] = conversation.cast;
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-		const accepted = acceptConversationTailGeneration(database, {
-			seed: "lantern-seed", conversationId: conversation.id, expectedRevision: conversation.revision, timestamp: "2026-10-14T00:00:00.000Z",
-			humanContent: "Light it.", humanParticipantId: human.id, modelParticipantId: model.id, capturedHumanName: human.name, capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		const accepted = acceptGeneration(database, {
+			seed: "lantern-seed",
+			conversationId: conversation.id,
+			expectedRevision: conversation.revision,
+			timestamp: "2026-10-14T00:00:00.000Z",
+			humanParticipantId: human.id,
+			modelParticipantId: model.id,
+			capturedHumanName: human.name,
+			capturedModelName: model.name,
+			promptPlan: { blocks: [], warnings: [], images: [] },
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			boxRecords: { lantern: { instance, record: { lit: true } } },
-		});
+		}, { kind: "send", content: "Light it." });
 		checkpointFromStart(database, { conversationId: conversation.id, generationId: accepted.generationId, content: "The wick catches." });
 		await loadBoxes([builtInBoxes]);
 		expect(recoverActiveGenerations(database)).toMatchObject({ interrupted: 1, failed: 0 });

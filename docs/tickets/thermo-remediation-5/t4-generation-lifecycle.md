@@ -1,6 +1,6 @@
 # T4: Generation lifecycle
 
-Status: IN PROGRESS (slice a first implementation)
+Status: IN PROGRESS (slice b first implementation; review and CI fixes pending)
 
 Blocked By: T3
 
@@ -61,7 +61,9 @@ Report 11, findings 1 and 8.
 - [x] Slice a first implementation (Astra)
 - [x] Slice a review, fixes, and CI
 - [ ] Slice a PR merged
-- [ ] Slice b (Astra), then fixes (Sol), PR
+- [x] Slice b first implementation (Astra)
+- [ ] Slice b review, fixes (Sol), and CI
+- [ ] Slice b PR merged
 - [ ] Slice c (Sol), PR
 - [ ] Slice d (Sol), PR
 
@@ -79,3 +81,12 @@ Slice a first implementation:
 - Changed-file `bunx --no-install oxlint` and `git diff --check` passed. No unit tests, typecheck, or e2e ran locally, as requested; CI owns those checks.
 - Opus 5.5 high standards and spec reviews: no blockers. Fixed by the orchestrator (the Sol follow-up hit a Codex 429): `GenerationRecoveryCause` now has one home in `conversation/types.ts` and Stop's cause uses it; the scaffolding comment and the cleanup test names describe Stop instead of removal; one test's object formatting. Kept as is: recovery's counters read the row's checkpoint before Stop, because changing Stop's return to report retention would widen every caller for a log line.
 - CI on `914c436f`: check and e2e green. Slices b–d remain.
+
+Slice b first implementation:
+
+- Replaced the three acceptance commands and their per-kind input/result types with `acceptGeneration(database, capture, target)` and one result. Migrated all direct test callers; removed the workflow dispatch switch and acceptance hooks.
+- Added Conversation-owned `requireGenerationTarget`, used by capture and acceptance for Sibling and Continue eligibility. Continue acceptance now returns `ContinuationUnavailableError` with the typed reason.
+- Removed `advanceConversationRevisionGuarded`; commands and macro edits use the transaction's initial revision check and one revision advance. Macro edits now call `requireConversationRevision`.
+- Strengthened the reasoning-only Continue test to assert the typed reason and added checks for revision, author-stamp, active-generation, and terminal-eligibility error precedence.
+- Changed-file `bunx --no-install oxlint` passed with two existing unused-variable warnings; `git diff --check` passed. No unit tests, typecheck, or e2e ran locally. The new assertions have not been executed on the base or head locally; CI owns execution.
+- Draft PR targets `thermo-5/t4a-lifecycle`. Standards/spec reviews use Opus 5.5 high after the first push. Review findings and CI failures are left for the Sol follow-up; slices c and d remain.

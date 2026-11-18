@@ -4,16 +4,12 @@ import {
 	stopConversationGeneration,
 	resolveConversationGeneration,
 	checkpointUnstreamedOutcome,
-	acceptConversationTailGeneration,
-	acceptConversationContinuationGeneration,
-	acceptConversationSiblingGeneration,
+	acceptGeneration,
 } from "../conversation";
 import type { Database } from "bun:sqlite";
 import {
 	ConversationNotFoundError,
-	type AcceptedTailGeneration,
-	type AcceptedContinuationGeneration,
-	type AcceptedSiblingGeneration,
+	type AcceptedGeneration,
 } from "../conversation";
 import { StaleRevisionError } from "../revision";
 import { generationRuntimeFor } from "./generation-runtime";
@@ -24,7 +20,7 @@ import {
 	type ServerOwnedGeneration,
 	type ServerOwnedGenerationCallbacks,
 } from "./generate-server-owned";
-import { withGenerationBoxOperations, captureGeneration, capturedAcceptanceFields, modelRequestFor, type CapturedGeneration } from "./generate-capture";
+import { withGenerationBoxOperations, captureGeneration, capturedAcceptanceFields, modelRequestFor } from "./generate-capture";
 import { consumeGenerationPreview, captureGenerationPreview, type GenerationPreviewAcceptance } from "./generation-preview";
 import { assertGenerationPlan } from "../generation-plan";
 import type { GenerationTarget } from "../../shared/contract/conversation-schema";
@@ -32,7 +28,7 @@ import type { GenerationTarget } from "../../shared/contract/conversation-schema
 export type { GenerationAttemptInput, ServerOwnedGenerationControl, ServerOwnedGeneration, ServerOwnedGenerationCallbacks } from "./generate-server-owned";
 export type { ParticipantPreview } from "./generate-capture";
 
-export type AcceptedGenerationRecord = AcceptedTailGeneration | AcceptedContinuationGeneration | AcceptedSiblingGeneration;
+export type AcceptedGenerationRecord = AcceptedGeneration;
 
 export interface GenerationInput extends GenerationAttemptInput {
 	readonly target: GenerationTarget;
@@ -53,7 +49,7 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 	generationRuntimeFor(database).assertAccepting();
 	assertGenerationPlan(capture.plan);
 	const timestamp = input.timestamp ?? new Date().toISOString();
-	const accepted = acceptCapturedGeneration(database, capture, { conversationId: input.conversationId, revision, timestamp });
+	const accepted = acceptGeneration(database, { ...capturedAcceptanceFields(capture, { conversationId: input.conversationId, timestamp }), expectedRevision: revision }, capture.target);
 	if (input.preview !== undefined) consumeGenerationPreview(database, input.preview.record);
 	try {
 		await input.onAccepted?.(accepted);
@@ -79,30 +75,6 @@ export async function runGenerationLifecycle(database: Database, input: Generati
 			return { ...accepted, conversation: resolved };
 		},
 	});
-}
-
-interface GenerationAcceptance { conversationId: number; revision: number; timestamp: string }
-
-// @approved
-//  Send and Continuation accept only while the Conversation still has the
-// revision the lifecycle read before capturing, which a submitted expected
-// revision has already matched. Sibling acceptance is revision-neutral.
-function acceptCapturedGeneration(database: Database, capture: CapturedGeneration, acceptance: GenerationAcceptance): AcceptedGenerationRecord {
-	const fields = capturedAcceptanceFields(capture, acceptance);
-	const expectedRevision = acceptance.revision;
-	const { target } = capture;
-	switch (target.kind) {
-		case "send": {
-			const { content: humanContent, moves: humanMoves, reuseHumanMessageId } = target;
-			return acceptConversationTailGeneration(database, { ...fields, expectedRevision, humanContent, humanMoves, reuseHumanMessageId });
-		}
-		case "continuation": {
-			const { precedingMessageId, precedingVariantId, intent: generationIntent } = target;
-			return acceptConversationContinuationGeneration(database, { ...fields, expectedRevision, precedingMessageId, precedingVariantId, generationIntent });
-		}
-		case "sibling":
-			return acceptConversationSiblingGeneration(database, { ...fields, messageId: target.messageId, generationIntent: { type: "sibling" } });
-	}
 }
 
 /** @approved

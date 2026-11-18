@@ -1,14 +1,5 @@
 import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import {
-	executeConversationCommand,
-	readChatHistory,
-	readVariantDetails,
-	readConversationData,
-	acceptConversationContinuationGeneration,
-	resolveConversationGeneration,
-	readConversationRevision,
-	readConversationSummary,
-} from ".";
+import { executeConversationCommand, readChatHistory, readVariantDetails, readConversationData, acceptGeneration, resolveConversationGeneration, readConversationRevision, readConversationSummary } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -30,7 +21,9 @@ import {
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
-	type AcceptContinuationGenerationInput,
+	type GenerationAcceptanceCapture,
+	type CapturedGenerationTarget,
+	ContinuationUnavailableError,
 } from ".";
 import { StaleRevisionError } from "../revision";
 import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
@@ -850,7 +843,8 @@ describe("Conversation module", () => {
 	describe("Continuation acceptance and resolution", () => {
 		const accept = (
 			module: Database,
-			overrides: Partial<AcceptContinuationGenerationInput> = {},
+			overrides: Partial<GenerationAcceptanceCapture> = {},
+			intent: Extract<CapturedGenerationTarget, { kind: "continuation" }>["intent"] = { type: "continuation", strategy: "instruction", instruction: "Continue." },
 		) => {
 			const snapshot = readTestConversationSnapshot(module, conversationId);
 			if (snapshot === undefined) throw new Error("Snapshot missing.");
@@ -859,22 +853,20 @@ describe("Conversation module", () => {
 			if (greeting === undefined || greetingVariant === undefined) {
 				throw new Error("Greeting missing.");
 			}
-			return acceptConversationContinuationGeneration(module, {
-				generationIntent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
+			return acceptGeneration(module, {
 				seed: "test-generation-seed",
 				conversationId,
 				expectedRevision: snapshot.revision,
 				timestamp: "2026-08-20T12:00:00Z",
-				precedingMessageId: greeting.id,
-				precedingVariantId: greetingVariant.id,
 				humanParticipantId: humanId,
 				modelParticipantId: modelId,
 				capturedHumanName: "Writer",
 				capturedModelName: "Maren",
 				promptPlan: { blocks: [], warnings: [], images: [] },
-				modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+				modelId: "fixture-model",
+				promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 				...overrides,
-			});
+			}, { kind: "continuation", intent, precedingMessageId: greeting.id, precedingVariantId: greetingVariant.id });
 		};
 
 		const resolve = (
@@ -903,9 +895,15 @@ describe("Conversation module", () => {
 					action: { type: "put-data", scope: { type: "variant", messageId: greeting.id, variantId: variant.id }, namespace: "generation", key: "reasoning", value: "Only reasoning." },
 				});
 				const before = readConversationRevision(conversation, conversationId)!;
-				const attempt = () => accept(conversation, { generationIntent: strategy === "assistant-prefill" ? { type: "continuation", strategy, suffix: "" } : { type: "continuation", strategy, instruction: "Continue." } });
+				const attempt = () => accept(conversation, {}, strategy === "assistant-prefill" ? { type: "continuation", strategy, suffix: "" } : { type: "continuation", strategy, instruction: "Continue." });
 				if (strategy === "assistant-prefill") {
-					expect(attempt).toThrow();
+					try {
+						attempt();
+						throw new Error("Expected Continue to be refused.");
+					} catch (error) {
+						if (!(error instanceof ContinuationUnavailableError)) throw error;
+						expect(error.reason).toBe("assistant-prefill-requires-visible-text");
+					}
 					expect(readConversationRevision(conversation, conversationId)).toBe(before);
 					expect(readConversationSummary(conversation, conversationId)?.activeGenerations).toEqual([]);
 				} else {
@@ -915,6 +913,25 @@ describe("Conversation module", () => {
 				}
 			});
 		}
+
+		test("checks the captured revision before invalid seats", () => {
+			accept(database);
+			expect(() => accept(database, { expectedRevision: 0, humanParticipantId: modelId })).toThrow(StaleRevisionError);
+			expect(readConversationRevision(database, conversationId)).toBe(1);
+		});
+
+		test("checks the model stamp before the active gate, and the active gate before terminal eligibility", () => {
+			accept(database);
+			expect(() => accept(database, { capturedModelName: "Stale name" })).toThrow("The captured model Author Stamp is no longer authoritative.");
+			try {
+				accept(database);
+				throw new Error("Expected Continue to be refused.");
+			} catch (error) {
+				if (!(error instanceof ContinuationUnavailableError)) throw error;
+				expect(error.reason).toBe("active-generation");
+			}
+			expect(readConversationSummary(database, conversationId)?.activeGenerations).toHaveLength(1);
+		});
 
 		test("persists the terminal Message with the Author Stamp and historical pair through acceptance and resolution", () => {
 			const conversation = database;

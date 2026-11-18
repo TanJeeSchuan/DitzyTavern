@@ -10,7 +10,7 @@ import { generationPreview, type ConversationAction } from "../../shared/contrac
 import { readRecordSlots, writeAutomaticRecord, writeDigestError } from "../box/records";
 import { sha256 } from "../hash";
 import { createContract } from ".";
-import { acceptConversationTailGeneration } from "../conversation";
+import { acceptGeneration } from "../conversation";
 import { advanceRace } from "../../boxes/race/logic-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
 
@@ -167,11 +167,19 @@ test("a Variant still generating takes no Writer override, so its own record can
 	insertBox(database, chat.id, "race");
 	const [human, model] = chat.cast;
 	if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-	const accepted = acceptConversationTailGeneration(database, {
-		seed: "override-seed", conversationId: chat.id, expectedRevision: chat.revision, timestamp: "2026-08-27T00:00:00.000Z",
-		humanContent: "Go.", humanParticipantId: human.id, modelParticipantId: model.id, capturedHumanName: human.name, capturedModelName: model.name,
-		promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-	});
+	const accepted = acceptGeneration(database, {
+		seed: "override-seed",
+		conversationId: chat.id,
+		expectedRevision: chat.revision,
+		timestamp: "2026-08-27T00:00:00.000Z",
+		humanParticipantId: human.id,
+		modelParticipantId: model.id,
+		capturedHumanName: human.name,
+		capturedModelName: model.name,
+		promptPlan: { blocks: [], warnings: [], images: [] },
+		modelId: "fixture-model",
+		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+	}, { kind: "send", content: "Go." });
 	const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
 	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] })?.record;
 	if (record === undefined) throw new Error("The Stretch produced no record.");

@@ -47,8 +47,7 @@ import {
 	type ConversationDatabase,
 } from "./internal";
 import {
-	advanceConversationRevisionGuarded,
-	requireConversationSummary,
+	advanceConversationRevision,
 	runConversationTransaction,
 } from "./commands/transaction";
 import type {
@@ -110,7 +109,7 @@ export function executeConversationCommand(
 	command: ConversationCommand,
 ): ConversationSummary {
 	return runConversationTransaction(database, (db, reportChange) => {
-		const conversation = requireConversationRevision(
+		requireConversationRevision(
 			db,
 			command.conversationId,
 			command.expectedRevision,
@@ -129,13 +128,7 @@ export function executeConversationCommand(
 		// SAFETY: satisfies checks each handler against its action; indexing loses that correlation.
 		const reportedChange = (handlers[input.type] as CommandHandler<typeof input.type>)(db, input);
 
-		advanceConversationRevisionGuarded(
-			db,
-			command.conversationId,
-			command.expectedRevision,
-			conversation.revision,
-		);
 		if (reportedChange !== undefined) reportChange(reportedChange);
-		return requireConversationSummary(db, command.conversationId);
+		return advanceConversationRevision(db, command.conversationId);
 	});
 }

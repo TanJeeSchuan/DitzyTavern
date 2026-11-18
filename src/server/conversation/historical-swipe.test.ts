@@ -1,9 +1,5 @@
 import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import {
-	executeConversationCommand,
-	acceptConversationSiblingGeneration,
-	resolveConversationGeneration,
-} from ".";
+import { executeConversationCommand, acceptGeneration, resolveConversationGeneration } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -188,7 +184,8 @@ describe("Sibling Generation acceptance and resolution", () => {
 		input: ReturnType<typeof siblingInput>,
 		control: ReturnType<typeof seats>,
 	) =>
-		acceptConversationSiblingGeneration(module, {
+		acceptGeneration(module, {
+			expectedRevision: 0,
 			seed: "test-generation-seed",
 			...input,
 			humanParticipantId: control.humanId,
@@ -196,8 +193,9 @@ describe("Sibling Generation acceptance and resolution", () => {
 			capturedHumanName: "Writer",
 			capturedModelName: control.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: input.messageId });
 
 	const resolveSibling = (
 		module: Database,
@@ -443,18 +441,19 @@ describe("Sibling Generation acceptance and resolution", () => {
 		if (target === undefined) throw new Error("Message missing.");
 
 		expect(() =>
-			acceptConversationSiblingGeneration(module, {
+			acceptGeneration(module, {
+				expectedRevision: 0,
 				seed: "test-generation-seed",
 				conversationId: snapshot.id,
-				messageId: target.id,
 				timestamp: "2026-08-20T14:00:00Z",
 				humanParticipantId: modelId,
 				modelParticipantId: humanId,
 				capturedHumanName: "Maren",
 				capturedModelName: "Writer",
-			promptPlan: { blocks: [], warnings: [], images: [] },
-				modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			}),
+				promptPlan: { blocks: [], warnings: [], images: [] },
+				modelId: "fixture-model",
+				promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+			}, { kind: "sibling", messageId: target.id }),
 		).toThrow(
 			"The captured historical Control pair does not match the target Message.",
 		);

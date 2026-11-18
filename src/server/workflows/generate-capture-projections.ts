@@ -1,7 +1,7 @@
 import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
 import type { CapturedGeneration } from "./generate-capture";
 import type { GenerationAttemptInput } from "./generate-server-owned";
-import type { AcceptTailGenerationInput, ConversationDataEntry } from "../conversation";
+import type { GenerationAcceptanceCapture, ConversationDataEntry } from "../conversation";
 import type { GenerationPlan } from "../generation-plan";
 import type { PromptBudgetResult, PromptPlan } from "../prompt-compiler";
 import type { GenerationBudgetInspection } from "../../shared/contract/conversation-schema";
@@ -46,11 +46,7 @@ export const generationProvenanceEntry = (
 };
 
 
-/** @approved
- * Project one captured Generation into the fields shared by every acceptance
- * command. Each lifecycle spreads this projection alongside its lifecycle-
- * specific target fields, keeping those differences visible at the callsite.
- */
+/** @approved Project the captured plan and participants into Conversation's acceptance input. */
 export function capturedAcceptanceFields(
 	capture: CapturedGeneration,
 	input: { conversationId: number; timestamp: string },
@@ -72,7 +68,7 @@ export function capturedAcceptanceFields(
 		provenance: capture.provenance,
 		macro: { presetId: capture.macroPresetId, writes: capture.macroWrites },
 	} satisfies Pick<
-		AcceptTailGenerationInput,
+		GenerationAcceptanceCapture,
 		"conversationId" | "timestamp" | "humanParticipantId" | "modelParticipantId" |
 		"capturedHumanName" | "capturedModelName" | "modelId" | "promptPlan" | "promptInspection" |
 		"loreActivation" | "boxTraces" | "provenance" |

@@ -1,10 +1,7 @@
 import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
-import { editMacroVariables, readMacroVariables, executeConversationCommand, readVariantDetails, acceptConversationSiblingGeneration } from "./index";
+import { editMacroVariables, readMacroVariables, executeConversationCommand, readVariantDetails, acceptGeneration } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import {
-	acceptConversationTailGeneration,
-} from ".";
 // The raw durable stop transitions are private implementation details of the
 // Conversation module; only these durable-transaction tests reach them
 // directly. Production stop flows compose them through the Generation
@@ -50,19 +47,19 @@ describe("explicit Conversation Generation Stop", () => {
 	};
 
 	const acceptTail = (input: ReturnType<typeof setup>, content = "Try this.") =>
-		acceptConversationTailGeneration(database, {
+		acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
-			humanContent: content,
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "send", content: content });
 
 	test("persists partial Tail output as an interrupted Variant", () => {
 		const input = setup();
@@ -128,18 +125,19 @@ describe("explicit Conversation Generation Stop", () => {
 	const acceptSibling = (input: ReturnType<typeof setup>) => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
-		return acceptConversationSiblingGeneration(database, {
+		return acceptGeneration(database, {
+			expectedRevision: 0,
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			messageId: target.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: target.id });
 	};
 
 	for (const target of ["human-message", "model-message", "historical-message"] as const) {
@@ -251,18 +249,19 @@ describe("explicit Conversation Generation Stop", () => {
 		const input = setup();
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
-		const accept = (timestamp: string) => acceptConversationSiblingGeneration(input.module, {
+		const accept = (timestamp: string) => acceptGeneration(input.module, {
+			expectedRevision: 0,
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			messageId: target.id,
 			timestamp,
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: target.id });
 		const first = accept("2026-08-27T00:00:01.000Z");
 		const second = accept("2026-08-27T00:00:02.000Z");
 		const revisionBeforeStop = readTestConversationSnapshot(input.module, input.created.id)?.revision;

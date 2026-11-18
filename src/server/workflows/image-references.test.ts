@@ -26,7 +26,7 @@ import {
 } from "../../shared/contract/conversation-schema";
 import { formatImageReference } from "../../shared/image-reference";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
-import { acceptConversationTailGeneration } from "../conversation";
+import { acceptGeneration } from "../conversation";
 import { resolveConversationGeneration } from "../conversation";
 import { removeRetainedGenerationInspection } from "../conversation";
 import { createNativeConversation } from ".";
@@ -368,11 +368,10 @@ describe("Image Reference lifetime", () => {
 			control: { human: 0, model: 1 },
 		});
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const accepted = acceptConversationTailGeneration(database, {
+		const accepted = acceptGeneration(database, {
 			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
 			expectedRevision: target.revision,
-			humanContent: "Hello",
-		});
+		}, { kind: "send", content: "Hello" });
 		resolveConversationGeneration(database, {
 			conversationId: target.id,
 			generationId: accepted.generationId,
@@ -398,12 +397,11 @@ describe("Image Reference lifetime", () => {
 		const art = await picture(4);
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
 		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
-		const accepted = acceptConversationTailGeneration(database, {
+		const accepted = acceptGeneration(database, {
 			...fields,
 			promptPlan: { ...fields.promptPlan, blocks: [{ kind: "instruction", role: "system", content: `Show ${art.token}` }] },
 			expectedRevision: target.revision,
-			humanContent: "Hello",
-		});
+		}, { kind: "send", content: "Hello" });
 		expect(referenced()).toEqual([art.hash]);
 
 		resolveConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, timestamp, content: "Done" });
@@ -486,10 +484,10 @@ describe("Image Reference lifetime", () => {
 		const target = chat();
 		const art = await picture(4);
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const accepted = acceptConversationTailGeneration(database, {
+		const accepted = acceptGeneration(database, {
 			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
-			expectedRevision: target.revision, humanContent: "Hello",
-		});
+			expectedRevision: target.revision,
+		}, { kind: "send", content: "Hello" });
 		expect(orphanedAt(art.hash)).toBeNumber();
 		checkpointFromStart(database, { conversationId: target.id, generationId: accepted.generationId, content: art.token });
 		expect(orphanedAt(art.hash)).toBeNull();

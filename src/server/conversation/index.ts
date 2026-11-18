@@ -16,11 +16,8 @@ export {
 	DEFAULT_SAFETY_ALLOWANCE,
 	DEFAULT_SIBLING_GENERATION_LIMIT,
 } from "./generation-settings";
-export {
-	acceptConversationContinuationGeneration,
-	acceptConversationTailGeneration,
-	acceptConversationSiblingGeneration,
-} from "./commands/accept-generation";
+export { acceptGeneration } from "./commands/accept-generation";
+export { requireGenerationTarget } from "./generation-target";
 export {
 	checkpointConversationGeneration,
 	checkpointUnstreamedOutcome,
@@ -70,12 +67,9 @@ export type {
 	ChatHistoryPage,
 	ChatHistoryPageRequest,
 	ChatHistoryVariant,
-	AcceptTailGenerationInput,
-	AcceptedTailGeneration,
-	AcceptContinuationGenerationInput,
-	AcceptedContinuationGeneration,
-	AcceptSiblingGenerationInput,
-	AcceptedSiblingGeneration,
+	GenerationAcceptanceCapture,
+	CapturedGenerationTarget,
+	AcceptedGeneration,
 	ConversationAction,
 	ConversationArtifactSeed,
 	ConversationCapabilities,

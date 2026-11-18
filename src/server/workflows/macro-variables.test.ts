@@ -2,7 +2,7 @@ import { readTestConversationSnapshot, createConversationWithHistory, checkpoint
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { acceptConversationTailGeneration } from "../conversation";
+import { acceptGeneration } from "../conversation";
 import { resolveConversationGeneration } from "../conversation";
 import { macroInitialValuesToData, readMacroWrites } from "../prompt-macros";
 import type { MacroValue } from "../../shared/prompt-macro-engine";
@@ -69,11 +69,10 @@ describe("Conversation-persistent prompt macro variables", () => {
 			{ name: "turn", value: "6", operation: "set" },
 		]);
 
-		const accepted = acceptConversationTailGeneration(database, {
+		const accepted = acceptGeneration(database, {
 			...capturedAcceptanceFields(first, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
 			expectedRevision: conversation.revision,
-			humanContent: "Hello",
-		});
+		}, { kind: "send", content: "Hello" });
 		resolveConversationGeneration(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,
@@ -152,11 +151,10 @@ describe("Conversation-persistent prompt macro variables", () => {
 			control: { human: 0, model: 1 },
 		});
 		const capture = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: conversation.id });
-		const accepted = acceptConversationTailGeneration(database, {
+		const accepted = acceptGeneration(database, {
 			...capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
 			expectedRevision: conversation.revision,
-			humanContent: "Hello",
-		});
+		}, { kind: "send", content: "Hello" });
 		checkpointFromStart(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,

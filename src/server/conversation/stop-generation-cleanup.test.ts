@@ -11,12 +11,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { activeGenerationTable } from "../database/schema";
-import {
-	acceptConversationContinuationGeneration,
-	acceptConversationSiblingGeneration,
-	acceptConversationTailGeneration,
-	InvalidConversationCommandError,
-} from ".";
+import { acceptGeneration, InvalidConversationCommandError } from ".";
 
 import { observeConversationWrites } from "./commands/transaction";
 import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
@@ -54,18 +49,19 @@ describe("Stop with no checkpointed output", () => {
 	const acceptSibling = (input: ReturnType<typeof setup>) => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
-		return acceptConversationSiblingGeneration(database, {
+		return acceptGeneration(database, {
+			expectedRevision: 0,
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			messageId: target.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: target.id });
 	};
 
 	test("stopping earlier empty siblings preserves the rollback selection of later siblings", () => {
@@ -134,19 +130,19 @@ describe("Stop with no checkpointed output", () => {
 
 	test("stopping an empty Tail Generation removes its provisional Message and keeps the accepted human input", () => {
 		const input = setup();
-		const accepted = acceptConversationTailGeneration(database, {
+		const accepted = acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
-			humanContent: "Keep my input.",
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "send", content: "Keep my input." });
 
 		stopConversationGeneration(input.module, {
 			cause: "provider",
@@ -185,19 +181,19 @@ describe("Stop with no checkpointed output", () => {
 	// removal report is drained and asserted on its own.
 	const revision = readConversationRevision(input.module, input.created.id);
 	if (revision === undefined) throw new Error("Conversation missing.");
-	const tail = acceptConversationTailGeneration(database, {
+	const tail = acceptGeneration(database, {
 		seed: "test-generation-seed",
 		conversationId: input.created.id,
 		expectedRevision: revision,
 		timestamp: "2026-08-27T00:00:02.000Z",
-		humanContent: "Keep my input.",
 		humanParticipantId: input.humanId,
 		modelParticipantId: input.modelId,
 		capturedHumanName: "Writer",
 		capturedModelName: input.modelName,
 		promptPlan: { blocks: [], warnings: [], images: [] },
-		modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-	});
+		modelId: "fixture-model",
+		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+	}, { kind: "send", content: "Keep my input." });
 	delivered.splice(0);
 	stopConversationGeneration(input.module, { cause: "provider", conversationId: input.created.id, generationId: tail.generationId });
 	expect(delivered).toHaveLength(1);
@@ -210,21 +206,19 @@ test("stopping an empty Continuation Generation removes only its provisional Mes
 		const opening = input.created.messages[0];
 		const openingVariant = opening?.variants[0];
 		if (opening === undefined || openingVariant === undefined) throw new Error("Opening missing.");
-		const accepted = acceptConversationContinuationGeneration(database, {
-			generationIntent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
+		const accepted = acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
 			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
-			precedingMessageId: opening.id,
-			precedingVariantId: openingVariant.id,
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "continuation", intent: { type: "continuation", strategy: "instruction", instruction: "Continue." }, precedingMessageId: opening.id, precedingVariantId: openingVariant.id });
 
 		stopConversationGeneration(input.module, {
 			cause: "provider",

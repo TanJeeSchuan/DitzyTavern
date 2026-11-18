@@ -1,10 +1,5 @@
 import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import {
-	acceptConversationTailGeneration,
-	resolveConversationGeneration,
-	readActiveGenerationDetails,
-	readVariantDetails,
-} from "../conversation";
+import { acceptGeneration, resolveConversationGeneration, readActiveGenerationDetails, readVariantDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -38,12 +33,11 @@ describe("Generation detail transport", () => {
 			control: { human: 0, model: 1 },
 		});
 		const module = database;
-		const accepted = acceptConversationTailGeneration(module, {
+		const accepted = acceptGeneration(module, {
 			seed: "test-generation-seed",
 			conversationId: conversation.id,
 			expectedRevision: conversation.revision,
 			timestamp: "2026-08-27T10:00:00Z",
-			humanContent: "Guide the scene.",
 			humanParticipantId: conversation.cast[0]!.id,
 			modelParticipantId: conversation.cast[1]!.id,
 			capturedHumanName: "Writer",
@@ -57,7 +51,8 @@ describe("Generation detail transport", () => {
 				}],
 				warnings: [], images: [],
 			},
-			modelId: "fixture-model", promptInspection: {
+			modelId: "fixture-model",
+			promptInspection: {
 				tokenEstimate: 19,
 				responseBudget: 64,
 				safetyAllowance: 5,
@@ -95,7 +90,7 @@ describe("Generation detail transport", () => {
 					interruptionCause: null,
 				}),
 			},
-		});
+		}, { kind: "send", content: "Guide the scene." });
 		const app = createConversationRoutes(database);
 
 		return app.handle(new Request(

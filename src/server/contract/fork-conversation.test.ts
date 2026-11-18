@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createConversationWithHistory, openObservedDatabase, insertBox, readTestConversationSnapshot } from "../test-fixtures/conversation";
-import { executeConversationCommand, readConversationSummary, readChatHistory, deleteConversation, acceptConversationTailGeneration } from "../conversation";
+import { executeConversationCommand, readConversationSummary, readChatHistory, deleteConversation, acceptGeneration } from "../conversation";
 import { forkConversation } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
@@ -125,12 +125,19 @@ test("a Rewind returns the Human Message's Moves without storing the Message", (
 
 test("fork is refused during an Active Generation", () => {
 	const { source, message } = createSource();
-	acceptConversationTailGeneration(database, {
-		seed: "seed", conversationId: source.id, expectedRevision: 1, timestamp: "2026-01-01T00:01:00Z",
-		humanContent: "Go on", humanParticipantId: source.cast[0]!.id, modelParticipantId: source.cast[1]!.id, capturedHumanName: source.cast[0]!.name, capturedModelName: "Model",
+	acceptGeneration(database, {
+		seed: "seed",
+		conversationId: source.id,
+		expectedRevision: 1,
+		timestamp: "2026-01-01T00:01:00Z",
+		humanParticipantId: source.cast[0]!.id,
+		modelParticipantId: source.cast[1]!.id,
+		capturedHumanName: source.cast[0]!.name,
+		capturedModelName: "Model",
 		promptPlan: { blocks: [], warnings: [], images: [] },
-		modelId: "fixture-model", promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
-	});
+		modelId: "fixture-model",
+		promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
+	}, { kind: "send", content: "Go on" });
 	const revision = readConversationSummary(database, source.id)!.revision;
 	expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: revision, at: { through: message.id }, name: "Fork", trimVariants: false })).toThrow("Active Generation");
 	expect(database.query<{ count: number }, []>("SELECT count(*) AS count FROM conversation").get()!.count).toBe(1);
