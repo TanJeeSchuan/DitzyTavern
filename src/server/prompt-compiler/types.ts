@@ -85,10 +85,10 @@ export interface CompilePromptInput {
 	// plan contains and in what order; the compiler holds no order of its own.
 	recipe: readonly PromptPresetSlot[];
 	/** Captured lore selected by the generation workflow; rendered literally. */
-	lore?: readonly PromptLoreEntry[];
+	lore: readonly PromptLoreEntry[];
 	// Captured once for one assembly. Environment and state are one invariant:
 	// budget recompilation must reuse both or create both together.
-	attempt?: AttemptEnvironment;
+	attempt: AttemptEnvironment;
 	/** How References are resolved once Prompt Macros have expanded, mapped to
 	 * the attempt's effective sending policy. */
 	images: PromptImageResolution;

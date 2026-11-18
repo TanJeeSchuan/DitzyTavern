@@ -4,6 +4,7 @@ import {
 	compilePrompt,
 	type CompilePromptInput,
 } from ".";
+import { testMacroAttempt } from "../../shared/test-fixtures/prompt-macros";
 // The order the stored Default preset ships with, restated here so the pure
 // compiler can be exercised without a database. The roles are the stored
 // roles the Default starts with: the established assembly presentation.
@@ -21,6 +22,8 @@ const defaultRecipe: CompilePromptInput["recipe"] = [
 
 const source = (overrides: Partial<CompilePromptInput> = {}): CompilePromptInput => ({
 	boxes: {},
+	lore: [],
+	attempt: testMacroAttempt(),
 	recipe: defaultRecipe,
 	images: { lookup: () => undefined, placement: "last", sendImages: true },
 	human: {
@@ -622,21 +625,13 @@ describe("Macro expansion", () => {
 
 describe("Opening compilation", () => {
 	test("compiles openings with the owner-relative macro context", () => {
-		const first = compileOpening(
-			"{{self}} greets {{other}}.",
-			{ self: "Maren Voss", other: "Writer" },
-			1,
-		);
+		const first = compileOpening("{{self}} greets {{other}}.", 1, testMacroAttempt({ self: "Maren Voss", other: "Writer" }));
 		expect(first.text).toBe("Maren Voss greets Writer.");
 		expect(first.warnings).toEqual([]);
 	});
 
 	test("labels unknown-opening macro warnings with the ordered position", () => {
-		const second = compileOpening(
-			"{{random}} remains.",
-			{ self: "Maren Voss", other: "Writer" },
-			2,
-		);
+		const second = compileOpening("{{random}} remains.", 2, testMacroAttempt());
 		expect(second.text).toBe("{{random}} remains.");
 		expect(second.warnings).toEqual([
 			{ block: "opening 2", macro: "{{random}}" },

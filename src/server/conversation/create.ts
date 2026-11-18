@@ -276,15 +276,11 @@ const expandGreetingOpenings = (
 				conversationId: input.conversationId,
 				promptPresetId: input.promptPresetId,
 				now,
+				random: Math.random,
 				timeZone: input.formatting?.timeZone,
 				locale: input.formatting?.locale,
 			});
-				const expanded = compileOpening(
-					variant.content,
-					{ self: attempt.environment.self, other: attempt.environment.other },
-					index + 1,
-					attempt,
-				);
+			const expanded = compileOpening(variant.content, index + 1, attempt);
 			const macroData = macroWritesToData(input.promptPresetId, expanded.writes);
 			return {
 				...variant,

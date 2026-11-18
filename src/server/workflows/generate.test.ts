@@ -165,10 +165,10 @@ describe("Generation runtime behavior", () => {
 			block: "example-dialogue",
 			macro: "{{user}}",
 		});
-		expect(capture.plan.budget.responseBudget).toBe(1_024);
-		expect(capture.plan.budget.safetyAllowance).toBe(500);
+		expect(capture.plan.budget.breakdown.responseBudget).toBe(1_024);
+		expect(capture.plan.budget.breakdown.safetyAllowance).toBe(500);
 		expect(capture.plan.budget.fits).toBe(true);
-		expect(capture.plan.budget.omittedContext).toEqual([]);
+		expect(capture.plan.omittedContext).toEqual([]);
 		// Provider vocabulary never leaks into the Prompt Plan.
 		expect(JSON.stringify(plan)).not.toContain("assistant");
 		expect(JSON.stringify(plan)).not.toContain('"user"');
@@ -589,7 +589,7 @@ describe("Generation runtime behavior", () => {
 			connection: null, conversationId, kind: "send", content: "Latest human input.",
 			tokenEstimator: (transcript) => transcript.startsWith("ditzytavern-estimation-transcript") ? estimates.shift() ?? 100 : 0,
 		});
-		expect(preview.capture.plan.budget.omittedContext).toHaveLength(1);
+		expect(preview.capture.plan.omittedContext).toHaveLength(1);
 		let receivedPlan: PromptPlan | undefined;
 		let inspection: ReturnType<typeof readActiveGenerationDetails>;
 		await runGenerationLifecycle(database, {
@@ -761,7 +761,7 @@ describe("Generation runtime behavior", () => {
 		expect(contacted).toBe(false);
 		expect(readTestConversationSnapshot(conversation, conversationId)).toEqual(before);
 		// The protected element is the Send candidate's own human input.
-		expect(failure.result.failure?.reason).toBe("protected-history-too-large");
+		expect(failure.failure).toBe("protected-history-too-large");
 		expect(failure.breakdown).toMatchObject({
 			tokenEstimate: 20,
 			responseBudget: 1,

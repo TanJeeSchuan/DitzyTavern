@@ -74,7 +74,7 @@ test.each([false, true])("a sandboxed advance's Image Reference sends pixels and
 	setup(formatImageReference("scene", owned.hash));
 	const { plan } = await capture();
 	expect(plan.promptPlan.images).toMatchObject([{ hash: owned.hash, name: "scene", disposition: "send", tokens: 1500 }]);
-	expect(plan.budget.tokenEstimate).toBe(1500);
+	expect(plan.budget.breakdown.tokenEstimate).toBe(1500);
 });
 
 test("the trusted Author Note sends the writer's Image References without a Box grant", async () => {
@@ -113,7 +113,7 @@ test.each([false, true])("sandboxed items and rendered Moves send only granted i
 		{ block: "Probe Box", macro: "stray", reason: "ungranted-image" },
 		{ block: "Probe Box", macro: "portrait", reason: "ungranted-image" },
 	]));
-	expect(plan.budget.tokenEstimate).toBe(1500);
+	expect(plan.budget.breakdown.tokenEstimate).toBe(1500);
 });
 
 test("macro-built item references cannot send ungranted images or Cast Portraits", async () => {

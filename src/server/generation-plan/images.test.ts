@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { compileGenerationPlan } from ".";
 import type { CompilePromptDefinition, PromptContextEntry } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
-import { createAttemptEnvironment } from "../../shared/prompt-macro-engine";
+import { testMacroAttempt } from "../../shared/test-fixtures/prompt-macros";
 import { formatImageReference } from "../../shared/image-reference";
 
 const A = "a".repeat(64);
@@ -48,6 +48,9 @@ const compile = (
 	extra: Partial<Parameters<typeof compileGenerationPlan>[0]> = {},
 ) => compileGenerationPlan({
 	boxes: {},
+	lore: [],
+	loreAllowance: 2_048,
+	attempt: testMacroAttempt(),
 	human,
 	model,
 	recipe: [{ reference: "history", enabled: true }],
@@ -72,9 +75,9 @@ describe("Prompt Plan Images", () => {
 	test("each sent Image adds its fitted w*h/750 cost to the estimate, and anchors add none", () => {
 		const context = [entry(`${ref("a", A)} ${ref("a", A)} ${ref("b", B)}`, "model"), entry("go", "human")];
 		const every = compile(context, { repeatedImagePlacement: "every" });
-		expect(every.budget.tokenEstimate).toBe(COST_A * 2 + COST_B);
+		expect(every.budget.breakdown.tokenEstimate).toBe(COST_A * 2 + COST_B);
 		const last = compile(context, { repeatedImagePlacement: "last" });
-		expect(last.budget.tokenEstimate).toBe(COST_A + COST_B);
+		expect(last.budget.breakdown.tokenEstimate).toBe(COST_A + COST_B);
 		expect(last.promptPlan.images.map((image) => [image.disposition, image.tokens])).toEqual([["anchor", COST_A], ["send", COST_A], ["send", COST_B]]);
 	});
 
@@ -86,20 +89,20 @@ describe("Prompt Plan Images", () => {
 		);
 
 		expect(plan.promptPlan.images).toEqual([{ block: 1, start: 0, hash: A, name: "map", disposition: "text-only", tokens: 0 }]);
-		expect(plan.budget.tokenEstimate).toBe(0);
+		expect(plan.budget.breakdown.tokenEstimate).toBe(0);
 		expect(plan.budget.fits).toBe(true);
-		expect(plan.budget.retainedContext.map(({ content }) => content)).toEqual([
+		expect(plan.promptPlan.blocks.map(({ content }) => content)).toEqual([
 			"usable prior history",
 			ref("map", A),
 		]);
-		expect(plan.budget.omittedContext).toEqual([]);
+		expect(plan.omittedContext).toEqual([]);
 	});
 
 	test("a Reference whose Image is not stored stays an anchor-only missing entry", () => {
 		const text = `lost ${ref("ghost", GONE)}`;
 		const plan = compile([entry(text, "model"), entry("go", "human")]);
 		expect(plan.promptPlan.images).toEqual([{ block: 0, start: 5, hash: GONE, name: "ghost", disposition: "missing", tokens: 0 }]);
-		expect(plan.budget.tokenEstimate).toBe(0);
+		expect(plan.budget.breakdown.tokenEstimate).toBe(0);
 	});
 
 	test("text-only inspection retains missing warnings", () => {
@@ -114,12 +117,7 @@ describe("Prompt Plan Images", () => {
 	});
 
 	test("References produced by a Prompt Macro resolve like typed ones", () => {
-		const attempt = createAttemptEnvironment({
-			self: "Writer",
-			other: "Maren",
-			conversationId: 1,
-			promptPresetId: 1,
-			now: new Date("2026-10-04T00:00:00Z"),
+		const attempt = testMacroAttempt({
 			variables: new Map([["outfit", ref("dress", A)]]),
 		});
 		const plan = compile(
@@ -140,10 +138,10 @@ describe("Prompt Plan Images", () => {
 		// Room for one Image beside the protected latest entry's own copy of A.
 		const plan = compile(context, { repeatedImagePlacement: "first", contextLimit: COST_A + 100 + 50 });
 		expect(plan.budget.fits).toBe(true);
-		expect(plan.budget.omittedContext.map((omitted) => omitted.content)).toEqual([`old ${ref("a", A)}`, `mid ${ref("b", B)}`]);
+		expect(plan.omittedContext.map((omitted) => omitted.content)).toEqual([`old ${ref("a", A)}`, `mid ${ref("b", B)}`]);
 		expect(plan.promptPlan.blocks).toHaveLength(1);
 		expect(plan.promptPlan.images).toEqual([{ block: 0, start: 3, hash: A, name: "a", disposition: "send", tokens: COST_A }]);
-		expect(plan.budget.tokenEstimate).toBe(COST_A);
+		expect(plan.budget.breakdown.tokenEstimate).toBe(COST_A);
 	});
 
 	test("last and every placement are also decided over the entries that survive eviction", () => {
@@ -153,7 +151,7 @@ describe("Prompt Plan Images", () => {
 			entry(`mid ${ref("a", A)}`, "model"),
 			entry("go", "human"),
 		], { repeatedImagePlacement: "last", contextLimit: limit });
-		expect(last.budget.omittedContext).toHaveLength(1);
+		expect(last.omittedContext).toHaveLength(1);
 		expect(last.promptPlan.images.map((image) => [image.block, image.hash, image.disposition])).toEqual([[0, A, "send"]]);
 
 		const every = compile([
@@ -161,9 +159,9 @@ describe("Prompt Plan Images", () => {
 			entry(`mid ${ref("a", A)}`, "model"),
 			entry("go", "human"),
 		], { repeatedImagePlacement: "every", contextLimit: limit });
-		expect(every.budget.omittedContext).toHaveLength(1);
+		expect(every.omittedContext).toHaveLength(1);
 		expect(every.promptPlan.images.map((image) => [image.block, image.disposition])).toEqual([[0, "send"]]);
-		expect(every.budget.tokenEstimate).toBe(COST_A);
+		expect(every.budget.breakdown.tokenEstimate).toBe(COST_A);
 	});
 
 	test("Box admission charges an item's sent Images against the context limit", () => {

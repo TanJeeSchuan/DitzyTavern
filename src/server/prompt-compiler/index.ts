@@ -12,7 +12,6 @@ export {
 export { resolvePromptImages, type ImageLookup, type PromptImageResolution } from "./images";
 export {
 	budgetPromptPlan,
-	budgetEditedPromptPlan,
 	measurePromptPlan,
 	PromptBudgetExceededError,
 	toEstimationTranscript,
@@ -36,9 +35,7 @@ export type {
 } from "./types";
 export type {
 	PromptBudgetBreakdown,
-	PromptBudgetFailure,
 	PromptBudgetInput,
-	PromptBudgetResult,
 	PromptBudgetMeasurement,
 	PromptBudgetMeasurementInput,
 	TokenEstimator,

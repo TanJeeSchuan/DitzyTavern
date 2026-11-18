@@ -320,6 +320,7 @@ export const createConversationRoutes = (
 					const preview = await createGenerationPreviewAsync(database, input);
 					const capture = preview.capture;
 					const { human, model } = capture.preparation.derivation;
+					const { breakdown, fits } = capture.plan.budget;
 					return {
 						outcome: "available" as const,
 						previewId: preview.id,
@@ -335,12 +336,12 @@ export const createConversationRoutes = (
 						loreActivation: capture.plan.loreActivation,
 						boxTraces: capture.plan.boxTraces,
 						budget: {
-							tokenEstimate: capture.plan.budget.tokenEstimate,
-							responseBudget: capture.plan.budget.responseBudget,
-							safetyAllowance: capture.plan.budget.safetyAllowance,
-							contextLimit: capture.plan.budget.contextLimit,
-							totalRequiredTokens: capture.plan.budget.totalRequiredTokens,
-							budgetFits: capture.plan.budget.fits,
+							tokenEstimate: breakdown.tokenEstimate,
+							responseBudget: breakdown.responseBudget,
+							safetyAllowance: breakdown.safetyAllowance,
+							contextLimit: breakdown.contextLimit,
+							totalRequiredTokens: breakdown.totalRequiredTokens,
+							budgetFits: fits,
 						},
 					};
 				} catch (error) {
