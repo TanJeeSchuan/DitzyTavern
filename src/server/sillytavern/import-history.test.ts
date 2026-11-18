@@ -11,7 +11,8 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { artifactTable, conversationDataTable } from "../database/schema";
-import { importSillyTavernChat } from "./import";
+import { processStateFor } from "../application/process-state";
+import { importChatFixture, stageImportBytes } from "../test-fixtures/chat-import";
 import {
 	createChatImportDetailsModule,
 	type ChatImportDetails,
@@ -65,19 +66,14 @@ describe("graduated Chat history and Import Details", () => {
 		details = createChatImportDetailsModule(database, artifactDirectory);
 	});
 	afterEach(() => {
+		processStateFor(database).dispose();
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});
 
-	const stageBytes = (bytes: Buffer, filename = "lantern-house.jsonl") =>
-		module.stageFile({
-			bytes: new Blob([new Uint8Array(bytes)]).stream(),
-			originalFilename: filename,
-		});
-
 	const stageText = (records: unknown[], filename = "lantern-house.jsonl") => {
 		const bytes = Buffer.from(jsonl(records), "utf8");
-		return { bytes, staged: () => stageBytes(bytes, filename) };
+		return { bytes, staged: () => stageImportBytes(module, bytes, filename) };
 	};
 
 	const commitAll = (
@@ -122,12 +118,6 @@ describe("graduated Chat history and Import Details", () => {
 		);
 		if (archive === undefined) throw new Error("missing canonical archive");
 		return archive.value;
-	};
-
-	const priorImport = (records: unknown[], filename = "prior.jsonl") => {
-		const path = join(files[0] ?? "", filename);
-		writeFileSync(path, jsonl(records), "utf8");
-		return importSillyTavernChat(database, path, artifactDirectory).conversation;
 	};
 
 	test("normal native edits, Variant selection, and Participant renames leave canonical and exact source immutable", async () => {
@@ -337,7 +327,7 @@ describe("graduated Chat history and Import Details", () => {
 	test("duplicate evidence in Import Details excludes this Chat and classifies related sources", async () => {
 		// A committed prior Chat importing the exact same bytes becomes the
 		// exact duplicate evidence of a second imported copy.
-		const prior = priorImport([header, writer], "first.jsonl");
+		const { conversation: prior } = await importChatFixture(module, jsonl([header, writer]), "first.jsonl");
 
 		const staged = await stageText([header, writer], "copy.jsonl");
 		const { token, preview } = await staged.staged();

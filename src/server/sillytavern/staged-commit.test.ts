@@ -1,6 +1,7 @@
 import { uploadImage } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { requireSnapshot } from "../test-fixtures/conversation";
+import { stageImportBytes } from "../test-fixtures/chat-import";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -104,13 +105,7 @@ describe("staged SillyTavern chat import commit", () => {
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});
 
-	const stageBytes = (bytes: Buffer, filename = "lantern-house.jsonl") =>
-		module.stageFile({
-			// SAFETY: the copy into a fresh Uint8Array carries the exact bytes
-			// while satisfying Blob's ArrayBuffer typing at the test boundary.
-			bytes: new Blob([new Uint8Array(bytes)]).stream(),
-			originalFilename: filename,
-		});
+	const stageBytes = (bytes: Buffer, filename?: string) => stageImportBytes(module, bytes, filename);
 
 	const stageText = async (records: unknown[], filename = "lantern-house.jsonl") => {
 		const staged = await stageBytes(Buffer.from(jsonl(records), "utf8"), filename);

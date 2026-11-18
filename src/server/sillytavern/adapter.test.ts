@@ -9,7 +9,7 @@ import {
 	decodeSillyTavernImportReport,
 	decodeSillyTavernImportSource,
 } from "./adapter";
-import { UNKNOWN_IMPORTED_AUTHOR_NAME, defaultImportResolution, projectImport } from "./import-projection";
+import { UNKNOWN_IMPORTED_AUTHOR_NAME, emptyImportedDefinition, projectImport } from "./import-projection";
 import type { SillyTavernImportMeta } from "./adapter";
 import { SillyTavernImportError } from "./errors";
 import {
@@ -24,14 +24,16 @@ import {
 } from "./fixtures";
 
 const meta: SillyTavernImportMeta = {
-	name: "lantern-house",
 	filename: "lantern-house.jsonl",
 	sha256: "0f5c3e0a9d0c8f5b3a9e4d6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6",
 };
 
-const project = (sourceText: string) => {
+const project = (sourceText: string, ...participantNamePerMessage: string[]) => {
 	const decoded = decodeSillyTavernImportSource(sourceText, meta);
-	return projectImport(decoded, defaultImportResolution(decoded), { exact: [], related: [] });
+	return projectImport(decoded, {
+		participants: participantNamePerMessage.map((name) => ({ definition: emptyImportedDefinition(name) })),
+		messageOwners: new Map(participantNamePerMessage.map((_, index) => [index + 1, index])),
+	}, { exact: [], related: [] });
 };
 
 // Imported Participants start with an empty typed Prompt and no openings:
@@ -90,7 +92,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("maps a header and payload-only records into a generic creation input", () => {
-		const { input } = project(jsonl([header, first, second, blankName]));
+		const { input } = project(jsonl([header, first, second, blankName]), "Writer", "Rulership", UNKNOWN_IMPORTED_AUTHOR_NAME);
 
 		expect(input.participants).toEqual([
 			importedSeed("Writer"),
@@ -161,12 +163,12 @@ describe("SillyTavern JSONL adapter", () => {
 
 	test("keeps the first nonempty record as the source header", () => {
 		const source = `\n\n${JSON.stringify(header)}\n${JSON.stringify(first)}\n\n`;
-		const { report } = project(source);
+		const { report } = decodeSillyTavernImportSource(source, meta);
 		expect(report.counts).toEqual({ messages: 1, variants: 1 });
 	});
 
 	test("stores the canonical archive and import identity as separate conversation entries", () => {
-		const { input, report } = project(jsonl([header, first, second]));
+		const { input, report } = project(jsonl([header, first, second]), "Writer", "Rulership");
 
 		const archive = input.data?.find(
 			(entry) =>
@@ -237,7 +239,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("keeps unknown and source-only fields value-lossless in the archive only", () => {
-		const { input } = project(jsonl([header, first, second]));
+		const { input } = project(jsonl([header, first, second]), "Writer", "Rulership");
 
 		const archive = input.data?.find(
 			(entry) =>
@@ -258,7 +260,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("preserves empty payload content as an empty Variant", () => {
-		const { input, report } = project(jsonl([header, emptyContent]));
+		const { input, report } = project(jsonl([header, emptyContent]), "Writer");
 		expect(input.messages?.[0]?.variants[0]?.content).toBe("");
 		expect(input.messages?.[0]?.variants[0]?.timestamp).toBe(
 			"2026-08-08T13:20:00.000Z",
@@ -324,7 +326,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("derives one Variant per Swipe in source order and selects exactly swipe_id", () => {
-		const { input, report } = project(jsonl([header, swiped]));
+		const { input, report } = project(jsonl([header, swiped]), "TANJS");
 
 		const message = input.messages?.[0];
 		expect(message).toEqual({
@@ -406,7 +408,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("never promotes the duplicated top-level assistant payload when Swipes exist", () => {
-		const { input, report } = project(jsonl([header, swiped]));
+		const { input, report } = project(jsonl([header, swiped]), "TANJS");
 
 		// Row-level values duplicated from the saved alternative (mes,
 		// extra.api/model/gen_id, reasoning, gen_started/gen_finished) must
@@ -445,7 +447,7 @@ describe("SillyTavern JSONL adapter", () => {
 				{ send_date: "2026-08-08T13:40:05.000Z" },
 			],
 		};
-		const { input, report } = project(jsonl([header, emptySelected]));
+		const { input, report } = project(jsonl([header, emptySelected]), "TANJS");
 
 		const variants = input.messages?.[0]?.variants ?? [];
 		expect(variants).toHaveLength(2);
@@ -457,7 +459,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("attaches row-level provenance to a payload-only Variant", () => {
-		const { input } = project(jsonl([header, provenancedPayload]));
+		const { input } = project(jsonl([header, provenancedPayload]), "Writer");
 
 		expect(input.messages).toEqual([
 			{

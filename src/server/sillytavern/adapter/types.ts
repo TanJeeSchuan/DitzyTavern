@@ -69,7 +69,6 @@ export interface SillyTavernImportReport {
 }
 
 export interface SillyTavernImportMeta {
-	name: string;
 	filename: string;
 	sha256: string;
 }
