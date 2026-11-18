@@ -47,7 +47,7 @@ export function GenerationErrorToast({ error, imageModel, retry, acknowledge }: 
 			className="workspace-toast generation-error-toast"
 			type="foreground"
 			open={open}
-			duration={imageModel === null ? undefined : Infinity}
+			duration={Infinity}
 			onOpenChange={(next) => {
 				setOpen(next);
 				if (!next) acknowledge();
