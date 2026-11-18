@@ -31,7 +31,7 @@ export interface BoxContext {
 	readonly signal: AbortSignal;
 }
 
-export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never, State extends GenerationJsonValue | undefined = undefined, Move = never> {
+export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJsonValue = never, Rec extends GenerationJsonValue = never, State extends GenerationJsonValue | undefined = undefined, Move = never, Exports = undefined> {
 	/** @approved Rejects a setup its schema accepts but the Box does not, given the setup it replaces; the message is shown to the writer. */
 	setupError?(setup: Setup, previous: Setup): string | undefined;
 	/** @approved History sent to the model shows each of the Box's Moves as `render`, given the Message's author, or as its descriptor's chip label once the Box is not enabled. */
@@ -55,6 +55,8 @@ export interface Box<Setup, Dependencies = undefined, Trace extends GenerationJs
 	read?(read: BoxWindowRead<Setup, State>): GenerationJsonValue;
 	/** @approved Routes the Box serves beside the host's, which the host mounts under `/api/boxes/<id>`. Its client reaches them through `boxApi`. */
 	routes?(database: Database): AnyElysia;
+	/** @approved The Box's read-only Exports, each one named question about one Chat answered synchronously. Each Box types its own input and output, as the descriptor's `exports` schemas declare them; the host checks both crossings and serves these only through the server SDK's `boxExports`, which only a route handler may call. */
+	readonly exports?: Exports;
 	/** @approved A delegating Box's reducer: one batch of its declared operations, applied to the state folded from the records before the passage, becomes that passage's record. It enforces legality itself; a throw fails the delegate run with its message. */
 	readonly delegate?: { apply(input: DelegateInput<Setup, State>): Rec | Promise<Rec> };
 	/** @approved Rewrites a stored value that fails the Box's current schema, when the Box's schemas changed since it was written. Only failing values reach it; the host keeps the result only if it passes. */
@@ -77,12 +79,20 @@ export type StoredBoxValue =
 	| { readonly kind: "setup" | "move" | "record" | "trace"; readonly value: GenerationJsonValue }
 	| { readonly kind: "chat" | "participant"; readonly key: string; readonly value: GenerationJsonValue };
 
+/** @approved What an Export answers for: the Chat's database, and the Chat it answers in. */
+export type BoxExportContext = { readonly database: Database; readonly conversationId: number };
+
 // @approved
 //  Any Box, as the host holds it: the host routes each value to the Box that
 // produced it and never interprets it. A Box without a setup gets undefined.
 // A sandboxed Box also folds a whole Selected path in one call, `foldAll`,
-// since each call into its runtime copies its input across.
-export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, GenerationJsonValue | undefined, unknown> & {
+// since each call into its runtime copies its input across, and the host
+// serves its Exports only through `boxExports`, each input already checked
+// against the Export's input schema and each answer checked against its
+// output schema before it crosses back, so `HostBoxExports` is the checked
+// form a Box declares.
+export type HostBoxExports = Readonly<Record<string, (input: BoxValue | undefined, context: BoxExportContext) => BoxValue>>;
+export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, GenerationJsonValue, GenerationJsonValue | undefined, unknown, HostBoxExports> & {
 	readonly records?: { foldAll?(state: GenerationJsonValue | undefined, records: readonly GenerationJsonValue[], setup: BoxValue | undefined): GenerationJsonValue | undefined };
 };
 

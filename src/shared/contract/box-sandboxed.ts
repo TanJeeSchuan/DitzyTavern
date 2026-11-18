@@ -38,6 +38,7 @@ export const sandboxedDescriptorFile = Type.Object({
 	record: Type.Optional(json),
 	moves: Type.Optional(Type.Object({ schema: json, max: Type.Integer({ minimum: 1 }), label: Type.String(), seatBound: Type.Optional(Type.Literal(true)) }, { additionalProperties: false })),
 	lens: Type.Optional(Type.Never()),
+	exports: Type.Optional(Type.Never()),
 	delegate: Type.Optional(Type.Object({ ...boxDelegateCopy.properties, operations: json }, { additionalProperties: false })),
 	window: Type.Object({
 		kind: Type.Optional(Type.Literal("digest")),

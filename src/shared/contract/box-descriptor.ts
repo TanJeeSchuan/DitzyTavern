@@ -39,7 +39,12 @@ const schema = Type.Unsafe<TSchema>({ [Kind]: "BoxSchema" });
 // with it. `delegate` makes the Box a delegating Box: a request written in
 // prose as `<tag>…</tag>` is turned by an agent into one batch of its
 // `operations`, a `Type.Array` with its own `maxItems`, and its three strings
-// word the delegate setting.
+// word the delegate setting. `exports` are the Box's read-only answers for
+// another Box's route handlers: each name is one question with a
+// `description`, an `input` schema the caller's value must pass and an
+// `output` schema the answer must pass, and the server Box answers it
+// synchronously. Nothing in a Generation reaches them; only the server SDK's
+// `boxExports` does.
 export const boxDescriptorSchema = Type.Object({
 	...boxMetadataSchema.properties,
 	sdk: Type.Integer(),
@@ -56,6 +61,7 @@ export const boxDescriptorSchema = Type.Object({
 		seatBound: Type.Optional(Type.Literal(true)),
 	})),
 	delegate: Type.Optional(Type.Object({ ...boxDelegateCopy.properties, operations: schema })),
+	exports: Type.Optional(Type.Record(Type.String(), Type.Object({ description: Type.String(), input: schema, output: schema }))),
 });
 export type BoxDescriptor = Static<typeof boxDescriptorSchema>;
 
@@ -103,8 +109,9 @@ export const boxClientSchema = Type.Object({
 // @approved
 //  What the host calls on a Box's server module, checked when it loads: each
 // hook it declares is a function, or an object holding the functions the host
-// calls on it, and a trace schema is a TypeBox schema. The server refuses a
-// module that fails, then pairs its hooks with the descriptor.
+// calls on it, each Export a function, and a trace schema is a TypeBox
+// schema. The server refuses a module that fails, then pairs its hooks with
+// the descriptor.
 const hook = Type.Function([], Type.Unknown());
 export const boxServerSchema = Type.Object({
 	setupError: Type.Optional(hook),
@@ -120,6 +127,7 @@ export const boxServerSchema = Type.Object({
 	importSillyTavernNote: Type.Optional(hook),
 	read: Type.Optional(hook),
 	routes: Type.Optional(hook),
+	exports: Type.Optional(Type.Record(Type.String(), hook)),
 	upgrade: Type.Optional(hook),
 	delegate: Type.Optional(Type.Object({ apply: hook })),
 });

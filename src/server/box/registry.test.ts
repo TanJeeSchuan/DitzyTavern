@@ -68,6 +68,10 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 	const plugins = installPlugins({
 		lantern: {},
 		constructor: {},
+		"exports-mismatched": {
+			fields: 'exports: { greet: { description: "Greets.", input: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, output: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" } } }',
+			server: "export default { exports: { farewell: (name) => name } };",
+		},
 		unlabelled: { fields: "label: 3" },
 		"bad-value-schema": { fields: "values: { chat: { settings: {} } }" },
 		unschemed: { fields: "setup: { schema: {}, initial: null }" },
@@ -82,6 +86,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		"hollow-moves": { server: "export default { moves: {} };" },
 		"hollow-records": { fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }', server: "export default { records: { initial: 0 } };" },
 		"hollow-advance": { server: 'export default { advance: { run: "soon" } };' },
+		"hollow-exports": { server: "export default { exports: { greet: 3 } };" },
 		"hollow-routes": { server: "export default { routes: () => ({}) };" },
 		"map-initial": { fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }', server: "export default { records: { initial: new Map(), fold: (state) => state } };" },
 	});
@@ -93,7 +98,9 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		["bad-value-schema", "Its descriptor is invalid at /values/chat/settings: Expected kind 'BoxSchema'."],
 		["broken", "The wick is wet."],
 		["constructor", "Its id, constructor, names an Object.prototype property."],
+		["exports-mismatched", "The exports-mismatched Box must declare the same Exports its descriptor declares."],
 		["hollow-advance", "Its server module is invalid at /advance/run: Expected function."],
+		["hollow-exports", "Its server module is invalid at /exports/greet: Expected function."],
 		["hollow-moves", "Its server module is invalid at /moves/render: Expected required property."],
 		["hollow-records", "The hollow-records Box must declare a fold exactly when it declares an initial state."],
 		["hollow-routes", "The hollow-routes Box's routes must return an Elysia app."],
@@ -122,6 +129,7 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 	sandboxed("jar");
 	sandboxed("both", { "server.ts": "export default {};" });
 	sandboxed("emailed", { "descriptor.json": descriptor("emailed", { setup: { schema: { type: "string", format: "email" }, initial: "" } }) });
+	sandboxed("exporting", { "descriptor.json": descriptor("exporting", { exports: { people: { description: "Lists people.", input: { type: "string" }, output: { type: "string" } } } }) });
 	// @approved Twenty backtracking alternatives before a plain string, checked against an initial value that makes each backtrack, held startup for longer than five seconds.
 	const backtracking = { anyOf: [...Array.from({ length: 20 }, () => ({ type: "string", pattern: "^(a+)+$" })), { type: "string" }] };
 	sandboxed("backtracking", { "descriptor.json": descriptor("backtracking", { setup: { schema: backtracking, initial: `${"a".repeat(34)}!` } }) });
@@ -142,6 +150,7 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 		["backtracking", "Its string at /setup/schema/anyOf/0 has a pattern; a sandboxed Box may only use ParticipantKey's."],
 		["both", "It holds both server.ts and sandboxed logic; a Box folder is trusted or sandboxed, not both."],
 		["emailed", "Its schema at /setup/schema uses format, which a sandboxed Box cannot."],
+		["exporting", "Its descriptor.json is invalid at /exports: Never."],
 		["fetching", "The fetching Box's ui.js did not build: ui.js imports https://example.com/tip.js; a sandboxed Box imports its own files by relative path and the packages its descriptor.json declares."],
 		["importing", "The importing Box's logic.js did not build: logic.js imports ./tip.js, which is not a .js or .mjs file of the Box's own."],
 		["keyed", "Its record at /record keys by ^(a+)+$; a sandboxed Box keys a record by any string or by ParticipantKey."],

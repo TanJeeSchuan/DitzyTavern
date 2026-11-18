@@ -12,7 +12,7 @@ import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { BoxFolds } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureMessage, CaptureRead, DigestContext, DigestWindow, HostBox } from "./contract";
+import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxExportContext, CaptureMessage, CaptureRead, DigestContext, DigestWindow, HostBox } from "./contract";
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
 import { sandboxedBox } from "./sandboxed";
@@ -34,13 +34,20 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 // no `read`; only that read calls `status`, so no other Box declares one. A
 // delegating Box keeps records its delegate writes, shows them in its own
 // window, and always renders the block whose instructions teach its tag, and
-// it does not also digest. Ids are known only at runtime, so
+// it does not also digest. Its server module and its descriptor must name the
+// same Exports, and a sandboxed Box declares none, so its `descriptor.json`
+// refuses the key. Ids are known only at runtime, so
 // the registry checks this when it is built. The Box the host holds checks
 // each hook's output against `boxHookOutputs` where the hook returns it, and
 // names the Box, the hook and the failing path when it does not pass.
 const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule): HostBox => {
 	const outputs = boxHookOutputs(descriptor, box.advance?.trace);
 	assertChecked(outputs["records.initial"], box.records?.initial, `The ${id} Box's records.initial`);
+	// @approved
+	// SAFETY: assertBoxServer checked each hook the host calls is a function; each Box types its own with `satisfies Box<…>`.
+	const host = box as HostBox;
+	const declaredExports = new Map(Object.entries(descriptor.exports ?? {}));
+	const servedExports = new Map(Object.entries(host.exports ?? {}));
 	const broken = ([
 		[(descriptor.record === undefined) === (box.records === undefined), "records exactly when it declares a record"],
 		[box.records === undefined || ("initial" in box.records) === (box.records.fold !== undefined), "a fold exactly when it declares an initial state"],
@@ -53,11 +60,9 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		[descriptor.delegate === undefined || box.read !== undefined, "a read, since it delegates"],
 		[descriptor.delegate === undefined || descriptor.alwaysRender === true, "alwaysRender, since it delegates"],
 		[descriptor.delegate === undefined || descriptor.decision === undefined, "no decision, since it delegates"],
+		[[...declaredExports.keys()].every((name) => servedExports.has(name)) && [...servedExports.keys()].every((name) => declaredExports.has(name)), "the same Exports its descriptor declares"],
 	] as const).flatMap(([holds, rule]) => holds ? [] : [rule]);
 	if (broken.length > 0) throw new Error(`The ${id} Box must declare ${broken.join("; ")}.`);
-	// @approved
-	// SAFETY: assertBoxServer checked each hook the host calls is a function; each Box types its own with `satisfies Box<…>`.
-	const host = box as HostBox;
 	// @approved
 	//  Every hook runs on the object that declares it: a top-level hook on the
 	// module, a nested one on its `moves`, `records`, digest or `advance`.
@@ -72,6 +77,23 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	};
 	const digest = records?.digest;
 	const checkedDigest = digest && { window: digest.window, run: async (window: DigestWindow, ctx: DigestContext) => checked("records.digest.run", await digest.run(window, ctx)) };
+	// @approved
+	//  Each Export the descriptor declares is wrapped, so the host checks both
+	// crossings: the caller's input against the Export's input schema, and the
+	// Box's answer against its output schema, failing naming the Box, the
+	// Export and the path as a hook's failure does.
+	const exports = declaredExports.size === 0 ? undefined : Object.fromEntries([...declaredExports].flatMap(([name, { input, output }]) => {
+		// @approved
+		//  Checked just before: the loader refused a Box whose two sides name
+		// different Exports.
+		const serve = servedExports.get(name)!;
+		return [[name, (value: BoxValue | undefined, context: BoxExportContext): BoxValue => {
+			assertChecked(input, value, `The ${id} Box's ${name} Export input`);
+			const answered: BoxValue = serve(value, context);
+			assertChecked(output, answered, `The ${id} Box's ${name} Export output`);
+			return answered;
+		}]];
+	}));
 	return {
 		setupError: setupError && ((setup, previous) => checked("setupError", setupError(setup, previous))),
 		moves: moves && { render: (move, author) => checked("moves.render", moves.render(move, author)) },
@@ -91,6 +113,7 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		importSillyTavernNote: importSillyTavernNote && ((note) => checked("importSillyTavernNote", importSillyTavernNote(note))),
 		read: host.read?.bind(host),
 		routes: host.routes?.bind(host),
+		exports,
 		upgrade: host.upgrade?.bind(host),
 		delegate: delegate && { apply: async (input) => checked("delegate.apply", await delegate.apply(input)) },
 	};

@@ -25,6 +25,7 @@ export default {
   decision: { summary, description, off, context },  // optional: digest settled prose; copy for its Decision Model setting
   lens: "<tag>",                                     // optional: the tag its client lens lifts, which no delegate may take
   delegate: { tag, operations, summary, description, off }, // optional: a request written as <tag>…</tag> becomes one batch of operations; see Delegate
+  exports: { [name]: { description, input, output } }, // optional: read-only answers for another Box's route handlers, each input and output a schema; see Exports
 } satisfies BoxDescriptor;
 
 // 2. Server Box: the default export of src/boxes/<id>/server.ts
@@ -46,6 +47,7 @@ const exampleBox = {
   read({ db, summary, history, setup, state }) { … }, // the window's JSON; non-digesting Boxes only
   importSillyTavernNote(note) { … },                 // the setup a SillyTavern chat's Author's Note imports as
   routes(database) { … },                            // an Elysia app of the Box's own routes, served under /api/boxes/<id>
+  exports: { [name]: (input, { database, conversationId }) => output }, // optional: one function per Export the descriptor's exports declares, answering synchronously
   upgrade(stored) { … },                             // a stored value its changed schemas reject, rewritten; see Checking stored values
   delegate: { async apply({ setup, state, operations, cast }) { … } }, // one batch into the passage's record; required by `delegate`
 } satisfies Box<Setup, Dependencies, Trace, Rec, State, Move>;
@@ -60,7 +62,7 @@ export default { descriptor, icon, Inspector: { label, Component }, Settings, Pa
 // `Status` is one short line; `header: true` puts it in the Chat tools, so it needs both `Status` and `Window`.
 ```
 
-Every server hook is optional, as are the descriptor keys marked optional. The loader checks each "required by" pair and each "only", and refuses a Box that breaks one. It also wraps each hook, so the host checks what the hook returns against the contract below where it returns it. Output that fails throws an error naming the Box, the hook and the failing path, which fails the Generation capture, digest or command that called the hook. `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Rec = never`, `State = undefined` and `Move = never`, and `State` is a JSON value or `undefined`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`.
+Every server hook is optional, as are the descriptor keys marked optional. The loader checks each "required by" pair and each "only", that the server's and the descriptor's Exports name the same ones, and that a sandboxed Box declares none, and refuses a Box that breaks one. It also wraps each hook, so the host checks what the hook returns against the contract below where it returns it. Output that fails throws an error naming the Box, the hook and the failing path, which fails the Generation capture, digest or command that called the hook. `Box`'s type parameters default to `Dependencies = undefined`, `Trace = never`, `Rec = never`, `State = undefined`, `Move = never` and `Exports = undefined`, and `State` is a JSON value or `undefined`; `Setup` is `undefined` without a `setup` key, so the Thoughts Box is `satisfies Box<undefined>`. A Box with Exports passes their types as the seventh parameter, as Memory does.
 
 ## The rules
 
@@ -72,6 +74,7 @@ Every server hook is optional, as are the descriptor keys marked optional. The l
 - **The host knows a Box only by its id.** The id is a string checked against the loaded Boxes at runtime: a Box route answers an unknown id with 404, and a Box command fails it. The host holds every setup, record and Move as a `BoxValue` and checks it against the Box's own schema wherever it crosses the HTTP or database boundary. Each Box types its own values: its server hooks through `satisfies Box<…>`, and its reads through `boxSetupOf` and `boxMovesOf`.
 - **A Box reaches the host only through the SDK.** A file in `src/boxes/<id>/` imports its own folder by relative path, packages, and its layer's entries in `src/box-sdk/` as `@/box-sdk/<entry>`, so the folder loads from `data/boxes/` too. No host file lists Boxes, and elsewhere in `src/` only tests import a Box. The `ditzy/no-box-boundary-imports` lint enforces both directions. See [Folder and SDK](authoring.md#folder-and-sdk).
 - **Boxes compose only through the Prompt Plan.** Every Box advances in parallel and never sees another Box's result from the same Generation.
+- **A Box answers another Box only through its Exports, and only from a route handler.** A trusted Box may declare `exports`: named, read-only questions about its own state in one Chat, each with an input and an output schema, answered synchronously. Another Box's route handler reads every enabled Box's through `boxExports(database, conversationId)` from the server SDK, which checks each input and answer against the declared schemas and fails naming the Box, the Export and the path. Only a route handler may call it; `advance`, a digest and a fold never may, since a Box's result there depends only on its own captured inputs, or a preview fingerprint would miss the change and a swipe would not reproduce the same outcome. A sandboxed Box declares none.
 - **Writer overrides overlay automatic records.** The effective record is `writer ?? automatic`. An override never rewrites prose, a later automatic result never displaces it, and reset removes it.
 
 ## Where to read next

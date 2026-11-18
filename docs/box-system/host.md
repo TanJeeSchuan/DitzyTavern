@@ -16,7 +16,7 @@ At startup the server scans the built-in folder `src/boxes/`, then the plugin fo
 - a Box with its id is already loaded, so a plugin cannot replace a built-in;
 - either file fails to import;
 - its server module fails `boxServerSchema`: each hook it declares must be a function, or an object holding the functions the host calls on it, such as `records.fold` or `advance.run`;
-- its server hooks do not match its descriptor's keys, or it declares one of `records.initial` and `records.fold` without the other;
+- its server hooks do not match its descriptor's keys, its server and descriptor name different Exports, or it declares one of `records.initial` and `records.fold` without the other;
 - its `routes` throw when the server builds them against its database, return anything but an Elysia app, or fail to mount under `/api/boxes/<id>`;
 - it holds both `server.ts` and `logic.js`, or, built in, `logic.ts`;
 - its lens or delegate tag is one a loaded Box already takes, or it breaks the [delegate](authoring.md#delegate-and-delegateapply) rules;
