@@ -1,6 +1,6 @@
 # T3: Stylesheets
 
-Status: IN REVIEW
+Status: DONE
 
 Blocked By: T2
 
@@ -31,10 +31,12 @@ No component or snapshot tests (`AGENTS.md`). Compare screenshots with `playwrig
 - [x] Move Creator Mode rules; drop the two duplicates
 - [x] Move New Chat rules
 - [x] Screenshot pairs at both widths
-- [ ] PR
+- [x] PR
 
 ## Acceptance
 
 `wc -l src/styles/box-windows.css` is under 1000. The screenshot pairs match.
 
 ## Outcome
+
+CI on `710bd3cd`: check and e2e green; NitFX LGTM. Merged as PR #273.
