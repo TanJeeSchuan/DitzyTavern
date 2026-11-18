@@ -19,22 +19,38 @@ import { QuickJSContext, QuickJSRuntime } from "quickjs-emscripten-core";
 // body is kept, so a test reads the tools it declared and the tool results
 // it carried back.
 type Scripted = { readonly name: string; readonly arguments: string };
-type Reply = { readonly run: string } | { readonly submit: unknown } | { readonly calls: readonly Scripted[] } | { readonly text: string; readonly finish?: string } | { readonly held: Promise<void>; readonly then: Reply };
-type Body = { readonly messages: readonly { readonly role: string; readonly content: unknown }[]; readonly tools?: readonly { readonly function?: { readonly name?: string; readonly description?: string } }[] };
+type Reply =
+	| { readonly run: string }
+	| { readonly submit: unknown }
+	| { readonly calls: readonly Scripted[] }
+	| { readonly text: string; readonly finish?: string }
+	| { readonly held: Promise<void>; readonly next: Reply };
+type Message = { readonly role: string; readonly content: unknown };
+type Body = {
+	readonly messages: readonly Message[];
+	readonly tools?: readonly { readonly function?: { readonly name?: string; readonly description?: string } }[];
+};
 const replies: Reply[] = [];
 const bodies: Body[] = [];
 const activities: CodeAgentActivity[] = [];
-type Delta = { readonly role?: "assistant"; readonly content?: string; readonly tool_calls?: readonly { readonly index: number; readonly id: string; readonly type: "function"; readonly function: { readonly name: string; readonly arguments: string } }[] };
-const chunk = (delta: Delta, finish: string | null) => `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 0, model: "stage-1", choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
-const call = (name: string, arguments_: string): Delta => ({ role: "assistant", tool_calls: [{ index: 0, id: `call_${bodies.length}`, type: "function", function: { name, arguments: arguments_ } }] });
+type ToolCall = { readonly index: number; readonly id: string; readonly type: "function"; readonly function: { readonly name: string; readonly arguments: string } };
+type Delta = { readonly role?: "assistant"; readonly content?: string; readonly tool_calls?: readonly ToolCall[] };
+const chunk = (delta: Delta, finish: string | null) => {
+	const body = { id: "fake", object: "chat.completion.chunk", created: 0, model: "stage-1", choices: [{ index: 0, delta, finish_reason: finish }] };
+	return `data: ${JSON.stringify(body)}\n\n`;
+};
+const call = (name: string, arguments_: string): Delta =>
+	({ role: "assistant", tool_calls: [{ index: 0, id: `call_${bodies.length}`, type: "function", function: { name, arguments: arguments_ } }] });
+const scripted = (calls: readonly Scripted[]): readonly ToolCall[] =>
+	calls.map((tool, index) => ({ index, id: `call_${bodies.length}_${index}`, type: "function", function: { name: tool.name, arguments: tool.arguments } }));
 const answer = async (reply: Reply | undefined): Promise<Response> => {
 	if (reply === undefined) return new Response("No reply scripted.", { status: 500 });
 	if ("held" in reply) {
 		await reply.held;
-		return await answer(reply.then);
+		return await answer(reply.next);
 	}
 	const chunks = "text" in reply ? [chunk({ role: "assistant", content: reply.text }, null), chunk({}, reply.finish ?? "stop")]
-		: "calls" in reply ? [chunk({ role: "assistant", tool_calls: reply.calls.map((tool, index) => ({ index, id: `call_${bodies.length}_${index}`, type: "function" as const, function: { name: tool.name, arguments: tool.arguments } })) }, null), chunk({}, "tool_calls")]
+		: "calls" in reply ? [chunk({ role: "assistant", tool_calls: scripted(reply.calls) }, null), chunk({}, "tool_calls")]
 		: "run" in reply ? [chunk(call("run", JSON.stringify({ code: reply.run })), null), chunk({}, "tool_calls")]
 		: [chunk(call("submit", JSON.stringify({ draft: reply.submit })), null), chunk({}, "tool_calls")];
 	return new Response(`${chunks.join("")}data: [DONE]\n\n`, { headers: { "content-type": "text/event-stream" } });
@@ -54,7 +70,11 @@ const submitSchema = Type.Object({ name: Type.String() }, { additionalProperties
 const lookupSchema = Type.Function([Type.Integer()], Type.Object({ doubled: Type.Integer() }, { additionalProperties: false }));
 const lookup: CodeAgentFunction = (input) => ({ doubled: Number(input ?? 0) * 2 });
 const globals = {
-	messages: { description: "The story's messages.", schema: Type.Array(Type.Object({ id: Type.Integer(), text: Type.String() }, { additionalProperties: false })), value: [{ id: 0, text: "Maren waits." }, { id: 1, text: "The lantern is lit." }] },
+	messages: {
+		description: "The story's messages.",
+		schema: Type.Array(Type.Object({ id: Type.Integer(), text: Type.String() }, { additionalProperties: false })),
+		value: [{ id: 0, text: "Maren waits." }, { id: 1, text: "The lantern is lit." }],
+	},
 	answers: { description: "Answers the host already holds.", schema: Type.Object({ open: Type.Boolean() }, { additionalProperties: false }), value: { open: true } },
 	lookup: { description: "Doubles a number.", schema: lookupSchema, value: lookup },
 };
@@ -197,7 +217,7 @@ test("a valid submit arriving as the step past the cap fails the run instead of 
 test("cancelling the signal disposes the run's QuickJS context and runtime", async () => {
 	chooseModel();
 	const held = Promise.withResolvers<void>();
-	replies.push({ run: 'kept = "kept"; "set"' }, { held: held.promise, then: { submit: { name: "Maren" } } });
+	replies.push({ run: 'kept = "kept"; "set"' }, { held: held.promise, next: { submit: { name: "Maren" } } });
 	const cancelled = new AbortController();
 	const contextDispose = spyOn(QuickJSContext.prototype, "dispose");
 	const runtimeDispose = spyOn(QuickJSRuntime.prototype, "dispose");
@@ -230,13 +250,25 @@ test("a global function refuses an argument that is not JSON, before the host se
 		seen.push(input);
 		return { doubled: Number(input ?? 0) * 2 };
 	};
-	replies.push({ run: "lookup(10n).doubled" }, { run: "lookup(3).doubled" }, { submit: { name: "Maren" } });
+	replies.push({ run: "lookup(10n).doubled" }, { run: "lookup({ n: 1, gone: undefined })" }, { run: "lookup(NaN)" }, { run: "lookup(3).doubled" }, { submit: { name: "Maren" } });
 	expect(await run({ globals: { ...globals, lookup: { description: "Doubles a number.", schema: lookupSchema, value: watching } } })).toEqual({ name: "Maren" });
 	expect(seen).toEqual([3]);
+	const dropped = "The drafter Box's code threw TypeError: a global function takes JSON, and this argument does not survive as JSON (dropped values, NaN or a non-plain object)";
 	expect(activities.map(({ output }) => output)).toEqual([
 		"The drafter Box's code threw TypeError: Do not know how to serialize a BigInt",
+		dropped,
+		dropped,
 		"Returned:\n6",
 	]);
+});
+
+test("the declarations quote a key that is not an identifier and group a union inside an array", async () => {
+	chooseModel();
+	const exportsSchema = Type.Object({ "world-clock": Type.Object({ seasons: Type.Array(Type.Union([Type.String(), Type.Null()])) }) });
+	replies.push({ submit: { name: "Maren" } });
+	expect(await run({ globals: { ...globals, exports: { description: "Other Boxes.", schema: exportsSchema, value: { "world-clock": { seasons: ["spring", null] } } } } })).toEqual({ name: "Maren" });
+	const described = bodies[0]?.tools?.find(({ function: fn }) => fn?.name === "run")?.function?.description ?? "";
+	expect(described).toContain('declare const exports: { "world-clock": { seasons: (string | null)[] } };');
 });
 
 test("an off default delegate refuses the run with what to choose, even beside a model set for the Box itself; a broken one with its reason", async () => {

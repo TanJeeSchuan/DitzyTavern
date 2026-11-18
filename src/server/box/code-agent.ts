@@ -63,6 +63,13 @@ const fit = (text: string): string => {
 // globals' schemas. Only the kinds a built-in Box's own schemas use are
 // printed; anything else reads as `unknown`, which is what the guest can
 // tell the model about it.
+const identifier = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+// @approved
+//  A property key the way a declaration needs it: identifiers stand as
+// written, and any other name, such as a Box's hyphenated id, is quoted.
+const keyOf = (key: string): string => identifier.test(key) ? key : JSON.stringify(key);
+const propertyOf = ([key, property]: readonly [string, TSchema]): string =>
+	`${TypeGuard.IsOptional(property) ? `${keyOf(key)}?` : keyOf(key)}: ${declarationOf(property)}`;
 const declarationOf = (schema: TSchema): string => {
 	if (TypeGuard.IsUnion(schema)) return schema.anyOf.map(declarationOf).join(" | ");
 	if (TypeGuard.IsLiteral(schema)) return JSON.stringify(schema.const);
@@ -71,13 +78,20 @@ const declarationOf = (schema: TSchema): string => {
 	if (TypeGuard.IsBoolean(schema)) return "boolean";
 	if (TypeGuard.IsNull(schema)) return "null";
 	if (TypeGuard.IsUndefined(schema)) return "undefined";
-	if (TypeGuard.IsArray(schema)) return `${declarationOf(schema.items)}[]`;
+	// @approved
+	//  A union, intersection or function element needs its parentheses, so
+	// `string | null[]` never stands for an array of `string | null`.
+	if (TypeGuard.IsArray(schema)) {
+		const element = declarationOf(schema.items);
+		const grouped = TypeGuard.IsUnion(schema.items) || TypeGuard.IsIntersect(schema.items) || TypeGuard.IsFunction(schema.items);
+		return `${grouped ? `(${element})` : element}[]`;
+	}
 	if (TypeGuard.IsTuple(schema)) return `[${schema.items.map(declarationOf).join(", ")}]`;
 	if (TypeGuard.IsRecord(schema)) {
 		const [recorded] = Object.values(schema.patternProperties);
 		return `{ [key: string]: ${recorded === undefined ? "unknown" : declarationOf(recorded)} }`;
 	}
-	if (TypeGuard.IsObject(schema)) return `{ ${Object.entries(schema.properties).map(([key, property]) => `${TypeGuard.IsOptional(property) ? `${key}?` : key}: ${declarationOf(property)}`).join("; ")} }`;
+	if (TypeGuard.IsObject(schema)) return `{ ${Object.entries(schema.properties).map(propertyOf).join("; ")} }`;
 	if (TypeGuard.IsFunction(schema)) {
 		const names = schema.parameters.map((_, index) => schema.parameters.length === 1 ? "input" : `arg${index}`);
 		return `(${schema.parameters.map((parameter, index) => `${names[index]}: ${declarationOf(parameter)}`).join(", ")}) => ${declarationOf(schema.returns)}`;
@@ -86,9 +100,15 @@ const declarationOf = (schema: TSchema): string => {
 	return "unknown";
 };
 
-/** @approved The `.d.ts` of the sandbox: each global declared from its schema, with the `console` the prelude provides. */
+// @approved
+//  The `.d.ts` of the sandbox: each global declared from its schema, with
+// the `console` the prelude provides. A name that is not an identifier,
+// such as a hyphenated one, cannot be declared as a const, so it is
+// described with the bracket access that reaches it.
 const declarations = (globals: Readonly<Record<string, CodeAgentGlobal>>) => [
-	...Object.entries(globals).map(([name, global]) => `/** ${global.description} */\ndeclare const ${name}: ${declarationOf(global.schema)};`),
+	...Object.entries(globals).map(([name, global]) => identifier.test(name)
+		? `/** ${global.description} */\ndeclare const ${name}: ${declarationOf(global.schema)};`
+		: `/** ${global.description} */\n// Reach it with bracket access: globalThis[${JSON.stringify(name)}]: ${declarationOf(global.schema)}`),
 	"declare const console: { log(...values: unknown[]): void };",
 ].join("\n");
 
@@ -120,29 +140,43 @@ const prelude = `(() => {
 // `take` empties the log buffer into one string the host reads once per
 // `run`, `show` returns a run's final value as JSON (or why it cannot),
 // capped at the output limit, `json` refuses a global function's argument
-// unless it is JSON, before anything crosses, and `freeze` freezes an
-// injected global deeply, in place.
-const helpers = `({
-	show: (value, limit) => {
-		if (value === undefined) return "undefined";
-		let shown;
-		try { shown = JSON.stringify(value); } catch { return "a value JSON cannot show; return a JSON value"; }
-		if (shown === undefined) return "a value JSON cannot show; return a JSON value";
-		return shown.length > limit ? shown.slice(0, limit) : shown;
-	},
-	json: (value) => {
-		const text = JSON.stringify(value);
-		if (text === undefined) throw new TypeError("a global function takes JSON, and this argument is a " + typeof value);
-		return text;
-	},
-	freeze: (value) => {
-		const freeze = (item) => {
-			if (item !== null && (typeof item === "object" || typeof item === "function")) { Object.freeze(item); for (const key of Object.keys(item)) freeze(item[key]); }
-			return item;
-		};
-		return freeze(value);
-	},
-})`;
+// unless it survives as JSON, before anything crosses, and `freeze` freezes
+// an injected global deeply, in place. The whole block is one expression,
+// so nothing it defines leaks into the guest's global scope.
+const helpers = `(() => {
+	const survives = (left, right) => {
+		if (left === right) return true;
+		if (left === null || right === null || typeof left !== "object" || typeof right !== "object" || Array.isArray(left) !== Array.isArray(right)) return false;
+		if (!Array.isArray(left) && Object.getPrototypeOf(left) !== Object.prototype && Object.getPrototypeOf(left) !== null) return false;
+		if (Object.getOwnPropertySymbols(left).length !== 0 || Object.getOwnPropertySymbols(right).length !== 0) return false;
+		const keys = Object.keys(left);
+		if (keys.length !== Object.keys(right).length) return false;
+		for (const key of keys) if (!Object.prototype.hasOwnProperty.call(right, key) || !survives(left[key], right[key])) return false;
+		return true;
+	};
+	return {
+		show: (value, limit) => {
+			if (value === undefined) return "undefined";
+			let shown;
+			try { shown = JSON.stringify(value); } catch { return "a value JSON cannot show; return a JSON value"; }
+			if (shown === undefined) return "a value JSON cannot show; return a JSON value";
+			return shown.length > limit ? shown.slice(0, limit) : shown;
+		},
+		json: (value) => {
+			const text = JSON.stringify(value);
+			if (text === undefined) throw new TypeError("a global function takes JSON, and this argument is a " + typeof value);
+			if (!survives(value, JSON.parse(text))) throw new TypeError("a global function takes JSON, and this argument does not survive as JSON (dropped values, NaN or a non-plain object)");
+			return text;
+		},
+		freeze: (value) => {
+			const freeze = (item) => {
+				if (item !== null && (typeof item === "object" || typeof item === "function")) { Object.freeze(item); for (const key of Object.keys(item)) freeze(item[key]); }
+				return item;
+			};
+			return freeze(value);
+		},
+	};
+})()`;
 
 const isFunction = (value: CodeAgentValue): value is CodeAgentFunction => typeof value === "function";
 const isNumber = (value: CodeAgentValue): value is number => typeof value === "number";
@@ -401,7 +435,10 @@ export const runCodeAgent = async <Draft extends TSchema>(database: Database, { 
 				},
 			}, {
 				name: "submit", idempotent: false, writes: true,
-				description: "Submits the run's result and ends the run. The draft is checked against its schema and the Box's own rules; either refusal comes back with its reason, and the first valid draft is the run's result.",
+				description: [
+					"Submits the run's result and ends the run.",
+					"The draft is checked against its schema and the Box's own rules; either refusal comes back with its reason, and the first valid draft is the run's result.",
+				].join(" "),
 				inputSchema: JSON.parse(JSON.stringify(submitInput)),
 				execute: (proposed: unknown) => {
 					if (submitted !== undefined) fail("The agent called submit after its draft was accepted.");
@@ -437,7 +474,8 @@ export const runCodeAgent = async <Draft extends TSchema>(database: Database, { 
 			},
 		});
 		try {
-			const result = await agent.session().prompt("Begin.", { signal: aborted }).result.catch((error: unknown) => ({ stopReason: "error" as const, error: { message: error instanceof Error ? error.message : String(error) } }));
+			const turn = agent.session().prompt("Begin.", { signal: aborted });
+			const result = await turn.result.catch((error: unknown) => ({ stopReason: "error" as const, error: { message: error instanceof Error ? error.message : String(error) } }));
 			signal.throwIfAborted();
 			if (failure !== undefined) throw new Error(failure);
 			if (submitted !== undefined) return submitted;
