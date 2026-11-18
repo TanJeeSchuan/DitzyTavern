@@ -15,7 +15,9 @@
 @import "./styles/connection-settings.css";
 @import "./styles/story.css";
 @import "./styles/box-windows.css";
+@import "./styles/create-box.css";
 @import "./styles/moves.css";
+@import "./styles/new-chat.css";
 @import "./styles/responsive.css";
 @import "./styles/cast.css";
 @import "./styles/import-chat.css";

@@ -1,6 +1,6 @@
 # T3: Stylesheets
 
-Status: READY
+Status: IN REVIEW
 
 Blocked By: T2
 
@@ -28,9 +28,9 @@ No component or snapshot tests (`AGENTS.md`). Compare screenshots with `playwrig
 
 ## TODO
 
-- [ ] Move Creator Mode rules; drop the two duplicates
-- [ ] Move New Chat rules
-- [ ] Screenshot pairs at both widths
+- [x] Move Creator Mode rules; drop the two duplicates
+- [x] Move New Chat rules
+- [x] Screenshot pairs at both widths
 - [ ] PR
 
 ## Acceptance
