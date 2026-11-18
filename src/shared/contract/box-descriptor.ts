@@ -195,3 +195,7 @@ export const describeMoves = <Schema extends TSchema>(schema: Schema, max: numbe
 
 /** @approved What a delegate's `apply` tool takes: one batch of the Box's declared operations, which the host checks before anything is applied. */
 export const delegateApplyInput = (operations: TSchema) => Type.Object({ operations: Type.Unsafe<readonly BoxValue[]>(operations) }, { additionalProperties: false });
+/** @approved What the code agent's `run` tool takes: one piece of JavaScript. */
+export const codeAgentRunInput = Type.Object({ code: Type.String() }, { additionalProperties: false });
+/** @approved What the code agent's `submit` tool takes: the draft, checked against the schema its caller declared. */
+export const codeAgentSubmitInput = <Draft extends TSchema>(draft: Draft) => Type.Object({ draft: Type.Unsafe<Static<Draft>>(draft) }, { additionalProperties: false });

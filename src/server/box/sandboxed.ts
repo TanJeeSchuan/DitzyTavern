@@ -28,7 +28,7 @@ const supportedHooks = ["setupError", "dependencies", "moves.render", "records.i
 // randomness of its own, so equal inputs give equal outcomes. A Date with
 // arguments still works, so a Box can format a time it was given. The real
 // constructor stays inside the function, out of the guest's reach.
-const determinism = `(() => {
+export const determinism = `(() => {
 	delete Math.random;
 	const RealDate = Date;
 	const construct = Reflect.construct;
@@ -92,18 +92,18 @@ const bridge = `(box) => {
 // cannot grow past the heap limit; an allocation past it fails in the guest
 // as out of memory. The variant's memory starts at 16 MiB.
 const compiled = Bun.file(Bun.resolveSync("@jitl/quickjs-wasmfile-release-sync/wasm", import.meta.dir)).arrayBuffer().then((bytes) => WebAssembly.compile(bytes));
-const quickjs = async () => newQuickJSWASMModuleFromVariant(newVariant(variant, {
+const quickjs = async (heapBytes: number) => newQuickJSWASMModuleFromVariant(newVariant(variant, {
 	wasmModule: await compiled,
-	wasmMemory: new WebAssembly.Memory({ initial: 16 * 1024 * 1024 / WASM_PAGE_BYTES, maximum: SANDBOX_HEAP_BYTES / WASM_PAGE_BYTES }),
+	wasmMemory: new WebAssembly.Memory({ initial: 16 * 1024 * 1024 / WASM_PAGE_BYTES, maximum: heapBytes / WASM_PAGE_BYTES }),
 }));
 const mebibytes = (bytes: number) => `${bytes / 1024 / 1024} MiB`;
 
 /** @approved A QuickJS runtime on its own module instance and capped memory, with the deadline each entry into its guest arms. */
-const guestRuntime = async () => {
-	const runtime = (await quickjs()).newRuntime();
+export const guestRuntime = async (heapBytes: number, entryMs: number) => {
+	const runtime = (await quickjs(heapBytes)).newRuntime();
 	let deadline = 0;
 	runtime.setInterruptHandler(() => performance.now() > deadline);
-	return { runtime, enter: () => { deadline = performance.now() + SANDBOX_ENTRY_MS; } };
+	return { runtime, enter: () => { deadline = performance.now() + entryMs; } };
 };
 type GuestRuntime = Awaited<ReturnType<typeof guestRuntime>>;
 
@@ -129,7 +129,7 @@ const overLimit = (id: BoxId, hook: string, direction: "input" | "result") => ne
 // runtime, including a trapped allocator. Standalone synchronous hooks use
 // fresh contexts in the loader runtime.
 export const sandboxedBox = async (id: BoxId, source: string) => {
-	let standalone: GuestRuntime | undefined = await guestRuntime();
+	let standalone: GuestRuntime | undefined = await guestRuntime(SANDBOX_HEAP_BYTES, SANDBOX_ENTRY_MS);
 	let disposed = false;
 	let recoveryError: string | undefined;
 	type Operation = { runtime: GuestRuntime; guest?: ReturnType<typeof open>; discard: boolean };
@@ -274,7 +274,7 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 		} catch { scope.discard = true; /* @approved Pending guest jobs or a trapped allocator require dropping the runtime whole. */ }
 	};
 	const operation = async <T>(run: () => T): Promise<Awaited<T>> => {
-		const scope: Operation = { runtime: await guestRuntime(), discard: false };
+		const scope: Operation = { runtime: await guestRuntime(SANDBOX_HEAP_BYTES, SANDBOX_ENTRY_MS), discard: false };
 		// @approved
 		// On failure, leave the entire runtime to host GC: native cleanup can trap on an exhausted heap or unfinished promise chain.
 		const value = await current.run(scope, run);
@@ -297,7 +297,7 @@ export const sandboxedBox = async (id: BoxId, source: string) => {
 			finish(scope, false);
 			if (scope.discard) {
 				standalone = undefined;
-				void guestRuntime().then((fresh) => {
+				void guestRuntime(SANDBOX_HEAP_BYTES, SANDBOX_ENTRY_MS).then((fresh) => {
 					if (disposed) fresh.runtime.dispose();
 					else standalone = fresh;
 				}, (error: Error) => { recoveryError = `could not recover its sandbox runtime: ${String(error)}`; });
