@@ -1,15 +1,14 @@
-import { readActiveGenerationsForRecovery } from "../conversation";
-import { stopConversationGeneration } from "../conversation";
 import type { Database } from "bun:sqlite";
-
-import { cleanupRetainedGenerationInspections } from "../conversation";
+import {
+	cleanupRetainedGenerationInspections,
+	readActiveGenerationsForRecovery,
+	stopConversationGeneration,
+	type GenerationRecoveryCause,
+} from "../conversation";
 import {
 	generationRuntimeFor,
 	type GenerationRuntimeRegistry,
 } from "./generation-runtime";
-
-/** @approved The only local terminal causes used by startup and graceful shutdown. */
-export type GenerationRecoveryCause = "server-restart" | "server-shutdown";
 
 export interface GenerationRecoverySummary {
 	readonly inspected: number;

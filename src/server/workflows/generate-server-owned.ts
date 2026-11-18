@@ -22,7 +22,7 @@ import type { GenerationFormattingContext } from "../../shared/contract/conversa
 //  Detached server-owned Generation scaffolding: the attempt input shared by
 // every workflow, the accept/result handle detached from its observing
 // request, and the provider-attempt tail (normalized outcome collection,
-// empty-output removal, terminal provenance and data assembly). The workflow
+// Stop on failed or empty output, terminal provenance and data assembly). The workflow
 // entry points own the Conversation lifecycle; this module owns everything
 // that is identical across Send, Continue, and Sibling.
 

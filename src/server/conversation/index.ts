@@ -98,6 +98,7 @@ export type {
 	ConversationGenerationSettings,
 	ConversationGenerationSettingsInput,
 	ContinuationPrefillSuffix,
+	GenerationRecoveryCause,
 	StopGenerationInput,
 	StopGenerationsInput,
 	StoppedGenerations,
