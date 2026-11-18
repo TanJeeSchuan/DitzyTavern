@@ -1,5 +1,5 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { generationGate } from "../conversation";
+import { generationGate, promptIntentOf, requireSiblingHistoricalControl, requireTerminalTarget, type CapturedGenerationTarget } from "../conversation";
 import type { BoxRecords } from "../../shared/contract/box-generation";
 import { newVariantSeed, variantSeedOf } from "../box/seed";
 import { readVariantSeeds } from "../box/records";
@@ -9,13 +9,9 @@ export { capturedAcceptanceFields, modelRequestFor } from "./generate-capture-pr
 import type { Database } from "bun:sqlite";
 import {
 	authorRoleOf,
-	continuationEligibility,
 	ConversationNotPlayableError,
 	ConversationNotFoundError,
-	ContinuationUnavailableError,
-	deriveMessageSwipeEligibility,
 	InvalidConversationCommandError,
-	SiblingVariantUnavailableError,
 	type ConversationDataEntry,
 	type ConversationSummary,
 } from "../conversation";
@@ -191,20 +187,11 @@ interface GenerationPreparationBase {
 	readonly lore: ScopedLoreEvaluation;
 }
 
-/** @approved The Generation Target with the facts its acceptance needs, read in the capture's transaction. */
-export type CapturedTarget =
-	| Extract<GenerationTarget, { kind: "send" }> & { readonly reuseHumanMessageId: number | undefined }
-	| Extract<GenerationTarget, { kind: "continuation" }> & { readonly precedingMessageId: number; readonly precedingVariantId: number; readonly intent: Extract<GenerationIntent, { type: "continuation" }> }
-	| Extract<GenerationTarget, { kind: "sibling" }>;
-
-export const generationIntentOf = (target: CapturedTarget): GenerationIntent | undefined =>
-	target.kind === "continuation" ? target.intent : target.kind === "sibling" ? { type: "sibling" } : undefined;
-
 interface PreparationFields extends GenerationPreparationBase {
 	readonly boxWarnings: readonly PromptWarning[];
 	readonly boxImages: BoxImageGrants;
 	readonly seed: string;
-	readonly target: CapturedTarget;
+	readonly target: CapturedGenerationTarget;
 	readonly pendingHumanText: string | undefined;
 	/** @approved Selected history as Lore scans it, each Message's Moves rendered as the model reads them. */
 	readonly scanMessages: readonly { readonly id: number; readonly content: string }[];
@@ -239,28 +226,20 @@ const reusableHumanMessageId = (
 };
 
 function captureTarget(
+	db: ConversationDatabase,
+	conversationId: number,
 	target: GenerationTarget,
 	participation: ParticipatingHistory,
 	human: CastParticipantSnapshot,
-	model: CastParticipantSnapshot,
 	settings: ConversationGenerationSettings,
-	hasReasoning: (variantId: number) => boolean,
 	moves: ReadonlyMap<number, BoxMoves>,
-): CapturedTarget {
+): CapturedGenerationTarget {
 	switch (target.kind) {
 		case "send": return { ...target, reuseHumanMessageId: reusableHumanMessageId(participation.messages, human.id, target, moves) };
 		case "sibling": return target;
 		case "continuation": {
-			const latest = participation.messages.at(-1);
-			const variant = latest?.variant;
-			if (latest === undefined || variant === null || variant === undefined) throw new ContinuationUnavailableError("not-terminal-model-message");
-			const reason = continuationEligibility({
-				authorRole: authorRoleOf(latest, { humanParticipantId: human.id, modelParticipantId: model.id }),
-				content: variant.content,
-				hasReasoning: hasReasoning(variant.id),
-			}, settings.continuationStrategy);
-			if (reason !== null) throw new ContinuationUnavailableError(reason);
-			return { ...target, precedingMessageId: latest.id, precedingVariantId: variant.id, intent: continuationIntentFor(settings) };
+			const terminal = requireTerminalTarget(db, conversationId, settings.continuationStrategy);
+			return { ...target, precedingMessageId: terminal.messageId, precedingVariantId: terminal.variantId, intent: continuationIntentFor(settings) };
 		}
 	}
 }
@@ -329,17 +308,10 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 	const boxes = participatingBoxes(chat, recipe.slots, readBoxLifecycles(db, input.conversationId));
 	const siblingSeed = siblingId === undefined ? undefined : variantSeedOf(readVariantSeeds(db, [siblingId]).get(siblingId), siblingId);
 	const variantData = readVariantData(db, variantIds, ["macroWrites"]);
-	const hasReasoning = (id: number) => (readVariantData(db, [id], ["reasoning"]).get(id)?.reasoning?.length ?? 0) > 0;
 	const folds = readBoxFolds(db, variantIds, summary.boxSetups, boxes);
 	const messageMoves = readMessageMoves(db, input.conversationId, selected.messages.map(({ id }) => id));
 	if (target.kind === "continuation") generationGate(db, input.conversationId, { type: "accept-continuation" });
-	if (target.kind === "sibling") {
-		const eligibility = deriveMessageSwipeEligibility(summary.playable, selected.target?.historicalContext ?? null, summary.cast.map((participant) => participant.id));
-		if (!eligibility.eligible) {
-			if (eligibility.reason === "conversation-not-playable") throw new ConversationNotPlayableError(input.conversationId);
-			throw new SiblingVariantUnavailableError(eligibility.reason);
-		}
-	}
+	if (target.kind === "sibling") requireSiblingHistoricalControl(db, input.conversationId, target.messageId);
 	const participation: ParticipatingHistory = {
 		messages: selected.messages,
 		control: {
@@ -373,7 +345,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 		model,
 		context: rendered.map(({ speakerName, content, role }) => ({ kind: "message", speakerName, content, role })),
 	};
-	const captured = captureTarget(target, participation, human, model, settings, hasReasoning, messageMoves);
+	const captured = captureTarget(db, input.conversationId, target, participation, human, settings, messageMoves);
 	// @approved
 	//  Only an enabled Box accepts newly staged Moves; a resent Message keeps the Moves it already carries.
 	const staged = target.kind === "send" ? target.moves : undefined;
@@ -394,7 +366,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
 			connectionSettings: input.connectionSettings,
 		})
 		: noLoreEvaluation();
-	const effectiveSettings = effectiveGenerationSettingsFor(settings, generationIntentOf(captured), connection);
+	const effectiveSettings = effectiveGenerationSettingsFor(settings, promptIntentOf(captured), connection);
 	const macroState = new Map(deriveMacroState({
 		initialData: selected.initialData,
 		presetId: recipe.id,
@@ -520,7 +492,7 @@ const captureConfigurationFromPreparation = (
  * facts of one kind ride on the same Generation Target union.
  */
 export interface CapturedGeneration {
-	readonly target: CapturedTarget;
+	readonly target: CapturedGenerationTarget;
 	readonly preparation: Preparation;
 	readonly plan: GenerationPlan;
 	readonly humanParticipant: ParticipantPreview;
@@ -591,7 +563,7 @@ export async function captureGeneration(
 		? derivation.context
 		: [...derivation.context, { kind: "message" as const, speakerName: derivation.human.name, content: preparation.pendingHumanText, role: "human" as const }];
 	const plan = compilePlanFrom({ ...derivation, context }, configuration, {
-		intent: generationIntentOf(preparation.target),
+		intent: promptIntentOf(preparation.target),
 		estimator: options.tokenEstimator,
 		database,
 	});

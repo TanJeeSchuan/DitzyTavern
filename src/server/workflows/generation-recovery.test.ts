@@ -5,7 +5,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { activeGenerationTable } from "../database/schema";
-import { acceptConversationSiblingGeneration } from "../conversation";
+import { acceptGeneration } from "../conversation";
 import { recoverActiveGenerations } from "./generation-recovery";
 
 const prompt = {
@@ -42,18 +42,18 @@ describe("generation recovery diagnostics", () => {
 		if (human === undefined || model === undefined || target === undefined) {
 			throw new Error("Recovery fixture is incomplete.");
 		}
-		const accepted = (timestamp: string) => acceptConversationSiblingGeneration(database, {
+		const accepted = (timestamp: string) => acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: created.id,
-			messageId: target.id,
 			timestamp,
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
 			capturedHumanName: human.name,
 			capturedModelName: model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: target.id });
 		const corrupt = accepted("2026-08-27T00:00:00.000Z");
 		accepted("2026-08-27T00:00:01.000Z");
 		drizzle(database)

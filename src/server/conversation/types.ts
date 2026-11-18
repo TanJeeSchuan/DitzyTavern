@@ -1,6 +1,6 @@
 import type { GenerationFailureKind } from "../../shared/contract/generation-events";
 import type { StoredGenerationIntent } from "../../shared/contract/generation-intent";
-import type { BoxMoves, BoxRecords } from "../../shared/contract/box-generation";
+import type { BoxRecords } from "../../shared/contract/box-generation";
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/contract/json-value";
@@ -8,6 +8,7 @@ import type { GenerationProvenance as SharedGenerationProvenance } from "../../s
 import type { artifactMetadata } from "../../shared/contract/chat-import";
 import type {
 	GenerationBudgetInspection,
+	GenerationTarget,
 	ActiveGenerationDetails as SharedActiveGenerationDetails,
 	CapabilityAvailability as SharedCapabilityAvailability,
 	CastParticipant as SharedCastParticipant,
@@ -311,27 +312,27 @@ export interface GenerationAcceptanceCapture {
 	/** Captured server-owned lore evidence retained with the terminal Variant. */
 	loreActivation?: LoreActivationRecord | null;
 	boxTraces?: BoxTraces;
-	generationIntent?: StoredGenerationIntent;
 	provenance?: ConversationDataEntry | undefined;
 	// Captured macro state belongs to this originating preset and is attached to the target only
 	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
 	macro?: { readonly presetId: number; readonly writes: readonly MacroVariableWrite[] };
 }
 
-export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
-	expectedRevision: number;
-	humanContent: string;
-	humanMoves?: BoxMoves | undefined;
-	// A retry may point at the already accepted trailing human Message. When
-	// omitted, acceptance creates one in the same transaction.
-	reuseHumanMessageId?: number | undefined;
-}
+export type CapturedGenerationTarget =
+	| Extract<GenerationTarget, { kind: "send" }> & { readonly reuseHumanMessageId?: number | undefined }
+	| Extract<GenerationTarget, { kind: "continuation" }> & { readonly precedingMessageId: number; readonly precedingVariantId: number; readonly intent: Extract<StoredGenerationIntent, { type: "continuation" }> }
+	| Extract<GenerationTarget, { kind: "sibling" }>;
 
-export interface AcceptedTailGeneration {
+export type GenerationAcceptanceTarget =
+	| Extract<CapturedGenerationTarget, { kind: "sibling" }>
+	| (Exclude<CapturedGenerationTarget, { kind: "sibling" }> & { readonly expectedRevision: number });
+
+export interface AcceptedGeneration {
 	generationId: number;
-	humanMessageId: number;
+	humanMessageId: number | null;
 	messageId: number;
 	provisionalVariantId: number;
+	priorVariantId: number | null;
 	conversation: ConversationSummary;
 }
 
@@ -367,38 +368,6 @@ export interface StopGenerationsInput {
 
 export interface StoppedGenerations {
 	generationIds: number[];
-	conversation: ConversationSummary;
-}
-
-// Continuation acceptance creates only the model-authored provisional target.
-// The current human seat remains part of the captured historical pair, but
-// there is deliberately no Human-authored Message for this lifecycle.
-export interface AcceptContinuationGenerationInput extends GenerationAcceptanceCapture {
-	generationIntent: Extract<StoredGenerationIntent, { type: "continuation" }>;
-	expectedRevision: number;
-	precedingMessageId: number;
-	precedingVariantId: number;
-}
-
-export interface AcceptedContinuationGeneration {
-	generationId: number;
-	messageId: number;
-	provisionalVariantId: number;
-	conversation: ConversationSummary;
-}
-
-// Sibling acceptance creates a Provisional Variant on an existing Message.
-// `priorVariantId` lets an empty failure restore the selection that was
-// visible before this attempt, without overwriting a later user selection.
-export interface AcceptSiblingGenerationInput extends GenerationAcceptanceCapture {
-	messageId: number;
-}
-
-export interface AcceptedSiblingGeneration {
-	generationId: number;
-	messageId: number;
-	provisionalVariantId: number;
-	priorVariantId: number | null;
 	conversation: ConversationSummary;
 }
 

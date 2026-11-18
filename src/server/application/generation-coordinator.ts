@@ -5,6 +5,7 @@ import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	removeRetainedGenerationInspection,
+	type AcceptedGeneration,
 	type ConversationSummary,
 } from "../conversation";
 import {
@@ -25,7 +26,6 @@ import {
 import {
 	generationRuntimeFor,
 	startServerOwnedGeneration,
-	type AcceptedGenerationRecord,
 	type GenerationInput,
 	type GenerationRuntime,
 	type ServerOwnedGeneration,
@@ -96,11 +96,11 @@ export class GenerationConfigurationError extends Error {
 
 export interface CoordinatedGeneration {
 	/** @approved The authoritative acceptance returned after the provisional target exists. */
-	readonly accepted: AcceptedGenerationRecord;
+	readonly accepted: AcceptedGeneration;
 	/** @approved The process-local runtime that fans out events to observers. */
 	readonly runtime: GenerationRuntime;
 	/** @approved Settles after terminal Conversation state has been committed. */
-	readonly result: Promise<AcceptedGenerationRecord>;
+	readonly result: Promise<AcceptedGeneration>;
 }
 
 export type GenerationStartRequest = Omit<GenerationInput,
@@ -109,7 +109,7 @@ export type GenerationStartRequest = Omit<GenerationInput,
 
 interface GenerationStartCallbacks {
 	onAccepted: (
-		accepted: AcceptedGenerationRecord,
+		accepted: AcceptedGeneration,
 		control: ServerOwnedGenerationControl,
 	) => void | Promise<void>;
 	onEvent: (event: ModelClientEvent) => void | Promise<void>;

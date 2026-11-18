@@ -1,18 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
-import {
-	acceptConversationTailGeneration,
-	checkpointConversationGeneration,
-	cleanupRetainedGenerationInspections,
-	executeConversationCommand,
-	listChatSummaries,
-	readActiveGenerationDetails,
-	readConversationRevision,
-	readSelectedHistory,
-	resolveConversationGeneration,
-	stopConversationGeneration,
-} from ".";
+import { acceptGeneration, checkpointConversationGeneration, cleanupRetainedGenerationInspections, executeConversationCommand, listChatSummaries, readActiveGenerationDetails, readConversationRevision, readSelectedHistory, resolveConversationGeneration, stopConversationGeneration } from ".";
 
 const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 
@@ -27,19 +16,27 @@ describe("Generation checkpoints", () => {
 			participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }],
 			control: { human: 0, model: 1 },
 		});
-		const accepted = acceptConversationTailGeneration(database, {
-			seed: "seed", conversationId: created.id, expectedRevision: created.revision, timestamp: "2026-10-25T00:00:00.000Z",
-			humanContent: "Go on.", humanParticipantId: created.cast[0]!.id, modelParticipantId: created.cast[1]!.id, capturedHumanName: created.cast[0]!.name, capturedModelName: "Maren",
+		const accepted = acceptGeneration(database, {
+			seed: "seed",
+			conversationId: created.id,
+			timestamp: "2026-10-25T00:00:00.000Z",
+			humanParticipantId: created.cast[0]!.id,
+			modelParticipantId: created.cast[1]!.id,
+			capturedHumanName: created.cast[0]!.name,
+			capturedModelName: "Maren",
 			promptPlan: { blocks: [{ kind: "instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
+		}, { kind: "send", expectedRevision: created.revision, content: "Go on." });
+		const { humanMessageId } = accepted;
+		if (humanMessageId === null) throw new Error("Send did not retain its Human Message.");
 		const checkpoint = (contentOffset: number, contentDelta: string, reasoningOffset: number, reasoningDelta: string, latestEventId: number) =>
 			checkpointConversationGeneration(database, {
 				conversationId: created.id, generationId: accepted.generationId, contentOffset, contentDelta, reasoningOffset, reasoningDelta, latestEventId,
 			});
 		const details = () => readActiveGenerationDetails(database, created.id, accepted.generationId);
 		const rows = (table: string) => database.query<{ n: number }, [number]>(`SELECT count(*) n FROM ${table} WHERE generation_id = ?`).get(accepted.generationId)!.n;
-		return { conversationId: created.id, ...accepted, checkpoint, details, rows };
+		return { conversationId: created.id, ...accepted, humanMessageId, checkpoint, details, rows };
 	};
 
 	test("deltas assemble into both streams and the latest event position", () => {

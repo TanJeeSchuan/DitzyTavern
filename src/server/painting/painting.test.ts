@@ -2,7 +2,7 @@ import { prepareConversationEffects } from "../application/conversation-effects"
 import { createGenerationPreviewAsync } from "../workflows/generation-preview";
 import { expect, test } from "bun:test";
 import { createConversationWithHistory, openObservedDatabase, checkpointFromStart } from "../test-fixtures/conversation";
-import { executeConversationCommand, readConversationSummary, observeConversationWrites, acceptConversationContinuationGeneration } from "../conversation";
+import { executeConversationCommand, readConversationSummary, observeConversationWrites, acceptGeneration } from "../conversation";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
@@ -251,15 +251,18 @@ test("the gallery includes live Image References while a Generation is active", 
 	const { database, chat } = fixture;
 	const image = await uploadImage(database, pngFixture({ width: 72, height: 32 }));
 	const opening = chat.messages[0]!;
-	const active = acceptConversationContinuationGeneration(database, {
-		generationIntent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
-		seed: "gallery-generation", conversationId: chat.id, expectedRevision: chat.revision, timestamp: "2026-11-12T00:00:00Z",
-		precedingMessageId: opening.id, precedingVariantId: opening.variants[0]!.id,
-		humanParticipantId: chat.control.humanParticipantId!, modelParticipantId: chat.control.modelParticipantId!,
-		capturedHumanName: "Writer", capturedModelName: "Maren", modelId: "fixture-model",
+	const active = acceptGeneration(database, {
+		seed: "gallery-generation",
+		conversationId: chat.id,
+		timestamp: "2026-11-12T00:00:00Z",
+		humanParticipantId: chat.control.humanParticipantId!,
+		modelParticipantId: chat.control.modelParticipantId!,
+		capturedHumanName: "Writer",
+		capturedModelName: "Maren",
+		modelId: "fixture-model",
 		promptPlan: { blocks: [], warnings: [], images: [] },
 		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-	});
+	}, { kind: "continuation", expectedRevision: chat.revision, intent: { type: "continuation", strategy: "instruction", instruction: "Continue." }, precedingMessageId: opening.id, precedingVariantId: opening.variants[0]!.id });
 	checkpointFromStart(database, { conversationId: chat.id, generationId: active.generationId, content: formatImageReference("Live picture", image.hash) });
 	expect(createPaintingModule(database).gallery(chat.id)).toEqual([{ hash: image.hash, name: "Live picture" }]);
 });

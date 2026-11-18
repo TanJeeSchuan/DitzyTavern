@@ -5,7 +5,6 @@ import { and, eq, max } from "drizzle-orm";
 import {
 	conversationDataTable,
 	conversationPromptPresetTable,
-	conversationTable,
 	messageVariantDataTable,
 	messageVariantTable,
 	messageTable,
@@ -20,21 +19,17 @@ import {
 } from "../../shared/contract/macro-variable-write";
 import type { MacroVariables } from "../../shared/contract/macro-variables";
 import type { ConversationSummary } from "./types";
-import type { ConversationDatabase } from "./internal";
+import { requireConversationRevision, type ConversationDatabase } from "./internal";
 import { readSelectedHistoryFromConnection } from "./selected-history";
-import { readConversationSummaryFromConnection } from "./snapshot";
 import { readVariantData } from "./variant-data";
 import {
-	advanceConversationRevisionGuarded,
-	requireConversationSummary,
+	advanceConversationRevision,
 	runConversationReadTransaction,
 	runConversationTransaction,
 } from "./commands/transaction";
 import {
-	ConversationNotFoundError,
 	InvalidConversationCommandError,
 } from "./errors";
-import { guardRevision } from "../revision";
 
 export interface ReadMacroVariablesInput {
 	promptPresetId?: number | undefined;
@@ -151,17 +146,7 @@ export const readMacroVariables = (
 
 export const editMacroVariables = (database: Database, input: EditMacroVariablesInput): EditedMacroVariables =>
 	runConversationTransaction(database, (db) => {
-		const conversation = db
-			.select({ revision: conversationTable.revision })
-			.from(conversationTable)
-			.where(eq(conversationTable.id, input.conversationId))
-			.get();
-		if (conversation === undefined) throw new ConversationNotFoundError(input.conversationId);
-		guardRevision("conversation", input.expectedRevision, conversation, () => {
-			const current = readConversationSummaryFromConnection(db, input.conversationId);
-			if (current === undefined) throw new ConversationNotFoundError(input.conversationId);
-			return current;
-		});
+		requireConversationRevision(db, input.conversationId, input.expectedRevision, "conversation");
 		generationGate(db, input.conversationId, { type: "edit-macro-variables", position: input.position });
 		if (!Number.isInteger(input.promptPresetId) || input.promptPresetId <= 0) {
 			throw new InvalidConversationCommandError("Prompt Preset ID must be a positive integer.");
@@ -242,14 +227,13 @@ export const editMacroVariables = (database: Database, input: EditMacroVariables
 				})
 				.run();
 		}
-		advanceConversationRevisionGuarded(db, input.conversationId, input.expectedRevision, conversation.revision);
 		const variables = readMacroVariablesFromConnection(db, input.conversationId, {
 			promptPresetId: input.promptPresetId,
 			position: input.position,
 		});
 		if (variables === undefined) throw new InvalidConversationCommandError("The Macro Variables read disappeared during the edit.");
 		return {
-			conversation: requireConversationSummary(db, input.conversationId),
+			conversation: advanceConversationRevision(db, input.conversationId),
 			variables,
 		};
 	});

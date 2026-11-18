@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { acceptConversationTailGeneration, checkpointConversationGeneration } from "../conversation";
+import { acceptGeneration, checkpointConversationGeneration } from "../conversation";
 import { recoverActiveGenerations } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 import { GenerationRuntime } from "../workflows/generation-runtime";
@@ -408,19 +408,18 @@ describe("Resumable generation transport", () => {
 		const human = conversation.cast[0];
 		const model = conversation.cast[1];
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-		const accepted = acceptConversationTailGeneration(database, {
+		const accepted = acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
-			humanContent: "Keep the recovered scene.",
 			humanParticipantId: human.id,
 			modelParticipantId: model.id,
 			capturedHumanName: human.name,
 			capturedModelName: model.name,
-		promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			promptPlan: { blocks: [], warnings: [], images: [] },
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "send", expectedRevision: conversation.revision, content: "Keep the recovered scene." });
 		checkpointFromStart(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,

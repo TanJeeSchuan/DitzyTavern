@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { acceptConversationTailGeneration, executeConversationCommand, forkConversation, readConversationSummary, resolveConversationGeneration, readVariantDetails } from "../conversation";
+import { acceptGeneration, executeConversationCommand, forkConversation, readConversationSummary, resolveConversationGeneration, readVariantDetails } from "../conversation";
 import type { ConversationAction } from "../conversation";
 import { createConversationWithHistory, checkpointFromStart, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
 import { writeVersionedBox, type BoxFiles } from "../test-fixtures/versioned-box";
@@ -244,12 +244,19 @@ for (const upgraded of [false, true]) {
 		const chat = createChat();
 		setBoxState(database, chat.id, "tally", "enabled");
 		const [human, model] = readConversationSummary(database, chat.id)!.cast; // @approved Created above.
-		const accepted = acceptConversationTailGeneration(database, {
-			seed: "seed", conversationId: chat.id, expectedRevision: readConversationSummary(database, chat.id)!.revision, timestamp: "2026-11-05T00:00:00.000Z", // @approved Created above.
-			humanContent: "Tip it.", humanParticipantId: human!.id, modelParticipantId: model!.id, capturedHumanName: human!.name, capturedModelName: model!.name, // @approved The Chat has both seats.
-			promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		const accepted = acceptGeneration(database, {
+			seed: "seed",
+			conversationId: chat.id,
+			timestamp: "2026-11-05T00:00:00.000Z",
+			humanParticipantId: human!.id,
+			modelParticipantId: model!.id,
+			capturedHumanName: human!.name,
+			capturedModelName: model!.name,
+			promptPlan: { blocks: [], warnings: [], images: [] },
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			boxRecords: { tally: { instance: instanceOf(chat.id), version: box.v1, record: { coins: 4 } } },
-		});
+		}, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip it." });
 		if (upgraded) upgrade(chat.id, box.v2);
 		checkpointFromStart(database, { conversationId: chat.id, generationId: accepted.generationId, content: "Coins clink." });
 		recoverActiveGenerations(database);
@@ -330,14 +337,20 @@ for (const deleteHistory of [false, true]) test(`a Generation resolving after re
 	const { chat } = tippedChat();
 	const oldInstance = instanceOf(chat.id);
 	const traces = { "box:tally": { trace: { kept: true }, items: [], automaticText: "", finalText: "" } };
-	const accepted = acceptConversationTailGeneration(database, {
-		seed: "remove-history", conversationId: chat.id, expectedRevision: readConversationSummary(database, chat.id)!.revision,
-		timestamp: "2026-11-10T00:00:00Z", humanContent: "Tip.", humanParticipantId: chat.cast[0]!.id, modelParticipantId: chat.cast[1]!.id,
-		capturedHumanName: "Writer", capturedModelName: "Maren", modelId: "fixture-model",
+	const accepted = acceptGeneration(database, {
+		seed: "remove-history",
+		conversationId: chat.id,
+		timestamp: "2026-11-10T00:00:00Z",
+		humanParticipantId: chat.cast[0]!.id,
+		modelParticipantId: chat.cast[1]!.id,
+		capturedHumanName: "Writer",
+		capturedModelName: "Maren",
+		modelId: "fixture-model",
 		promptPlan: { blocks: [], warnings: [], images: [] },
 		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		boxTraces: traces, boxRecords: { tally: { instance: oldInstance, version: box.v1, record: { coins: 4 } }, memory: { instance: "other", record: { kept: true } } },
-	});
+		boxTraces: traces,
+		boxRecords: { tally: { instance: oldInstance, version: box.v1, record: { coins: 4 } }, memory: { instance: "other", record: { kept: true } } },
+	}, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip." });
 	command(chat.id, { type: "set-box-state", box: "tally", state: "absent", deleteHistory });
 	command(chat.id, { type: "set-box-state", box: "tally", state: "enabled" });
 	resolveConversationGeneration(database, { conversationId: chat.id, generationId: accepted.generationId, content: "The tip lands.", timestamp: "2026-11-10T00:01:00Z" });
