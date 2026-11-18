@@ -15,6 +15,7 @@ import type { BoxMoves } from "../../shared/contract/box-generation";
 import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxExportContext, CaptureMessage, CaptureRead, DigestContext, DigestWindow, HostBox } from "./contract";
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
+import { boxExports } from "./exports";
 import { sandboxedBox } from "./sandboxed";
 import { BOX_HOOK_MS, BOX_IMPORT_MS, settledWithin } from "./settled";
 import { sandboxedSources } from "./sandboxed-build";
@@ -47,7 +48,7 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	// SAFETY: assertBoxServer checked each hook the host calls is a function; each Box types its own with `satisfies Box<…>`.
 	const host = box as HostBox;
 	const declaredExports = new Map(Object.entries(descriptor.exports ?? {}));
-	const servedExports = new Map(Object.entries(host.exports ?? {}));
+	const servedExports = new Set(Object.keys(host.exports ?? {}));
 	const broken = ([
 		[(descriptor.record === undefined) === (box.records === undefined), "records exactly when it declares a record"],
 		[box.records === undefined || ("initial" in box.records) === (box.records.fold !== undefined), "a fold exactly when it declares an initial state"],
@@ -60,12 +61,13 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		[descriptor.delegate === undefined || box.read !== undefined, "a read, since it delegates"],
 		[descriptor.delegate === undefined || descriptor.alwaysRender === true, "alwaysRender, since it delegates"],
 		[descriptor.delegate === undefined || descriptor.decision === undefined, "no decision, since it delegates"],
-		[[...declaredExports.keys()].every((name) => servedExports.has(name)) && [...servedExports.keys()].every((name) => declaredExports.has(name)), "the same Exports its descriptor declares"],
+		[[...declaredExports.keys()].every((name) => servedExports.has(name)) && [...servedExports].every((name) => declaredExports.has(name)), "the same Exports its descriptor declares"],
 	] as const).flatMap(([holds, rule]) => holds ? [] : [rule]);
 	if (broken.length > 0) throw new Error(`The ${id} Box must declare ${broken.join("; ")}.`);
 	// @approved
 	//  Every hook runs on the object that declares it: a top-level hook on the
-	// module, a nested one on its `moves`, `records`, digest or `advance`.
+	// module, a nested one on its `moves`, `records`, digest or `advance`, and
+	// an Export on the `exports` map that holds it.
 	const setupError = host.setupError?.bind(host);
 	const dependencies = host.dependencies?.bind(host);
 	const status = host.status?.bind(host);
@@ -83,13 +85,13 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	// Box's answer against its output schema, failing naming the Box, the
 	// Export and the path as a hook's failure does.
 	const exports = declaredExports.size === 0 ? undefined : Object.fromEntries([...declaredExports].flatMap(([name, { input, output }]) => {
-		// @approved
-		//  Checked just before: the loader refused a Box whose two sides name
-		// different Exports.
-		const serve = servedExports.get(name)!;
 		return [[name, (value: BoxValue | undefined, context: BoxExportContext): BoxValue => {
 			assertChecked(input, value, `The ${id} Box's ${name} Export input`);
-			const answered: BoxValue = serve(value, context);
+			// @approved
+			//  Checked just before: the loader refused a Box whose two sides name
+			// different Exports, so `host.exports` holds this one, and the call
+			// runs on the object that declares it, as every hook does.
+			const answered: BoxValue = host.exports![name]!(value, context);
 			assertChecked(output, answered, `The ${id} Box's ${name} Export output`);
 			return answered;
 		}]];
@@ -149,10 +151,13 @@ export const assertFreeTags = (descriptor: BoxDescriptor, others: Iterable<BoxDe
 // @approved
 //  A Box's routes, built for the server's database and mounted under
 // `/api/boxes/<id>`, so a factory that throws, returns anything but the
-// promised Elysia app, or fails to mount refuses its Box.
+// promised Elysia app, or fails to mount refuses its Box. The factory also
+// receives `exportsOf`, which answers every Box's declared Exports in one
+// Chat of that database, so a Box's routes are its only reach into another
+// Box's state.
 const mountedRoutes = (id: BoxId, box: HostBox, database: Database): AnyElysia | undefined => {
 	if (box.routes === undefined) return undefined;
-	const routes: unknown = box.routes(database);
+	const routes: unknown = box.routes(database, (conversationId) => boxExports(database, conversationId));
 	if (!(routes instanceof Elysia)) throw new Error(`The ${id} Box's routes must return an Elysia app.`);
 	return new Elysia({ prefix: `/api/boxes/${id}` }).use(routes);
 };
@@ -282,8 +287,9 @@ const loadFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>
 // folder holds no Boxes, as before any plugin is installed. A Box that fails
 // to load is refused with its reason; the rest still load. The server passes
 // the database it serves, and each Box's routes are built and mounted for it
-// once, here, so a Box whose routes fail is refused instead of stopping the
-// server, and the contract serves the routes mounted.
+// once, here, handed the `exportsOf` that answers the Chat's Exports, so a
+// Box whose routes fail is refused instead of stopping the server, and the
+// contract serves the routes mounted.
 export const discoverBoxes = async (folders: readonly string[], database?: Database) => {
 	const boxes = new Map<BoxId, LoadedBox & { readonly home: string | undefined }>();
 	const refused: { readonly folder: string; readonly reason: string }[] = [];

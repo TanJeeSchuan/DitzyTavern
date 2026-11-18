@@ -194,8 +194,8 @@ export const memorySources = Type.Object({
 export type MemorySources = Static<typeof memorySources>;
 
 // @approved
-//  Memory's Exports, which another Box's route handler reads through
-// `boxExports`. Both answer from the effective Claims on the Selected
+//  Memory's Exports, which another Box's route handler reads through the
+// `exportsOf` its routes receive. Both answer from the effective Claims on the Selected
 // narrative path, resolved under the Chat's Cast labels exactly as the
 // Memories panel resolves them: identities and label merges apply to the
 // answer, never to stored records. `people` takes no input, so its input
@@ -204,6 +204,5 @@ export const memoryPeopleInput = Type.Undefined();
 export const memoryPeople = Type.Array(Type.String());
 export type MemoryPeople = Static<typeof memoryPeople>;
 export const memoryClaimsAboutInput = Type.Object({ label: Type.String() });
-export type MemoryClaimsAboutInput = Static<typeof memoryClaimsAboutInput>;
 export const memoryClaimsAbout = Type.Array(Type.Object({ messageId: MessageId, ...Type.Pick(memoryCandidate, ["claim", "attribution", "people", "evidence"]).properties }));
 export type MemoryClaimsAbout = Static<typeof memoryClaimsAbout>;

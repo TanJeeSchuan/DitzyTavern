@@ -1,5 +1,6 @@
-import { InvalidConversationCommandError, type Box } from "@/box-sdk/server";
+import { InvalidConversationCommandError, type Box, type ExportsOf } from "@/box-sdk/server";
 import { memoryActivationRecord, type MemoryActivationRecord, type MemoryRecord } from "./contract";
+import descriptor from "./shared-descriptor";
 import { memoryExports } from "./server-exports";
 import { digestMemory } from "./server-extraction";
 import { memoryItems } from "./server-prompt";
@@ -25,5 +26,5 @@ const memoryBox = {
 	},
 	routes: memoryRoutes,
 	exports: memoryExports,
-} satisfies Box<undefined, MemoryRecallSnapshot, MemoryActivationRecord, MemoryRecord, undefined, never, typeof memoryExports>;
+} satisfies Box<undefined, MemoryRecallSnapshot, MemoryActivationRecord, MemoryRecord, undefined, never, ExportsOf<typeof descriptor.exports>>;
 export default memoryBox;

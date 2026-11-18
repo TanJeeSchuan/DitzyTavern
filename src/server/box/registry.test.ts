@@ -22,6 +22,7 @@ import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
 import { readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
 import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes, serverBoxes } from "./registry";
+import { boxExports } from "./exports";
 
 test("a Box's Decision Model selection is part of its preview fingerprint, and its credential is not", () => {
 	const database = openObservedDatabase();
@@ -157,6 +158,66 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 		["labelled", "Its descriptor.json is invalid at /moves/render: Unexpected property."],
 		["unhooked", "The unhooked Box must declare a Move render exactly when it declares Moves."],
 	]);
+});
+
+test("a Box's Exports answer through boxExports only while the Box is enabled in the Chat", async () => {
+	const plugins = installPlugins({ greeter: { fields: exportsField, server: "export default { exports: { greet: ({ name }) => ({ greeting: `Hello, ${name}.` }) } };" } });
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins]);
+		const chat = createChat(database);
+		expect(boxExports(database, chat.id).greeter).toBeUndefined();
+		insertBox(database, chat.id, "greeter");
+		const exports = boxExports(database, chat.id);
+		expect(exports.greeter).toBeDefined();
+		expect(exports["author-note"]).toBeUndefined();
+		const greet = exports.greeter?.greet;
+		if (greet === undefined) throw new Error("The greeter Box's Export is missing.");
+		expect(greet({ name: "Ann" })).toEqual({ greeting: "Hello, Ann." });
+		setBoxState(database, chat.id, "greeter", "disabled");
+		expect(boxExports(database, chat.id).greeter).toBeUndefined();
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("an Export's input and output are checked against its declared schemas, failing naming the Box, the Export and the path", async () => {
+	const plugins = installPlugins({ crooked: { fields: exportsField, server: "export default { exports: { greet: ({ name }) => ({ greeting: name.length }) } };" } });
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins]);
+		const chat = createChat(database);
+		insertBox(database, chat.id, "crooked");
+		const greet = boxExports(database, chat.id).crooked?.greet;
+		if (greet === undefined) throw new Error("The crooked Box's Export is missing.");
+		expect(() => greet(undefined)).toThrow("The crooked Box's greet Export input is invalid at /: Expected object.");
+		expect(() => greet({ name: 3 })).toThrow("The crooked Box's greet Export input is invalid at /name: Expected string.");
+		expect(() => greet({ name: "Ann" })).toThrow("The crooked Box's greet Export output is invalid at /greeting: Expected string.");
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("a Box's routes read another Box's Exports through the exportsOf the host hands them", async () => {
+	const plugins = installPlugins({
+		greeter: { fields: exportsField, server: "export default { exports: { greet: ({ name }) => ({ greeting: `Hello, ${name}.` }) } };" },
+		reader: { server: `${elysia} export default {
+			routes: (database, exportsOf) => new Elysia().get("/greetings/:id", ({ params }) => exportsOf(Number(params.id)).greeter?.greet?.({ name: "Ann" }))
+		};` },
+	});
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins], database);
+		const chat = createChat(database);
+		insertBox(database, chat.id, "greeter");
+		const response = await serverBoxes().get("reader")?.routes?.handle(new Request(`http://localhost/api/boxes/reader/greetings/${chat.id}`));
+		expect(await response?.json()).toEqual({ greeting: "Hello, Ann." });
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
 });
 
 for (const disabledBy of ["chat", "preset"] as const) test(`a Box disabled by its ${disabledBy} neither folds nor decodes records during generation`, async () => {
@@ -417,6 +478,12 @@ const recordField = 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "ob
 const decisionField = 'decision: { summary: "", description: "", off: "", context: "" }';
 const movesField = 'moves: { schema: { [Symbol.for("TypeBox.Kind")]: "Any" }, max: 1, label: () => "" }';
 // @approved
+//  The one Export the Export tests declare: an input `name`, an output
+// `greeting`, each schema written as the JSON a TypeBox schema serializes to.
+const stringField = '{ [Symbol.for("TypeBox.Kind")]: "String", type: "string" }';
+const objectField = (fields: string, required: string) => `{ [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { ${fields} }, required: ["${required}"] }`;
+const exportsField = `exports: { greet: { description: "Greets one person.", input: ${objectField(`name: ${stringField}`, "name")}, output: ${objectField(`greeting: ${stringField}`, "greeting")} } }`;
+// @approved
 //  A receiver row's hook throws naming the object it ran on, which must be
 // the one that declares it, as the module calls it.
 const ranOn = (hook: string, owner: string) => `{ throw new Error("The lantern Box's ${hook} ran on " + (this === ${owner} ? "its own object." : "another object.")); }`;
@@ -438,6 +505,7 @@ for (const [hook, outcome, server, fields = ""] of [
 	["records.digest.run", "ran on its own object.", `records: { digest: { window: 0, async run() ${ranOn("records.digest.run", "box.records.digest")} } }`, `${recordField}, ${decisionField}`],
 	["advance.run", "ran on its own object.", `advance: { async run() ${ranOn("advance.run", "box.advance")} }`],
 	["advance.fingerprint", "ran on its own object.", `advance: { run: async () => ({ items: [] }), fingerprint() ${ranOn("advance.fingerprint", "box.advance")} }`],
+	["exports.greet", "ran on its own object.", `exports: { greet() ${ranOn("exports.greet", "box.exports")} }`, exportsField],
 ] as const) test(`${hook} runs on its own object and its output is checked: ${server}`, async () => {
 	const { boxes: [lantern] } = await discoverBoxes([installPlugins({ lantern: { fields, server: `const box = { ${server} }; export default box;` } })]);
 	// SAFETY: each plugin's hook ignores its arguments.
@@ -454,7 +522,8 @@ for (const [hook, outcome, server, fields = ""] of [
 		box?.importSillyTavernNote?.("");
 		box?.status?.(none, none);
 		box?.read?.(none);
-		box?.routes?.(none);
+		box?.routes?.(none, none);
+		box?.exports?.greet?.({ name: "Ann" }, none);
 		box?.records?.fold?.(none, none, none);
 		await box?.records?.digest?.run(none, context);
 	};

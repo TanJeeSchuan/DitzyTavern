@@ -43,8 +43,8 @@ const schema = Type.Unsafe<TSchema>({ [Kind]: "BoxSchema" });
 // another Box's route handlers: each name is one question with a
 // `description`, an `input` schema the caller's value must pass and an
 // `output` schema the answer must pass, and the server Box answers it
-// synchronously. Nothing in a Generation reaches them; only the server SDK's
-// `boxExports` does.
+// synchronously. The host hands them to other Boxes' route handlers, and
+// to nothing else.
 export const boxDescriptorSchema = Type.Object({
 	...boxMetadataSchema.properties,
 	sdk: Type.Integer(),

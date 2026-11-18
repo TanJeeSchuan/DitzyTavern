@@ -24,7 +24,7 @@ A built-in Box can declare read-only Exports, another built-in Box's routes can 
 - [x] Memory: `people()` returns the person labels on the Selected narrative path after label merges; `claimsAbout({ label })` returns the effective Claims on that path whose people include the label after merges, each with the Message that holds it.
 - [x] Document Exports in `docs/box-system/README.md` (contract and rules) and `authoring.md`, including that only route handlers may call `boxExports`.
 - [x] Tests: a disabled or absent provider is missing from `boxExports`; a provider output failing its schema fails naming Box, Export and path; Memory's Exports apply label merges, return a Writer override's Claims, and leave out Claims off the Selected narrative path.
-- [ ] Run focused tests and lint on changed files; push and let CI run the rest.
+- [x] Run focused tests and lint on changed files; push and let CI run the rest.
 - [x] Set this ticket to DONE and commit.
 
 ## Acceptance

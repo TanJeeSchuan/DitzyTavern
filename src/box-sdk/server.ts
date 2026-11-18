@@ -1,7 +1,6 @@
 // @approved
 //  What a Box's server files may use from the host, beside the shared entry.
-export type { AdvanceResult, Box, BoxContext, BoxExportContext, BoxWindowRead, CaptureRead, DigestContext, DigestWindow } from "../server/box/contract";
-export { boxExports, type BoxExports } from "../server/box/exports";
+export type { AdvanceResult, Box, BoxContext, BoxWindowRead, CaptureRead, DigestContext, DigestWindow, ExportsOf } from "../server/box/contract";
 export {
 	InvalidConversationCommandError, conversationExists, readActiveVariantIds, readChatVariants, readConversationRevision, readExistingSources, readMessageAuthors,
 	readParticipants,

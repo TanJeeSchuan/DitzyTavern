@@ -1,7 +1,8 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { effectiveRecord, readBoxLifecycles, readChatVariants, readRecordSlots, type BoxExportContext } from "@/box-sdk/server";
-import { memoryRecord, type MemoryClaimsAbout, type MemoryClaimsAboutInput, type MemoryPeople } from "./contract";
+import { effectiveRecord, readBoxLifecycles, readChatVariants, readRecordSlots, type ExportsOf } from "@/box-sdk/server";
+import descriptor from "./shared-descriptor";
+import { memoryRecord, type MemoryClaimsAbout, type MemoryPeople } from "./contract";
 import { isExcludedAuthor, readMemoryLabelState } from "./server-chat";
 import { applyMemoryPeople } from "./shared";
 
@@ -40,9 +41,11 @@ export const readMemoryClaimsAbout = (database: Database, conversationId: number
 	readSelectedPathClaims(database, conversationId).filter(({ people }) => people.includes(label));
 
 // @approved
-//  Memory's Exports, as another Box's route handler reaches them through
-// `boxExports`: synchronous answers from one Chat, never from a Generation.
-export const memoryExports = {
-	people: (_: undefined, { database, conversationId }: BoxExportContext) => readMemoryPeople(database, conversationId),
-	claimsAbout: (input: MemoryClaimsAboutInput, { database, conversationId }: BoxExportContext) => readMemoryClaimsAbout(database, conversationId, input.label),
+//  Memory's Exports, as another Box's route handler reaches them through the
+// `exportsOf` its routes receive: synchronous answers from one Chat, never
+// from a Generation. `ExportsOf` types each one from the schemas the
+// descriptor declares, so inputs and answers have the one home.
+export const memoryExports: ExportsOf<typeof descriptor.exports> = {
+	people: (_, { database, conversationId }) => readMemoryPeople(database, conversationId),
+	claimsAbout: (input, { database, conversationId }) => readMemoryClaimsAbout(database, conversationId, input.label),
 };
