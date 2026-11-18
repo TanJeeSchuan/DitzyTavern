@@ -601,7 +601,7 @@
 		position: absolute;
 		width: 1rem;
 		height: 1rem;
-		border: 1px solid var(--input);
+		border: 1px solid var(--border-strong);
 		border-radius: 50%;
 	}
 

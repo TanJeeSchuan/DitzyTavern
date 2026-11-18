@@ -100,12 +100,7 @@ export const consumeGenerationPreview = (
 ): void => {
 	const { previews } = previewStore(database);
 	const current = previews.get(record.conversationId);
-	if (current?.id !== record.id) {
-		throw new InvalidConversationCommandError(
-			"The inspected Prompt Plan is unavailable. Refresh it after a server restart or when it has been abandoned.",
-		);
-	}
-	previews.delete(record.conversationId);
+	if (current?.id === record.id) previews.delete(record.conversationId);
 };
 
 const assertEditedPlanStructure = (source: PromptPlan, edited: PromptPlan): void => {
@@ -167,12 +162,15 @@ const acceptedEditedPlan = (
 	if (JSON.stringify(editedPlan.intent ?? null) !== JSON.stringify(record.capture.plan.promptPlan.intent ?? null)) {
 		throw new InvalidConversationCommandError("The Generation intent cannot be changed in an inspected Prompt Plan.");
 	}
-	const budget = budgetEditedPromptPlan({
-		plan: editedPlan,
-		contextLimit: settings.contextLimit,
-		responseBudget: settings.responseBudget,
-		safetyAllowance: settings.safetyAllowance,
-	});
+	const budget = {
+		...budgetEditedPromptPlan({
+			plan: editedPlan,
+			contextLimit: settings.contextLimit,
+			responseBudget: settings.responseBudget,
+			safetyAllowance: settings.safetyAllowance,
+		}),
+		omittedContext: record.capture.plan.budget.omittedContext,
+	};
 	if (!budget.fits) throw new PromptBudgetExceededError(budget);
 	const sourceLore = record.capture.plan.loreActivation;
 	const loreActivation = sourceLore === null

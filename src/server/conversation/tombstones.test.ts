@@ -116,3 +116,19 @@ test("tombstone collection keeps a Participant that a Box value still names", ()
 	const again = forkConversation(database, { conversationId: fork.id, expectedRevision: deleted.revision, at: { through: first.id }, name: "Fork again", trimVariants: false });
 	expect(again.conversation.name).toBe("Fork again");
 });
+
+test("removing a Participant named only by a Box value preserves its identity", () => {
+	const chat = createConversationWithHistory(database, {
+		name: "Box reference",
+		participants: [{ definition: definition("Writer") }, { definition: definition("Model") }, { definition: definition("Guest") }],
+		control: { human: 0, model: 1 },
+	});
+	const guest = chat.cast[2]!.id;
+	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:memory', 'labels', ?)")
+		.run(chat.id, JSON.stringify({ identities: { [guest]: { kind: "plays", person: "Alice" } }, merges: [] }));
+	const removed = applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "remove-participant", participantId: guest } });
+	expect(removed.cast.map(({ id }) => id)).not.toContain(guest);
+	const retained = drizzle(database).select().from(participantTable).where(eq(participantTable.id, guest)).get();
+	expect(retained?.name).toBe("Guest");
+	expect(retained?.deleted_at).toBeTruthy();
+});

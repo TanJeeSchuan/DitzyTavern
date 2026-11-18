@@ -94,3 +94,11 @@ describe("generation preparation snapshot fingerprint", () => {
 		}
 	});
 });
+
+test("preview fingerprint changes when a Box image grant changes", () => {
+	const snapshot = preparationWithSemanticSettings(settings);
+	const grants = (hashes: string[]) => new Map([["box:gallery", { label: "Gallery", hashes: new Set(hashes) }]]);
+	const baseline = generationPreparationFingerprint({ ...snapshot, boxImages: grants(["first"]) });
+	expect(generationPreparationFingerprint({ ...snapshot, boxImages: grants(["second"]) })).not.toBe(baseline);
+	expect(generationPreparationFingerprint({ ...snapshot, boxImages: grants([]) })).not.toBe(baseline);
+});

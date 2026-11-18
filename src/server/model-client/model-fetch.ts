@@ -34,7 +34,7 @@ export async function fetchWithTimeout<T>(
 	try {
 		const operation = Promise.resolve().then(async () => {
 			controller.signal.throwIfAborted();
-			const response = await fetcher(input, { ...init, signal: controller.signal });
+			const response = await fetcher(input, { ...init, redirect: "error", signal: controller.signal });
 			controller.signal.throwIfAborted();
 			return consume(response, controller.signal);
 		});

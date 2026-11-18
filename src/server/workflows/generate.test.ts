@@ -1,5 +1,5 @@
 import { readTestConversationSnapshot, createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
-import { executeConversationCommand } from "../conversation";
+import { executeConversationCommand, readActiveGenerationDetails } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -565,7 +565,7 @@ describe("Generation runtime behavior", () => {
 					topP: null,
 					frequencyPenalty: null,
 					presencePenalty: null,
-					contextLimit: 102,
+					contextLimit: 202,
 					responseBudget: 1,
 					safetyAllowance: 0,
 					siblingGenerationLimit: 4,
@@ -582,20 +582,28 @@ describe("Generation runtime behavior", () => {
 			},
 		});
 
-		const estimates = [200, 100];
+		const estimates = [300, 100];
+		const preview = await createGenerationPreviewAsync(database, {
+			connection: null, conversationId, kind: "send", content: "Latest human input.",
+			tokenEstimator: (transcript) => transcript.startsWith("ditzytavern-estimation-transcript") ? estimates.shift() ?? 100 : 0,
+		});
+		expect(preview.capture.plan.budget.omittedContext).toHaveLength(1);
 		let receivedPlan: PromptPlan | undefined;
-		await runGenerationLifecycle(database, {connection: null,
-			conversationId,
-			expectedRevision: current.revision,
+		let inspection: ReturnType<typeof readActiveGenerationDetails>;
+		await runGenerationLifecycle(database, {
+			connection: null, conversationId, expectedRevision: current.revision,
 			target: { kind: "send", content: "Latest human input." },
+			preview: { record: preview, editedPlan: preview.capture.plan.promptPlan },
 			modelClient: createFakeModelClient(({ promptPlan }) => {
 				receivedPlan = promptPlan;
 				return "Budgeted Tail output.";
 			}),
-			// Only whole Prompt Plans cost tokens, so the stable history cut never rounds past the smallest one.
-			tokenEstimator: (transcript) => transcript.startsWith("ditzytavern-estimation-transcript") ? estimates.shift() ?? 100 : 0,
+			onAccepted: ({ generationId }) => {
+				inspection = readActiveGenerationDetails(database, conversationId, generationId);
+			},
 		});
 
+		expect(inspection?.budget.omittedContext).toMatchObject([{ speakerName: "Maren Voss", content: "The lamp turns above you." }]);
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
 			{ kind: "history", speakerName: "Maren Voss", content: "Older model history.", role: "model" },
 			{ kind: "history", speakerName: "Writer", content: "Latest human input.", role: "human" },

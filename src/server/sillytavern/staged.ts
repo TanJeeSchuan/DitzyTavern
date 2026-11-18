@@ -34,7 +34,7 @@ import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { Database } from "bun:sqlite";
 import { mediaTypeFromFilename, sha256Hex, uniqueManagedRelativePath } from "../artifact";
-import { createCharacterLibraryModule } from "../character-library";
+import { characterDefinitionOf, createCharacterLibraryModule } from "../character-library";
 import type { ParticipantDefinition } from "../conversation";
 
 import { createImportedConversation } from "../workflows";
@@ -288,12 +288,7 @@ const resolvePlanParticipants = (
 			}
 			return {
 				plan,
-				definition: {
-					name: character.name,
-					prompt: character.prompt,
-					sendAppearanceImages: character.sendAppearanceImages,
-					openings: character.openings,
-				},
+				definition: characterDefinitionOf(character),
 				sourceCharacterId: character.id,
 				createProfile: false,
 			};

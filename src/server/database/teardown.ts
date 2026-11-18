@@ -6,18 +6,17 @@
 // Chat times, never by table-wide deletes; Participant, Prompt, Opening,
 // Control, and Message rows go with them through cascade deletes. Seeded
 // Characters are matched on their complete seed Definition (name, exact
-// Prompt fields, and ordered Opening contents) after every referencing
-// Conversation is gone.
+// Prompt fields, and ordered Opening contents) and released through the Character Library tombstone policy, retaining
+// provenance referenced by user-created Chats.
 
 import { isActive } from "./is-active";
 import { and, eq, inArray, or } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptChannelOrder } from "../../shared/definition";
+import { tombstone } from "../character-library/tombstone";
 import { readCharacterSnapshot } from "../character-library/snapshot";
 import { openInitializedDatabase } from "./database";
 import {
-	characterOpeningTable,
-	characterPromptTable,
 	characterTable,
 	conversationTable,
 } from "./schema";
@@ -88,19 +87,11 @@ export function teardown(databasePath?: string) {
 			}
 
 			if (matchingIds.length > 0) {
-				db.delete(characterOpeningTable)
-					.where(inArray(characterOpeningTable.character_id, matchingIds))
-					.run();
-				db.delete(characterPromptTable)
-					.where(inArray(characterPromptTable.character_id, matchingIds))
-					.run();
-				db.delete(characterTable)
-					.where(inArray(characterTable.id, matchingIds))
-					.run();
+				database.transaction(() => { for (const id of matchingIds) tombstone(db, id); })();
 				removedCharacters += matchingIds.length;
 			}
 		}
-		log(`removed ${removedCharacters} character rows with their Definition children`);
+		log(`released ${removedCharacters} seeded Characters with their Definition children`);
 	} finally {
 		database.close();
 	}

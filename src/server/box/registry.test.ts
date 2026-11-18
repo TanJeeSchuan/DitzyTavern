@@ -13,9 +13,9 @@ import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { acceptConversationTailGeneration, observeConversationWrites } from "../conversation";
+import { acceptConversationTailGeneration, InvalidConversationCommandError, observeConversationWrites } from "../conversation";
 import { openInitializedDatabase } from "../database/database";
-import { insertBox, openObservedDatabase, setBoxState, checkpointFromStart } from "../test-fixtures/conversation";
+import { applyCommand, createConversationWithHistory, insertBox, openObservedDatabase, setBoxState, checkpointFromStart } from "../test-fixtures/conversation";
 import { setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
@@ -466,3 +466,32 @@ test("the host stops waiting for a trusted Box's async hook that ignores its sig
 	}
 });
 
+test("set-box-setup reports a throwing plugin hook as an invalid command without writing", async () => {
+	const plugins = installPlugins({ "throwing-setup": {
+		fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, initial: "initial" }',
+		server: 'export default { setupError: () => { throw new Error("The setup hook broke."); } };',
+	} });
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins], database);
+		const chat = createConversationWithHistory(database, { name: "Throwing setup", participants: [] });
+		insertBox(database, chat.id, "throwing-setup");
+		let thrown: unknown;
+		try {
+			applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "throwing-setup", setup: "changed" } });
+		} catch (error) { thrown = error; }
+		expect(thrown).toBeInstanceOf(InvalidConversationCommandError);
+		expect(thrown).toMatchObject({ message: "The setup hook broke." });
+		expect(database.query("SELECT value FROM conversation_data WHERE conversation_id = ? AND namespace = 'box:throwing-setup' AND key = 'setup'").get(chat.id)).toBeNull();
+		database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:throwing-setup', 'setup', 'malformed')").run(chat.id);
+		thrown = undefined;
+		try {
+			applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "throwing-setup", setup: "changed" } });
+		} catch (error) { thrown = error; }
+		expect(thrown).not.toBeInstanceOf(InvalidConversationCommandError);
+		expect(thrown).toMatchObject({ message: `Stored Box JSON at Chat ${chat.id} box:throwing-setup setup is malformed.` });
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});

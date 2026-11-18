@@ -149,6 +149,7 @@ const titledLiterals = Type.Object({ anyOf: Type.Array(Type.Object({ const: Type
 // same on either side.
 export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescriptor => {
 	const { setup, values, record, moves, delegate, window: { kind }, dependencies: _packages, ...fields } = file;
+	if (values?.chat !== undefined) throw new Error("A sandboxed Box cannot declare values.chat because commit-box supports only Library, Character and Participant owners.");
 	if ((kind === "digest") !== (fields.decision !== undefined)) throw new Error("Its window is the passage timeline exactly when it declares a decision.");
 	const moveSchema = moves && sandboxedSchema(moves.schema, "/moves/schema");
 	const schemas = (entries: Readonly<Record<string, BoxValue>> | undefined, path: string) =>
@@ -156,7 +157,7 @@ export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescripto
 	const descriptor = {
 		...fields,
 		...setup && { setup: { schema: sandboxedSchema(setup.schema, "/setup/schema"), initial: setup.initial } },
-		...values && { values: { ...values.chat && { chat: schemas(values.chat, "/values/chat") }, ...values.participant && { participant: schemas(values.participant, "/values/participant") } } },
+		...values && { values: { ...values.participant && { participant: schemas(values.participant, "/values/participant") } } },
 		...record !== undefined && { record: sandboxedSchema(record, "/record") },
 		...delegate && { delegate: { ...delegate, operations: sandboxedSchema(delegate.operations, "/delegate/operations") } },
 		...moves && moveSchema && { moves: { schema: moveSchema, max: moves.max, label: templateLabel(moves.label, moveSchema), ...moves.seatBound && { seatBound: true as const } } },

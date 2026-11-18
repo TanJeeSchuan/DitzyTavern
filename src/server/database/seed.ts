@@ -1,6 +1,6 @@
 // @approved
 //  Test data generator. Run with `bun run db:seed`.
-// Idempotent: does nothing if the tables already contain rows.
+// Idempotent: does nothing if a live Character already exists.
 // Characters are created through the public Character Library seam and
 // Conversations through the public native New Chat workflow, so seeded
 // Definitions, Casts, Control assignments, and greeting history follow
@@ -18,6 +18,7 @@ import {
 } from "../workflows";
 import { openInitializedDatabase } from "./database";
 import { loadBoxes } from "../box/registry";
+import { isActive } from "./is-active";
 import { characterTable } from "./schema";
 
 export interface SeedCharacter extends CharacterDefinition {
@@ -207,7 +208,7 @@ export function seed(databasePath?: string) {
 	const log = (message: string) => console.log(`[seed] ${message}`);
 
 	try {
-		const existing = db.select().from(characterTable).limit(1).all();
+		const existing = db.select().from(characterTable).where(isActive(characterTable)).limit(1).all();
 		if (existing.length > 0) {
 			log("database already contains data; skipping seed");
 			return;
