@@ -14,7 +14,6 @@ import {
 } from "../import-projection";
 import type {
 	ChatImportGroup,
-	ChatImportPreview,
 	ChatImportSuggestion,
 	SuggestionMatchKind,
 } from "./types";
@@ -106,21 +105,13 @@ const buildGroups = (
 			group.key === null ? null : strongestSuggestion(group.key, characters),
 	}));
 
-export const buildPreview = (
+export const buildPreviewDetails = (
 	database: Database,
-	title: string,
-	originalFilename: string,
-	byteLength: number,
-	sha256: string,
 	inspection: SillyTavernChatInspection,
-): ChatImportPreview => {
+) => {
 	const characters = createCharacterLibraryModule(database).list();
 	const matches = findPriorImportsBySource(database, inspection.report.source);
 	return {
-		title,
-		originalFilename,
-		sha256,
-		byteLength,
 		integrity: inspection.report.source.integrity ?? null,
 		counts: { ...inspection.report.counts },
 		warnings: [...inspection.report.warnings],

@@ -28,11 +28,11 @@ const meta: SillyTavernImportMeta = {
 	sha256: "0f5c3e0a9d0c8f5b3a9e4d6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6",
 };
 
-const project = (sourceText: string, ...names: string[]) => {
+const project = (sourceText: string, ...participantNamePerMessage: string[]) => {
 	const decoded = decodeSillyTavernImportSource(sourceText, meta);
 	return projectImport(decoded, {
-		participants: names.map((name) => ({ definition: emptyImportedDefinition(name) })),
-		messageOwners: new Map(names.map((_, index) => [index + 1, index])),
+		participants: participantNamePerMessage.map((name) => ({ definition: emptyImportedDefinition(name) })),
+		messageOwners: new Map(participantNamePerMessage.map((_, index) => [index + 1, index])),
 	}, { exact: [], related: [] });
 };
 

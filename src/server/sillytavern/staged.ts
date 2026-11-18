@@ -61,11 +61,12 @@ import {
 } from "./errors";
 import { processStateFor } from "../application/process-state";
 
-import { buildPreview } from "./staged/preview";
+import { buildPreviewDetails } from "./staged/preview";
 import type {
 	ChatImportCommitInput,
 	ChatImportModule,
 	ChatImportModuleOptions,
+	ChatImportPreview,
 	ChatImportReceipt,
 	ChatImportResolvedParticipantPlan,
 	StagedRecord,
@@ -372,14 +373,12 @@ export function createChatImportModule(
 				throw error;
 			}
 
-			const preview = buildPreview(
-				database,
-				chatNameFromFilename(filename),
-				filename,
-				staged.byteLength,
-				staged.sha256,
-				inspection,
-			);
+			const preview: ChatImportPreview = {
+				title: chatNameFromFilename(filename),
+				originalFilename: filename,
+				...staged,
+				...buildPreviewDetails(database, inspection),
+			};
 			const token = randomUUID();
 			stagedImportStore(database).sessions.set(token, {
 				phase: "staged",

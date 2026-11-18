@@ -50,9 +50,9 @@ describe("SillyTavern chat import", () => {
 		expect(conversation).toMatchObject({ name: "lantern-house", revision: 0, playable: true });
 		expect(messages.map((message) => message.position)).toEqual([1, 2, 3]);
 		expect(messages.map((message) => message.author)).toEqual([
-			{ participantId: cast[0]?.id, capturedName: "Writer", inCast: true },
-			{ participantId: cast[1]?.id, capturedName: "Rulership", inCast: true },
-			{ participantId: cast[2]?.id, capturedName: UNKNOWN_IMPORTED_AUTHOR_NAME, inCast: true },
+			{ participantId: cast[0]?.id ?? null, capturedName: "Writer", inCast: true },
+			{ participantId: cast[1]?.id ?? null, capturedName: "Rulership", inCast: true },
+			{ participantId: cast[2]?.id ?? null, capturedName: UNKNOWN_IMPORTED_AUTHOR_NAME, inCast: true },
 		]);
 		expect(messages[2]?.data).toContainEqual({ namespace: IMPORT_NAMESPACE, key: IMPORT_KEYS.authorName, value: "" });
 		expect(messages.map((message) => message.historicalContext)).toEqual([null, null, null]);

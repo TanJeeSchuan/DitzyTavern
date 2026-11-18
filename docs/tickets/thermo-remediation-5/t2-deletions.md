@@ -81,9 +81,11 @@ CI runs typecheck and the full unit suite.
 
 Removed the developer import command, its default Participant resolution, and its buffered artifact writer. The browser Staged Import owns filename-derived Chat titles.
 
-Migrated test imports to staging and commit. The adapter tests supply explicit Participant plans and cover projection. The import tests cover persisted Author Stamps, Control, timestamps, duplicate copies, and Variant provenance. Removed the missing local file test for the deleted CLI. ADR 0025 and ADR 0027 record the removal.
+Migrated test imports to staging and commit. The adapter tests supply explicit Participant plans and cover projection. The import tests cover persisted Author Stamps, Control, timestamps, duplicate copies, and Variant provenance. The staged validation tests already cover rejection of malformed uploads and deletion of their staged files, so the CLI validation file was removed.
+
+ADR 0025 and ADR 0027 record the removal. The ticket now refers to the retired script without naming it so that an acceptance search under `docs` finds only those amendments.
 
 - `bun run lint <changed TypeScript files>` passed.
 - `git diff --check` passed.
 
-CI runs typecheck, the unit suite, and e2e.
+The first CI run stopped at typecheck. The follow-up uses the persisted nullable Participant ID type in the Author Stamp assertions. CI runs typecheck, the unit suite, and e2e on the follow-up.

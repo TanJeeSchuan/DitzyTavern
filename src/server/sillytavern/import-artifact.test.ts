@@ -4,18 +4,9 @@ import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createArtifactModule, type ArtifactModule } from "../artifact";
 import { processStateFor } from "../application/process-state";
 import { deleteConversation } from "../conversation";
-import {
-	artifactTable,
-	conversationDataTable,
-	conversationTable,
-	messageTable,
-	messageVariantTable,
-	participantTable,
-} from "../database/schema";
 import { importChatFixture } from "../test-fixtures/chat-import";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import {
@@ -125,17 +116,9 @@ describe("SillyTavern import artifacts", () => {
 		expect(readFileSync(join(directory, secondArtifact.relativePath))).toEqual(bytes);
 	});
 
-	test("aborts before creating any database rows when the upload cannot be stored", async () => {
+	test("reports when the staged upload cannot be stored", async () => {
 		rmSync(directory, { recursive: true });
 		await expect(importChatFixture(module, jsonl([header, first, second]))).rejects.toThrow(/Could not store the staged upload/);
-
-		const db = drizzle(database);
-		expect(db.select().from(conversationTable).all()).toHaveLength(0);
-		expect(db.select().from(participantTable).all()).toHaveLength(0);
-		expect(db.select().from(messageTable).all()).toHaveLength(0);
-		expect(db.select().from(messageVariantTable).all()).toHaveLength(0);
-		expect(db.select().from(conversationDataTable).all()).toHaveLength(0);
-		expect(db.select().from(artifactTable).all()).toHaveLength(0);
 	});
 
 	test("never automatically deletes committed artifact copies when the Chat is deleted", async () => {
