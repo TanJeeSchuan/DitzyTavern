@@ -78,7 +78,7 @@ const chatImportPreview = Type.Object({
 
 export type ChatImportPreview = Static<typeof chatImportPreview>;
 
-const stagedOutcome = Type.Object({
+export const importStagedResponse = Type.Object({
 	outcome: Type.Literal("staged"),
 	token: Type.String(),
 	preview: chatImportPreview,
@@ -262,8 +262,6 @@ export type ChatImportDetails = Static<typeof chatImportDetails>;
 export const importTokenParams = Type.Object({ token: Type.String() });
 
 export const importPreviewBody = Type.Object({ sha256: Type.String() });
-
-export const importStagedResponse = stagedOutcome;
 
 export const importPreviewResponse = Type.Object({
 	outcome: Type.Literal("available"),

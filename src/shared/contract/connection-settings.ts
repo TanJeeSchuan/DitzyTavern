@@ -68,7 +68,7 @@ export const connectionProfile = Type.Object({
 	headers: Type.Array(redactedHeader),
 });
 
-const settings = Type.Object({
+export const connectionSettingsResponse = Type.Object({
 	revision: Type.Integer(),
 	profiles: Type.Array(connectionProfile),
 });
@@ -80,7 +80,7 @@ const preset = Type.Object({
 	profile: profileDraft,
 });
 
-const commandBody = Type.Union([
+export const connectionCommandBody = Type.Union([
 	Type.Object({
 		type: Type.Literal("create-profile"),
 		expectedRevision: Type.Integer(),
@@ -121,14 +121,14 @@ const commandBody = Type.Union([
 	}),
 ]);
 
-const testConnectionBody = Type.Object({
+export const connectionTestBody = Type.Object({
 	profileId: Type.Optional(Type.Integer()),
 	profile: profileDraft,
 	modelId: Type.String(),
 	headers: Type.Optional(Type.Array(headerOperation)),
 });
 
-const testConnectionResult = Type.Union([
+export const connectionTestResponse = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("success"),
 		message: Type.String(),
@@ -156,7 +156,7 @@ const discoveryFailureKind = Type.Union([
 	Type.Literal("malformed-response"),
 ]);
 
-const discoveryResult = Type.Union([
+export const connectionDiscoveryResponse = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("success"),
 		profile: connectionProfile,
@@ -171,13 +171,11 @@ const discoveryResult = Type.Union([
 		outcome: Type.Literal("conflict"),
 		expectedRevision: Type.Integer(),
 		actualRevision: Type.Integer(),
-		currentSettings: settings,
+		currentSettings: connectionSettingsResponse,
 	}),
 ]);
 
 // Route boundary schemas referenced by the Connection Settings adapter.
-
-export const connectionSettingsResponse = settings;
 
 export const connectionPresetsResponse = Type.Object({
 	presets: Type.Array(preset),
@@ -185,19 +183,11 @@ export const connectionPresetsResponse = Type.Object({
 
 export const connectionDiscoveryBody = Type.Object({ profileId: Type.Integer() });
 
-export const connectionDiscoveryResponse = discoveryResult;
-
 export const connectionTextOnlyBody = Type.Object({
 	profileId: Type.Integer(),
 	modelId: Type.String(),
 	textOnly: Type.Boolean(),
 });
-
-export const connectionTestBody = testConnectionBody;
-
-export const connectionTestResponse = testConnectionResult;
-
-export const connectionCommandBody = commandBody;
 
 // The unconfigured Connection Profile is shared by the client editor and the
 // OpenAI Compatible preset. Keeping this literal beside the schema
@@ -222,16 +212,13 @@ export const connectionSettingsConflict = Type.Object({
 	outcome: Type.Literal("conflict"),
 	expectedRevision: Type.Integer(),
 	actualRevision: Type.Integer(),
-	currentSettings: settings,
+	currentSettings: connectionSettingsResponse,
 });
 
 export const connectionSettingsApplied = Type.Object({
 	outcome: Type.Literal("applied"),
-	settings,
+	settings: connectionSettingsResponse,
 });
-
-export const connectionInvalidResponse = invalidOutcome;
-export const connectionNotFoundResponse = notFoundOutcome;
 
 // @approved
 //  The Connection Settings command and discovery routes' modeled error
@@ -239,19 +226,17 @@ export const connectionNotFoundResponse = notFoundOutcome;
 // client decodes an error body against exactly the union its route models.
 export const connectionCommandErrors = Type.Union([
 	connectionSettingsConflict,
-	connectionNotFoundResponse,
-	connectionInvalidResponse,
+	notFoundOutcome,
+	invalidOutcome,
 ]);
 
 export type ConnectionProfileDraftPayload = Static<typeof profileDraft>;
 export type ConnectionProfilePayload = Static<typeof connectionProfile>;
-export type ConnectionSettingsPayload = Static<typeof settings>;
+export type ConnectionSettingsPayload = Static<typeof connectionSettingsResponse>;
 export type ConnectionPresetPayload = Static<typeof preset>;
 export type ConnectionHeaderOperationPayload = Static<typeof headerOperation>;
-export type ConnectionTestResultPayload = Static<typeof testConnectionResult>;
-export type ConnectionDiscoveryResultPayload = Static<typeof discoveryResult>;
 
-export type ConnectionSettingsCommandPayload = Static<typeof commandBody>;
+export type ConnectionSettingsCommandPayload = Static<typeof connectionCommandBody>;
 
 export type ConnectionTestDraftPayload = {
 	profileId?: number;
@@ -259,12 +244,6 @@ export type ConnectionTestDraftPayload = {
 	modelId: string;
 	headers?: ConnectionHeaderOperationPayload[];
 };
-
-export type ConnectionSettingsCommandResultPayload =
-	| Static<typeof connectionSettingsApplied>
-	| Static<typeof connectionSettingsConflict>
-	| Static<typeof connectionInvalidResponse>
-	| Static<typeof connectionNotFoundResponse>;
 
 /**
  * Projects either a complete Profile payload or a draft into the command

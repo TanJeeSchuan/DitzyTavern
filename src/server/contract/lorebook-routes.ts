@@ -145,7 +145,7 @@ const executeConversationOwnedLoreAttachment = (database: Database, command: Con
 	}
 };
 
-export const createLorebookAttachmentRoutes = (database: Database) => new Elysia()
+const createLorebookAttachmentRoutes = (database: Database) => new Elysia()
 	.get("/api/lorebooks/attachments", ({ query }) => {
 		const state = readLorebookAttachmentState(database, query.conversationId);
 		return state ?? notFoundResponse();

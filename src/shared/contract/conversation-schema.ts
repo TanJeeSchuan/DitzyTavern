@@ -239,20 +239,6 @@ export const conversationGenerationSettings = Type.Object({
 export type ConversationGenerationSettings = Static<typeof conversationGenerationSettings>;
 export type ContinuationPrefillSuffix = ConversationGenerationSettings["continuationPrefillSuffix"];
 
-export const generationVariant = Type.Object({
-	messageId: Type.Integer(),
-	variantId: Type.Integer(),
-	content: Type.String(),
-	timestamp: Type.String(),
-	data: Type.Array(Type.Object({
-		namespace: Type.String(),
-		key: Type.String(),
-		value: Type.String(),
-	})),
-});
-
-export type GenerationVariant = Static<typeof generationVariant>;
-
 // @approved
 //  The budget decision made at Generation start, with the whole history
 // entries omitted during preflight.
@@ -700,9 +686,7 @@ export const continuationBody = Type.Object({
 	...inspectedPlanFields,
 });
 
-export type ConversationCommandBody = Static<typeof conversationCommandBody>;
 export type GenerationBody = Static<typeof generationBody>;
-export type ContinuationBody = Static<typeof continuationBody>;
 
 export const siblingGenerationBody = Type.Object({
 	reroll: Type.Optional(Type.Boolean()),
@@ -745,8 +729,6 @@ export type GenerationTarget =
 	| { readonly kind: "continuation" }
 	| { readonly kind: "sibling"; readonly messageId: number; readonly reroll?: boolean | undefined };
 
-export type GenerationTargetKind = GenerationTarget["kind"];
-
 const generationPreviewBudget = Type.Object({
 	tokenEstimate: Type.Integer(),
 	responseBudget: Type.Integer(),
@@ -773,7 +755,6 @@ export const generationPreview = Type.Object({
 	budget: generationPreviewBudget,
 });
 
-export type SiblingGenerationBody = Static<typeof siblingGenerationBody>;
 export type GenerationPreviewBody = Static<typeof generationPreviewBody>;
 export type GenerationPreview = Static<typeof generationPreview>;
 
@@ -792,17 +773,6 @@ export const generationAccepted = Type.Object({
 	variantId: Type.Integer(),
 });
 
-export const generationStartResponse = Type.Union([
-	generationAccepted,
-	notFoundOutcome,
-	conflictReasonOutcome,
-	notPlayableOutcome,
-	invalidOutcome,
-]);
-
-export type GenerationAccepted = Static<typeof generationAccepted>;
-export type GenerationStartResponse = Static<typeof generationStartResponse>;
-
 export const generationStopped = Type.Object({
 	outcome: Type.Literal("stopped"),
 	generationId: Type.Integer(),
@@ -814,9 +784,6 @@ export const generationsStopped = Type.Object({
 	generationIds: Type.Array(Type.Integer()),
 	conversation: conversationSummary,
 });
-
-export type GenerationStopped = Static<typeof generationStopped>;
-export type GenerationsStopped = Static<typeof generationsStopped>;
 
 // Route boundary schemas referenced by the Conversation adapter: path and
 // query params arrive as wire strings, and the response maps reuse these

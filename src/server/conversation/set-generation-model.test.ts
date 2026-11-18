@@ -6,10 +6,7 @@ import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { InvalidConversationCommandError } from ".";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
-import {
-	GENERATION_SETTINGS_FIELDS,
-	type CanonicalGenerationSettings,
-} from "../../shared/contract/generation-settings";
+import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { createConnectionSettingsModule } from "../connection-settings";
 
 const prompt = {
@@ -103,17 +100,10 @@ const createConnection = (database: Database): number => {
 			action: { type: "set-generation-model", connectionProfileId, modelId: "  qwen3-max  " },
 		});
 		const stored = readConversationGenerationSettings(module, conversation.id);
-		if (stored === undefined) throw new Error("Stored settings missing.");
-
 		// The owning domain adapter owns trimming, so the submitted model ID
 		// survives normalized while every other canonical field keeps the
 		// other editor's committed values.
-		expect(stored.modelId).toBe("qwen3-max");
-		expect(stored.connectionProfileId).toBe(connectionProfileId);
-		for (const field of GENERATION_SETTINGS_FIELDS) {
-			if (field === "modelId") continue;
-			expect(stored[field]).toEqual(before[field]);
-		}
+		expect(stored).toEqual({ ...before, modelId: "qwen3-max", connectionProfileId });
 		expect(updated.revision).toBe(conversation.revision + 2);
 	});
 

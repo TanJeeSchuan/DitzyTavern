@@ -17,18 +17,12 @@ import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes"
 
 import { toCharacterPayload } from "./projections";
 
-// @approved
-//  Keep this adapter export stable for sibling route adapters that use the
-// Character transport projection while the implementation lives below the
-// route-adapter layer.
 const commandResponse = {
 	200: characterCommandApplied,
 	409: characterConflict,
 	404: notFoundOutcome,
 	422: invalidOutcome,
 };
-
-export { toCharacterPayload };
 
 // @approved
 //  Thin typed adapters over the Character Library seam. The database is

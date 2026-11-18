@@ -3,7 +3,7 @@ import { Elysia } from "elysia";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationBoxParams as params, type BoxId } from "../../shared/contract/box";
 import { boxValue } from "../../shared/contract/box-value";
-import { boxFrameOpen, boxFrameOpened } from "../../shared/contract/box-sandboxed";
+import { boxFrameOpen, boxFrameTokenPayload } from "../../shared/contract/box-sandboxed";
 import { delegateRead, digestPassageCommand, digestStatusRead } from "../../shared/contract/box-digest";
 import { notFoundOutcome } from "../../shared/contract/outcomes";
 import { cancelBoxCatchUp, digestView, queueBoxDigest, readDelegate, readDigest, readDigestStatus, startBoxCatchUp } from "../box/digest";
@@ -42,7 +42,7 @@ export const createBoxWindowRoutes = (database: Database) => new Elysia()
 		const loaded = instance === undefined ? undefined : chatBox(db, params.id, params.box);
 		return loaded?.client.kind === "sandboxed" && loaded.client.ui !== undefined && instance !== undefined && loaded.version === body.version
 			? { token: openBoxFrame({ box: params.box, conversationId: params.id, instance, version: loaded.version }) } : notFoundResponse();
-	}, { params, body: boxFrameOpen, response: { 200: boxFrameOpened, 404: notFoundOutcome } })
+	}, { params, body: boxFrameOpen, response: { 200: boxFrameTokenPayload, 404: notFoundOutcome } })
 	.get("/api/conversations/:id/boxes/:box/status", ({ params }) => operation(database, params.id, params.box, () => readDigestStatus(database, params.id, params.box) ?? notFoundResponse()),
 		{ params, response: { 200: digestStatusRead, 404: notFoundOutcome } })
 	.get("/api/conversations/:id/boxes/:box/delegate", ({ params }) => operation(database, params.id, params.box, () => readDelegate(database, params.id, params.box) ?? notFoundResponse()),

@@ -3,9 +3,10 @@ import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 
 import { createSemanticTriggerSettingsModule } from "../lorebook/semantic-settings";
-import { semanticTriggerSettings, semanticTriggerSettingsApplied, semanticTriggerSettingsCommandBody, semanticTriggerSettingsConflict, semanticTriggerSettingsInvalid } from "../../shared/contract/semantic-trigger-settings";
+import { semanticTriggerSettings, semanticTriggerSettingsApplied, semanticTriggerSettingsCommandBody, semanticTriggerSettingsConflict } from "../../shared/contract/semantic-trigger-settings";
+import { invalidOutcome } from "../../shared/contract/outcomes";
 
-const commandResponse = { 200: semanticTriggerSettingsApplied, 409: semanticTriggerSettingsConflict, 422: semanticTriggerSettingsInvalid };
+const commandResponse = { 200: semanticTriggerSettingsApplied, 409: semanticTriggerSettingsConflict, 422: invalidOutcome };
 
 export const createSemanticTriggerSettingsRoutes = (database: Database) => new Elysia()
 	.get("/api/semantic-trigger-settings", () => createSemanticTriggerSettingsModule(database).get(), { response: semanticTriggerSettings })

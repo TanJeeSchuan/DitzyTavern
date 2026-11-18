@@ -161,7 +161,7 @@ export const exportPreset = async (
 	return await response.json() as NativePromptPreset;
 };
 
-export type NativePromptPresetRequest = {
+type NativePromptPresetRequest = {
 	name: string;
 	slots: Array<{
 		reference: string;
@@ -250,23 +250,6 @@ export const selectPreset = async (
 	//  SAFETY: the route validates the revisioned command shape at this boundary.
 	const body = await response.json();
 	return { status: response.status, body };
-};
-
-export const readActiveInspection = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-	generationId: number,
-): Promise<{ kind: string }[]> => {
-	const inspected = await app.handle(new Request(
-		`http://localhost/api/conversations/${conversationId}/generations/${generationId}/inspection`,
-	));
-	expect(inspected.status).toBe(200);
-	// @approved
-	//  SAFETY: the route's response schema is the active inspection payload.
-	const inspection = await inspected.json() as {
-		promptPlan: { blocks: { kind: string }[] };
-	};
-	return inspection.promptPlan.blocks;
 };
 
 // @approved
@@ -499,7 +482,7 @@ export const saveInstructionContent = (
 ) =>
 	saveBlockPatches(database, presetId, [{ ...content, occurrenceId: blockId, type: "content" }]);
 
-export interface RecipeSlot {
+interface RecipeSlot {
 	id: number;
 	reference: string;
 	enabled: boolean;

@@ -4,10 +4,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { InvalidConversationCommandError } from ".";
-import {
-	GENERATION_SETTINGS_FIELDS,
-	type CanonicalGenerationSettings,
-} from "../../shared/contract/generation-settings";
+import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 
 const prompt = {
 	systemInstruction: "",
@@ -152,14 +149,9 @@ describe("Conversation Generation Settings", () => {
 			action: { type: "update-generation-settings", settings: submitted },
 		});
 		const stored = readConversationGenerationSettings(module, conversation.id);
-		if (stored === undefined) throw new Error("Stored settings missing.");
-
 		// The domain adapter owns trimming, so the model ID survives normalized
 		// while every other canonical field round-trips exactly.
-		for (const field of GENERATION_SETTINGS_FIELDS) {
-			const expected = field === "modelId" ? "round-trip-model" : submitted[field];
-			expect(stored[field]).toEqual(expected);
-		}
+		expect(stored).toMatchObject({ ...submitted, modelId: "round-trip-model" });
 	});
 
 });
