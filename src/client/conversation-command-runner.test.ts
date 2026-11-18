@@ -117,7 +117,7 @@ describe("runConversationCommand", () => {
 	test("a conflict adopts the current Conversation, shows the conflict notice, and calls the conflict callback", async () => {
 		const events: string[] = [];
 		const current = summary({ revision: 9 });
-		await run(events, fakeSend(events, { outcome: "conflict", expectedRevision: 7, actualRevision: 9, currentConversation: current }), {
+		await run(events, fakeSend(events, { outcome: "conflict", reason: "stale-revision", expectedRevision: 7, actualRevision: 9, current: current }), {
 			onConflict: (conversation) => {
 				events.push("conflict-callback");
 				expect(conversation).toBe(current);
@@ -128,7 +128,7 @@ describe("runConversationCommand", () => {
 
 	test("a conflict without a conflict callback still adopts and shows the notice", async () => {
 		const events: string[] = [];
-		await run(events, fakeSend(events, { outcome: "conflict", expectedRevision: 7, actualRevision: 9, currentConversation: summary({ revision: 9 }) }));
+		await run(events, fakeSend(events, { outcome: "conflict", reason: "stale-revision", expectedRevision: 7, actualRevision: 9, current: summary({ revision: 9 }) }));
 		expect(events).toEqual(["send:7", "adopt:9", "notice:conflict notice"]);
 	});
 

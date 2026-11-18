@@ -61,7 +61,7 @@ export function ProfileModelPicker({ apiFormat = "chat-completions", selected, o
 				publishConnectionSettings(client, result.value.settings);
 				setNotice(pinnedModels.includes(modelId) ? `${modelId} pinned.` : `${modelId} unpinned.`);
 			} else if (result.outcome === "conflict") {
-				publishConnectionSettings(client, result.currentSettings);
+				publishConnectionSettings(client, result.current);
 				setError("Connection Settings changed elsewhere; pins were not changed.");
 			} else if (result.outcome === "invalid" || result.outcome === "unusable") {
 				setError(result.reason);

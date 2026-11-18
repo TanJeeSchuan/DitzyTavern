@@ -60,7 +60,7 @@ test("a conflict adopts authority for every reader while retaining the edited Pr
 	installFetch(async (url, init) => {
 		if (url.endsWith("/presets")) return Response.json({ presets: [] });
 		submitted = JSON.parse(String(init?.body));
-		return Response.json({ outcome: "conflict", expectedRevision: 2, actualRevision: 4, currentSettings: settings(4, "Authority") }, { status: 409 });
+		return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 2, actualRevision: 4, current: settings(4, "Authority") }, { status: 409 });
 	});
 	const editor = await renderHook(useConnectionSettingsController, cache);
 	const reader = await renderHook(connectionsReader, cache);
@@ -89,7 +89,7 @@ test("a Profile changed elsewhere after it was opened conflicts on save instead 
 		sent.push(expectedRevision);
 		return expectedRevision === 3
 			? Response.json({ outcome: "applied", settings: settings(4, "Local") })
-			: Response.json({ outcome: "conflict", expectedRevision, actualRevision: 3, currentSettings: settings(3, "Theirs") }, { status: 409 });
+			: Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: 3, current: settings(3, "Theirs") }, { status: 409 });
 	});
 	const editor = await renderHook(useConnectionSettingsController, cache);
 	await editor.act(async () => editor.current.chooseProfile(profile("Original")));

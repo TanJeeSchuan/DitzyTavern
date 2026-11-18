@@ -16,7 +16,7 @@ export function useLorebookAttachments(conversationId: number) {
 			const result = await applyLorebookAttachmentCommand(command);
 			await client.cancelQueries({ queryKey: ["lorebook-attachments", conversationId] });
 			await client.invalidateQueries({ queryKey: ["lorebook-attachments", conversationId] });
-			if (result.outcome === "conflict" && "currentConversation" in result) publishConversation(client, result.currentConversation);
+			if (result.outcome === "conflict" && "cast" in result.current) publishConversation(client, result.current);
 			if (result.outcome === "available") void client.invalidateQueries({ queryKey: conversationKey(conversationId) });
 			if (result.outcome !== "available") throw new Error(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Lorebook attachment settings changed elsewhere.");
 			return true;

@@ -191,7 +191,7 @@ export function usePromptPresetLibrary({
 						break;
 					}
 					case "conflict": {
-						let message = `That preset changed elsewhere. It is now "${outcome.currentPreset.name}".`;
+						let message = `That preset changed elsewhere. It is now "${outcome.current.name}".`;
 						const refresh = await load();
 						if (!ownsOperation(claim)) return;
 						if (reportRefreshFailure(refresh)) break;
@@ -202,8 +202,8 @@ export function usePromptPresetLibrary({
 							// and impact instead of the values the author already confirmed.
 							if (outcome.reason === "deletion-impact") {
 								message = presetDeletionImpactChangedNotice(
-									outcome.currentPreset.name,
-									outcome.currentPreset.conversationCount,
+									outcome.current.name,
+									outcome.current.conversationCount,
 								);
 							}
 						}

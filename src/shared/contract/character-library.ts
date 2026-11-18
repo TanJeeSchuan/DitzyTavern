@@ -2,7 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import { numericWire } from "./wire";
-import { invalidOutcome, notFoundOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
 
 // Typed transport schemas mirror the Character Library seam's public types.
 // Routes stay thin adapters: persistence and validation rules live behind
@@ -157,12 +157,7 @@ export const characterCommandApplied = Type.Union([
 
 // Stale-revision conflict carrying the authoritative current Character so
 // the caller can recover without a follow-up read.
-export const characterConflict = Type.Object({
-	outcome: Type.Literal("conflict"),
-	expectedRevision: Type.Integer(),
-	actualRevision: Type.Integer(),
-	currentCharacter: characterSnapshot,
-});
+export const characterConflict = revisionConflict(characterSnapshot);
 
 // @approved
 //  The Character command family's modeled error union: the composed

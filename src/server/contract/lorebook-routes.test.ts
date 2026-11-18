@@ -90,7 +90,7 @@ describe("Lorebook library transport", () => {
 			type: "update-book", bookId: 1, expectedRevision: 0, name: "Wrong", description: "changed",
 		});
 		expect(stale.status).toBe(409);
-		expect(await stale.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentBook: { name: "Updated" } });
+		expect(await stale.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, current: { name: "Updated" } });
 		expect(await (await app.handle(request("/api/lorebooks/1"))).json()).toMatchObject({ name: "Updated", description: "" });
 		void created;
 	});
@@ -402,7 +402,7 @@ describe("Lorebook library transport", () => {
 		expect(attached.status).toBe(200);
 		const staleSettings = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "save-settings", conversationId: conversation.id, expectedRevision: initialChatState.revision, scanDepth: 1, allowance: 1 }) }));
 		expect(staleSettings.status).toBe(409);
-		expect(await staleSettings.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentConversation: { id: conversation.id, name: "Story", revision: 1 } });
+		expect(await staleSettings.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, current: { id: conversation.id, name: "Story", revision: 1 } });
 		const missingParticipant = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "attach-participant", participantId: 9999, bookId: 1, expectedRevision: 1, scope: "cast" }) }));
 		expect(missingParticipant.status).toBe(404);
 
@@ -410,6 +410,6 @@ describe("Lorebook library transport", () => {
 		expect(staleCharacter.status).toBe(200);
 		const staleDetach = await app.handle(request("/api/lorebooks/attachments/commands", { method: "POST", body: JSON.stringify({ type: "detach-character", characterId: character.id, bookId: 1, scope: "cast", expectedRevision: 0 }) }));
 		expect(staleDetach.status).toBe(409);
-		expect(await staleDetach.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, currentState: { revision: 1, attachments: [{ bookId: 1 }] } });
+		expect(await staleDetach.json()).toMatchObject({ outcome: "conflict", expectedRevision: 0, actualRevision: 1, current: { revision: 1, attachments: [{ bookId: 1 }] } });
 	});
 });

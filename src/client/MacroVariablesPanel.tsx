@@ -54,7 +54,7 @@ export function handleMacroVariableOutcome(
 		callbacks.onApplied(outcome.value.variables, outcome.value.conversation);
 		return true;
 	}
-	if (outcome.outcome === "conflict") callbacks.onConflict(outcome.currentConversation);
+	if (outcome.outcome === "conflict") callbacks.onConflict(outcome.current);
 	callbacks.onNotice(
 		outcome.outcome === "invalid" || outcome.outcome === "unusable"
 			? outcome.reason

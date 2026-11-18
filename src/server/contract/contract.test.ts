@@ -120,8 +120,8 @@ describe("Character Library transport adapters", () => {
 		expect(conflict.outcome).toBe("conflict");
 		expect(conflict.expectedRevision).toBe(0);
 		expect(conflict.actualRevision).toBe(1);
-		expect(conflict.currentCharacter.name).toBe("Renamed");
-		expect(conflict.currentCharacter.revision).toBe(1);
+		expect(conflict.current.name).toBe("Renamed");
+		expect(conflict.current.revision).toBe(1);
 	});
 
 	test("maps validation failures and missing Characters to their typed outcomes", async () => {
@@ -277,7 +277,7 @@ describe("Native Conversation transport adapter", () => {
 		expect(body.outcome).toBe("conflict");
 		expect(body.expectedRevision).toBe(0);
 		expect(body.actualRevision).toBe(1);
-		expect(body.currentCharacter.name).toBe("Renamed Voss");
+		expect(body.current.name).toBe("Renamed Voss");
 	});
 
 	test("maps a missing fork source and invalid Definitions to typed outcomes", async () => {
@@ -481,7 +481,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect(body.outcome).toBe("conflict");
 		expect(body.expectedRevision).toBe(0);
 		expect(body.actualRevision).toBe(1);
-		expect(body.currentConversation.cast).toHaveLength(3);
+		expect(body.current.cast).toHaveLength(3);
 	});
 
 	test("maps validation failures and missing Conversations to typed outcomes", async () => {
@@ -647,7 +647,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect(staleSource.status).toBe(409);
 		const sourceBody = await staleSource.json();
 		expect(sourceBody.outcome).toBe("conflict");
-		expect(sourceBody.currentCharacter.name).toBe("Renamed");
+		expect(sourceBody.current.name).toBe("Renamed");
 
 		const staleDestination = await addCharacter(id, {
 			expectedConversationRevision: 5,
@@ -657,7 +657,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect(staleDestination.status).toBe(409);
 		const destinationBody = await staleDestination.json();
 		expect(destinationBody.outcome).toBe("conflict");
-		expect(destinationBody.currentConversation.revision).toBe(0);
+		expect(destinationBody.current.revision).toBe(0);
 	});
 
 	test("maps missing workflow references to typed not-found outcomes", async () => {
@@ -788,8 +788,8 @@ describe("Save Participant as Character transport adapter", () => {
 		expect(body.outcome).toBe("conflict");
 		expect(body.expectedRevision).toBe(0);
 		expect(body.actualRevision).toBe(1);
-		expect(body.currentConversation.revision).toBe(1);
-		expect(body.currentConversation.cast).toHaveLength(3);
+		expect(body.current.revision).toBe(1);
+		expect(body.current.cast).toHaveLength(3);
 
 		// The stale save created no Character.
 		const listApp = createCharacterLibraryRoutes(database);

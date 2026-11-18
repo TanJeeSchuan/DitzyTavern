@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { invalidOutcome, notFoundOutcome, notRemovableOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome, notRemovableOutcome, revisionConflict } from "./outcomes";
 import { numericWire } from "./wire";
 import { boxDescriptor, boxIdOf, boxMetadata, isBoxReference, promptBoxReference, type PromptBoxReference } from "./box";
 
@@ -434,17 +434,11 @@ export type PromptPresetRecipeApplied = Static<typeof promptPresetRecipeApplied>
 // preset's library metadata revision is stale, or the deletion impact the
 // author confirmed no longer matches. Both carry the authoritative current
 // preset so the caller can recover without a follow-up read.
-const promptPresetStaleRevisionConflict = Type.Object({
-	outcome: Type.Literal("conflict"),
-	reason: Type.Literal("stale-revision"),
-	expectedRevision: Type.Integer(),
-	actualRevision: Type.Integer(),
-	currentPreset: promptPresetSummary,
-});
+const promptPresetStaleRevisionConflict = revisionConflict(promptPresetSummary);
 const promptPresetDeletionImpactConflict = Type.Object({
 	outcome: Type.Literal("conflict"),
 	reason: Type.Literal("deletion-impact"),
-	currentPreset: promptPresetSummary,
+	current: promptPresetSummary,
 });
 const promptPresetConflict = Type.Union([
 	promptPresetStaleRevisionConflict,

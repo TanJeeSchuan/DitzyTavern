@@ -116,7 +116,7 @@ function createConversationBackend() {
 			};
 			if (body.expectedRevision !== revision) {
 				return Response.json(
-					{ outcome: "conflict", currentConversation: summary(revision) },
+					{ outcome: "conflict", reason: "stale-revision", expectedRevision: body.expectedRevision, actualRevision: revision, current: summary(revision) },
 					{ status: 409 },
 				);
 			}

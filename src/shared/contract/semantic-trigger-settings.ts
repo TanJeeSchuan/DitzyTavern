@@ -1,11 +1,11 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { decisionSelection } from "./decision-model";
-import { invalidOutcome } from "./outcomes";
+import { invalidOutcome, revisionConflict } from "./outcomes";
 
 export const semanticTriggerSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer(), triggerThreshold: Type.Number() })]);
 export type SemanticTriggerSettingsPayload = Static<typeof semanticTriggerSettings>;
 export const semanticTriggerSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: semanticTriggerSettings });
-export const semanticTriggerSettingsConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: semanticTriggerSettings });
+export const semanticTriggerSettingsConflict = revisionConflict(semanticTriggerSettings);
 
 // @approved
 //  The Semantic Trigger Settings command route's modeled error union: the

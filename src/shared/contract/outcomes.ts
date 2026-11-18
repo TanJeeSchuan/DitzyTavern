@@ -1,4 +1,4 @@
-import { Type } from "@sinclair/typebox";
+import { Type, type Static, type TSchema } from "@sinclair/typebox";
 
 // Transport outcome envelopes shared by every route family: the typed
 // not-found, invalid, not-playable, not-removable, and reason-only conflict
@@ -24,6 +24,16 @@ export const conflictReasonOutcome = Type.Object({
 	outcome: Type.Literal("conflict"),
 	reason: Type.String(),
 });
+
+export const revisionConflict = <S extends TSchema>(current: S) => Type.Object({
+	outcome: Type.Literal("conflict"),
+	reason: Type.Literal("stale-revision"),
+	expectedRevision: Type.Integer(),
+	actualRevision: Type.Integer(),
+	current,
+});
+
+export type RevisionConflict<Current> = Omit<Static<ReturnType<typeof revisionConflict>>, "current"> & { current: Current };
 
 // @approved
 //  The read family's modeled error union: every typed read route declares

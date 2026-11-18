@@ -14,7 +14,7 @@ test("a save that lost to a change elsewhere does not overwrite it on the next s
 	const load = () => Promise.resolve(server);
 	const apply = async ({ decisionModel, expectedRevision }: Omit<Settings, "revision"> & { expectedRevision: number }) => {
 		sent.push({ decisionModel, expectedRevision });
-		if (expectedRevision !== server.revision) return { outcome: "conflict" as const, currentSettings: server };
+		if (expectedRevision !== server.revision) return { outcome: "conflict" as const, reason: "stale-revision" as const, expectedRevision, actualRevision: server.revision, current: server };
 		server = settings(server.revision + 1, decisionModel);
 		return { outcome: "available" as const, value: { settings: server } };
 	};
@@ -38,7 +38,7 @@ test("a save that lost to a change elsewhere does not overwrite it on the next s
 test("Load saved replaces a conflicted draft with the settings it lost to", async () => {
 	let server = settings(1, "start");
 	const load = () => Promise.resolve(server);
-	const apply = async () => ({ outcome: "conflict" as const, currentSettings: server });
+	const apply = async ({ expectedRevision }: { expectedRevision: number }) => ({ outcome: "conflict" as const, reason: "stale-revision" as const, expectedRevision, actualRevision: server.revision, current: server });
 	const hook = await renderHook(() => useSettingsDraft("Test Settings", load, apply), new QueryClient());
 	await flushHook();
 	await hook.act(async () => { hook.current.update({ decisionModel: "mine" }); });

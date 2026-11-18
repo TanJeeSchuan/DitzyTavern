@@ -75,7 +75,7 @@ test("the host default uses the settings route's apply and conflict flow without
 		expect(await (await routes.handle(new Request(url))).json()).toEqual(saved.settings);
 		const conflict = await apply();
 		expect(conflict.status).toBe(409);
-		expect(await conflict.json()).toMatchObject({ outcome: "conflict", currentSettings: saved.settings });
+		expect(await conflict.json()).toMatchObject({ outcome: "conflict", current: saved.settings });
 	} finally {
 		database.close();
 	}
