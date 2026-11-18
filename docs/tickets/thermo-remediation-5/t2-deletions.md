@@ -1,6 +1,6 @@
 # T2: Deletions
 
-Status: READY
+Status: IN PROGRESS
 
 Blocked By: T1
 
@@ -14,7 +14,7 @@ Read the "Kept surface" rule in the README first. Several scout findings list th
 
 - Conversation module: report 17, F8, **except** the three small Participant commands, which stay with their tests. That leaves the unused `readChatVariants` option, the `loadMessageRows` modes only the test fixture uses, exports with no outside caller, the unreachable branch in `delete-variant.ts`, and the one-line wrappers.
 - Generation runtime: `controller`/`signal`, `isStopRequested`, `retainedEvents` and `GenerationRuntimeScheduler`. Report 11, finding 12; the tests to rewrite are in report 23, F7.
-- Shared JSON helpers: the three unused `generationJson*` functions, and `shared/generation-json.ts`, a one-line re-export with 13 importers that should import `contract/json-value` directly. Report 11, finding 14.
+- Shared JSON helpers: the three unused `generationJson*` functions, and `shared/generation-json.ts`, a one-line re-export whose callers should import `contract/json-value` directly. Report 11, finding 14.
 - Contract: unused schemas and type aliases, the barrel re-exports in `contract/index.ts`, rename-only aliases. Report 18, finding 10; report 24, F6.
 - SillyTavern import: the two `StagedRecord` fields nothing reads, and the `sillytavern/index.ts` barrel down to what outside code imports. Report 20, findings 3 (fields only) and 14.
 - Connection secrets: exports nothing imports. Report 20, finding 13 (un-export only; leave the key handling).
@@ -42,7 +42,7 @@ Amend ADR 0025 and ADR 0027: they name the developer import as a second path the
 
 ## TODO
 
-- [ ] Slice a, PR
+- [x] Slice a, PR
 - [ ] Slice b, PR
 - [ ] Slice c, PR, with the two ADR amendments
 
@@ -51,3 +51,15 @@ Amend ADR 0025 and ADR 0027: they name the developer import as a second path the
 Typecheck and the unit suite pass on each slice with no test deleted except those of deleted code. `git grep -n 'db:import' -- package.json README.md AGENTS.md docs` shows only the ADR amendments.
 
 ## Outcome
+
+### Slice a
+
+Removed unused Conversation and Generation runtime paths, unused contract schemas and aliases, the JSON re-export, unused import and Connection Secret exports, and two unread staged import fields.
+
+The test snapshot owns the raw Variant and Message data read. Its imports of Conversation internals have test-fixture-only lint exceptions. Runtime tests verify cancellation, checkpoint ordering, and replay through callbacks and subscriptions. `GenerationBody` and `MacroVariablesEditBody` still have test callers.
+
+- `bun run test:files <file>` passed for 23 focused files (230 tests).
+- `bun run lint <changed files>` passed with warnings on existing lines.
+- `git diff 0786badc --check` passed.
+
+CI covers typecheck and the full unit suite. Slices b and c are pending. The two existing key-length constants are outside this slice's key-handling scope.

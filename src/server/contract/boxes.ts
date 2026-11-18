@@ -4,7 +4,7 @@ import { Elysia } from "elysia";
 import { boxClientSource, boxRoutes, clearHeldValues, heldBoxValues as held, loadBoxVersion, serverBoxes, type BoxClientSource } from "../box/registry";
 import { boxFrameImage, boxFrameResponse, closeBoxFrame, uploadBoxFrameImage } from "../box/frame";
 import { boxFrameRoute } from "../../shared/box-frame";
-import { boxFrameImageParams, boxFrameTokenPayload, boxList, boxVersionFileParams, boxVersionListing, boxVersionParams } from "../../shared/contract/box-sandboxed";
+import { boxFrameImageParams, boxFrameOpened, boxList, boxVersionFileParams, boxVersionListing, boxVersionParams } from "../../shared/contract/box-sandboxed";
 import { boxParams as params, heldBoxValues, heldBoxValuesCleared, installedBoxes } from "../../shared/contract/box";
 import { imageUploadBody, imageUploadResponse } from "../../shared/contract/image";
 import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
@@ -57,8 +57,8 @@ export const createBoxRoutes = (database: Database) => {
 				: new Response(text, { headers: { "content-type": uiType(params.file), "cache-control": "public, max-age=31536000, immutable" } });
 		}, { params: boxVersionFileParams })
 		.get(`${boxFrameRoute}/:token`, async ({ params: { token }, request }) => await boxFrameResponse(database, token, requestHost(request)) ?? notFoundResponse(),
-	{ params: boxFrameTokenPayload })
-	.delete(`${boxFrameRoute}/:token`, ({ params: { token } }) => { closeBoxFrame(token); return new Response(null, { status: 204 }); }, { params: boxFrameTokenPayload })
+			{ params: boxFrameOpened })
+		.delete(`${boxFrameRoute}/:token`, ({ params: { token } }) => { closeBoxFrame(token); return new Response(null, { status: 204 }); }, { params: boxFrameOpened })
 		.get(`${boxFrameRoute}/:token/images/:hash`, ({ params: { token, hash } }) => boxFrameImage(database, token, hash) ?? notFoundResponse(),
 			{ params: boxFrameImageParams })
 		.post(`${boxFrameRoute}/:token/images`, async ({ params: { token }, body }) => {
@@ -67,7 +67,7 @@ export const createBoxRoutes = (database: Database) => {
 			} catch (error) {
 				return presentDomainError(error, uploadResponse);
 			}
-	}, { params: boxFrameTokenPayload, body: imageUploadBody, response: uploadResponse })
+		}, { params: boxFrameOpened, body: imageUploadBody, response: uploadResponse })
 		.get("/api/box-held-values", () => Object.fromEntries([...held()].map(([id, places]) => [id, [...places]])), { response: heldBoxValues })
 		.post("/api/boxes/:box/held-values/clear", ({ params: { box } }) => {
 			if (!held().has(box)) return notFoundResponse();

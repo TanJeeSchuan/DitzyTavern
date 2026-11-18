@@ -1,4 +1,3 @@
-/* oxlint-disable ditzy/no-conversation-internal-imports -- The test snapshot combines raw rows with the production live-text projection. */
 import { asc, eq, getTableColumns } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
@@ -12,9 +11,11 @@ import {
 } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
+// oxlint-disable-next-line ditzy/no-conversation-internal-imports -- The test snapshot needs raw Message and Variant rows.
 import { messageDataTable, messageTable, messageVariantTable } from "../database/schema";
+// oxlint-disable-next-line ditzy/no-conversation-internal-imports -- Use the same checkpointed text as production reads.
 import { liveVariantContent } from "../conversation/generation-checkpoint";
-import { groupRowsByNumber } from "../conversation/internal";
+// oxlint-disable-next-line ditzy/no-conversation-internal-imports -- Keep raw Variant data in storage order.
 import { loadVariantDataRows, toDataEntry } from "../conversation/message-rows";
 import type { BoxId, BoxState } from "../../shared/contract/box";
 import { boxInstanceEntry, boxStateEntry } from "../box/setup";
@@ -104,7 +105,7 @@ export function readTestConversationSnapshot(database: Database, conversationId:
   .orderBy(asc(messageDataTable.namespace), asc(messageDataTable.key)).all();
  const variantsByMessage = Map.groupBy(variants, (variant) => variant.message_id);
  const variantData = loadVariantDataRows(db, variants.map((variant) => variant.id));
- const messageDataByMessage = groupRowsByNumber(messageData, (row) => row.message_id, toDataEntry);
+ const messageDataByMessage = Map.groupBy(messageData, (row) => row.message_id);
  const path = new Map(readSelectedHistory(database, conversationId)!.messages.map((message) => [message.id, message]));
  return {
   ...summary,
@@ -115,7 +116,7 @@ export function readTestConversationSnapshot(database: Database, conversationId:
     id: message.id, position: message.position, timestamp: message.timestamp,
     author: identity.author, historicalContext: identity.historicalContext,
     swipe: deriveMessageSwipeEligibility(summary.playable, identity.historicalContext, summary.cast.map((participant) => participant.id)),
-    data: messageDataByMessage.get(message.id) ?? [],
+    data: (messageDataByMessage.get(message.id) ?? []).map(toDataEntry),
     variants: (variantsByMessage.get(message.id) ?? []).map((variant) => ({
      id: variant.id, position: variant.position, content: variant.content,
      timestamp: variant.timestamp, selected: variant.selected,

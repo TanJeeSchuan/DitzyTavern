@@ -213,7 +213,7 @@ export const sandboxedDecideInput = Type.Tuple([Type.Unknown(), Type.Record(Type
 const boxFrameToken = Type.String({ pattern: "^[A-Za-z0-9_-]{24}$" });
 /** @approved The version a window's frame runs, which must be the version its Chat pins; an unversioned Box sends none. */
 export const boxFrameOpen = Type.Object({ version: Type.Optional(boxVersion) });
-export const boxFrameTokenPayload = Type.Object({ token: boxFrameToken });
+export const boxFrameOpened = Type.Object({ token: boxFrameToken });
 export const boxFrameImageParams = Type.Object({ token: boxFrameToken, hash: imageHash });
 
 /** @approved One commit from a sandboxed Box's window: what the host turns into `commit-box` for that Box at `snapshot`. */

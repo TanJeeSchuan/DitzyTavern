@@ -58,9 +58,8 @@ export function deleteVariant(
 		siblings.map((sibling) => sibling.id),
 	);
 	// @approved
-	//  The replacing Swipe re-derives its Memory collection; the
-	// removed Variant's in-flight work is abandoned in both cases so a deleted
-	// source never keeps a provider call or a Memory worker slot alive.
+	//  Memory re-derives the replacement's collection when selection changes
+	// and abandons in-flight work for the deleted Variant.
 	return {
 		conversationId: input.conversationId,
 		touchedVariantIds: replacementId === undefined ? [] : [replacementId],
