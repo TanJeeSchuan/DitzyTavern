@@ -20,7 +20,10 @@ const integer = { type: "integer" };
 const object = (properties: Readonly<Record<string, BoxValue>>) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 const v1 = {
 	setup: { schema: object({ goal: { type: "integer", minimum: 1 } }), initial: { goal: 3 } },
-	values: { chat: { host: { type: "integer", rowReference: "participant" } }, participant: { odds: { type: "object", patternProperties: { "^(?:[0-9])+$": integer } } } },
+	values: { participant: {
+		host: { type: "integer", rowReference: "participant" },
+		odds: { type: "object", patternProperties: { "^(?:[0-9])+$": integer } },
+	} },
 	record: object({ coins: { type: "integer", minimum: 0 } }),
 	moves: { schema: object({ coins: { type: "integer", minimum: 1 } }), max: 3, label: "Tip {coins}" },
 };
@@ -129,9 +132,9 @@ test.each([
 		(): string => "The Chat holds 1 record slots, and this version declares no record."],
 	["a setupError that refuses the stored setup", tally({}, { extra: "setupError: ({ goal }) => goal > 5 ? \"That goal is out of reach.\" : undefined," }),
 		({ chat }: Tipped): string => { command(chat.id, { type: "set-box-setup", box: "tally", setup: { goal: 9 } }); return "Setup: That goal is out of reach."; }],
-	["a changed rowReference", tally({ values: { ...v1.values, chat: { host: integer } } }),
-		(): string => "Row reference at chat value host (participant): this version no longer has it, so Fork would stop remapping it"],
-	["a ParticipantKey Record turned into a string-keyed one, which accepts the same values", tally({ values: { ...v1.values, participant: { odds: { type: "object", patternProperties: { "^(.*)$": integer } } } } }),
+	["a changed rowReference", tally({ values: { participant: { ...v1.values.participant, host: integer } } }),
+		(): string => "Row reference at participant value host (participant): this version no longer has it, so Fork would stop remapping it"],
+	["a ParticipantKey Record turned into a string-keyed one, which accepts the same values", tally({ values: { participant: { ...v1.values.participant, odds: { type: "object", patternProperties: { "^(.*)$": integer } } } } }),
 		({ chat }: Tipped): string => {
 			command(chat.id, { type: "commit-box", box: "tally", version: readConversationSummary(database, chat.id)!.boxVersions.tally, writes: [{ owner: { type: "participant", participantId: chat.cast[1]!.id }, key: "odds", value: JSON.stringify({ [chat.cast[0]!.id]: 2 }) }] }); // @approved The Chat and its Cast exist.
 			return "Row reference at participant value odds/{key} (participant key): this version no longer has it, so Fork would stop remapping it";
@@ -167,13 +170,13 @@ test("a row reference moved between a key holding / and the nested field it spel
 		"a/b": annotated === "flat" ? { type: "integer", rowReference: "participant" } : integer,
 		a: object({ b: annotated === "nested" ? { type: "integer", rowReference: "participant" } : integer }),
 	});
-	const box = await writeVersionedBox("tally", [tally({ values: { ...v1.values, chat: { host: host("flat") } } }), tally({ values: { ...v1.values, chat: { host: host("nested") } } })]);
+	const box = await writeVersionedBox("tally", [tally({ values: { participant: { ...v1.values.participant, host: host("flat") } } }), tally({ values: { participant: { ...v1.values.participant, host: host("nested") } } })]);
 	removes.push(box.remove);
 	await loadBoxes([builtInBoxes, box.plugins]);
 	await loadBoxVersion("tally", box.versions[1]!); // @approved Two versions were written.
 	const chat = createChat();
 	setBoxState(database, chat.id, "tally", "enabled");
-	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow("Row reference at chat value host/a%2Fb (participant): this version no longer has it"); // @approved Two versions were written.
+	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow("Row reference at participant value host/a%2Fb (participant): this version no longer has it"); // @approved Two versions were written.
 });
 
 // @approved
@@ -201,7 +204,7 @@ test("seeding a Participant from a Character copies only the values the Chat's p
 // so the version the first insertion pins may refuse them; kept, they would
 // break that Chat's reads and Forks.
 test("inserting a Box drops Participant values seeded while it was absent that the version it pins refuses", async () => {
-	const box = await versioned(tally({ values: { ...v1.values, participant: { odds: { type: "object", patternProperties: { "^(?:[0-9])+$": { type: "string" } } } } } }));
+	const box = await versioned(tally({ values: { participant: { ...v1.values.participant, odds: { type: "object", patternProperties: { "^(?:[0-9])+$": { type: "string" } } } } } }));
 	const chat = createChat();
 	const seed = (participant: number, odds: BoxValue) => database.query("INSERT INTO participant_data (participant_id, namespace, key, value) VALUES (?, 'box:tally', 'odds', ?)").run(participant, JSON.stringify(odds));
 	// SAFETY: createChat makes a Chat with exactly two Participants.
@@ -223,13 +226,13 @@ test("a union holding a row reference whose branches were reordered is refused",
 	const host = (first: BoxValue, second: BoxValue) => ({ anyOf: [first, second] });
 	const v1Host = host({ type: "integer", rowReference: "participant" }, { type: "string" });
 	const v2Host = host({ type: "string", rowReference: "participant" }, integer);
-	const box = await writeVersionedBox("tally", [tally({ values: { ...v1.values, chat: { host: v1Host } } }), tally({ values: { ...v1.values, chat: { host: v2Host } } })]);
+	const box = await writeVersionedBox("tally", [tally({ values: { participant: { ...v1.values.participant, host: v1Host } } }), tally({ values: { participant: { ...v1.values.participant, host: v2Host } } })]);
 	removes.push(box.remove);
 	await loadBoxes([builtInBoxes, box.plugins]);
 	await loadBoxVersion("tally", box.versions[1]!); // @approved Two versions were written.
 	const chat = createChat();
 	setBoxState(database, chat.id, "tally", "enabled");
-	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow(/Row reference at chat value host \(union [0-9a-f]{12}\): this version no longer has it/); // @approved Two versions were written.
+	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow(/Row reference at participant value host \(union [0-9a-f]{12}\): this version no longer has it/); // @approved Two versions were written.
 });
 
 // @approved
