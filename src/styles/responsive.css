@@ -140,19 +140,6 @@ body > .details-panel > .panel-body {
 }
 
 @media (max-width: 40rem), (max-height: 30rem) and (max-width: 78rem) {
-	.connection-preset-list {
-		grid-template-columns: 1fr;
-	}
-
-	.credential-field-row {
-		grid-template-columns: 1fr;
-	}
-
-	.credential-field-row > button {
-		justify-self: start;
-		height: auto;
-	}
-
 	.story-header {
 		padding: 0 0.75rem 0 0.5rem;
 	}
@@ -169,10 +156,6 @@ body > .details-panel > .panel-body {
 
 	.story-content {
 		padding: 2.2rem 1.15rem 12.5rem;
-	}
-
-	.writer-message {
-		margin-bottom: 2.3rem;
 	}
 
 	.message-author {

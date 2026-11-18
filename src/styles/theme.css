@@ -1,16 +1,6 @@
-@custom-variant dark (&:is(.dark *));
-
 @theme inline {
 	--font-heading: var(--font-control);
 	--font-sans: var(--font-control);
-	--color-sidebar-ring: var(--ring);
-	--color-sidebar-border: var(--border);
-	--color-sidebar-accent-foreground: var(--foreground);
-	--color-sidebar-accent: var(--muted);
-	--color-sidebar-primary-foreground: var(--primary-foreground);
-	--color-sidebar-primary: var(--primary);
-	--color-sidebar-foreground: var(--foreground);
-	--color-sidebar: var(--surface);
 	--color-ring: var(--ring);
 	--color-input: var(--border-strong);
 	--color-border: var(--border);
@@ -33,7 +23,6 @@
 	--radius-md: 0.75rem;
 	--radius-lg: 1rem;
 	--radius-xl: 1.25rem;
-	--radius-2xl: 1.5rem;
 }
 
 :root {
@@ -72,7 +61,6 @@
 	--ambient-two: light-dark(oklch(0.83 0.055 86 / 48%), oklch(0.35 0.055 78 / 36%));
 	--ambient-three: light-dark(oklch(0.79 0.045 158 / 35%), oklch(0.33 0.05 158 / 26%));
 	--toggle-on: light-dark(oklch(0.62 0.072 153), oklch(0.63 0.062 153));
-	--toggle-on-border: light-dark(oklch(0.72 0.055 153), oklch(0.43 0.05 152));
 	--toggle-on-text: light-dark(oklch(0.42 0.06 153), oklch(0.92 0.028 155));
 	--toggle-track: light-dark(oklch(0.955 0.018 153), oklch(0.225 0.022 152));
 	font-family: var(--font-control);

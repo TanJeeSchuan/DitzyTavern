@@ -49,21 +49,6 @@
 	transition: background 700ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.workspace[data-ambience="ember"] {
-	--ambient-one: oklch(0.76 0.09 28 / 55%);
-	--ambient-two: oklch(0.81 0.06 64 / 45%);
-}
-
-.workspace[data-ambience="sage"] {
-	--ambient-one: oklch(0.74 0.055 146 / 48%);
-	--ambient-two: oklch(0.78 0.05 82 / 42%);
-}
-
-.workspace[data-ambience="slate"] {
-	--ambient-one: oklch(0.73 0.052 238 / 46%);
-	--ambient-two: oklch(0.78 0.045 38 / 42%);
-}
-
 .navigation-rail,
 .primary-panel,
 .story-stage,
@@ -641,10 +626,8 @@
 	background: var(--surface);
 }
 
-.new-chat-footer .primary-button,
-.character-create-footer .primary-button { width: 100%; }
-.new-chat-footer .panel-note,
-.character-create-footer .panel-note { margin: 0.5rem 0 0; }
+.new-chat-footer .primary-button { width: 100%; }
+.new-chat-footer .panel-note { margin: 0.5rem 0 0; }
 
 .editor-frame {
 	display: flex;
@@ -678,16 +661,6 @@
 
 .field .field-error {
 	color: var(--destructive);
-}
-
-.generation-model-value {
-	margin: 0;
-	padding: 0.55rem 0.7rem;
-	border: 1px solid var(--border);
-	border-radius: 0.75rem;
-	background: var(--surface-muted);
-	color: var(--foreground);
-	font-size: 0.84rem;
 }
 
 .field-input,

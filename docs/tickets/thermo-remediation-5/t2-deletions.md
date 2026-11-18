@@ -43,7 +43,7 @@ Amend ADR 0025 and ADR 0027: they name the developer import as a second path the
 ## TODO
 
 - [x] Slice a, PR
-- [ ] Slice b, PR
+- [x] Slice b, PR
 - [ ] Slice c, PR, with the two ADR amendments
 
 ## Acceptance
@@ -62,4 +62,17 @@ The test snapshot owns the raw Variant and Message data read. Its imports of Con
 - `bun run lint <changed files>` passed with warnings on existing lines.
 - `git diff 0786badc --check` passed.
 
-CI covers typecheck and the full unit suite. Slices b and c are pending. The two existing key-length constants are outside this slice's key-handling scope.
+CI covers typecheck and the full unit suite. The two existing key-length constants are outside this slice's key-handling scope.
+
+### Slice b
+
+Removed unused shadcn components and made the Select scroll buttons and Dialog portal and overlay private to their modules. The Box SDK exports still resolve to their existing components.
+
+Deleted the unreachable rules from report 22 F1, all 33 `dark:` utilities, the custom variant, the sidebar theme bridges, and the two unused tokens. Daylight, evening, and system themes still use `color-scheme` and `light-dark()`.
+
+Removed both lint rules, their plugin and config entries, and the overlong-line rule's test. The coding standard for long lines stays.
+
+- `bun run lint` passed on the changed TypeScript files.
+- `git diff --check` passed.
+
+CI runs typecheck and the full unit suite. Slice c is pending.
