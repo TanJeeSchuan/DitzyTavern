@@ -37,9 +37,9 @@ const merge = (database: Database, conversationId: number, labels: string[], des
 
 /** The Chat's Memory Exports, refusing a Chat that lost them. */
 const exportsOf = (database: Database, conversationId: number) => {
-	const memory = boxExports(database, conversationId).memory;
-	if (memory === undefined) throw new Error("Memory's Exports are missing.");
-	return memory;
+	const { people, claimsAbout } = boxExports(database, conversationId).memory ?? {};
+	if (people === undefined || claimsAbout === undefined) throw new Error("Memory's Exports are missing.");
+	return { people, claimsAbout };
 };
 
 describe("Memory's Exports", () => {

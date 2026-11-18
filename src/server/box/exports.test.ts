@@ -43,9 +43,9 @@ test("a disabled or absent provider is missing from boxExports, and an enabled o
 		const exports = boxExports(database, chat.id);
 		expect(Object.keys(exports).sort()).toEqual(["greeter", "memory"]);
 		expect(exports["author-note"]).toBeUndefined();
-		const greeter = exports.greeter;
-		if (greeter === undefined) throw new Error("The greeter Box's Exports are missing.");
-		expect(greeter.greet({ name: "Ann" })).toEqual({ greeting: "Hello, Ann." });
+		const greet = exports.greeter?.greet;
+		if (greet === undefined) throw new Error("The greeter Box's Export is missing.");
+		expect(greet({ name: "Ann" })).toEqual({ greeting: "Hello, Ann." });
 		setBoxState(database, chat.id, "greeter", "disabled");
 		expect(boxExports(database, chat.id).greeter).toBeUndefined();
 	} finally {
@@ -61,11 +61,11 @@ test("an Export's input and output are checked against its declared schemas, fai
 		await loadBoxes([builtInBoxes, plugins]);
 		const chat = createChat(database);
 		insertBox(database, chat.id, "crooked");
-		const crooked = boxExports(database, chat.id).crooked;
-		if (crooked === undefined) throw new Error("The crooked Box's Exports are missing.");
-		expect(() => crooked.greet(undefined)).toThrow("The crooked Box's greet Export input is invalid at /: Expected object.");
-		expect(() => crooked.greet({ name: 3 })).toThrow("The crooked Box's greet Export input is invalid at /name: Expected string.");
-		expect(() => crooked.greet({ name: "Ann" })).toThrow("The crooked Box's greet Export output is invalid at /greeting: Expected string.");
+		const greet = boxExports(database, chat.id).crooked?.greet;
+		if (greet === undefined) throw new Error("The crooked Box's Export is missing.");
+		expect(() => greet(undefined)).toThrow("The crooked Box's greet Export input is invalid at /: Expected object.");
+		expect(() => greet({ name: 3 })).toThrow("The crooked Box's greet Export input is invalid at /name: Expected string.");
+		expect(() => greet({ name: "Ann" })).toThrow("The crooked Box's greet Export output is invalid at /greeting: Expected string.");
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);
