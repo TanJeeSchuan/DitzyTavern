@@ -1,4 +1,5 @@
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { ConversationPromptPreset, PromptPresetSummary } from "../../shared/contract/prompt-preset";
 import type { ConversationSummary } from "../conversation";
 import { PanelHeader } from "../PanelHeader";
@@ -7,7 +8,7 @@ import { useNavigationRequest, useSaveGuard } from "../SaveGuard";
 import { PromptPresetLibrarySection } from "./prompt-preset/PromptPresetLibrarySection";
 import { PromptPresetRecipeEditor } from "./prompt-preset/PromptPresetRecipeEditor";
 import { PromptPresetImportReviewDialog } from "./prompt-preset/PromptPresetImportReviewDialog";
-import { presetLibraryQuery, presetRecipeQuery, usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
+import { presetLibraryQuery, presetRecipeQuery, presetRecipeScope, usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
 
 type PanelProps = {
 	conversation: ConversationSummary | null;
@@ -48,10 +49,18 @@ type PresetProps = {
 
 function PresetQueries(props: PresetProps) {
 	const { conversation, presetId } = props;
+	const client = useQueryClient();
+	const [notice, setNotice] = useState<string | null>(null);
 	const library = useQuery(presetLibraryQuery);
 	const recipe = useQuery({ ...presetRecipeQuery(conversation.id, conversation.revision, presetId), placeholderData: keepPreviousData });
-	if (library.data !== undefined && recipe.data) {
-		return <PresetEditor key={recipe.data.id} {...props} presets={library.data} preset={recipe.data} recipePending={recipe.isPlaceholderData} />;
+	let preset = recipe.data;
+	if (recipe.isError && preset === undefined) {
+		preset = client.getQueriesData<ConversationPromptPreset | null>({ queryKey: presetRecipeScope(conversation.id, presetId) })
+			.findLast(([, value]) => value !== undefined)?.[1];
+	}
+	if (library.data !== undefined && preset) {
+		return <PresetEditor key={preset.id} {...props} presets={library.data} preset={preset}
+			recipePending={recipe.isPlaceholderData} notice={notice} onNotice={setNotice} />;
 	}
 	if (library.isError || recipe.isError || recipe.data === null) {
 		return <p className="panel-body text-muted-foreground">The Prompt Preset library could not be loaded.</p>;
@@ -70,10 +79,12 @@ function LoadingPresets() {
 	</div>;
 }
 
-function PresetEditor({ mutationsDisabled, presets, ...props }: PresetProps & {
+function PresetEditor({ mutationsDisabled, presets, notice, ...props }: PresetProps & {
 	presets: PromptPresetSummary[];
 	preset: ConversationPromptPreset;
 	recipePending: boolean;
+	notice: string | null;
+	onNotice: (notice: string | null) => void;
 }) {
 	const editor = usePromptPresetEditor(props);
 	const navigate = useNavigationRequest();
@@ -89,7 +100,7 @@ function PresetEditor({ mutationsDisabled, presets, ...props }: PresetProps & {
 					selectedId={props.preset.id}
 					pending={pending}
 					problem={editor.problem}
-					notice={editor.notice}
+					notice={notice}
 					onSelect={(id) => navigate(() => void editor.applySelection(id))}
 					onCommand={(command, successNotice) => void editor.runPresetCommand(command, successNotice)}
 					onImportFile={(file) => void editor.importPresetFile(file)}
@@ -106,7 +117,7 @@ function PresetEditor({ mutationsDisabled, presets, ...props }: PresetProps & {
 					onDraftCancel={editor.clearDraft}
 					onOperation={editor.runRecipeOperation}
 				/>
-				{editor.notice !== null && <p className="text-sm text-muted-foreground" role="status">{editor.notice}</p>}
+				{notice !== null && <p className="text-sm text-muted-foreground" role="status">{notice}</p>}
 			</div>
 			<SaveFooter dirty={editor.dirty} saving={busy} valid={!props.recipePending} error={editor.problem} onSave={() => void editor.save()} />
 			<PromptPresetImportReviewDialog

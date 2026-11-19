@@ -1,14 +1,13 @@
 import { MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
 import { useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { charactersQuery } from "./character-library";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { ConversationSummary } from "./conversation";
 import { formatListTime, recencyGroup } from "./lib/format";
 import { Portrait } from "./story/Portrait";
-import { deleteChat, renameChat, workspaceQuery, type ChatSummary } from "./workspace";
+import { deleteChat, invalidateChatLists, renameChat, workspaceQuery, type ChatSummary } from "./workspace";
 
 export function ChatsPanel({
 	activeId,
@@ -60,8 +59,7 @@ export function ChatsPanel({
 		setDeleteTarget(null);
 		if (failure !== null) return setNotice(failure);
 		setNotice(null);
-		void client.invalidateQueries({ queryKey: workspaceQuery.queryKey });
-		void client.invalidateQueries({ queryKey: charactersQuery.queryKey });
+		invalidateChatLists(client);
 		if (chat.id === activeId) onActiveChatDeleted();
 	};
 

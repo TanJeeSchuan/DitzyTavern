@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { workspaceQuery } from "./workspace";
+import { invalidateChatLists } from "./workspace";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Plus } from "lucide-react";
 import { useState } from "react";
@@ -207,8 +207,7 @@ export function NewChatPanel({
 			});
 			switch (outcome.outcome) {
 				case "available":
-					void client.invalidateQueries({ queryKey: workspaceQuery.queryKey });
-					void client.invalidateQueries({ queryKey: charactersQuery.queryKey });
+					invalidateChatLists(client);
 					onCreated(outcome.value.conversation.id);
 					break;
 				case "conflict":

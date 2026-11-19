@@ -1,5 +1,5 @@
 import { MoreHorizontal, Pin, Plus, Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -47,7 +47,7 @@ export function CharacterEditor({
 	}, [characterId]);
 
 	/** @approved Runs one Character command; resolves the Character it left, or the one it lost to. */
-	const run = useCallback(async (action: NonNullable<typeof pendingAction>, command: CharacterCommand): Promise<{ applied: CharacterSnapshot } | { conflict: CharacterSnapshot } | null> => {
+	const run = async (action: NonNullable<typeof pendingAction>, command: CharacterCommand): Promise<{ applied: CharacterSnapshot } | { conflict: CharacterSnapshot } | null> => {
 		setPendingAction(action);
 		const report = action === "lore" ? () => {} : setNotice;
 		try {
@@ -86,7 +86,7 @@ export function CharacterEditor({
 		} finally {
 			setPendingAction(null);
 		}
-	}, [applyCommand, onClosed]);
+	};
 
 	const revisioned = (character: CharacterSnapshot) => ({ value: definitionOf(character), revision: character.revision });
 	const editor = useRevisionedDraft(snapshot === null ? null : revisioned(snapshot), {

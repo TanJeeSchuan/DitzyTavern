@@ -36,6 +36,7 @@ export function ChatInformationPanel({
 		queryKey: ["import-details", conversationId],
 		queryFn: async ({ signal }) => foundOrNull(await loadImportDetails(conversationId, signal)),
 		retry: false,
+		gcTime: 0,
 		refetchOnReconnect: false,
 		refetchOnWindowFocus: false,
 	});

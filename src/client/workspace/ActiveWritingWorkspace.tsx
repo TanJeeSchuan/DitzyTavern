@@ -26,8 +26,7 @@ import {
 	previewNavigationNeedsConfirmation,
 	reduceStory,
 } from "../story";
-import { workspaceQuery, type ThemePreference } from "../workspace";
-import { charactersQuery } from "../character-library";
+import { invalidateChatLists, type ThemePreference } from "../workspace";
 import type { PrimaryPanelName } from "./types";
 import { NavigationDrawer, NavigationRail } from "./NavigationRail";
 import { NewChatSurface } from "./NewChatSurface";
@@ -200,8 +199,7 @@ export function ActiveWritingWorkspace({
 			const result = await forkConversation(conversation.id, { expectedRevision: revision, at: forkAt, name, trimVariants });
 			return result.outcome === "available" ? { outcome: "operation", operation: result.value } : result;
 		}, { onOperation: (result) => {
-			void client.invalidateQueries({ queryKey: workspaceQuery.queryKey });
-			void client.invalidateQueries({ queryKey: charactersQuery.queryKey });
+			invalidateChatLists(client);
 			openChat(String(result.conversation.id));
 			if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
 			setForkNotice(result.omittedBoxes.length ? `Boxes not copied because they are not installed: ${result.omittedBoxes.join(", ")}.` : null);

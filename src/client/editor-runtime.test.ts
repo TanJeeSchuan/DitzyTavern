@@ -1,6 +1,6 @@
 import { conversationSummary, installFetch } from "./test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
-import { QueryClient } from "@tanstack/react-query";
+import { QueryClient, useQuery } from "@tanstack/react-query";
 import { renderHook, flushHook } from "./test-fixtures/render-hook";
 import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
 import type { Lorebook } from "./lorebook-library";
@@ -189,7 +189,7 @@ test("Lorebook save-and-leave preserves a replacement leave intent and does not 
 	expect(confirmation().props.open).toBe(true);
 });
 
-const { usePromptPresetEditor } = await import("./workspace/prompt-preset/usePromptPresetEditor");
+const { presetRecipeQuery, usePromptPresetEditor } = await import("./workspace/prompt-preset/usePromptPresetEditor");
 const preset = {
 	id: 1,
 	name: "Story preset",
@@ -201,7 +201,7 @@ test("a Prompt Preset save blocks another operation until its refresh settles", 
 	const requests = install(({ init }) => init?.method === "POST"
 		? Promise.resolve(Response.json({ outcome: "applied" })) : refresh.promise);
 	const hook = await renderHook(() => usePromptPresetEditor({
-		conversation: conversationSummary(), preset, presetId: undefined, recipePending: false, onConversationChange() {},
+		conversation: conversationSummary(), preset, presetId: undefined, recipePending: false, onConversationChange() {}, onNotice() {},
 	}), client());
 	await hook.act(async () => {
 		hook.current.setDraft(7, { kind: "content", content: "Submitted", role: "system" });
@@ -228,7 +228,7 @@ test("a response from a Prompt Preset editor that was left cannot publish a Conv
 	const adopted: number[] = [];
 	const hook = await renderHook(() => usePromptPresetEditor({
 		conversation: conversationSummary(), preset, presetId: undefined, recipePending: false,
-		onConversationChange: (conversation) => { adopted.push(conversation.revision); },
+		onConversationChange: (conversation) => { adopted.push(conversation.revision); }, onNotice() {},
 	}), client());
 
 	let selection: Promise<unknown> = Promise.resolve();
@@ -238,4 +238,21 @@ test("a response from a Prompt Preset editor that was left cannot publish a Conv
 	pending.resolve(Response.json({ outcome: "applied", conversation: conversationSummary({ revision: 8 }) }));
 	await selection;
 	expect(adopted).toEqual([]);
+});
+
+test("a late recipe read leaves the newly opened preset intact", async () => {
+	const late = Promise.withResolvers<Response>();
+	const requests = install(({ url }) => new URL(url).searchParams.get("presetId") === "1"
+		? late.promise : Promise.resolve(Response.json({ id: 2, name: "Paint preset", slots: [] })));
+	let presetId = 1;
+	const hook = await renderHook(() => useQuery(presetRecipeQuery(1, 7, presetId)), client());
+	await flushHook();
+	expect(requests).toHaveLength(1);
+
+	presetId = 2;
+	await hook.rerender();
+	await flushHook();
+	await hook.act(async () => { late.resolve(Response.json(preset)); });
+
+	expect(hook.current.data?.name).toBe("Paint preset");
 });

@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { charactersQuery } from "./character-library";
-import { workspaceQuery } from "./workspace";
+import { invalidateChatLists } from "./workspace";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ShieldAlert, X } from "lucide-react";
 import { useRef } from "react";
@@ -140,8 +140,7 @@ export function ImportChatPanel({
 			participants: buildResolvedParticipants(flow),
 		});
 		if (outcome.outcome === "available") {
-			void client.invalidateQueries({ queryKey: workspaceQuery.queryKey });
-			void client.invalidateQueries({ queryKey: charactersQuery.queryKey });
+			invalidateChatLists(client);
 			if (!signal.aborted) onDispatch({ type: "commit-succeeded", receipt: outcome.value.receipt });
 			return;
 		}

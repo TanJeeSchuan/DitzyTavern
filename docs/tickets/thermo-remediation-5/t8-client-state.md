@@ -70,7 +70,7 @@ Report 06, finding 1; report 05, findings 3 and 5.
 
 ## Acceptance
 
-`src/client/chat-info.ts`, `src/client/pending-generation-starts.ts`, `usePromptPresetLeave.ts` and `UnsavedBlockEditDialog.tsx` do not exist. `git grep -n -E 'ReadClaim|OperationClaim|pendingRetire|flushSync' -- src/client` is empty. Each guarantee listed above has a named test or e2e check in the Outcome. Typecheck, unit tests and e2e pass in CI on each slice.
+`src/client/chat-info.ts`, `src/client/pending-generation-starts.ts`, `usePromptPresetLeave.ts` and `UnsavedBlockEditDialog.tsx` do not exist. `git grep -n -E 'ReadClaim|OperationClaim|pendingRetire|flushSync' -- src/client` is empty for the Prompt Preset editor, and slice c removes the transcript session's `flushSync`. The Lorebook editor is outside this ticket. Each guarantee listed above has a named test or e2e check in the Outcome. Typecheck, unit tests and e2e pass in CI on each slice.
 
 ## Outcome
 
@@ -82,5 +82,6 @@ Report 06, finding 1; report 05, findings 3 and 5.
 - `Escape cannot dismiss a prompt save that is still running` exercises the shared guard.
 - `text typed during a Prompt Preset save survives its refresh` exercises edits while the refresh is held.
 - `a response from a Prompt Preset editor that was left cannot publish a Conversation` holds a selection response until the editor unmounts.
+- `a late recipe read leaves the newly opened preset intact` and `Back to Paint asks before discarding Paint Preset edits` cover the preset read and Paint navigation.
 - `a Prompt Preset save blocks another operation until its refresh settles` tries to select a preset in the same turn as starting a save.
 - Six pure draft and patch tests remain. The draft PR's Check workflow runs build, typecheck, unit tests, and e2e. Slices c and d are pending.

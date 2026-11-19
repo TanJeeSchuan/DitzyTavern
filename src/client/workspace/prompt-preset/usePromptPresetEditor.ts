@@ -2,7 +2,7 @@ import { queryOptions, useQueryClient } from "@tanstack/react-query";
 import { useRef, useState } from "react";
 import { loadConversationPromptPreset, type ConversationSummary } from "../../conversation";
 import { runConversationCommand } from "../../conversation-command-runner";
-import { conversationKey } from "../../conversation-query";
+import { cancellableFetch, conversationKey } from "../../conversation-query";
 import { useVisitSignal } from "../../lib/visit";
 import {
 	listPromptPresets,
@@ -14,26 +14,19 @@ import type { ConversationPromptPreset } from "../../../shared/contract/prompt-p
 import { usePromptPresetLibrary } from "./usePromptPresetLibrary";
 
 const recipeKey = ["prompt-preset-editor"] as const;
+export const presetRecipeScope = (conversationId: number, presetId: number | undefined) => [...recipeKey, conversationId, presetId] as const;
 
 export const presetLibraryQuery = queryOptions({
 	queryKey: ["prompt-presets"],
 	staleTime: Infinity,
-	queryFn: async ({ signal }) => {
-		await Promise.resolve();
-		signal.throwIfAborted();
-		return listPromptPresets(signal);
-	},
+	queryFn: ({ signal }) => cancellableFetch(signal, undefined, listPromptPresets),
 });
 
 export const presetRecipeQuery = (conversationId: number, revision: number, presetId: number | undefined) => queryOptions({
-	queryKey: [...recipeKey, conversationId, presetId, revision],
+	queryKey: [...presetRecipeScope(conversationId, presetId), revision],
 	staleTime: Infinity,
 	refetchOnReconnect: false,
-	queryFn: async ({ signal }) => {
-		await Promise.resolve();
-		signal.throwIfAborted();
-		return loadConversationPromptPreset(conversationId, signal, presetId);
-	},
+	queryFn: ({ signal }) => cancellableFetch(signal, undefined, (cancellation) => loadConversationPromptPreset(conversationId, cancellation, presetId)),
 });
 
 const operationProblem = (outcome: Exclude<PromptPresetOperationOutcome, { outcome: "available" }>, message: string) =>
@@ -47,12 +40,14 @@ export function usePromptPresetEditor({
 	presetId,
 	recipePending,
 	onConversationChange,
+	onNotice,
 }: {
 	conversation: ConversationSummary;
 	preset: ConversationPromptPreset;
 	presetId: number | undefined;
 	recipePending: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
+	onNotice: (notice: string | null) => void;
 }) {
 	const client = useQueryClient();
 	const signal = useVisitSignal();
@@ -65,7 +60,7 @@ export function usePromptPresetEditor({
 	const [busy, setBusy] = useState<"save" | "change" | null>(null);
 	const inFlight = useRef(false);
 	const [problem, setProblem] = useState<string | null>(null);
-	const [notice, setNotice] = useState<string | null>(null);
+	const setNotice = (notice: string | null) => { if (!signal.aborted) onNotice(notice); };
 	const dirty = preset.slots.some((slot) => {
 		const draft = drafts[slot.id];
 		return draft !== undefined && draftIsDirty(slot, draft);
@@ -169,7 +164,6 @@ export function usePromptPresetEditor({
 		dirty,
 		busy,
 		problem,
-		notice,
 		save,
 		discard: () => replaceDrafts({}),
 		setDraft: (blockId: number, draft: BlockDraft) => {

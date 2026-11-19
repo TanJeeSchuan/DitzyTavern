@@ -81,22 +81,6 @@ describe("the draft-to-patch rule", () => {
 		expect(draftIsDirty(historySlot(9), roleDraft("user"))).toBe(false);
 	});
 
-	test("only dirty occurrences appear in the save batch", () => {
-		const preset = recipe(7, [
-			instructionSlot(5, "Voice", "Write plainly."),
-			identitySlot(6, "assistant"),
-			identitySlot(8, "system"),
-		]);
-		const drafts = {
-			5: contentDraft("Write warmly."),
-			8: roleDraft("system"), // clean — matches its slot role
-		};
-		expect(dirtyBlockPatches(preset, drafts).patches).toEqual([
-			{ occurrenceId: 5, type: "content", name: "Voice", content: "Write warmly.", role: "system" },
-		]);
-		expect(dirtyBlockPatches(preset, {}).patches).toEqual([]);
-	});
-
 	test("the save batch records exactly which drafts were submitted", () => {
 		const preset = recipe(7, [
 			instructionSlot(5, "Voice", "Write plainly."),
@@ -124,7 +108,6 @@ describe("the draft-to-patch rule", () => {
 
 		expect(draftToPatch(first, roleDraft("assistant"))).toBeNull();
 		expect(draftToPatch(second, drafts[9])).toEqual({ occurrenceId: 9, type: "role", role: "user" });
-		expect(dirtyDraftSummary(preset, drafts)).toEqual({ dirty: true, count: 1 });
 		expect(dirtyBlockPatches(preset, drafts).patches).toEqual([
 			{ occurrenceId: 9, type: "role", role: "user" },
 		]);

@@ -1,4 +1,5 @@
 import { queryOptions, type QueryClient } from "@tanstack/react-query";
+import { charactersQuery } from "./character-library";
 import { applyConversationCommand, type ConversationSummary } from "./conversation";
 import { api } from "./lib/eden";
 import { requestData } from "./lib/request-outcome";
@@ -46,6 +47,11 @@ const fetchWorkspace = async ({ signal }: { signal: AbortSignal }) => {
 };
 
 export const workspaceQuery = queryOptions({ queryKey: ["workspace"], queryFn: fetchWorkspace });
+
+export function invalidateChatLists(client: QueryClient) {
+	void client.invalidateQueries({ queryKey: workspaceQuery.queryKey });
+	void client.invalidateQueries({ queryKey: charactersQuery.queryKey });
+}
 
 export async function deleteChat(chatId: string): Promise<string | null> {
 	const { error } = await api.api.conversations({ id: Number(chatId) }).delete();
