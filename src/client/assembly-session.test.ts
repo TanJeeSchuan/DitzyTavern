@@ -82,7 +82,7 @@ describe("assembly session", () => {
 		const h = await assemblyHarness(async () => Response.json(preview()));
 		h.options.ensureLatest = () => latest.promise;
 		await h.hook.rerender();
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Keep reading" }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "Keep reading" } }));
 		expect(h.hook.current.assembly).toBeNull();
 		expect(h.hook.current.inspectionLocked).toBe(true);
 		await h.hook.act(async () => latest.resolve(conversation()));

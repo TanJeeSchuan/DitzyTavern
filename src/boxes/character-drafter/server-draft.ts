@@ -12,7 +12,7 @@ import type { CharacterDraft, DraftCast, DraftMessages, DraftRequest, DrafterRea
 
 /** @approved The Selected narrative path as the agent reads it, a settled Variant per Message. */
 const readDraftMessages = (database: Database, conversationId: number): DraftMessages =>
-	readChatVariants(database, conversationId, { selectedOrVariantIds: [] })
+	readChatVariants(database, conversationId).filter(({ selected }) => selected)
 		.map(({ messageId, speaker, authorParticipantId, content }, index) => ({ id: messageId, index, author: speaker, authorParticipantId, text: content }));
 
 const readDraftCast = (database: Database, conversationId: number, messages: DraftMessages): DraftCast =>

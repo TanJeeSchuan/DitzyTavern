@@ -18,7 +18,7 @@ import { readMemoryEmbedding } from "./server-settings";
 //  disagree about what Memory knows.
 export const readMemorySources = (database: Database, conversationId: number, state: MemoryLabelState, scope: "selected" | "all") => {
 	const db = drizzle(database);
-	const variants = readChatVariants(database, conversationId, scope === "selected" ? { selectedOrVariantIds: [] } : {});
+	const variants = readChatVariants(database, conversationId).filter(({ selected }) => scope === "all" || selected);
 	const sources = variants.filter(({ authorParticipantId, selected, content }) => !isExcludedAuthor(state, authorParticipantId) && (!selected || content.trim() !== ""));
 	const variantIds = (scope === "selected" ? sources : variants).map(({ variantId }) => variantId);
 	const slots = readRecordSlots(db, "memory", memoryRecord, readBoxLifecycles(db, conversationId).memory?.instance, variantIds);
