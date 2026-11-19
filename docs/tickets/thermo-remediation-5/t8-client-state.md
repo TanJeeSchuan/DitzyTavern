@@ -84,4 +84,4 @@ Report 06, finding 1; report 05, findings 3 and 5.
 - `a response from a Prompt Preset editor that was left cannot publish a Conversation` holds a selection response until the editor unmounts.
 - `a late recipe read leaves the newly opened preset intact` and `Back to Paint asks before discarding Paint Preset edits` cover the preset read and Paint navigation.
 - `a Prompt Preset save blocks another operation until its refresh settles` tries to select a preset in the same turn as starting a save.
-- Six pure draft and patch tests remain. The draft PR's Check workflow runs build, typecheck, unit tests, and e2e. Slices c and d are pending.
+- Six pure draft and patch tests remain. Changed-file lint and `git diff --check` passed. The seeded browser check exercised the Chat and Character lists, source download and cleanup, Prompt Preset save-and-leave, and Paint Preset discard. The draft PR runs the Check workflow. Slices c and d are pending.
