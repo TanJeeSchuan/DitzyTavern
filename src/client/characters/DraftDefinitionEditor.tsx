@@ -81,6 +81,7 @@ export function DraftDefinitionEditor({ conversation, request, onConversationCha
 		<DefinitionEditor
 			draft={draft}
 			onDraftChange={setDraft}
+			locked={pending}
 			subtitle={replaced === undefined ? "Draft · Not kept until you choose" : `Draft of ${replaced.duplicateLabel} · Not kept until you choose`}
 			onBack={onBack}
 			banner={conflict && replaced !== undefined && <ConflictBanner

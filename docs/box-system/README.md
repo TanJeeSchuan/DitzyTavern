@@ -1,6 +1,6 @@
 # Box system
 
-A **Box** is a story feature in its own folder, with its own state and a fixed set of optional hooks. It turns its state into prompt items through its own Prompt Preset block. It may also resolve Moves the human attached to a Message, read settled prose in the background, and render a floating window that minimizes to a dock. The host stores, orders and routes Box data and never interprets it. [ADR-0050](../adr/0050-build-story-features-as-boxes.md) records why Boxes exist and which designs were rejected.
+A **Box** is a story feature in its own folder, with its own state and a fixed set of optional hooks. It may turn its state into prompt items through its own Prompt Preset block. It may also resolve Moves the human attached to a Message, read settled prose in the background, and render a floating window that minimizes to a dock. The host stores, orders and routes Box data and never interprets it. [ADR-0050](../adr/0050-build-story-features-as-boxes.md) records why Boxes exist and which designs were rejected.
 
 ## The contract
 
@@ -15,6 +15,7 @@ export default {
   summary: "…",                                      // one plain sentence saying what the Box does, shown in the Box manager
   role: "system",                                    // the preset block's role until an author changes it
   startsEnabled: false,                              // whether a new Chat starts with the Box enabled
+  prompt: false,                                     // optional: omit its Prompt Preset block, Generation capture and preview fingerprint entry
   instructions: "…",                                 // the text a new preset block starts with; "" for none
   alwaysRender: true,                                // optional: render the block even when `advance` returns no items
   block: { description, source },                    // optional: the preset editor's copy for the block, in place of the generic copy

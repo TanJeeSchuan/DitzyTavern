@@ -29,7 +29,7 @@ const addableReferences = (): PromptBlockReference[] => [
 	"cast-appearance",
 	"lore",
 	"brief-instruction",
-	...[...installedBoxes().keys()].map(boxReference),
+	...[...installedBoxes().values()].flatMap(({ metadata }) => metadata.prompt === false ? [] : [boxReference(metadata.id)]),
 ];
 
 const AddBlockMenu = ({

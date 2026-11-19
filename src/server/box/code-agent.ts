@@ -5,7 +5,7 @@ import { Value } from "@sinclair/typebox/value";
 import { createFxAgent, memory } from "libfx/node";
 import type { QuickJSHandle } from "quickjs-emscripten-core";
 import { DEFAULT_BOX_DELEGATE, type BoxId } from "../../shared/contract/box";
-import { codeAgentRunInput, codeAgentSubmitInput } from "../../shared/contract/box-descriptor";
+import { codeAgentRunInput, codeAgentSubmitInput, type CodeAgentActivity } from "../../shared/contract/code-agent";
 import { sandboxedFailure, type SandboxedFailure } from "../../shared/contract/box-sandboxed";
 import type { GenerationJsonValue } from "../../shared/generation-json";
 import { resolveBoxDelegate } from "./delegate-settings";
@@ -31,8 +31,6 @@ export type CodeAgentFunction = (input: GenerationJsonValue | undefined) => Code
 export type CodeAgentValue = null | boolean | number | string | readonly CodeAgentValue[] | { readonly [key: string]: CodeAgentValue } | CodeAgentFunction;
 /** @approved One global the agent explores: a sentence about it, its TypeBox schema and its frozen value. */
 export type CodeAgentGlobal = { readonly description: string; readonly schema: TSchema; readonly value: CodeAgentValue };
-/** @approved One `run` the agent made, as the writer watches it: a one-line summary of the code, the code and what it returned. */
-export type CodeAgentActivity = { readonly summary: string; readonly code: string; readonly output: string };
 /** @approved What one `run` call answered: its reply to the model, and the failure that ends the run when the guest hit a limit. */
 type CodeAgentRun = { readonly output: string; readonly failure?: Error };
 
@@ -86,7 +84,7 @@ const declarationOf = (schema: TSchema): string => {
 		const grouped = TypeGuard.IsUnion(schema.items) || TypeGuard.IsIntersect(schema.items) || TypeGuard.IsFunction(schema.items);
 		return `${grouped ? `(${element})` : element}[]`;
 	}
-	if (TypeGuard.IsTuple(schema)) return `[${schema.items.map(declarationOf).join(", ")}]`;
+	if (TypeGuard.IsTuple(schema)) return `[${(schema.items ?? []).map(declarationOf).join(", ")}]`;
 	if (TypeGuard.IsRecord(schema)) {
 		const [recorded] = Object.values(schema.patternProperties);
 		return `{ [key: string]: ${recorded === undefined ? "unknown" : declarationOf(recorded)} }`;
@@ -121,6 +119,7 @@ const declarations = (globals: Readonly<Record<string, CodeAgentGlobal>>) => [
 const prelude = `(() => {
 	let output = "";
 	const limit = ${CODE_AGENT_OUTPUT_BYTES};
+	const stringify = JSON.stringify;
 	const show = (value) => {
 		try {
 			const shown = typeof value === "string" ? value : JSON.stringify(value) ?? String(value);
@@ -132,7 +131,7 @@ const prelude = `(() => {
 		const line = (values.length === 0 ? ["undefined"] : values).map(show).join(" ");
 		output += (output === "" ? "" : "\\n") + line.slice(0, limit - output.length);
 	} };
-	return { take: () => { const text = output; output = ""; return text; } };
+	return { take: () => { const text = output; output = ""; return stringify(text); } };
 })()`;
 
 // @approved
@@ -144,6 +143,7 @@ const prelude = `(() => {
 // an injected global deeply, in place. The whole block is one expression,
 // so nothing it defines leaks into the guest's global scope.
 const helpers = `(() => {
+	const defineProperty = Object.defineProperty;
 	const survives = (left, right) => {
 		if (left === right) return true;
 		if (left === null || right === null || typeof left !== "object" || typeof right !== "object" || Array.isArray(left) !== Array.isArray(right)) return false;
@@ -155,6 +155,8 @@ const helpers = `(() => {
 		return true;
 	};
 	return {
+		define: (object, key, value) => { defineProperty(object, key, { value, enumerable: true, writable: true, configurable: true }); },
+		parse: JSON.parse,
 		show: (value, limit) => {
 			if (value === undefined) return "undefined";
 			let shown;
@@ -222,6 +224,12 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 		if (result.error !== undefined) throw failed(failureOf(result.error));
 		return result.value!; // @approved A call result holds a value exactly when it holds no error.
 	};
+	/** @approved The binding's C strings truncate NUL and UTF-8 cannot carry lone surrogates. */
+	const stringHandle = (value: string): QuickJSHandle => {
+		if (!value.includes("\u0000") && value.isWellFormed()) return vm.newString(value);
+		using encoded = vm.newString(JSON.stringify(value));
+		return call(parse, encoded);
+	};
 	// @approved
 	//  One global's value as guest handles: JSON leaves become guest values,
 	// and a function leaf becomes a host function the guest calls with JSON it
@@ -245,7 +253,7 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 		});
 		if (value === null) return vm.null;
 		if (isNumber(value)) return vm.newNumber(value);
-		if (isText(value)) return vm.newString(value);
+		if (isText(value)) return stringHandle(value);
 		if (Array.isArray(value)) {
 			const array = vm.newArray();
 			for (const [index, item] of value.entries()) {
@@ -258,9 +266,9 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 		if (value === true || value === false) return value ? vm.true : vm.false;
 		const object = vm.newObject();
 		for (const [key, item] of Object.entries(value)) {
-			const handle = build(item, `${name}.${key}`);
-			vm.setProp(object, key, handle);
-			handle.dispose();
+			using property = stringHandle(key);
+			using handle = build(item, `${name}.${key}`);
+			call(define, object, property, handle).dispose();
 		}
 		return object;
 	};
@@ -274,7 +282,7 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 	const readLogs = (): string => {
 		enter();
 		const logs = call(take);
-		const text = vm.getString(logs);
+		const text: string = JSON.parse(vm.getString(logs));
 		logs.dispose();
 		return text;
 	};
@@ -314,6 +322,8 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 	let limit: QuickJSHandle;
 	let json: QuickJSHandle;
 	let take: QuickJSHandle;
+	let define: QuickJSHandle;
+	let parse: QuickJSHandle;
 	try {
 		evaluate(determinism, "determinism.js").dispose();
 		const bridge = evaluate(prelude, "prelude.js");
@@ -323,20 +333,22 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 		const helperObject = evaluate(helpers, "helpers.js");
 		show = vm.getProp(helperObject, "show");
 		json = vm.getProp(helperObject, "json");
+		define = vm.getProp(helperObject, "define");
+		parse = vm.getProp(helperObject, "parse");
 		const freeze = vm.getProp(helperObject, "freeze");
 		helperObject.dispose();
-		kept.push(show, json, freeze);
+		kept.push(show, json, define, parse, freeze);
 		limit = vm.newNumber(CODE_AGENT_OUTPUT_BYTES);
 		kept.push(limit);
 		for (const [name, global] of Object.entries(globals)) {
-			const handle = build(global.value, name);
+			using property = stringHandle(name);
+			using handle = build(global.value, name);
 			const frozen = call(freeze, handle);
 			frozen.dispose();
 			// @approved
 			//  The name is defined, not set: the agent cannot write over or
 			//  delete its own globals, though the values were already frozen.
-			vm.defineProp(vm.global, name, { value: handle, configurable: false, enumerable: true });
-			handle.dispose();
+			vm.defineProp(vm.global, property, { value: handle, configurable: false, enumerable: true });
 		}
 	} catch (error) {
 		dispose();
@@ -369,7 +381,8 @@ export const codeAgentUnavailable = (database: Database): string | undefined => 
 // can pass: a run that failed fails, whatever its last tool call returned.
 // The run's signal cancels the turn and its fetches, and a run that ends,
 // fails or is cancelled leaves no QuickJS context behind.
-export const runCodeAgent = async <Draft extends TSchema>(database: Database, { boxId, instructions, globals, submitSchema, verify, signal, onActivity }: CodeAgentCall<Draft>): Promise<Static<Draft>> => {
+export const runCodeAgent = async <Draft extends TSchema>(database: Database, request: CodeAgentCall<Draft>): Promise<Static<Draft>> => {
+	const { boxId, instructions, globals, submitSchema, verify, signal, onActivity } = request;
 	const setting = agentModel(database);
 	if (setting.kind !== "ready") throw new Error(unavailableReason(setting));
 	signal.throwIfAborted();

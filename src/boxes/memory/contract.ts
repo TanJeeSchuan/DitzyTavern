@@ -187,9 +187,10 @@ export type MemoryRecallCandidateRecord = Static<typeof memoryRecallCandidate>;
 // view links only to those. Each list is comma-separated ids.
 const idList = Type.String({ pattern: "^(\\d+(,\\d+)*)?$" });
 export const memorySourcesQuery = Type.Object({ messageIds: idList, variantIds: idList });
+const publicClaim = Type.Pick(memoryCandidate, ["claim", "attribution", "people", "evidence"]);
 export const memorySources = Type.Object({
 	messageIds: Type.Array(Type.Integer()), variantIds: Type.Array(Type.Integer()),
-	records: Type.Array(Type.Object({ variantId: VariantId, fingerprint: Type.String(), claims: Type.Array(Type.Pick(memoryCandidate, ["claim", "attribution", "people", "evidence"])) })),
+	records: Type.Array(Type.Object({ variantId: VariantId, fingerprint: Type.String(), claims: Type.Array(publicClaim) })),
 });
 export type MemorySources = Static<typeof memorySources>;
 
@@ -199,10 +200,9 @@ export type MemorySources = Static<typeof memorySources>;
 // narrative path, resolved under the Chat's Cast labels exactly as the
 // Memories panel resolves them: identities and label merges apply to the
 // answer, never to stored records. `people` takes no input, so its input
-// schema is `undefined` itself; `claimsAbout` asks for one person label.
-export const memoryPeopleInput = Type.Undefined();
+// schema is `undefined` itself, as is the input for `selectedClaims`.
+export const memoryExportInput = Type.Undefined();
 export const memoryPeople = Type.Array(Type.String());
 export type MemoryPeople = Static<typeof memoryPeople>;
-export const memoryClaimsAboutInput = Type.Object({ label: Type.String() });
-export const memoryClaimsAbout = Type.Array(Type.Object({ messageId: MessageId, ...Type.Pick(memoryCandidate, ["claim", "attribution", "people", "evidence"]).properties }));
-export type MemoryClaimsAbout = Static<typeof memoryClaimsAbout>;
+export const memorySelectedClaims = Type.Array(Type.Object({ messageId: MessageId, ...publicClaim.properties }));
+export type MemorySelectedClaims = Static<typeof memorySelectedClaims>;

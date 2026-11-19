@@ -22,7 +22,8 @@ const schema = Type.Unsafe<TSchema>({ [Kind]: "BoxSchema" });
 // shows for it everywhere, and `summary` is one plain sentence saying what
 // the Box does, which the Box manager keeps even when the Box's client
 // module did not load. `role` is the role its block starts with, and
-// `startsEnabled` whether a new Chat starts with it enabled. `instructions`
+// `startsEnabled` whether a new Chat starts with it enabled. `prompt: false`
+// opts out of preset blocks and Generation capture. `instructions`
 // is the text a new block starts with, after which it belongs to the preset;
 // the block renders it before the Box's items, and renders nothing without
 // items unless the Box declares `alwaysRender`. `block` is how the preset
@@ -195,7 +196,3 @@ export const describeMoves = <Schema extends TSchema>(schema: Schema, max: numbe
 
 /** @approved What a delegate's `apply` tool takes: one batch of the Box's declared operations, which the host checks before anything is applied. */
 export const delegateApplyInput = (operations: TSchema) => Type.Object({ operations: Type.Unsafe<readonly BoxValue[]>(operations) }, { additionalProperties: false });
-/** @approved What the code agent's `run` tool takes: one piece of JavaScript. */
-export const codeAgentRunInput = Type.Object({ code: Type.String() }, { additionalProperties: false });
-/** @approved What the code agent's `submit` tool takes: the draft, checked against the schema its caller declared. */
-export const codeAgentSubmitInput = <Draft extends TSchema>(draft: Draft) => Type.Object({ draft: Type.Unsafe<Static<Draft>>(draft) }, { additionalProperties: false });

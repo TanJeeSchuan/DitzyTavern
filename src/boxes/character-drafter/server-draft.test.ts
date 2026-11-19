@@ -5,7 +5,9 @@ import { boxDescriptor, DEFAULT_BOX_DELEGATE } from "../../shared/contract/box";
 import { emptyPromptChannels } from "../../shared/definition";
 import { initializeConnectionSecretKey } from "../../server/connection-secrets";
 import { createConnectionSettingsModule } from "../../server/connection-settings";
-import { createChat, key, profile } from "../../server/contract/prompt-preset-test-fixtures";
+import { key, profile } from "../../server/contract/prompt-preset-test-fixtures";
+import { createConversationWithHistory } from "../../server/test-fixtures/conversation";
+import { formatImageReference } from "../../shared/image-reference";
 import { openInitializedDatabase } from "../../server/database/database";
 import { messageTable, messageVariantTable } from "../../server/database/schema";
 import { boxExports } from "../../server/box/exports";
@@ -19,7 +21,7 @@ import { draftPerson, draftRefusal } from "./server-draft";
 const messages: DraftMessages = [
 	{ id: 7, index: 0, author: "Maren", authorParticipantId: 1, text: "Maren pours. \"Another round, then.\"" },
 	{ id: 9, index: 1, author: "Bob", authorParticipantId: 2, text: "\"Mind the glass,\" Bob says. \"It was my mother's.\"" },
-	{ id: 11, index: 2, author: "Bob", authorParticipantId: 2, text: "Bob nods. <thought>I broke it myself.</thought> \"It held up.\" <thought>unfinished" },
+	{ id: 11, index: 2, author: "Bob", authorParticipantId: 2, text: "Bob nods. <thought >I broke it myself.</thought> \"It held up.\" <thought>unfinished" },
 ];
 const draft = (quotes: CharacterDraft["quotes"], exampleDialogue: string): CharacterDraft =>
 	({ name: "Bartholomew Crane", prompt: { ...emptyPromptChannels(), exampleDialogue }, quotes });
@@ -47,8 +49,15 @@ test("an example dialogue line that is not one of the quotes is refused", () => 
 });
 
 test("a quote from inside a thought is refused, and one beside a thought or after an unclosed one is not", () => {
-	expect(draftRefusal(messages, draft([{ messageId: 11, text: "I broke it myself." }], ""))).toBe("The quote \"I broke it myself.\" is inside a <thought> in Message 11; a thought is never said aloud.");
+	const refusal = draftRefusal(messages, draft([{ messageId: 11, text: "I broke it myself." }], ""));
+	expect(refusal).toContain("inside a <thought> in Message 11");
 	expect(draftRefusal(messages, draft([{ messageId: 11, text: "\"It held up.\"" }, { messageId: 11, text: "<thought>unfinished" }], ""))).toBeUndefined();
+});
+
+test("a draft with an Image Reference in Appearance is refused", () => {
+	const proposed = draft([], "");
+	proposed.prompt.appearance = formatImageReference("Bob", "a".repeat(64));
+	expect(draftRefusal(messages, proposed)).toContain("Appearance must be text only.");
 });
 
 // @approved
@@ -95,7 +104,7 @@ const bobClaim = (messageId: number, claim: string) => ({ claims: [{
 }] });
 
 test("the agent reads Memory as it was when the draft started, not as a change made during the run left it", async () => {
-	const chat = createChat(database);
+	const chat = createConversationWithHistory(database, { name: "Drafting Bob" });
 	const db = drizzle(database);
 	const message = db.insert(messageTable).values({ conversation_id: chat.id, position: 1, timestamp: "2026-11-19T00:00:00Z", author_name: null, author_participant_id: null }).returning().get().id;
 	const variant = db.insert(messageVariantTable).values({ message_id: message, position: 0, timestamp: "2026-11-19T00:00:00Z", content: "Bob minds the glass.", selected: true }).returning().get().id;
@@ -112,6 +121,6 @@ test("the agent reads Memory as it was when the draft started, not as a change m
 	const activities: CodeAgentActivity[] = [];
 	expect(await draftPerson(database, boxExports(database, chat.id), { conversationId: chat.id, person: "Bob" }, new AbortController().signal, (activity) => activities.push(activity)))
 		.toEqual({ name: "Bob", prompt: emptyPromptChannels(), quotes: [] });
-	expect(boxExports(database, chat.id).memory?.claimsAbout?.({ label: "Bob" })).toMatchObject([{ claim: "Bob broke the glass." }]);
+	expect(boxExports(database, chat.id).memory?.selectedClaims?.()).toMatchObject([{ claim: "Bob broke the glass." }]);
 	expect(activities.map(({ output }) => output)).toEqual(['Returned:\n[["Bob"],["Bob keeps the glass."]]']);
 });

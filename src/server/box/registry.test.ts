@@ -16,13 +16,33 @@ import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key,
 import { acceptConversationTailGeneration, observeConversationWrites } from "../conversation";
 import { openInitializedDatabase } from "../database/database";
 import { insertBox, openObservedDatabase, setBoxState, checkpointFromStart } from "../test-fixtures/conversation";
-import { setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
+import { addPromptPresetBlock, setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
+import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
 import { readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
 import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes, serverBoxes } from "./registry";
 import { boxExports } from "./exports";
+
+test("the Character Drafter starts enabled without a preset block and cannot participate in a Generation", () => {
+	const database = openObservedDatabase();
+	try {
+		const chat = createChat(database);
+		const recipe = () => readConversationPromptPresetRecipeFromConnection(drizzle(database), chat.id)!;
+		const box = "character-drafter";
+		const reference = "box:character-drafter";
+		expect(chat.boxes[box]).toBe("enabled");
+		expect(recipe().slots.some((slot) => slot.reference === reference)).toBe(false);
+		setBoxState(database, chat.id, box, "disabled");
+		setBoxState(database, chat.id, box, "enabled");
+		expect(recipe().slots.some((slot) => slot.reference === reference)).toBe(false);
+		expect(() => addPromptPresetBlock(database, recipe().id, reference)).toThrow("has no Prompt Preset block");
+		const slots = [...recipe().slots, { reference, enabled: true, role: "system", content: "" }] satisfies Parameters<typeof participatingBoxes>[1];
+		const boxes = participatingBoxes(serverBoxes(), slots, { [box]: { state: "enabled", instance: "instance" } });
+		expect(boxes.has(box)).toBe(false);
+	} finally { database.close(); }
+});
 
 test("a Box's Decision Model selection is part of its preview fingerprint, and its credential is not", () => {
 	const database = openObservedDatabase();
@@ -200,11 +220,22 @@ test("an Export's input and output are checked against its declared schemas, fai
 	}
 });
 
-test("an Export whose loose output schema would pass a Promise or a class instance is refused when called, naming the Box, the Export and where", async () => {
-	const looseExports = `exports: { greet: { description: "Greets.", input: ${objectField(`name: ${stringField}`, "name")}, output: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} } } }`;
+test("an Export with a loose schema still refuses non-JSON answers and names the failing path", async () => {
+	const unrestricted = `{ [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }`;
+	const looseExports = `exports: { greet: {
+		description: "Greets.",
+		input: ${objectField(`name: ${stringField}`, "name")},
+		output: ${unrestricted},
+	} }`;
 	const plugins = installPlugins({
 		eager: { fields: looseExports, server: "export default { exports: { greet: async ({ name }) => ({ greeting: name }) } };" },
 		dated: { fields: looseExports, server: "export default { exports: { greet: ({ name }) => ({ greeting: name, at: [new Date(0)] }) } };" },
+		cyclic: { fields: looseExports, server: `export default { exports: { greet: () => {
+			const answer = {};
+			answer["a/b~c"] = answer;
+			return answer;
+		} } };` },
+		decorated: { fields: looseExports, server: `export default { exports: { greet: () => ({ at: Object.assign([1], { extra: 2 }) }) } };` },
 	});
 	const database = openObservedDatabase();
 	try {
@@ -212,9 +243,13 @@ test("an Export whose loose output schema would pass a Promise or a class instan
 		const chat = createChat(database);
 		insertBox(database, chat.id, "eager");
 		insertBox(database, chat.id, "dated");
+		insertBox(database, chat.id, "cyclic");
+		insertBox(database, chat.id, "decorated");
 		const exports = boxExports(database, chat.id);
 		expect(() => exports.eager?.greet?.({ name: "Ann" })).toThrow("The eager Box's greet Export answered with a Promise; an Export answers synchronously.");
 		expect(() => exports.dated?.greet?.({ name: "Ann" })).toThrow("The dated Box's greet Export output is not JSON at /at/0.");
+		expect(() => exports.cyclic?.greet?.({ name: "Ann" })).toThrow("The cyclic Box's greet Export output is not JSON at /a~1b~0c.");
+		expect(() => exports.decorated?.greet?.({ name: "Ann" })).toThrow("The decorated Box's greet Export output is not JSON at /at/extra.");
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);

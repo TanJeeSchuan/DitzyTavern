@@ -66,17 +66,63 @@ test("a person Memory knows is drafted from the window and added to the Cast onl
 	await expect(window.getByRole("textbox", { name: "Step 1 output" })).toContainText("Old Pell keeps the observatory's spare keys.");
 	expect((await (await request.get(url)).json()).cast.map(({ name }: { name: string }) => name)).not.toContain("Old Pell");
 
+	await page.getByRole("button", { name: "Characters", exact: true }).click();
+	await page.getByRole("button", { name: /Theodora Kline maps coastlines/ }).first().click();
+	const name = page.getByRole("textbox", { name: "Name", exact: true });
+	await name.fill("Theodora with unsaved edits");
+	const unsaved = page.getByRole("dialog", { name: "Unsaved changes" });
 	await window.getByRole("button", { name: "Open draft", exact: true }).click();
-	await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Old Pell");
+	await unsaved.getByRole("button", { name: "Keep editing" }).click();
+	await expect(name).toHaveValue("Theodora with unsaved edits");
+	await expect(window.getByText("Drafted Old Pell.")).toBeVisible();
+
+	await window.getByRole("button", { name: "Open draft", exact: true }).click();
+	await unsaved.getByRole("button", { name: "Discard" }).click();
+	await expect(name).toHaveValue("Old Pell");
 	// A draft is handed to the editor once, so it cannot be kept twice.
 	await expect(window.getByText("Opened the draft of Old Pell in the Characters panel.")).toBeVisible();
 	await expect(window.getByRole("button", { name: "Open draft", exact: true })).toHaveCount(0);
 	await expect(page.getByRole("textbox", { name: "Identity" })).toContainText("Reputation: Theodora says he keeps the spare keys.");
-	await page.getByRole("button", { name: "Add to Cast", exact: true }).click();
+	const releaseSave = Promise.withResolvers<void>();
+	await page.route(`**${url}/commands`, async (route) => {
+		await releaseSave.promise;
+		await route.continue();
+	}, { times: 1 });
+	try {
+		await page.getByRole("button", { name: "Add to Cast", exact: true }).click();
+		await expect(page.getByText("Saving…", { exact: true })).toBeVisible();
+		const nameField = page.locator('input[aria-label="Name"]');
+		await nameField.evaluate((input) => input.focus());
+		await expect(nameField).not.toBeFocused();
+	} finally { releaseSave.resolve(); }
 	await expect(page.getByText("Chat only · Changes stay in this Chat")).toBeVisible();
 	await page.locator(".primary-panel").getByRole("button", { name: "Characters", exact: true }).click();
 	await expect(page.getByRole("region", { name: "In this chat" })).toContainText("Old Pell");
 	expect((await (await request.get(url)).json()).cast.find(({ name }: { name: string }) => name === "Old Pell").prompt.exampleDialogue).toBe("\"Dome's humming again,\"");
+});
+
+test("both Drafter entry points wait for a successful model availability read", async ({ page }) => {
+	const releaseRead = Promise.withResolvers<void>();
+	await page.route("**/api/boxes/character-drafter/conversations/*", async (route) => {
+		await releaseRead.promise;
+		await route.fulfill({ json: { unexpected: true } });
+	});
+	await page.goto("/");
+	await page.getByRole("button", { name: "Characters", exact: true }).click();
+	await page.getByRole("button", { name: /Theodora Kline maps coastlines/ }).first().click();
+	const participant = page.getByRole("region", { name: "Character Drafter" });
+	await page.getByRole("button", { name: "Character Drafter", exact: true }).click();
+	const window = page.getByRole("dialog", { name: "Character Drafter" });
+	try {
+		await window.getByRole("textbox", { name: "Person" }).fill("Old Pell");
+		await expect(window.getByRole("button", { name: "Draft", exact: true })).toBeDisabled();
+		await expect(participant.getByRole("button", { name: "Draft from story" })).toBeDisabled();
+	} finally { releaseRead.resolve(); }
+	for (const entry of [window, participant]) {
+		await expect(entry.getByText("Couldn't check the agent model.", { exact: false })).toBeVisible();
+	}
+	await expect(window.getByRole("button", { name: "Draft", exact: true })).toBeDisabled();
+	await expect(participant.getByRole("button", { name: "Draft from story" })).toBeDisabled();
 });
 
 test("a Cast member drafted from their Participant editor replaces their Definition after a confirmation and keeps their Portrait and Openings", async ({ page, request, llm }) => {
@@ -102,6 +148,7 @@ test("a Cast member drafted from their Participant editor replaces their Definit
 	await page.getByRole("button", { name: "Replace Theodora Kline's Definition", exact: true }).click();
 	const confirm = page.getByRole("dialog", { name: "Replace Theodora Kline's Definition?" });
 	await confirm.getByRole("button", { name: "Replace", exact: true }).click();
+	await expect(page.getByText("Changes stay in this Chat", { exact: false })).toBeVisible();
 	await expect(page.getByRole("button", { name: "Edit the Portrait" })).toBeVisible();
 	await expect(page.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Dr. Theodora Kline");
 

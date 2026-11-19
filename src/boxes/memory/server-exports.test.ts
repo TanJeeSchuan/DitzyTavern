@@ -1,18 +1,28 @@
 import { boxDescriptor } from "../../shared/contract/box";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { readParticipants } from "@/box-sdk/server";
 import { openInitializedDatabase } from "../../server/database/database";
-import { createChat } from "../../server/contract/prompt-preset-test-fixtures";
-import { messageTable, messageVariantTable } from "../../server/database/schema";
+import { createConversationWithHistory } from "../../server/test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { messageTable, messageVariantDataTable, messageVariantTable } from "../../server/database/schema";
 import { sha256 } from "../../server/hash";
-import { writeAutomaticRecord, writeWriterRecord } from "../../server/box/records";
+import { recordKey, writeAutomaticRecord, writeWriterRecord } from "../../server/box/records";
 import { readBoxLifecycles } from "../../server/box/setup";
 import { boxExports } from "../../server/box/exports";
 import { memoryRoutes } from "./server-routes";
 import { readMemoryLabelState } from "./server-chat";
-import type { MemoryCandidateJudgment, MemoryIdentity } from "./contract";
+import type { MemoryCandidateJudgment, MemoryIdentity, MemoryIdentityCommand, MemoryLabelMergeCommand } from "./contract";
+
+const createChat = (database: Database) => createConversationWithHistory(database, {
+	name: "Memory Exports",
+	participants: ["Writer", "Alice"].map((name) => ({
+		definition: { name, prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] },
+	})),
+	control: { human: 0, model: 1 },
+});
 
 const timestamp = "2026-09-29T00:00:00Z";
 /** One Claim as the Exports answer it: the stored claim beside the Message that holds it. */
@@ -36,15 +46,20 @@ const addVariant = (database: Database, conversationId: number, messageId: numbe
 };
 
 /** One Cast-label command body as its route takes it. */
-type LabelCommand = { expectedRevision: string } & ({ labels: string[]; destination: string } | { participantId: number; identity: MemoryIdentity });
-const command = (database: Database, conversationId: number, path: string, body: LabelCommand) =>
-	memoryRoutes(database).handle(new Request(`http://localhost/conversations/${conversationId}/memories/${path}`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+const command = (database: Database, conversationId: number, request:
+	| { path: "merge-labels"; body: MemoryLabelMergeCommand }
+	| { path: "identity"; body: MemoryIdentityCommand }) =>
+	memoryRoutes(database).handle(new Request(`http://localhost/conversations/${conversationId}/memories/${request.path}`, {
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(request.body),
 	}));
 const merge = (database: Database, conversationId: number, labels: string[], destination: string) =>
-	command(database, conversationId, "merge-labels", { labels, destination, expectedRevision: readMemoryLabelState(database, conversationId).revision });
+	command(database, conversationId, {
+		path: "merge-labels", body: { labels, destination, expectedRevision: readMemoryLabelState(database, conversationId).revision },
+	});
 const setIdentity = (database: Database, conversationId: number, participantId: number, identity: MemoryIdentity) =>
-	command(database, conversationId, "identity", { expectedRevision: readMemoryLabelState(database, conversationId).revision, participantId, identity });
+	command(database, conversationId, {
+		path: "identity", body: { expectedRevision: readMemoryLabelState(database, conversationId).revision, participantId, identity },
+	});
 
 /** The Chat's second Cast member, the one the human does not play. */
 const otherParticipant = (database: Database, conversationId: number) => {
@@ -55,9 +70,9 @@ const otherParticipant = (database: Database, conversationId: number) => {
 
 /** The Chat's Memory Exports, refusing a Chat that lost them. */
 const exportsOf = (database: Database, conversationId: number) => {
-	const { people, claimsAbout } = boxExports(database, conversationId).memory ?? {};
-	if (people === undefined || claimsAbout === undefined) throw new Error("Memory's Exports are missing.");
-	return { people, claimsAbout };
+	const { people, selectedClaims } = boxExports(database, conversationId).memory ?? {};
+	if (people === undefined || selectedClaims === undefined) throw new Error("Memory's Exports are missing.");
+	return { people, selectedClaims };
 };
 
 describe("Memory's Exports", () => {
@@ -65,7 +80,7 @@ describe("Memory's Exports", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
-	test("people() lists the labels on the Selected narrative path after label merges, and claimsAbout() returns the Claims whose merged people include the label", async () => {
+	test("Exports resolve people and Claims on the Selected narrative path after label merges", async () => {
 		const chat = createChat(database);
 		const first = addMessage(database, chat.id, 1);
 		addVariant(database, chat.id, first, ["Bob"]);
@@ -74,12 +89,10 @@ describe("Memory's Exports", () => {
 		expect((await merge(database, chat.id, ["Bob"], "Bartholomew Crane")).status).toBe(200);
 		const memory = exportsOf(database, chat.id);
 		expect(memory.people()).toEqual(["Bartholomew Crane", "Alice"]);
-		expect(memory.claimsAbout({ label: "Bartholomew Crane" })).toEqual([
+		expect(memory.selectedClaims()).toEqual([
 			claimOf(first, ["Bartholomew Crane"]),
 			claimOf(second, ["Bartholomew Crane", "Alice"]),
 		]);
-		expect(memory.claimsAbout({ label: "Alice" })).toEqual([claimOf(second, ["Bartholomew Crane", "Alice"])]);
-		expect(memory.claimsAbout({ label: "Bob" })).toEqual([]);
 	});
 
 	test("a Writer override's Claims are the ones an Export answers with", () => {
@@ -90,7 +103,7 @@ describe("Memory's Exports", () => {
 			{ claims: [candidate(message, ["Maren"], "Maren kept the key.")] });
 		const memory = exportsOf(database, chat.id);
 		expect(memory.people()).toEqual(["Maren"]);
-		expect(memory.claimsAbout({ label: "Maren" })).toEqual([claimOf(message, ["Maren"], "Maren kept the key.")]);
+		expect(memory.selectedClaims()).toEqual([claimOf(message, ["Maren"], "Maren kept the key.")]);
 	});
 
 	test("Claims on a swiped-away Variant are left out", () => {
@@ -100,7 +113,25 @@ describe("Memory's Exports", () => {
 		addVariant(database, chat.id, message, ["Eve"], false, 1);
 		const memory = exportsOf(database, chat.id);
 		expect(memory.people()).toEqual(["Bob"]);
-		expect(memory.claimsAbout({ label: "Eve" })).toEqual([]);
+		expect(memory.selectedClaims()).toEqual([claimOf(message, ["Bob"])]);
+	});
+
+	test("both Exports skip an incompatible slot on an unselected Variant", () => {
+		const chat = createChat(database);
+		const message = addMessage(database, chat.id, 1);
+		addVariant(database, chat.id, message, ["Bob"]);
+		const sibling = addVariant(database, chat.id, message, ["Eve"], false, 1);
+		const db = drizzle(database);
+		const instance = readBoxLifecycles(db, chat.id).memory!.instance;
+		db.update(messageVariantDataTable).set({ value: JSON.stringify({ automatic: { claims: 42 } }) }).where(and(
+			eq(messageVariantDataTable.message_variant_id, sibling),
+			eq(messageVariantDataTable.namespace, "box:memory"),
+			eq(messageVariantDataTable.key, recordKey(instance)),
+		)).run();
+
+		const memory = exportsOf(database, chat.id);
+		expect(memory.people()).toEqual(["Bob"]);
+		expect(memory.selectedClaims()).toEqual([claimOf(message, ["Bob"])]);
 	});
 
 	test("a passage by an author who is not in the story is left out", async () => {
@@ -112,7 +143,7 @@ describe("Memory's Exports", () => {
 		expect((await setIdentity(database, chat.id, other.id, { kind: "excluded" })).status).toBe(200);
 		const memory = exportsOf(database, chat.id);
 		expect(memory.people()).toEqual([]);
-		expect(memory.claimsAbout({ label: "Bob" })).toEqual([]);
+		expect(memory.selectedClaims()).toEqual([]);
 	});
 
 	test("a Cast member who plays a person resolves that person's Claims to the person's label", async () => {
@@ -124,7 +155,6 @@ describe("Memory's Exports", () => {
 		expect((await setIdentity(database, chat.id, other.id, { kind: "plays", person: "Maren" })).status).toBe(200);
 		const memory = exportsOf(database, chat.id);
 		expect(memory.people()).toEqual(["Maren"]);
-		expect(memory.claimsAbout({ label: "Maren" })).toEqual([claimOf(message, ["Maren"])]);
-		expect(memory.claimsAbout({ label: "Alice" })).toEqual([]);
+		expect(memory.selectedClaims()).toEqual([claimOf(message, ["Maren"])]);
 	});
 });

@@ -16,20 +16,21 @@ import { readMemoryEmbedding } from "./server-settings";
 //  author who is not in the story is left out. The Memories panel lists
 //  these, and the Exports answer from the selected ones, so the two never
 //  disagree about what Memory knows.
-export const readMemorySources = (database: Database, conversationId: number, state: MemoryLabelState) => {
+export const readMemorySources = (database: Database, conversationId: number, state: MemoryLabelState, scope: "selected" | "all") => {
 	const db = drizzle(database);
-	const variants = readChatVariants(database, conversationId);
-	const slots = readRecordSlots(db, "memory", memoryRecord, readBoxLifecycles(db, conversationId).memory?.instance, variants.map(({ variantId }) => variantId));
-	return variants.map((variant) => ({ ...variant, slot: slots.get(variant.variantId) }))
-		.filter(({ authorParticipantId, selected, content, slot }) => !isExcludedAuthor(state, authorParticipantId)
-			&& (selected ? content.trim() !== "" : effectiveRecord(slot) !== undefined))
+	const variants = readChatVariants(database, conversationId, scope === "selected" ? { selectedOrVariantIds: [] } : {});
+	const sources = variants.filter(({ authorParticipantId, selected, content }) => !isExcludedAuthor(state, authorParticipantId) && (!selected || content.trim() !== ""));
+	const variantIds = (scope === "selected" ? sources : variants).map(({ variantId }) => variantId);
+	const slots = readRecordSlots(db, "memory", memoryRecord, readBoxLifecycles(db, conversationId).memory?.instance, variantIds);
+	return sources.map((variant) => ({ ...variant, slot: slots.get(variant.variantId) }))
+		.filter(({ selected, slot }) => selected || effectiveRecord(slot) !== undefined)
 		.sort((left, right) => Number(right.selected) - Number(left.selected) || left.position - right.position || left.variantPosition - right.variantPosition);
 };
 
 /** @approved The Memories panel's read: Memory's sources, each with its effective Claims and slot status. */
 export function readConversationMemories(database: Database, conversationId: number): ConversationMemories {
 	const state = readMemoryLabelState(database, conversationId);
-	const sources = readMemorySources(database, conversationId, state).map(({ messageId, variantId, selected, content, slot }) => ({
+	const sources = readMemorySources(database, conversationId, state, "all").map(({ messageId, variantId, selected, content, slot }) => ({
 		messageId, variantId, selected,
 		claims: effectiveRecord(slot)?.claims ?? null,
 		status: slotStatus(slot, content),

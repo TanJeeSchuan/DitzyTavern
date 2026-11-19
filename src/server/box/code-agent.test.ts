@@ -6,7 +6,8 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { key, profile } from "../contract/prompt-preset-test-fixtures";
 import { openObservedDatabase } from "../test-fixtures/conversation";
-import { CODE_AGENT_OUTPUT_BYTES, CODE_AGENT_STEPS, runCodeAgent, type CodeAgentActivity, type CodeAgentCall, type CodeAgentFunction } from "./code-agent";
+import { CODE_AGENT_OUTPUT_BYTES, CODE_AGENT_STEPS, runCodeAgent, type CodeAgentCall, type CodeAgentFunction } from "./code-agent";
+import type { CodeAgentActivity } from "../../shared/contract/code-agent";
 import { applyBoxDelegateSettings, readBoxDelegateSettings } from "./delegate-settings";
 import { DEFAULT_BOX_DELEGATE } from "../../shared/contract/box";
 import { QuickJSContext, QuickJSRuntime } from "quickjs-emscripten-core";
@@ -143,6 +144,20 @@ test("what the code logs comes back with its final value, and a guest error is t
 		"Logged:\nnote {\"a\":1}\n\nThe drafter Box's code threw ReferenceError: 'nope' is not defined",
 		"Logged:\nsecond 2\n\nReturned:\n2",
 	]);
+});
+
+test("the agent sees empty tuples and JSON strings and keys without losing their contents", async () => {
+	chooseModel();
+	const text = "A\u0000B\uD800";
+	const value = { ["__proto__"]: text, ["Nul\u0000key"]: "kept" };
+	replies.push({ run: "[empty, Object.hasOwn(labels, '__proto__'), labels]" }, { submit: { name: "Maren" } });
+	const supplied = {
+		empty: { description: "An empty tuple.", schema: Type.Tuple([]), value: [] },
+		labels: { description: "A dictionary of labels.", schema: Type.Record(Type.String(), Type.String()), value },
+	};
+	expect(await run({ globals: supplied })).toEqual({ name: "Maren" });
+	expect(instructionsOf(bodies[0])).toContain(encoded("declare const empty: [];"));
+	expect(activities.at(0)?.output).toBe(`Returned:\n${JSON.stringify([[], true, value])}`);
 });
 
 test("a huge log line is clipped in the guest, not dropped with the value it hid", async () => {

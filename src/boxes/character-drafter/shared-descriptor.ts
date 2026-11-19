@@ -7,5 +7,6 @@ export default {
 	summary: "Drafts a Definition for anyone in the story from what the Chat says about them.",
 	role: "system",
 	startsEnabled: true,
+	prompt: false,
 	instructions: "",
 } satisfies BoxDescriptor;

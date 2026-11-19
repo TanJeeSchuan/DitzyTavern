@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptPresetBlockTable } from "../database/schema";
 import { resequence } from "../database/resequence";
-import { boxIdOf, boxMetadata, boxReference, isBoxReference, isUnknownBoxReference, type BoxId } from "../../shared/contract/box";
+import { boxBlockRefusal, boxIdOf, boxMetadata, boxReference, isBoxReference, type BoxId } from "../../shared/contract/box";
 import {
 	defaultOutgoingRole,
 	isSingleUseReference,
@@ -202,7 +202,8 @@ export const savePromptPresetBlockPatches = (
 	});
 
 const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: PromptBlockReference): number[] => {
-	if (isUnknownBoxReference(reference)) throw new InvalidPromptPresetOperationError(`There is no Box for ${reference}.`);
+	const refusal = boxBlockRefusal(reference);
+	if (refusal !== undefined) throw new InvalidPromptPresetOperationError(refusal);
 	assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
 	const ordered = recipe.slots.map((slot) => slot.id);
 	const identityReference = reference === "human-appearance" ? "human-identity" : reference === "model-appearance" ? "model-identity" : null;
@@ -234,6 +235,7 @@ export const addPromptPresetBlock = (
 //  Box is On.
 export const installBoxBlocks = (db: PromptPresetDatabase, conversationId: number, boxes: readonly BoxId[]): void => {
 	for (const box of boxes) {
+		if (boxMetadata(box).prompt === false) continue;
 		const recipe = readConversationPromptPresetRecipeFromConnection(db, conversationId)!;
 		if (recipe.slots.some((slot) => slot.reference === boxReference(box))) continue;
 		resequence(db, promptPresetBlockTable, promptPresetBlockTable.preset_id, recipe.id, placeBlock(db, recipe, boxReference(box)));

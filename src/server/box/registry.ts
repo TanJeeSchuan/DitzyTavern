@@ -498,6 +498,7 @@ export type ParticipatingBox = LoadedBox & { readonly instance: string };
 /** @approved The Boxes enabled in both the Chat and its preset, as the Chat runs them, selected once for record folding and capture. */
 export const participatingBoxes = (boxes: ChatBoxes, slots: readonly PromptPresetSlot[], lifecycles: BoxLifecycles): ReadonlyMap<BoxId, ParticipatingBox> =>
 	new Map([...boxes].flatMap(([id, loaded]) => {
+		if (loaded.descriptor.prompt === false) return [];
 		const lifecycle = lifecycles[id];
 		return lifecycle?.state === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id)) ? [[id, { ...loaded, instance: lifecycle.instance }]] : [];
 	}));

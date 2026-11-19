@@ -41,7 +41,7 @@ Use `MessageId`, `VariantId`, and `ParticipantId` from `@/box-sdk/shared` wherev
 
 ## Hooks
 
-### `label`, `summary`, `role`, `startsEnabled`, `instructions`, `alwaysRender`, `block`
+### `label`, `summary`, `role`, `startsEnabled`, `prompt`, `instructions`, `alwaysRender`, `block`
 
 | Key | The host uses it for |
 |---|---|
@@ -49,6 +49,7 @@ Use `MessageId`, `VariantId`, and `ParticipantId` from `@/box-sdk/shared` wherev
 | `summary` | the Box manager's line for a Box that is not in the Chat yet, and a Box whose client module did not load |
 | `role` | the outgoing role of the Box's preset block (`system`, `user` or `assistant`) until an author changes it |
 | `startsEnabled` | `defaultBoxIds()`: the Boxes a new Chat starts with |
+| `prompt: false` | leaves the Box out of Prompt Presets and Generations |
 | `instructions` | the text a new [preset block](host.md#preset-block) starts with, and what its Reset action restores |
 | `alwaysRender` | renders the block when `advance` returns no items, for a Box whose instructions are its whole contribution |
 | `block` | the preset editor's `{ description, source }` for the block, in place of "Uses the `<label>` Box when it is enabled in this Chat." from "This Chat" |
@@ -174,7 +175,7 @@ Read-only answers another Box's route handler asks for, declared in both places 
 
 Nothing in a Generation reaches an Export. A Box's `routes` receive `exportsOf(conversationId)` from the host, which answers every Box enabled in that Chat that declares Exports, each wrapped so its input is checked against the declared `input` schema and its answer against the `output` schema, after refusing an answer that is not plain JSON, such as a Promise, failing naming the Box, the Export and the path, and carrying its declared `description`, `input` and `output`, so a caller can hand an agent its signature; only those routes hold it, as [the rule](README.md#the-rules) records, and a Box's throw crosses to the route that called it.
 
-Each Export's server side is typed from the descriptor's schemas, their one home: annotate the map `ExportsOf<typeof descriptor.exports>` from the server SDK, and each function's input, context and answer type themselves — so a missing or extra name, an answer the output schema's type rejects, or a one-parameter function that would read the context from the input slot fails to compile. A Box with Exports passes `ExportsOf<typeof descriptor.exports>` as `Box`'s seventh type parameter, as Memory does. Memory's Exports are the example: `people()` lists the person labels on the Selected narrative path after the Chat's label merges, and `claimsAbout({ label })` returns the effective Claims on that path whose people include the label, each with the Message that holds it.
+Each Export's server side is typed from the descriptor's schemas, their one home: annotate the map `ExportsOf<typeof descriptor.exports>` from the server SDK, and each function's input, context and answer type themselves — so a missing or extra name, an answer the output schema's type rejects, or a one-parameter function that would read the context from the input slot fails to compile. A Box with Exports passes `ExportsOf<typeof descriptor.exports>` as `Box`'s seventh type parameter, as Memory does. Memory's Exports are the example: `people()` lists the person labels on the Selected narrative path after the Chat's label merges, and `selectedClaims()` returns the effective Claims on that path with their resolved people and source Messages.
 
 ### Client surfaces
 
@@ -224,7 +225,7 @@ The host wraps `Component` in an `<aside className="details-panel" data-open="tr
 
 `TraceView` receives `{ conversationId, trace, onNavigateSource? }`, where `trace` is that Box's `BoxTrace` from `box_traces_json`. The host renders it in active Generation inspection, saved Variant details and Prompt Plan preview whenever a captured trace exists, regardless of the Box's current Chat state. In a preview, `trace.finalText` follows the editable block, or becomes empty if that block was removed. The Box checks its own trace schema and owns its display and source links; the host never reads the trace payload.
 
-The client SDK exports the surface types, shared controls and dialogs, `PanelHeader`, `SaveFooter`, `ProfileModelPicker`, numeric controls, `useConnectionSettingsQuery`, `useAsyncEffect`, `useSaveGuard`, `useBoxRead`, `CodeView`, conversation commands, digest/catch-up requests, and `openDefinitionDraft(draft, { conversationId, replaces? })`, which opens the core Definition editor on a drafted name and Prompt with Add to Cast, Save as Character and, with `replaces`, Replace; the core makes every write. Box-specific requests stay in the Box and use `boxApi`.
+The client SDK exports the surface types, shared controls and dialogs, `PanelHeader`, `SaveFooter`, `ProfileModelPicker`, numeric controls, `useConnectionSettingsQuery`, `useAsyncEffect`, `useSaveGuard`, `useBoxRead`, `CodeView`, conversation commands, digest/catch-up requests, and `openDefinitionDraft(draft, { conversationId, replaces?, onOpened })`, which opens the core Definition editor on a drafted name and Prompt with Add to Cast, Save as Character and, with `replaces`, Replace; the core makes every write. The workspace calls `onOpened` after the unsaved-changes guard approves navigation. Box-specific requests stay in the Box and use `boxApi`.
 
 ### `lens`
 

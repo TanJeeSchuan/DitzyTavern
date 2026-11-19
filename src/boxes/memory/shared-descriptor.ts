@@ -1,5 +1,5 @@
 import type { BoxDescriptor } from "@/box-sdk/shared";
-import { memoryChatSettings, memoryClaimsAbout, memoryClaimsAboutInput, memoryLabels, memoryPeople, memoryPeopleInput, memoryRecord } from "./contract";
+import { memoryChatSettings, memoryExportInput, memoryLabels, memoryPeople, memoryRecord, memorySelectedClaims } from "./contract";
 
 export default {
 	id: "memory", sdk: 2, label: "Memory", summary: "Remembers what passages establish and recalls it when a Generation is assembled.", role: "system", startsEnabled: true, instructions: "",
@@ -7,8 +7,12 @@ export default {
 	record: memoryRecord,
 	values: { chat: { settings: memoryChatSettings, labels: memoryLabels } },
 	exports: {
-		people: { description: "The person labels Memory knows on the Chat's Selected narrative path, after its label merges.", input: memoryPeopleInput, output: memoryPeople },
-		claimsAbout: { description: "The effective Claims on the Chat's Selected narrative path whose people include one label after its label merges, each with the Message that holds it.", input: memoryClaimsAboutInput, output: memoryClaimsAbout },
+		people: { description: "The person labels Memory knows on the Chat's Selected narrative path, after its label merges.", input: memoryExportInput, output: memoryPeople },
+		selectedClaims: {
+			description: "Effective Claims on the Selected narrative path, with resolved people and the Message that holds each Claim.",
+			input: memoryExportInput,
+			output: memorySelectedClaims,
+		},
 	},
 	decision: {
 		summary: "Judges the Memories extraction proposes and scores saved Memories for recall.",

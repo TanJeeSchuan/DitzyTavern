@@ -1,5 +1,5 @@
 import { Type, type Static, type TSchema } from "@sinclair/typebox";
-import { numericWire, promptChannels } from "@/box-sdk/shared";
+import { codeAgentActivity, numericWire, promptChannels } from "@/box-sdk/shared";
 
 /** @approved The longest person name a draft takes; the picker and the Participant entry offer none longer. */
 export const PERSON_MAX = 256;
@@ -25,13 +25,9 @@ export const characterDraft = Type.Object({
 });
 export type CharacterDraft = Static<typeof characterDraft>;
 
-/** @approved One `run` the agent made, as the writer watches it. */
-export const draftActivity = Type.Object({ summary: Type.String(), code: Type.String(), output: Type.String() });
-export type DraftActivity = Static<typeof draftActivity>;
-
 /** @approved One frame of the draft stream: a step the agent ran, then the draft or why it failed, which ends the stream. */
 export const draftEvent = Type.Union([
-	Type.Object({ type: Type.Literal("activity"), activity: draftActivity }),
+	Type.Object({ type: Type.Literal("activity"), activity: codeAgentActivity }),
 	Type.Object({ type: Type.Literal("draft"), draft: characterDraft }),
 	Type.Object({ type: Type.Literal("failed"), message: Type.String() }),
 ]);
@@ -54,6 +50,8 @@ export const draftCast = Type.Array(Type.Object({ id: Type.Integer(), names: Typ
 export type DraftCast = Static<typeof draftCast>;
 /** @approved People labels as Memory's `people()` answers them. */
 export const draftPeople = Type.Array(Type.String());
+/** @approved The part of Memory's selected Claims that the Drafter uses to group them. */
+export const draftClaimPeople = Type.Array(Type.Object({ people: draftPeople }));
 
 /** @approved The `memory` global's schema: Memory's people and the Claims about each, typed by the schemas Memory's Exports declare, or null when Memory is not there to ask. */
 export const draftMemory = (declared?: { readonly people: TSchema; readonly claims: TSchema }) => declared === undefined ? Type.Null()

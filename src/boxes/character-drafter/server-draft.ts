@@ -1,15 +1,18 @@
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
+import { TypeGuard, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import {
 	codeAgentUnavailable, conversationExists, readBoxLifecycles, readChatVariants, readParticipants, runCodeAgent, type BoxExports, type CodeAgentActivity, type CodeAgentGlobal,
 } from "@/box-sdk/server";
+import { parseImageReferences, stripThoughts } from "@/box-sdk/shared";
 import descriptor from "./shared-descriptor";
-import { characterDraft, draftCast, draftMemory, draftMessages, draftPeople, type CharacterDraft, type DraftCast, type DraftMessages, type DraftRequest, type DrafterRead } from "./contract";
+import { characterDraft, draftCast, draftClaimPeople, draftMemory, draftMessages, draftPeople } from "./contract";
+import type { CharacterDraft, DraftCast, DraftMessages, DraftRequest, DrafterRead } from "./contract";
 
 /** @approved The Selected narrative path as the agent reads it, a settled Variant per Message. */
 export const readDraftMessages = (database: Database, conversationId: number): DraftMessages =>
-	readChatVariants(database, conversationId).filter(({ selected }) => selected)
+	readChatVariants(database, conversationId, { selectedOrVariantIds: [] })
 		.map(({ messageId, speaker, authorParticipantId, content }, index) => ({ id: messageId, index, author: speaker, authorParticipantId, text: content }));
 
 const readDraftCast = (database: Database, conversationId: number, messages: DraftMessages): DraftCast =>
@@ -17,28 +20,39 @@ const readDraftCast = (database: Database, conversationId: number, messages: Dra
 		id, names: [...new Set([name, ...messages.flatMap(({ author, authorParticipantId }) => authorParticipantId === id && author !== null ? [author] : [])])],
 	}));
 
-/** @approved A Message's text with each closed `<thought>…</thought>` span cut out, so nothing spoken runs across one; unclosed markup stays text, as the lens leaves it. */
-const spoken = (text: string) => text.replaceAll(/<thought>[\s\S]*?<\/thought>/g, "\u0000");
-
 // @approved
 //  Why the draft is refused, or undefined: every quote is copied word for
 // word from a Message on the path, outside its unspoken thoughts, and every
 // line of `exampleDialogue` is one of the quotes, so the person's voice is
 // never invented. Who speaks a quote is the agent's judgement.
 export const draftRefusal = (messages: DraftMessages, draft: CharacterDraft): string | undefined => {
+	if (parseImageReferences(draft.prompt.appearance).length > 0) return "Appearance must be text only. Remove the Image References.";
 	const texts = new Map(messages.map(({ id, text }) => [id, text]));
 	for (const quote of draft.quotes) {
 		const text = texts.get(quote.messageId);
 		if (text === undefined) return `Message ${quote.messageId} is not on the story's path.`;
 		if (!text.includes(quote.text)) return `The quote "${quote.text}" is not in Message ${quote.messageId} word for word.`;
-		if (!spoken(text).includes(quote.text)) return `The quote "${quote.text}" is inside a <thought> in Message ${quote.messageId}; a thought is never said aloud.`;
+		if (!stripThoughts(text).some((segment) => segment.kind === "prose" && segment.text.includes(quote.text))) {
+			return `The quote "${quote.text}" is inside a <thought> in Message ${quote.messageId}; a thought is never said aloud.`;
+		}
 	}
 	const quoted = new Set(draft.quotes.map(({ text }) => text.trim()));
 	const stray = draft.prompt.exampleDialogue.split("\n").map((line) => line.trim()).find((line) => line !== "" && !quoted.has(line));
 	return stray === undefined ? undefined : `The exampleDialogue line "${stray}" is not one of the quotes; every line must be a quote's text.`;
 };
 
-const MEMORY = "What Memory knew when the draft started: `people` lists the person labels on the story's path, and `claims[label]` holds the Claims about that person, each with the Message that holds it.";
+const MEMORY = "Memory at the start of the draft. `people` lists labels on the story's path. `claims[label]` lists that person's Claims and their source Messages.";
+
+/** @approved Groups the full Claims using only the people field the Drafter needs to interpret. */
+const groupClaims = (claims: Static<typeof draftClaimPeople>) => {
+	const byLabel = new Map<string, typeof claims>();
+	for (const claim of claims) for (const label of claim.people) {
+		const group = byLabel.get(label);
+		if (group === undefined) byLabel.set(label, [claim]);
+		else group.push(claim);
+	}
+	return { people: [...byLabel.keys()], claims: Object.fromEntries(byLabel) };
+};
 
 // @approved
 //  What Memory knows, asked once when the run starts so it answers for the
@@ -47,16 +61,16 @@ const MEMORY = "What Memory knew when the draft started: `people` lists the pers
 // Without Memory there is nothing to ask, and a Memory that fails to answer
 // leaves the draft to the raw history, saying why.
 const memoryGlobal = (exports: BoxExports): CodeAgentGlobal => {
-	const people = exports.memory?.people;
-	const claimsAbout = exports.memory?.claimsAbout;
-	if (people === undefined || claimsAbout === undefined) return { description: "Null: Memory is not enabled in this Chat.", schema: draftMemory(), value: null };
-	const schema = draftMemory({ people: people.output, claims: claimsAbout.output });
+	const selectedClaims = exports.memory?.selectedClaims;
+	if (selectedClaims === undefined) return { description: "Null: Memory is not enabled in this Chat.", schema: draftMemory(), value: null };
 	try {
-		const labels = people();
-		if (!Value.Check(draftPeople, labels)) throw new Error("its people are not a list of labels.");
-		return { description: MEMORY, schema, value: { people: labels, claims: Object.fromEntries(labels.map((label) => [label, claimsAbout({ label })])) } };
+		const output = selectedClaims.output;
+		const claims = selectedClaims();
+		if (!TypeGuard.IsArray(output) || !Value.Check(draftClaimPeople, claims)) throw new Error("its selected Claims do not list their people.");
+		const schema = draftMemory({ people: draftPeople, claims: output });
+		return { description: MEMORY, schema, value: groupClaims(claims) };
 	} catch (error) {
-		return { description: `Null: Memory could not answer: ${error instanceof Error ? error.message : String(error)}`, schema, value: null };
+		return { description: `Null: Memory could not answer: ${error instanceof Error ? error.message : String(error)}`, schema: draftMemory(), value: null };
 	}
 };
 

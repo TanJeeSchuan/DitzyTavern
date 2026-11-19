@@ -3,7 +3,6 @@ import { Button, Field, Input, Textarea, type ConversationSummary } from "@/box-
 import { ActivityFeed } from "./client-activity";
 import { useDrafterRead, useDraftRun, type DraftRun } from "./client-api";
 import { INSTRUCTION_MAX, PERSON_MAX, PERSON_TOO_LONG } from "./contract";
-import descriptor from "./shared-descriptor";
 
 const STEER = "Optional, such as: as she was before the war";
 
@@ -20,9 +19,11 @@ const runLine = (run: DraftRun) => {
 
 /** @approved The writer's line about a run, or why a draft cannot start. */
 export function DraftStatus({ run, unavailable }: { run: DraftRun; unavailable: string | null }) {
-	const line = run.status === "idle" || run.status === "cancelled" ? unavailable ?? runLine(run) : runLine(run);
-	if (line === null) return null;
-	return <p className="character-drafter-status" role={run.status === "failed" || (unavailable !== null && run.status === "idle") ? "alert" : "status"} data-status={run.status}>{line}</p>;
+	const line = runLine(run);
+	return <>
+		{line !== null && <p className="character-drafter-status" role={run.status === "failed" ? "alert" : "status"} data-status={run.status}>{line}</p>}
+		{unavailable !== null && run.status !== "running" && <p className="character-drafter-status" role="status">{unavailable}</p>}
+	</>;
 }
 
 // @approved
@@ -30,13 +31,10 @@ export function DraftStatus({ run, unavailable }: { run: DraftRun; unavailable: 
 // or typed, an optional steer, then the agent's steps as it reads the story
 // and, once it submits, the draft to open in the Definition editor.
 export function DrafterWindow({ conversation }: { conversation: ConversationSummary }) {
-	const read = useDrafterRead(conversation);
+	const { unavailable, people } = useDrafterRead(conversation);
 	const { run, start, cancel, open } = useDraftRun({ conversationId: conversation.id });
 	const [person, setPerson] = useState("");
 	const [instruction, setInstruction] = useState("");
-	const enabled = conversation.boxes[descriptor.id] === "enabled";
-	const unavailable = read.data?.unavailable ?? null;
-	const people = read.data?.people ?? [];
 	const running = run.status === "running";
 	const draft = () => void start({ conversationId: conversation.id, person: person.trim(), instruction });
 	const drafted = run.status === "drafted" ? run.draft : undefined;
@@ -64,7 +62,7 @@ export function DrafterWindow({ conversation }: { conversation: ConversationSumm
 		<div className="character-drafter-actions">
 			{running
 				? <Button type="button" variant="outline" onClick={cancel}>Cancel</Button>
-				: <Button type="button" variant={drafted === undefined ? "default" : "outline"} disabled={!enabled || unavailable !== null || person.trim() === ""} onClick={draft}>
+				: <Button type="button" variant={drafted === undefined ? "default" : "outline"} disabled={unavailable !== null || person.trim() === ""} onClick={draft}>
 					{run.status === "idle" ? "Draft" : "Draft again"}
 				</Button>}
 			{drafted !== undefined && <Button type="button" onClick={() => open(drafted)}>Open draft</Button>}

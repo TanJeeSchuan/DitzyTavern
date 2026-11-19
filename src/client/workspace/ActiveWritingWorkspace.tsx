@@ -167,8 +167,10 @@ export function ActiveWritingWorkspace({
 		requestedDefinitionDraft.set(null);
 		if (String(request.conversationId) !== session.activeChatId) return;
 		saveNavigation.requestNavigation(() => {
-			openedDefinitionDraft.set(request);
+			const { onOpened, ...draft } = request;
+			openedDefinitionDraft.set(draft);
 			dispatchPanel({ type: "primary-opened", panel: "characters" });
+			onOpened();
 		});
 	}), [session.activeChatId, saveNavigation.requestNavigation]);
 

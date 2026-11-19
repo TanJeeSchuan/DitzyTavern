@@ -49,6 +49,7 @@ export function DefinitionEditor({
 	children,
 	footer,
 	autoSelectName = false,
+	locked = false,
 	onBack,
 }: {
 	draft: ParticipantDefinition;
@@ -60,6 +61,7 @@ export function DefinitionEditor({
 	/** @approved The editor's footer, told whether the draft has a name, which every way of keeping a Definition needs. */
 	footer: (named: boolean) => ReactNode;
 	autoSelectName?: boolean;
+	locked?: boolean;
 	onBack: () => void;
 }) {
 	const navigate = useNavigationRequest();
@@ -101,7 +103,7 @@ export function DefinitionEditor({
 
 	return (
 		<div className="editor-frame">
-			<div className="panel-body flex flex-col gap-6">
+			<div className="panel-body flex flex-col gap-6" inert={locked}>
 				<div className="-mx-2 -mt-1 flex items-center gap-1">
 					<Button type="button" size="sm" variant="ghost" className="text-muted-foreground" onClick={() => navigate(onBack)}><ArrowLeft aria-hidden="true" /> Characters</Button>
 					<span className="flex-1" />

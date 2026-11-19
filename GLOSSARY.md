@@ -348,8 +348,11 @@ A read-only question a Box answers about its own state in one Chat, which anothe
 _Avoid_: Box API, cross-Box call, shared state
 
 **Character Drafter**:
-The Box that writes a Definition Draft for someone in a Chat's story from its prose, using what Memory knows about them when Memory is enabled. It contributes nothing to Generations.
+The Box that writes a Definition Draft for someone in a Chat's story, using its prose and any Claims Memory holds about that person. It has no Prompt Preset block or Generation contribution.
 _Avoid_: character generator, card maker
+
+**Thought markup**:
+The `<thought>` and `</thought>` tags that mark a character's unspoken thoughts in story prose.
 
 **Move**:
 A Box-defined action the human attaches to a Human-authored Message for that Box to resolve in the following Generation. A Human-authored Message may consist of Moves alone, which distinguishes it from a Continuation Generation.

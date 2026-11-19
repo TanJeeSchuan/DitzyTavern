@@ -10,7 +10,8 @@ export { effectiveRecord, readRecordSlots, slotStatus } from "../server/box/reco
 export { readBoxLifecycles } from "../server/box/setup";
 export { readBoxCatchUp } from "../server/box/digest";
 export { readBoxDecision, readBoxDecisionSettings } from "../server/box/decision-settings";
-export { codeAgentUnavailable, runCodeAgent, type CodeAgentActivity, type CodeAgentCall, type CodeAgentFunction, type CodeAgentGlobal, type CodeAgentValue } from "../server/box/code-agent";
+export { codeAgentUnavailable, runCodeAgent, type CodeAgentCall, type CodeAgentFunction, type CodeAgentGlobal, type CodeAgentValue } from "../server/box/code-agent";
+export type { CodeAgentActivity } from "../shared/contract/code-agent";
 export { putChatValue, putLibraryValue, readChatValue, readLibraryValue } from "../server/box/stored-value";
 export { readProfileApiFormat } from "../server/connection-settings/persistence";
 export { readEmbeddingConfiguration, type EmbeddingConfiguration } from "../server/box/embedding";

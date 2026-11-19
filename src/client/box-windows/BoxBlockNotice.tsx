@@ -23,7 +23,7 @@ const oneLine = "flex flex-wrap items-center justify-between gap-x-3 gap-y-1";
 
 export const sendBoxState = (surface: ConversationCommandSurface, client: QueryClient, box: BoxId, state: BoxState, deleteHistory = false) =>
 	runConversationCommand(surface, { type: "set-box-state", box, state, deleteHistory }, {
-		onApplied: () => { if (state === "enabled") void refreshPresetReads(client); },
+		onApplied: () => { if (state === "enabled" && boxMetadata(box).prompt !== false) void refreshPresetReads(client); },
 		notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 	});
 
@@ -39,13 +39,13 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 	className?: string;
 }) {
 	const client = useQueryClient();
-	const on = conversation.boxes[box] === "enabled";
+	const { label, prompt } = boxMetadata(box);
+	const on = conversation.boxes[box] === "enabled" && prompt !== false;
 	const preset = useQuery({
 		queryKey: ["conversation-preset", conversation.id, conversation.revision],
 		queryFn: ({ signal }) => loadConversationPromptPreset(conversation.id, signal),
 		enabled: on,
 	});
-	const label = boxMetadata(box).label;
 	const slot = preset.data?.slots.find((entry) => entry.reference === boxReference(box));
 	const fix = useMutation({
 		mutationFn: async (presetId: number) => {
