@@ -61,7 +61,7 @@ T9 and T10 were added on 2026-11-19 from the round 5 retro; the owner asked for 
 - Follow `~/.claude/skills/orchestrate-implementation/SKILL.md`. The owner has approved this plan, so start without asking again.
 - One implementer at a time. Dispatch a ticket with slices one slice per implementer run, in order, so the model column above can change between slices.
 - Give each implementer the standard prompt plus one line naming its reviewer: Sonnet 5.5 high for a Codex implementer, `codex gpt-6.2-sol high` for a Claude implementer.
-- Astra writes the first implementation and stops when its focused checks pass. A Sol delegate in the same checkout then fixes review findings and CI and watches the PR.
+- Where the table names Astra as first writer, Astra stops when its focused checks pass, and a Sol delegate in the same checkout fixes review findings and CI.
 - Before a wait on a Codex 429, check quota through the cliproxy management API.
 - **Merging.** Merge bottom-up when CI is green and the newest `github-actions` review comment on the head commit raises nothing. Retarget the next PR to master after each merge. Two exceptions wait for the owner: T6, and T8 slice c.
 - **T8 slice c** stops after the first write. Report the new state model to the owner and wait before starting fixes.
