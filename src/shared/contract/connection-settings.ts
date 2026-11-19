@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { invalidOutcome, notFoundOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
 
 const redactedHeader = Type.Object({
 	name: Type.String(),
@@ -156,6 +156,8 @@ const discoveryFailureKind = Type.Union([
 	Type.Literal("malformed-response"),
 ]);
 
+export const connectionSettingsConflict = revisionConflict(connectionSettingsResponse);
+
 export const connectionDiscoveryResponse = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("success"),
@@ -167,12 +169,7 @@ export const connectionDiscoveryResponse = Type.Union([
 		kind: discoveryFailureKind,
 		message: Type.String(),
 	}),
-	Type.Object({
-		outcome: Type.Literal("conflict"),
-		expectedRevision: Type.Integer(),
-		actualRevision: Type.Integer(),
-		currentSettings: connectionSettingsResponse,
-	}),
+	connectionSettingsConflict,
 ]);
 
 // Route boundary schemas referenced by the Connection Settings adapter.
@@ -205,15 +202,6 @@ export const blankConnectionProfileDraft = {
 	timeoutMs: 120000,
 	pinnedModels: [],
 } satisfies Static<typeof profileDraft>;
-
-// Stale-revision conflict carrying the authoritative current settings so
-// the caller can recover without a follow-up read.
-export const connectionSettingsConflict = Type.Object({
-	outcome: Type.Literal("conflict"),
-	expectedRevision: Type.Integer(),
-	actualRevision: Type.Integer(),
-	currentSettings: connectionSettingsResponse,
-});
 
 export const connectionSettingsApplied = Type.Object({
 	outcome: Type.Literal("applied"),

@@ -154,11 +154,7 @@ export function useCastActions({
 					expectedCharacterRevision,
 				});
 				if (outcome.outcome === "conflict") {
-					if ("currentConversation" in outcome) {
-						// @approved
-						//  A conversation conflict carries the authoritative snapshot.
-						return outcome;
-					}
+					if ("cast" in outcome.current) return { ...outcome, current: outcome.current };
 					// @approved
 					//  A library conflict names the changed Character instead of
 					// carrying a Conversation snapshot: the runner must not
@@ -168,7 +164,7 @@ export function useCastActions({
 						outcome: "operation",
 						operation: {
 							kind: "character-changed",
-							currentCharacterName: outcome.currentCharacter.name,
+							currentCharacterName: outcome.current.name,
 						},
 					};
 				}

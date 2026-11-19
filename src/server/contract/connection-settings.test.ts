@@ -223,7 +223,7 @@ describe("Connection Settings transport adapter", () => {
 			outcome: "conflict",
 			expectedRevision: createdBody.settings.revision,
 			actualRevision: createdBody.settings.revision + 1,
-			currentSettings: {
+			current: {
 				profiles: [{ id: profileId, modelsUrl: "http://127.0.0.1:43127/new-models", discoveryCatalog: [] }],
 			},
 		});

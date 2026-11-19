@@ -113,7 +113,7 @@ test("commands use the current revision and a 409 publishes authority to every r
 	const { runConversationCommand } = await import("../conversation-command-runner");
 	const { useConversationQuery } = await import("../conversation-query");
 	const h = await harness(({ url, init }) => Promise.resolve(init?.method === "POST"
-		? Response.json({ outcome: "conflict", expectedRevision: 7, actualRevision: 9, currentConversation: summary(1, 9) }, { status: 409 })
+		? Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 7, actualRevision: 9, current: summary(1, 9) }, { status: 409 })
 		: Response.json(url.pathname.endsWith("history") ? page() : summary())));
 	const reader = await renderHook(() => useConversationQuery(1), h.client);
 	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 7)));

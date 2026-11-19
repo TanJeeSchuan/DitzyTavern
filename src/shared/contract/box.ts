@@ -4,7 +4,7 @@ import type { BoxDescriptor } from "./box-descriptor";
 import { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";
-import { invalidOutcome, notFoundOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
 
 // @approved
 //  A Box's id is a string the host checks against the registry at runtime
@@ -122,7 +122,7 @@ export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.St
 export const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDecisionSettings = Static<typeof boxDecisionSettings>;
 export const boxDecisionSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: boxDecisionSettings });
-export const boxDecisionSettingsConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: boxDecisionSettings });
+export const boxDecisionSettingsConflict = revisionConflict(boxDecisionSettings);
 /** @approved Only a digesting Box has a Decision Model selection, so its routes find no other id. */
 export const boxDecisionSettingsCommandErrors = Type.Union([boxDecisionSettingsConflict, invalidOutcome, notFoundOutcome]);
 export const boxDecisionSettingsCommandBody = Type.Composite([decisionSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
@@ -138,7 +138,7 @@ export const boxDelegateSelection = Type.Object({ profileId: Type.Union([Type.In
 export const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDelegateSettings = Static<typeof boxDelegateSettings>;
 export const boxDelegateSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: boxDelegateSettings });
-export const boxDelegateSettingsConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: boxDelegateSettings });
+export const boxDelegateSettingsConflict = revisionConflict(boxDelegateSettings);
 /** @approved Only a delegating Box and the reserved host default have delegate settings routes. */
 export const boxDelegateSettingsCommandErrors = Type.Union([boxDelegateSettingsConflict, invalidOutcome, notFoundOutcome]);
 export const boxDelegateSettingsCommandBody = Type.Composite([boxDelegateSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);

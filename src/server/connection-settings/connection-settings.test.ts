@@ -303,7 +303,7 @@ describe("Connection Settings", () => {
 			// typed stale-revision class exposed by the module.
 			const conflict = error as StaleRevisionError;
 			expect(conflict.actualRevision).toBe(pinned.revision);
-			expect(conflict.details).toMatchObject({ currentSettings: settings.get() });
+			expect(conflict.details).toMatchObject({ current: settings.get() });
 		}
 	});
 

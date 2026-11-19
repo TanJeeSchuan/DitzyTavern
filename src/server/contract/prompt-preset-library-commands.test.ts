@@ -125,7 +125,7 @@ describe("Prompt Preset library transport", () => {
 			reason: "stale-revision",
 			expectedRevision: 7,
 			actualRevision: 0,
-			currentPreset: { name: "Original" },
+			current: { name: "Original" },
 		});
 	});
 
@@ -280,7 +280,7 @@ describe("Prompt Preset library transport", () => {
 			reason: "stale-revision",
 			expectedRevision: 5,
 			actualRevision: 0,
-			currentPreset: { conversationCount: 1 },
+			current: { conversationCount: 1 },
 		});
 
 		const resolved = await readSelectedPreset(routes.conversations, conversation.id);
@@ -307,7 +307,7 @@ describe("Prompt Preset library transport", () => {
 		const conflict = deleted.body as PromptPresetConflict;
 		expect(conflict).toMatchObject({
 			reason: "deletion-impact",
-			currentPreset: { revision: 0, conversationCount: 1 },
+			current: { revision: 0, conversationCount: 1 },
 		});
 
 		expect((await readSelectedPreset(routes.conversations, conversation.id))?.id).toBe(storyId);
@@ -338,7 +338,7 @@ describe("Prompt Preset library transport", () => {
 		const conflict = deleted.body as PromptPresetConflict;
 		expect(conflict).toMatchObject({
 			reason: "deletion-impact",
-			currentPreset: { revision: 0, conversationCount: 1 },
+			current: { revision: 0, conversationCount: 1 },
 		});
 
 		expect((await readSelectedPreset(routes.conversations, chatA.id))?.id).toBe(1);

@@ -151,7 +151,7 @@ test("a Lorebook draft saves against the book it started from, so another editor
 		const { expectedRevision, name } = JSON.parse(String(init.body));
 		sent.push(expectedRevision);
 		if (expectedRevision !== server.revision) {
-			return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: server.revision, currentBook: server }, { status: 409 });
+			return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: server.revision, current: server }, { status: 409 });
 		}
 		server = book(1, server.revision + 1, name);
 		return Response.json({ outcome: "applied", book: server });
@@ -239,7 +239,7 @@ test("late save conflict cannot roll editor back behind cache", async () => {
 	await flushHook();
 	expect(first.current.book?.revision).toBe(3);
 	await first.act(async () => {
-		late.resolve(Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 1, actualRevision: 2, currentBook: book(1, 2, "Older") }, { status: 409 }));
+		late.resolve(Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 1, actualRevision: 2, current: book(1, 2, "Older") }, { status: 409 }));
 		await saving;
 	});
 	await flushHook();

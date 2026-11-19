@@ -68,7 +68,7 @@ export async function deleteChat(chatId: string): Promise<string | null> {
 export async function renameChat(chat: Pick<ChatSummary, "id" | "revision">, name: string): Promise<{ outcome: "renamed"; conversation: ConversationSummary } | { outcome: "failed"; reason: string }> {
 	const id = Number(chat.id);
 	let outcome = await applyConversationCommand(id, chat.revision, { type: "rename-conversation", name });
-	if (outcome.outcome === "conflict") outcome = await applyConversationCommand(id, outcome.currentConversation.revision, { type: "rename-conversation", name });
+	if (outcome.outcome === "conflict") outcome = await applyConversationCommand(id, outcome.current.revision, { type: "rename-conversation", name });
 	if (outcome.outcome === "available") return { outcome: "renamed", conversation: outcome.value.conversation };
 	return { outcome: "failed", reason: outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Chat could not be renamed." };
 }

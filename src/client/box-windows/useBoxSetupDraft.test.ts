@@ -39,7 +39,7 @@ const serve = (server: ConversationSummary) => {
 		sent.push(expectedRevision);
 		return expectedRevision === server.revision
 			? Response.json({ outcome: "applied", conversation: chat(server.revision + 1, action.setup) })
-			: Response.json({ outcome: "conflict", expectedRevision, actualRevision: server.revision, currentConversation: server }, { status: 409 });
+			: Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: server.revision, current: server }, { status: 409 });
 	}, { preconnect: () => {} });
 	return sent;
 };

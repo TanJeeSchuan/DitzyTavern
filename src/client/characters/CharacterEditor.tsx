@@ -68,9 +68,9 @@ export function CharacterEditor({
 				case "conflict":
 					// @approved
 					//  A pin or delete that lost has loaded the change, so trying again applies.
-					setSnapshot(outcome.currentCharacter);
+					setSnapshot(outcome.current);
 					if (action !== "save") setNotice("This Character changed elsewhere. Try again.");
-					return { conflict: outcome.currentCharacter };
+					return { conflict: outcome.current };
 				case "not-found":
 					onChanged();
 					onClosed("That Character is no longer in the Library.");

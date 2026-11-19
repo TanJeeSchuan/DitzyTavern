@@ -119,7 +119,7 @@ test("discard during a save keeps the submitted draft until the save settles", a
 
 test("a newer Conversation revision without newer settings does not move the draft's save revision", async () => {
 	const h = await harness(({ init }) => init?.method === "POST"
-		? Promise.resolve(Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 6, currentConversation: summary(1, 6) }, { status: 409 }))
+		? Promise.resolve(Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: 6, current: summary(1, 6) }, { status: 409 }))
 		: Promise.resolve(Response.json(settings())));
 	await h.hook.act(async () => h.hook.current.updateInstruction("Local"));
 	h.options.conversation = summary(1, 6);
@@ -131,7 +131,7 @@ test("a newer Conversation revision without newer settings does not move the dra
 test("a conflict whose settings cannot be read again keeps the draft unsaved instead of retrying", async () => {
 	let reads = 0;
 	const h = await harness(async ({ init }) => init?.method === "POST"
-		? Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 6, currentConversation: summary(1, 6) }, { status: 409 })
+		? Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: 6, current: summary(1, 6) }, { status: 409 })
 		: ++reads === 3 ? new Response(null, { status: 500 }) : Response.json(settings()));
 	await h.hook.act(async () => h.hook.current.updateInstruction("Local"));
 	let saved = true;
@@ -146,7 +146,7 @@ test("a conflict whose settings cannot be read again keeps the draft unsaved ins
 test("409 adopts the current Conversation and settings for all readers while retaining the complete draft", async () => {
 	let reads = 0;
 	const h = await harness(async ({ init }) => init?.method === "POST"
-		? Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 9, currentConversation: summary(1, 9) }, { status: 409 })
+		? Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: 9, current: summary(1, 9) }, { status: 409 })
 		: Response.json(settings(++reads <= 2 ? "Original" : "Server")));
 	const other = await renderHook(() => useGenerationSettingsQuery(h.options.conversation), h.client);
 	await h.hook.act(async () => { h.hook.current.updateInstruction("Local"); h.hook.current.updateSampling("temperature", "0.4"); });
@@ -203,7 +203,7 @@ test("ModelSelector conflict refreshes cached settings for later readers", async
 	globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
 		if (init?.method === "POST") {
 			serverModel = "server-model";
-			return Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 9, currentConversation: summary(1, 9) }, { status: 409 });
+			return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: 9, current: summary(1, 9) }, { status: 409 });
 		}
 		if (String(input).includes("connection-settings"))
 			return Response.json({ revision: 1, profiles: [], presets: [] });

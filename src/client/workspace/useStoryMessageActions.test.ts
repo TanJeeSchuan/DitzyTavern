@@ -130,17 +130,10 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 			const body = JSON.parse(String(init?.body)) as RecordedCommand;
 			commands.push(body);
 			events.push(`send:${body.expectedRevision}`);
-			if (mode.kind === "conflict") {
-				// The server kept its own selection and returns the current
-				// Conversation at the unchanged revision.
-				return Response.json(
-					{ outcome: "conflict", currentConversation: summary(revision) },
-					{ status: 409 },
-				);
-			}
+			if (mode.kind === "conflict") revision += 1;
 			if (body.expectedRevision !== revision) {
 				return Response.json(
-					{ outcome: "conflict", currentConversation: summary(revision) },
+					{ outcome: "conflict", reason: "stale-revision", expectedRevision: body.expectedRevision, actualRevision: revision, current: summary(revision) },
 					{ status: 409 },
 				);
 			}
@@ -279,7 +272,7 @@ describe("Requested selection", () => {
 
 		await harness.swipe(10, 1);
 
-		expect(harness.conversation()?.revision).toBe(5);
+		expect(harness.conversation()?.revision).toBe(6);
 		expect(harness.shownVariantId()).toBe(100);
 		expect(harness.story().requestedSelections.size).toBe(0);
 	});

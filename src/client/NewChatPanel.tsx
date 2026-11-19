@@ -218,7 +218,7 @@ export function NewChatPanel({
 					break;
 				case "conflict":
 					setProblem(
-						`${outcome.currentCharacter.name} changed while you were setting up. Re-select it to fork the current version.`,
+						`${outcome.current.name} changed while you were setting up. Re-select it to fork the current version.`,
 					);
 					break;
 				case "not-found":

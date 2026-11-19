@@ -31,15 +31,12 @@ export class PromptPresetDeletionImpactChangedError extends Error {
 	readonly outcome = "conflict" as const;
 	readonly details;
 
-	readonly currentPreset: PromptPresetSummary;
-
-	constructor(expectedConversationCount: number, currentPreset: PromptPresetSummary) {
+	constructor(expectedConversationCount: number, current: PromptPresetSummary) {
 		super(
-			`Expected Prompt Preset ${currentPreset.id} to affect ${expectedConversationCount} Conversations, but it currently affects ${currentPreset.conversationCount}.`,
+			`Expected Prompt Preset ${current.id} to affect ${expectedConversationCount} Conversations, but it currently affects ${current.conversationCount}.`,
 		);
 		this.name = "PromptPresetDeletionImpactChangedError";
-		this.currentPreset = currentPreset;
-		this.details = { reason: "deletion-impact" as const, currentPreset };
+		this.details = { reason: "deletion-impact" as const, current };
 	}
 }
 

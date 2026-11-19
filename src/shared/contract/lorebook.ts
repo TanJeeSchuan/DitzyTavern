@@ -1,6 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { numericWire } from "./wire";
-import { invalidOutcome, notFoundOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
 import { conversationConflict } from "./conversation-schema";
 
 export const loreMatchOperator = Type.Union([Type.Literal("and"), Type.Literal("or")]);
@@ -60,13 +60,7 @@ export type LorebookOwnerAttachmentState = Static<typeof lorebookOwnerAttachment
 // produce a Lorebook attachment conflict; the Conversation-owned commands
 // recover through the Conversation conflict shape (conversation-schema), so
 // the conversation state members left this union with their machinery.
-export const loreAttachmentConflict = Type.Object({
-	outcome: Type.Literal("conflict"),
-	reason: Type.Literal("stale-revision"),
-	expectedRevision: Type.Integer(),
-	actualRevision: Type.Integer(),
-	currentState: lorebookOwnerAttachmentState,
-});
+export const loreAttachmentConflict = revisionConflict(lorebookOwnerAttachmentState);
 
 // @approved
 //  The Lorebook attachment command's conflict response: Character-owned
@@ -240,13 +234,7 @@ export const loreMatchTestResponse = Type.Object({
 	matches: Type.Array(loreMatchTestEntry),
 });
 export type LoreMatchTestResponse = Static<typeof loreMatchTestResponse>;
-export const lorebookConflict = Type.Object({
-	outcome: Type.Literal("conflict"),
-	reason: Type.Literal("stale-revision"),
-	expectedRevision: Type.Integer(),
-	actualRevision: Type.Integer(),
-	currentBook: lorebook,
-});
+export const lorebookConflict = revisionConflict(lorebook);
 
 export const lorebookListResponse = Type.Object({ books: Type.Array(lorebookSummary) });
 export const bookIdParams = Type.Object({ bookId: numericWire });

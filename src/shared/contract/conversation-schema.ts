@@ -19,6 +19,7 @@ import {
 	notPlayableOutcome,
 	notRemovableOutcome,
 	conflictReasonOutcome,
+	revisionConflict,
 } from "./outcomes";
 import { numericWire } from "./wire";
 import type { GenerationJsonObject } from "../generation-provenance";
@@ -758,12 +759,7 @@ export const generationPreview = Type.Object({
 export type GenerationPreviewBody = Static<typeof generationPreviewBody>;
 export type GenerationPreview = Static<typeof generationPreview>;
 
-export const conversationConflict = Type.Object({
-	outcome: Type.Literal("conflict"),
-	expectedRevision: Type.Integer(),
-	actualRevision: Type.Integer(),
-	currentConversation: conversationSummary,
-});
+export const conversationConflict = revisionConflict(conversationSummary);
 
 export const generationAccepted = Type.Object({
 	outcome: Type.Literal("accepted"),
