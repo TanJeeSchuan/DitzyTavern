@@ -4,7 +4,7 @@ Status: READY
 
 Blocked By: T6 (branch from T6's tip; T6's PR may still be open)
 
-Model: Sol 6.1 high.
+Model: Sol 6.2 high. Reviewer: Sonnet 5.5 high.
 
 Test code only. No production file changes except where a slice names one. Evidence: reports 23, 24, 25 and 26. Read the new test rules in `CODING_STANDARDS.md` first.
 

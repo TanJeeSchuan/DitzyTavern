@@ -4,7 +4,7 @@ Status: READY
 
 Blocked By: T8
 
-Model: Sol 6.2 high. Reviewer: Opus 5.5 high.
+Model: Sol 6.2 high. Reviewer: Sonnet 5.5 high.
 
 T2, T4 and T5 deleted dead exports, barrels, rename-only aliases, unreachable CSS and duplicated declarations, and T1 fixed bugs that came from a second copy of a guarded call. Each kind below is mechanical, so it gets a check in `bun run check` (`scripts/run-check.ts`) instead of a line in `CODING_STANDARDS.md`. Run after T8 so the first knip triage runs on the smaller codebase.
 

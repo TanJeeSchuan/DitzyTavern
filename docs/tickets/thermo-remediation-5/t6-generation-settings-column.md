@@ -4,7 +4,7 @@ Status: READY
 
 Blocked By: T5
 
-Model: Sol 6.2 high writes and fixes. Reviewer: Opus 5.5 high.
+Model: Sol 6.2 high writes and fixes. Reviewer: Sonnet 5.5 high.
 
 **This ticket changes stored data. Do not merge it. The owner backs up the hosted database and deploys it himself.**
 
