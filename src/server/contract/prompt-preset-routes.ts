@@ -1,6 +1,7 @@
 import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
+import { loadChatVersions } from "../box/registry";
 import {
 	addPromptPresetBlock,
 	addPromptPresetInstruction,
@@ -169,9 +170,15 @@ export const createPromptPresetRoutes = (database: Database) =>
 		)
 		.post(
 			"/api/prompt-presets/:presetId/blocks",
-			({ params, body }) =>
-				recipeResponse(() =>
-						addPromptPresetBlock(database, params.presetId, body.reference, body.conversationId)),
+			async ({ params, body }) => {
+				const { conversationId, reference } = body;
+				if (conversationId !== undefined) {
+					await loadChatVersions(database, conversationId).catch((error: Error) => {
+						console.error(`[boxes] Chat ${conversationId}'s Box versions did not load:`, error);
+					});
+				}
+				return recipeResponse(() => addPromptPresetBlock(database, params.presetId, reference, conversationId));
+			},
 			{
 				params: presetIdParams,
 				body: addPromptPresetBlockBody,

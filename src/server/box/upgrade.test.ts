@@ -12,6 +12,7 @@ import { versionFolder, writeLatest } from "./versions";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { captureModelFetch, key, readConversation, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { createConversationRoutes } from "../contract/conversation";
+import { createPromptPresetRoutes } from "../contract/prompt-preset-routes";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createCharacterLibraryModule } from "../character-library";
 import { addPromptPresetBlock, readConversationPromptPresetRecipeFromConnection, removePromptPresetBlock } from "../prompt-preset";
@@ -125,6 +126,31 @@ test("Box block insertion follows the Chat's pin when the latest version opts ou
 	remove();
 	addPromptPresetBlock(database, recipe().id, reference, pinned.id);
 	expect(slot()).toBeDefined();
+});
+
+test("adding a Prompt Preset block loads the Chat's pinned Box version after a restart", async () => {
+	const box = await versioned(tally({ prompt: false, moves: undefined }, { moves: "" }));
+	const chat = createChat();
+	setBoxState(database, chat.id, "tally", "enabled");
+	const recipe = () => readConversationPromptPresetRecipeFromConnection(drizzle(database), chat.id)!; // @approved The Chat uses the default preset.
+	const reference = "box:tally";
+	const slot = () => recipe().slots.find((candidate) => candidate.reference === reference);
+	const presetId = recipe().id;
+	removePromptPresetBlock(database, presetId, slot()!.id); // @approved Enabling Tally at v1 inserted the block.
+
+	await writeLatest(box.home, box.v2);
+	await loadBoxes([builtInBoxes, box.plugins], database);
+	expect(boxAt("tally", box.v1)).toBeUndefined();
+
+	const response = await createPromptPresetRoutes(database).handle(
+		new Request(`http://localhost/api/prompt-presets/${presetId}/blocks`, {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ reference, conversationId: chat.id }),
+		}),
+	);
+	expect(response.status).toBe(200);
+	expect(slot()?.enabled).toBe(true);
 });
 
 test("a passing upgrade writes only the pin and advances the revision, keeping the instance so the records still fold", async () => {
