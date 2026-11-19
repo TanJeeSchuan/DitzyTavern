@@ -1,6 +1,6 @@
-import type { StaticDecode } from "@sinclair/typebox";
 import { api } from "./lib/eden";
-import { requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
+import { requestData } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
 import type {
 	ConnectionHeaderOperationPayload,
 	ConnectionPresetPayload,
@@ -11,14 +11,13 @@ import type {
 	ConnectionTestDraftPayload,
 } from "../shared/contract/connection-settings";
 import {
-	connectionCommandErrors,
+	connectionCommandResponse,
 	connectionDiscoveryResponse,
 	connectionPresetsResponse,
 	connectionSettingsResponse,
-	connectionSettingsApplied,
 	connectionTestResponse,
+	connectionTextOnlyResponse,
 } from "../shared/contract/connection-settings";
-import { invalidOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
 
 export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];
@@ -38,59 +37,38 @@ export const CONNECTION_ADAPTER_LABELS = {
 
 export const isEmbeddingsProfile = (profile: ConnectionProfile): boolean => profile.apiFormat === "embeddings";
 
-export type ConnectionSettingsResult = RequestOutcome<
-	StaticDecode<typeof connectionSettingsApplied>,
-	StaticDecode<typeof connectionCommandErrors>
->;
-
-export type DiscoveryResult = RequestOutcome<
-	StaticDecode<typeof connectionDiscoveryResponse>,
-	StaticDecode<typeof connectionCommandErrors>
->;
-
-// @approved
-//  The Test Connection route models only the invalid envelope, so the read
-// passes it as the single-member error union directly.
-export type TestConnectionResult = RequestOutcome<
-	StaticDecode<typeof connectionTestResponse>,
-	StaticDecode<typeof invalidOutcome>
->;
+export type TestConnectionResult = Awaited<ReturnType<typeof testConnectionDraft>>;
 
 export type TestConnectionDraftInput = ConnectionTestDraftPayload;
 
 export type ConnectionSettingsCommand = ConnectionSettingsCommandPayload;
 
 export async function loadConnectionSettings(signal?: AbortSignal): Promise<ConnectionSettings> {
-	return requestData(api.api["connection-settings"].get({ fetch: { signal } }), connectionSettingsResponse);
+	return requestData(api.api["connection-settings"].get({ fetch: { signal } }), connectionSettingsResponse[200]);
 }
 
 export async function loadConnectionPresets(signal?: AbortSignal): Promise<ConnectionPreset[]> {
-	return (await requestData(api.api["connection-settings"].presets.get({ fetch: { signal } }), connectionPresetsResponse)).presets;
+	return (await requestData(api.api["connection-settings"].presets.get({ fetch: { signal } }), connectionPresetsResponse[200])).presets;
 }
 
-export async function saveConnectionCommand(
-	command: ConnectionSettingsCommand,
-): Promise<ConnectionSettingsResult> {
+export async function saveConnectionCommand(command: ConnectionSettingsCommand) {
 	return requestOutcome(
 		api.api["connection-settings"].commands.post(command),
-		connectionSettingsApplied,
-		connectionCommandErrors,
+		connectionCommandResponse,
 	);
 }
 
-export async function testConnectionDraft(input: TestConnectionDraftInput): Promise<TestConnectionResult> {
+export async function testConnectionDraft(input: TestConnectionDraftInput) {
 	return requestOutcome(
 		api.api["connection-settings"]["test-connection"].post(input),
 		connectionTestResponse,
-		invalidOutcome,
 	);
 }
 
-export async function refreshDiscoveryCatalog(profileId: number): Promise<DiscoveryResult> {
+export async function refreshDiscoveryCatalog(profileId: number) {
 	return requestOutcome(
 		api.api["connection-settings"].discovery.post({ profileId }),
 		connectionDiscoveryResponse,
-		connectionCommandErrors,
 	);
 }
 
@@ -101,8 +79,7 @@ export async function refreshDiscoveryCatalog(profileId: number): Promise<Discov
 export async function setTextOnlyModel(profileId: number, modelId: string, textOnly: boolean): Promise<ConnectionSettings | null> {
 	const outcome = await requestOutcome(
 		api.api["connection-settings"]["text-only-model"].post({ profileId, modelId, textOnly }),
-		connectionSettingsApplied,
-		readOutcomeErrors,
+		connectionTextOnlyResponse,
 	);
 	return outcome.outcome === "available" ? outcome.value.settings : null;
 }

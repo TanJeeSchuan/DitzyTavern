@@ -121,10 +121,14 @@ export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.St
 
 export const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDecisionSettings = Static<typeof boxDecisionSettings>;
-export const boxDecisionSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: boxDecisionSettings });
-export const boxDecisionSettingsConflict = revisionConflict(boxDecisionSettings);
 /** @approved Only a digesting Box has a Decision Model selection, so its routes find no other id. */
-export const boxDecisionSettingsCommandErrors = Type.Union([boxDecisionSettingsConflict, invalidOutcome, notFoundOutcome]);
+export const boxDecisionSettingsReadResponse = { 200: boxDecisionSettings, 404: notFoundOutcome };
+export const boxDecisionSettingsCommandResponse = {
+	200: Type.Object({ outcome: Type.Literal("applied"), settings: boxDecisionSettings }),
+	404: notFoundOutcome,
+	409: revisionConflict(boxDecisionSettings),
+	422: invalidOutcome,
+};
 export const boxDecisionSettingsCommandBody = Type.Composite([decisionSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
 export type BoxDecisionSettingsCommand = Static<typeof boxDecisionSettingsCommandBody>;
 
@@ -137,9 +141,13 @@ export const DEFAULT_BOX_DELEGATE = "$default";
 export const boxDelegateSelection = Type.Object({ profileId: Type.Union([Type.Integer(), Type.Null()]), model: Type.String() });
 export const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDelegateSettings = Static<typeof boxDelegateSettings>;
-export const boxDelegateSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: boxDelegateSettings });
-export const boxDelegateSettingsConflict = revisionConflict(boxDelegateSettings);
 /** @approved Only a delegating Box and the reserved host default have delegate settings routes. */
-export const boxDelegateSettingsCommandErrors = Type.Union([boxDelegateSettingsConflict, invalidOutcome, notFoundOutcome]);
+export const boxDelegateSettingsReadResponse = { 200: boxDelegateSettings, 404: notFoundOutcome };
+export const boxDelegateSettingsCommandResponse = {
+	200: Type.Object({ outcome: Type.Literal("applied"), settings: boxDelegateSettings }),
+	404: notFoundOutcome,
+	409: revisionConflict(boxDelegateSettings),
+	422: invalidOutcome,
+};
 export const boxDelegateSettingsCommandBody = Type.Composite([boxDelegateSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
 export type BoxDelegateSettingsCommand = Static<typeof boxDelegateSettingsCommandBody>;
