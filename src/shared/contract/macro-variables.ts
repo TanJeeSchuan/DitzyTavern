@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { conversationSummary } from "./conversation-schema";
+import { conversationConflict, conversationSummary } from "./conversation-schema";
+import { invalidOutcome, notFoundOutcome } from "./outcomes";
 import { numericWire } from "./wire";
 import {
 	macroValue,
@@ -68,3 +69,16 @@ export type MacroVariableSource = Static<typeof macroVariableLocation>;
 export type MacroVariable = Static<typeof macroVariable>;
 export type MacroVariables = Static<typeof macroVariables>;
 export type MacroVariablesEditBody = Static<typeof macroVariablesEditBody>;
+
+export const macroVariablesReadResponse = {
+	200: macroVariables,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+export const macroVariablesEditResponse = {
+	200: macroVariablesAppliedResponse,
+	404: notFoundOutcome,
+	409: conversationConflict,
+	422: invalidOutcome,
+};

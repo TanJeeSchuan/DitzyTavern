@@ -286,6 +286,7 @@ export const conversationPromptPreset = Type.Object({
 	slots: Type.Array(resolvedPromptPresetSlot),
 });
 export type ConversationPromptPreset = Static<typeof conversationPromptPreset>;
+export const conversationPromptPresetResponse = { 200: conversationPromptPreset, 404: notFoundOutcome };
 
 // @approved
 //  The library entry every preset list shows. `conversationCount` is

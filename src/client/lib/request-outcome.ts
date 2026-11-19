@@ -39,9 +39,9 @@ type TransportErrorValue<Request> = Awaited<Request> extends { error: infer Erro
 	? Exclude<Error, null> extends { value: infer Value } ? Value : never
 	: never;
 
-type WireOutcomeError<Request> = Exclude<TransportErrorValue<Request>, ValidationFailure>;
+export type WireOutcomeError<Request> = Exclude<TransportErrorValue<Request>, ValidationFailure>;
 
-type TransportRequest = Promise<{
+export type TransportRequest = Promise<{
 	data: WirePayload;
 	error: { status: number; value: WirePayload | ValidationFailure } | null;
 	// @approved
@@ -53,16 +53,9 @@ type TransportRequest = Promise<{
 }>;
 
 // @approved
-//  The one client transport seam: every command and read adapter hands its
-// Treaty request, the 200 contract schema, and the route family's modeled
-// error-union schema here. The error body is decoded against the error
-// schema exactly as the 200 body is decoded against the success schema —
-// an unmodeled tag, a missing field, or a validation envelope is the shared
-// unusable fallback, while only a result with no Response is network. The
-// error-schema constraint pins its Static to the route's own derived error
-// union in both directions, so an under-declared or wrong-family schema is a
-// type error at the call site.
-export const requestOutcome = async <
+// The Box SDK accepts a success schema and an error schema. The error
+// constraint checks that the schema covers the route's modeled errors.
+export const requestOutcome = <
 	Request extends TransportRequest,
 	Schema extends TSchema,
 	Errors extends TSchema
@@ -72,8 +65,15 @@ export const requestOutcome = async <
 	request: Request,
 	schema: Schema,
 	errors: Errors,
-): Promise<RequestOutcome<StaticDecode<Schema>, StaticDecode<Errors>>> => {
-	let result: Awaited<Request>;
+): Promise<RequestOutcome<StaticDecode<Schema>, StaticDecode<Errors>>> =>
+	readRequestOutcome(request, schema, (value) => decodeWirePayload(errors, value));
+
+export const readRequestOutcome = async <Schema extends TSchema, Error>(
+	request: TransportRequest,
+	schema: Schema,
+	decodeError: (value: WirePayload) => Error | null,
+): Promise<RequestOutcome<StaticDecode<Schema>, Error>> => {
+	let result: Awaited<TransportRequest>;
 	try {
 		result = await request;
 	} catch {
@@ -86,7 +86,7 @@ export const requestOutcome = async <
 	if (error) {
 		return result.response === undefined
 			? { outcome: "network" }
-			: decodeWirePayload(errors, error.value) ?? unusableResponse;
+			: decodeError(error.value) ?? unusableResponse;
 	}
 	const decoded = decodeWirePayload(schema, data);
 	return decoded === null ? unusableResponse : { outcome: "available", value: decoded };
