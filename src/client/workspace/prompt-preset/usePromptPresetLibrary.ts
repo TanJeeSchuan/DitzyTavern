@@ -32,7 +32,7 @@ export function usePromptPresetLibrary({
 	run,
 	signal,
 }: {
-	selectedId: number;
+	selectedId: number | undefined;
 	dirty: boolean;
 	setNotice: (notice: string | null) => void;
 	refreshRecipe: () => Promise<ConversationPromptPreset | null>;

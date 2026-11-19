@@ -131,6 +131,43 @@ test.describe("failed Prompt Preset reads", () => {
 		await expect(page.getByText("The Prompt Preset library could not be loaded.")).toBeVisible();
 		await expect(contents).toHaveCount(0);
 	});
+
+	test("a Prompt Preset draft survives a failed recipe read for the same Chat", async ({ page, request }) => {
+		const { activeChatId } = await (await request.get("/api/workspace")).json();
+		const chat = `/api/conversations/${activeChatId}`;
+		const renameChat = async (name: string) => {
+			const { revision } = await (await request.get(chat)).json();
+			const renamed = await request.post(`${chat}/commands`, { data: { expectedRevision: revision, action: { type: "rename-conversation", name } } });
+			await expect(renamed).toBeOK();
+			await page.evaluate(() => window.dispatchEvent(new Event("visibilitychange")));
+		};
+		await page.goto("/");
+		await page.getByRole("button", { name: "Prompt Presets" }).click();
+		const openEditor = page.getByRole("button", { name: "Edit Author Note" });
+		const editor = page.getByRole("dialog", { name: "Author Note" });
+		const instructions = editor.getByRole("textbox", { name: "Instructions" });
+		const save = page.getByRole("button", { name: "Save", exact: true });
+		await openEditor.click();
+		await instructions.fill("Keep this draft through a failed read.");
+		await editor.getByRole("button", { name: "Done" }).click();
+
+		await page.route("**/api/conversations/*/prompt-preset", (route) => route.fulfill({ status: 503 }), { times: 1 });
+		await renameChat("Renamed while editing");
+		await expect(page.getByText("The Prompt Preset library could not be loaded.")).toBeVisible();
+		await expect(openEditor).toHaveCount(0);
+		await expect(save).toHaveCount(0);
+		await page.getByRole("button", { name: "Close Prompt Presets" }).click();
+		const guard = page.getByRole("dialog", { name: "Unsaved changes" });
+		const saveAndLeave = guard.getByRole("button", { name: "Save and leave" });
+		await expect(saveAndLeave).toBeDisabled();
+
+		await renameChat("Renamed after the read failed");
+		await expect(saveAndLeave).toBeEnabled();
+		await guard.getByRole("button", { name: "Keep editing" }).click();
+		await expect(save).toBeEnabled();
+		await openEditor.click();
+		await expect(instructions).toHaveValue("Keep this draft through a failed read.");
+	});
 });
 
 test("Back to Paint asks before discarding Paint Preset edits", async ({ page }) => {

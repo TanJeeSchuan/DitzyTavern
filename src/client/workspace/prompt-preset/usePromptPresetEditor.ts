@@ -42,7 +42,7 @@ export function usePromptPresetEditor({
 	onNotice,
 }: {
 	conversation: ConversationSummary;
-	preset: ConversationPromptPreset;
+	preset: ConversationPromptPreset | null;
 	presetId: number | undefined;
 	recipePending: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
@@ -60,10 +60,10 @@ export function usePromptPresetEditor({
 	const inFlight = useRef(false);
 	const [problem, setProblem] = useState<string | null>(null);
 	const setNotice = (notice: string | null) => { if (!signal.aborted) onNotice(notice); };
-	const dirty = preset.slots.some((slot) => {
+	const dirty = preset?.slots.some((slot) => {
 		const draft = drafts[slot.id];
 		return draft !== undefined && draftIsDirty(slot, draft);
-	});
+	}) ?? (Object.keys(drafts).length > 0);
 
 	async function runOperation<R>(kind: NonNullable<typeof busy>, run: () => Promise<R>): Promise<R | undefined> {
 		if (signal.aborted || inFlight.current || recipePending) return;
@@ -123,6 +123,7 @@ export function usePromptPresetEditor({
 	});
 
 	const save = async () => await runOperation("save", async () => {
+		if (preset === null) return false;
 		const { patches, submitted } = dirtyBlockPatches(preset, latestDrafts.current);
 		if (patches.length === 0) return true;
 		setProblem(null);
@@ -155,7 +156,7 @@ export function usePromptPresetEditor({
 	}) ?? false;
 
 	const library = usePromptPresetLibrary({
-		selectedId: preset.id,
+		selectedId: preset?.id,
 		dirty,
 		setNotice,
 		refreshRecipe,

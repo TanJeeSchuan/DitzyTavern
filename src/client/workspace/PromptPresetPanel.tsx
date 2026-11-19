@@ -52,15 +52,12 @@ function PresetQueries(props: PresetProps) {
 	const [notice, setNotice] = useState<string | null>(null);
 	const library = useQuery(presetLibraryQuery);
 	const recipe = useQuery({ ...presetRecipeQuery(conversation.id, conversation.revision, presetId), placeholderData: keepPreviousData });
-	const preset = recipe.data;
-	if (library.data !== undefined && preset) {
-		return <PresetEditor key={preset.id} {...props} presets={library.data} preset={preset}
-			recipePending={recipe.isPlaceholderData} notice={notice} onNotice={setNotice} />;
-	}
-	if (library.isError || recipe.isError || recipe.data === null) {
-		return <p className="panel-body text-muted-foreground">The Prompt Preset library could not be loaded.</p>;
-	}
-	return <LoadingPresets />;
+	const preset = recipe.isError ? null : recipe.data ?? null;
+	const [draftPresetId, setDraftPresetId] = useState(preset?.id);
+	if (preset !== null && !recipe.isPlaceholderData && preset.id !== draftPresetId) setDraftPresetId(preset.id);
+	return <PresetEditor key={draftPresetId} {...props} presets={library.data} preset={preset}
+		recipePending={recipe.isPlaceholderData} readFailed={library.isLoadingError || recipe.isError || recipe.data === null}
+		notice={notice} onNotice={setNotice} />;
 }
 
 function LoadingPresets() {
@@ -74,25 +71,32 @@ function LoadingPresets() {
 	</div>;
 }
 
-function PresetEditor({ mutationsDisabled, presets, notice, ...props }: PresetProps & {
-	presets: PromptPresetSummary[];
-	preset: ConversationPromptPreset;
+function PresetEditor({ mutationsDisabled, presets, preset, recipePending, readFailed, notice, ...props }: PresetProps & {
+	presets: PromptPresetSummary[] | undefined;
+	preset: ConversationPromptPreset | null;
 	recipePending: boolean;
+	readFailed: boolean;
 	notice: string | null;
 	onNotice: (notice: string | null) => void;
 }) {
-	const editor = usePromptPresetEditor(props);
+	const canSave = presets !== undefined && preset !== null && !recipePending;
+	const editor = usePromptPresetEditor({ ...props, preset, recipePending: !canSave });
 	const navigate = useNavigationRequest();
 	const busy = editor.busy !== null;
-	const pending = busy || props.recipePending;
-	useSaveGuard({ dirty: editor.dirty, saving: busy, save: editor.save, discard: editor.discard });
+	const pending = busy || recipePending;
+	useSaveGuard({ dirty: editor.dirty, saving: busy, canSave, save: editor.save, discard: editor.discard });
 
+	if (presets === undefined || preset === null) {
+		return readFailed
+			? <p className="panel-body text-muted-foreground">The Prompt Preset library could not be loaded.</p>
+			: <LoadingPresets />;
+	}
 	return (
 		<>
 			<div className="panel-body flex flex-col gap-6" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 				{props.presetId === undefined ? <PromptPresetLibrarySection
 					presets={presets}
-					selectedId={props.preset.id}
+					selectedId={preset.id}
 					pending={pending}
 					problem={editor.problem}
 					notice={notice}
@@ -100,12 +104,12 @@ function PresetEditor({ mutationsDisabled, presets, notice, ...props }: PresetPr
 					onCommand={(command, successNotice) => void editor.runPresetCommand(command, successNotice)}
 					onImportFile={(file) => void editor.importPresetFile(file)}
 					onExport={(id, name) => void editor.exportSelectedPreset(id, name)}
-				/> : <p className="font-medium">{props.preset.name}</p>}
+				/> : <p className="font-medium">{preset.name}</p>}
 				<PromptPresetRecipeEditor
-					preset={props.preset}
+					preset={preset}
 					drafts={editor.drafts}
 					pending={pending}
-					editingDisabled={editor.busy === "change" || props.recipePending}
+					editingDisabled={editor.busy === "change" || recipePending}
 					problem={editor.problem}
 					onDraftChange={editor.setDraft}
 					onEnabledChange={editor.setEnabled}
@@ -114,7 +118,7 @@ function PresetEditor({ mutationsDisabled, presets, notice, ...props }: PresetPr
 				/>
 				{notice !== null && <p className="text-sm text-muted-foreground" role="status">{notice}</p>}
 			</div>
-			<SaveFooter dirty={editor.dirty} saving={busy} valid={!props.recipePending} error={editor.problem} onSave={() => void editor.save()} />
+			<SaveFooter dirty={editor.dirty} saving={busy} valid={canSave} error={editor.problem} onSave={() => void editor.save()} />
 			<PromptPresetImportReviewDialog
 				review={editor.review}
 				busy={pending}
