@@ -57,7 +57,7 @@ Report 18, finding 5; report 20, finding 5.
 - [x] Slice a, PR
 - [x] Slice b, Conversation response maps
 - [x] Slice b, library response maps
-- [ ] Slice b, settings response maps
+- [x] Slice b, settings response maps
 - [ ] Slice c, PR
 - [ ] Slice d, PR
 
@@ -74,4 +74,4 @@ Report 18, finding 5; report 20, finding 5.
 - Changed-file lint and `git diff --check` passed for the Conversation PR. GitHub Actions runs typecheck, unit tests, and e2e.
 - Slice b shares the Character, Lorebook, and Prompt Preset response maps across the server and client. Preset recipe operations use their Treaty requests directly, so the hand-written request types are gone.
 - Changed-file lint and `git diff --check` passed for the library PR. Typecheck, unit tests, and e2e run in GitHub Actions.
-- Settings still uses separate success and error schemas. The Box SDK keeps its three-argument `requestOutcome` API.
+- Slice b shares the Connection, Semantic Trigger, Model Selection, and Box Decision Model and delegate settings response maps across the server and client. It removes the unused core error unions. The Box SDK keeps its three-argument `requestOutcome` API.

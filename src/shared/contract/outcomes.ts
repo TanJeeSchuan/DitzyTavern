@@ -44,8 +44,3 @@ export type ResponseErrorSchema<Map extends ResponseMap> = Map[Exclude<keyof Map
 // runtime schema and derive the decoded type from the same map entries.
 export const responseErrorSchema = <Map extends ResponseMap>({ 200: _success, ...errors }: Map) =>
 	Type.Unsafe<StaticDecode<ResponseErrorSchema<Map>>>(Type.Union(Object.values(errors)));
-
-// @approved
-//  The read family's modeled error union: every typed read route declares
-// the shared not-found and invalid envelopes as its only error responses.
-export const readOutcomeErrors = Type.Union([notFoundOutcome, invalidOutcome]);

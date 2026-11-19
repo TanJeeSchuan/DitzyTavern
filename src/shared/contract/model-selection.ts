@@ -5,9 +5,12 @@ import { invalidOutcome, revisionConflict } from "./outcomes";
 export const modelSelection = Type.Object({ profileId: Type.Union([Type.Integer(), Type.Null()]), model: Type.String() });
 export const modelSelectionSettings = Type.Composite([modelSelection, Type.Object({ revision: Type.Integer() })]);
 export const modelSelectionCommand = Type.Composite([modelSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
-export const modelSelectionApplied = Type.Object({ outcome: Type.Literal("applied"), settings: modelSelectionSettings });
-export const modelSelectionConflict = revisionConflict(modelSelectionSettings);
-export const modelSelectionErrors = Type.Union([modelSelectionConflict, invalidOutcome]);
+export const modelSelectionReadResponse = { 200: modelSelectionSettings };
+export const modelSelectionCommandResponse = {
+	200: Type.Object({ outcome: Type.Literal("applied"), settings: modelSelectionSettings }),
+	409: revisionConflict(modelSelectionSettings),
+	422: invalidOutcome,
+};
 export type ModelSelection = Static<typeof modelSelection>;
 export type ModelSelectionSettings = Static<typeof modelSelectionSettings>;
 export type ModelSelectionCommand = Static<typeof modelSelectionCommand>;

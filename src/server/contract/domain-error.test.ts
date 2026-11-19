@@ -4,7 +4,7 @@ import { InvalidConversationCommandError } from "../conversation";
 import { StaleRevisionError } from "../revision";
 import { PromptPresetDeletionImpactChangedError } from "../prompt-preset";
 import { generationConflictResponse } from "../../shared/contract/conversation-schema";
-import { modelSelectionConflict } from "../../shared/contract/model-selection";
+import { modelSelectionCommandResponse } from "../../shared/contract/model-selection";
 import { promptPresetCommandResponse } from "../../shared/contract/prompt-preset";
 import { invalidOutcome, notFoundOutcome, notPlayableOutcome } from "../../shared/contract/outcomes";
 
@@ -24,7 +24,7 @@ describe("domain error presentation", () => {
 	test("presents the same stale-revision envelope for settings and presets", () => {
 		const settings = { profileId: 1, model: "Writer", revision: 3 };
 		const preset = { id: 9, name: "Changed", revision: 3, isBuiltIn: false, conversationCount: 1 };
-		const settingsConflict = presentDomainError(new StaleRevisionError("settings", 2, 3, settings), { 409: modelSelectionConflict });
+		const settingsConflict = presentDomainError(new StaleRevisionError("settings", 2, 3, settings), modelSelectionCommandResponse);
 		const presetConflict = presentDomainError(new StaleRevisionError("preset", 2, 3, preset), promptPresetCommandResponse);
 		const conflict = { outcome: "conflict", reason: "stale-revision", expectedRevision: 2, actualRevision: 3 } as const;
 

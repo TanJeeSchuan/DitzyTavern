@@ -68,7 +68,7 @@ export const connectionProfile = Type.Object({
 	headers: Type.Array(redactedHeader),
 });
 
-export const connectionSettingsResponse = Type.Object({
+const connectionSettings = Type.Object({
 	revision: Type.Integer(),
 	profiles: Type.Array(connectionProfile),
 });
@@ -128,7 +128,7 @@ export const connectionTestBody = Type.Object({
 	headers: Type.Optional(Type.Array(headerOperation)),
 });
 
-export const connectionTestResponse = Type.Union([
+const connectionTestResult = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("success"),
 		message: Type.String(),
@@ -156,9 +156,9 @@ const discoveryFailureKind = Type.Union([
 	Type.Literal("malformed-response"),
 ]);
 
-export const connectionSettingsConflict = revisionConflict(connectionSettingsResponse);
+const connectionSettingsConflict = revisionConflict(connectionSettings);
 
-export const connectionDiscoveryResponse = Type.Union([
+const connectionDiscoveryResult = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("success"),
 		profile: connectionProfile,
@@ -173,10 +173,6 @@ export const connectionDiscoveryResponse = Type.Union([
 ]);
 
 // Route boundary schemas referenced by the Connection Settings adapter.
-
-export const connectionPresetsResponse = Type.Object({
-	presets: Type.Array(preset),
-});
 
 export const connectionDiscoveryBody = Type.Object({ profileId: Type.Integer() });
 
@@ -203,24 +199,21 @@ export const blankConnectionProfileDraft = {
 	pinnedModels: [],
 } satisfies Static<typeof profileDraft>;
 
-export const connectionSettingsApplied = Type.Object({
+const connectionSettingsApplied = Type.Object({
 	outcome: Type.Literal("applied"),
-	settings: connectionSettingsResponse,
+	settings: connectionSettings,
 });
 
-// @approved
-//  The Connection Settings command and discovery routes' modeled error
-// union: the composed 404/409/422 envelopes both routes declare, so the
-// client decodes an error body against exactly the union its route models.
-export const connectionCommandErrors = Type.Union([
-	connectionSettingsConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const connectionSettingsResponse = { 200: connectionSettings };
+export const connectionPresetsResponse = { 200: Type.Object({ presets: Type.Array(preset) }) };
+export const connectionCommandResponse = { 200: connectionSettingsApplied, 404: notFoundOutcome, 409: connectionSettingsConflict, 422: invalidOutcome };
+export const connectionDiscoveryResponse = { ...connectionCommandResponse, 200: connectionDiscoveryResult };
+export const connectionTestResponse = { 200: connectionTestResult, 422: invalidOutcome };
+export const connectionTextOnlyResponse = { 200: connectionSettingsApplied, 404: notFoundOutcome, 422: invalidOutcome };
 
 export type ConnectionProfileDraftPayload = Static<typeof profileDraft>;
 export type ConnectionProfilePayload = Static<typeof connectionProfile>;
-export type ConnectionSettingsPayload = Static<typeof connectionSettingsResponse>;
+export type ConnectionSettingsPayload = Static<typeof connectionSettings>;
 export type ConnectionPresetPayload = Static<typeof preset>;
 export type ConnectionHeaderOperationPayload = Static<typeof headerOperation>;
 
