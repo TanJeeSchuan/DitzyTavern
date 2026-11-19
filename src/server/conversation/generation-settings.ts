@@ -218,8 +218,9 @@ export function updateConversationModelSelection(
 			settings_json: sql`json_set(${conversationGenerationSettingsTable.settings_json}, '$.modelId', ${modelId})`,
 		})
 		.where(eq(conversationGenerationSettingsTable.conversation_id, conversationId))
-		.run();
-	if (updated.changes === 0) throw missingGenerationSettings(conversationId);
+		.returning({ conversationId: conversationGenerationSettingsTable.conversation_id })
+		.get();
+	if (updated === undefined) throw missingGenerationSettings(conversationId);
 }
 
 function validateContinuationPrefillSuffix(
