@@ -6,7 +6,7 @@ import { createPaintingRoutes } from "./painting";
 
 test("Paint Preset and Brief Message count writes require the current Chat revision", async () => {
 	using database = openObservedDatabase();
-	const chat = createConversationWithHistory(database, { name: "Paint", participants: [], control: { human: null, model: null } });
+	const chat = createConversationWithHistory(database, { name: "Paint" });
 	const preset = importNativePromptPreset(database, { name: "Charcoal", slots: [{ reference: "brief-instruction", enabled: true, role: "system", content: "Use charcoal." }] });
 	const app = createConversationRoutes(database).use(createPaintingRoutes(database));
 	const url = `http://localhost/api/conversations/${chat.id}`;
