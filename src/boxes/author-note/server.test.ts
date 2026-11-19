@@ -185,13 +185,9 @@ test("a keyword only in the Author Note activates no Lore Entry", async () => {
 		}] }),
 	}));
 	expect(imported.status).toBe(200);
-	const attachmentResponse = await lore.handle(new Request(`http://localhost/api/lorebooks/attachments?conversationId=${chat.id}`));
-	const { revision } = await attachmentResponse.json();
-	const attached = await lore.handle(new Request("http://localhost/api/lorebooks/attachments/commands", {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "attach-chat", conversationId: chat.id, bookId: 1, expectedRevision: revision }),
-	}));
-	expect(attached.status).toBe(200);
 	const app = createConversationRoutes(database);
+	const attached = await command(app, chat.id, chat.revision, { type: "attach-chat", bookId: 1 });
+	expect(attached.status).toBe(200);
 	const current = await readConversation(app, chat.id);
 	await saveNote(app, chat.id, current.revision, "Include a dragon.");
 	const planned = await preview(app, chat.id);

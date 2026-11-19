@@ -36,7 +36,7 @@ export function CharacterEditor({
 }) {
 	const [snapshot, setSnapshot] = useState<CharacterSnapshot | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
-	const [pendingAction, setPendingAction] = useState<"save" | "pin" | "delete" | null>(null);
+	const [pendingAction, setPendingAction] = useState<"save" | "pin" | "delete" | "lore" | null>(null);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 
 	useAsyncEffect((isCancelled) => {
@@ -48,8 +48,9 @@ export function CharacterEditor({
 	}, [characterId]);
 
 	/** @approved Runs one Character command; resolves the Character it left, or the one it lost to. */
-	const run = useCallback(async (action: "save" | "pin" | "delete", command: CharacterCommand): Promise<{ applied: CharacterSnapshot } | { conflict: CharacterSnapshot } | null> => {
+	const run = useCallback(async (action: NonNullable<typeof pendingAction>, command: CharacterCommand): Promise<{ applied: CharacterSnapshot } | { conflict: CharacterSnapshot } | null> => {
 		setPendingAction(action);
+		const report = action === "lore" ? () => {} : setNotice;
 		try {
 			const outcome = await applyCommand(command);
 			switch (outcome.outcome) {
@@ -69,7 +70,7 @@ export function CharacterEditor({
 					// @approved
 					//  A pin or delete that lost has loaded the change, so trying again applies.
 					setSnapshot(outcome.current);
-					if (action !== "save") setNotice("This Character changed elsewhere. Try again.");
+					if (action === "pin" || action === "delete") setNotice("This Character changed elsewhere. Try again.");
 					return { conflict: outcome.current };
 				case "not-found":
 					onChanged();
@@ -77,14 +78,14 @@ export function CharacterEditor({
 					return null;
 				case "invalid":
 				case "unusable":
-					setNotice(outcome.reason);
+					report(outcome.reason);
 					return null;
 				default:
-					setNotice(LIBRARY_UNREACHABLE_NOTICE);
+					report(LIBRARY_UNREACHABLE_NOTICE);
 					return null;
 			}
 		} catch (cause) {
-			setNotice(cause instanceof Error ? cause.message : LIBRARY_UNREACHABLE_NOTICE);
+			report(cause instanceof Error ? cause.message : LIBRARY_UNREACHABLE_NOTICE);
 			return null;
 		} finally {
 			setPendingAction(null);
@@ -158,7 +159,13 @@ export function CharacterEditor({
 					onLoadSaved={editor.discard}
 				/>}
 			>
-				<LoreAttachmentEditor owner="character" ownerId={snapshot.id} disabled={pendingAction !== null} />
+				<LoreAttachmentEditor owner="character" ownerId={snapshot.id} disabled={pendingAction !== null}
+					onCommand={async ({ type, ...attachment }, expectedRevision) => {
+						const result = await run("lore", {
+							...attachment, characterId: snapshot.id, expectedRevision, type: type === "attach" ? "attach-lorebook" : "detach-lorebook",
+						});
+						return result !== null && "applied" in result;
+					}} />
 			</DefinitionEditor>
 			<Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
 				<DialogContent showCloseButton={false} className="sm:max-w-sm">

@@ -2,9 +2,9 @@ import { createConversationWithHistory, openObservedDatabase } from "../test-fix
 import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createCharacter } from "../character-library/create";
+import { createCharacterLibraryModule } from "../character-library";
 import { importNativeLorebook } from "./library";
-import { attachLorebookToCharacter, readLorebookAttachmentEligibility } from "./attachments";
+import { readLorebookAttachmentEligibility } from "./attachments";
 import { evaluateScopedLore } from "./evaluation";
 
 const prompt = {
@@ -22,7 +22,8 @@ describe("scoped Lore activation", () => {
 	afterEach(() => database.close());
 
 	test("inherits Character uses, resolves scope before deduplication, and scans pending text", () => {
-		const character = createCharacter(database, { name: "Keeper", prompt, sendAppearanceImages: true, openings: [] });
+		const characters = createCharacterLibraryModule(database);
+		const character = characters.execute({ type: "create", definition: { name: "Keeper", prompt, sendAppearanceImages: true, openings: [] } });
 		const book = importNativeLorebook(database, {
 			name: "World",
 			description: "",
@@ -38,7 +39,7 @@ describe("scoped Lore activation", () => {
 				priority: 1, enabled: true,
 			}],
 		});
-		attachLorebookToCharacter(database, { characterId: character.id, bookId: book.id, scope: "controlled-participant" });
+		characters.execute({ type: "attach-lorebook", characterId: character.id, expectedRevision: character.revision, bookId: book.id, scope: "controlled-participant" });
 		const chat = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [

@@ -288,7 +288,7 @@ test("Lorebook save-and-leave preserves a replacement leave intent and does not 
 	install(({ init }) => init?.method === "POST" ? late.promise : Promise.resolve(Response.json(book())));
 	const leaves: (number | null)[] = [];
 	const hook = await renderHook(() => LorebookEditorDialog({
-		bookId: 1, conversationId: 1, onOpenBook: (id) => { leaves.push(id); }, selectName: false, mutationsDisabled: false,
+		bookId: 1, onOpenBook: (id) => { leaves.push(id); }, selectName: false, mutationsDisabled: false,
 		attachments: { attachmentState: null, attachmentPending: false, updateAttachment: async () => false },
 		tester: { testWriting: "", setTestWriting: () => { }, testResult: null, testError: null, testPending: false, runMatchTest: () => { } },
 	}), client());

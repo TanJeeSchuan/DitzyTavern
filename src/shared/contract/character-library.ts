@@ -3,6 +3,7 @@ import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import { numericWire } from "./wire";
 import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
+import { scopedLorebookAttachment } from "./lorebook";
 
 // Typed transport schemas mirror the Character Library seam's public types.
 // Routes stay thin adapters: persistence and validation rules live behind
@@ -102,6 +103,23 @@ const setPinnedCommand = Type.Object({
 	pinned: Type.Boolean(),
 });
 
+const lorebookAttachment = {
+	characterId: Type.Integer(),
+	expectedRevision: Type.Integer(),
+	...scopedLorebookAttachment,
+};
+
+const attachLorebookCommand = Type.Object({
+	type: Type.Literal("attach-lorebook"),
+	...lorebookAttachment,
+	enabled: Type.Optional(Type.Boolean()),
+});
+
+const detachLorebookCommand = Type.Object({
+	type: Type.Literal("detach-lorebook"),
+	...lorebookAttachment,
+});
+
 // Confirmed deletion. The expected revision guards against deleting a
 // Character whose impact the caller has not seen; the outcome derives the
 // deletion mode from the current reference count.
@@ -118,6 +136,8 @@ export const commandBodySchema = Type.Union([
 	replacePromptCommand,
 	replaceOpeningsCommand,
 	setPinnedCommand,
+	attachLorebookCommand,
+	detachLorebookCommand,
 	deleteCommand,
 ]);
 

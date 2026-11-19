@@ -1,79 +1,63 @@
-import type { LorebookSummary } from "../../shared/contract/lorebook";
-import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { AppSelect } from "@/components/ui/select";
 import {
-	applyLorebookAttachmentCommand,
 	getCharacterLorebookAttachments,
 	getParticipantLorebookAttachments,
 	listLorebooks,
-	type LoreAttachmentCommand,
 	type LorebookOwnerAttachmentState,
 } from "../lorebook-library";
 
 type Owner = "character" | "participant";
+type Attachment = LorebookOwnerAttachmentState["attachments"][number];
+type AttachmentEdit = Pick<Attachment, "bookId" | "scope"> & (
+	| { type: "attach"; enabled?: boolean }
+	| { type: "detach" }
+);
 
 const ownerLabel = (owner: Owner): string => owner === "character" ? "Character" : "Participant";
 
-export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { owner: Owner; ownerId: number; disabled?: boolean }) {
-	const [state, setState] = useState<LorebookOwnerAttachmentState | null>(null);
-	const [books, setBooks] = useState<LorebookSummary[]>([]);
+export function LoreAttachmentEditor({ owner, ownerId, disabled, onCommand }: {
+	owner: Owner;
+	ownerId: number;
+	disabled: boolean;
+	onCommand: (edit: AttachmentEdit, revision: number) => Promise<boolean>;
+}) {
+	const client = useQueryClient();
+	const readAttachments = owner === "character" ? getCharacterLorebookAttachments : getParticipantLorebookAttachments;
+	const attachments = useQuery({ queryKey: ["lorebook-attachments", owner, ownerId], queryFn: ({ signal }) => readAttachments(ownerId, signal) });
+	const library = useQuery({ queryKey: ["lorebooks"], queryFn: ({ signal }) => listLorebooks(signal) });
+	const state = attachments.data ?? null;
+	const books = library.data ?? [];
 	const [selectedBookId, setSelectedBookId] = useState("");
-	const [selectedScope, setSelectedScope] = useState<"controlled-participant" | "cast">("cast");
-	const [pending, setPending] = useState(false);
-	const [notice, setNotice] = useState<string | null>(null);
-	const [loadingError, setLoadingError] = useState(false);
-	const [loadAttempt, setLoadAttempt] = useState(0);
+	const [selectedScope, setSelectedScope] = useState<Attachment["scope"]>("cast");
+	const write = useMutation({
+		networkMode: "always",
+		mutationFn: async ({ edit, revision }: { edit: AttachmentEdit; revision: number }) => {
+			const applied = await onCommand(edit, revision);
+			const refreshed = await client.invalidateQueries({ queryKey: ["lorebook-attachments"] }, { throwOnError: true }).then(() => true, () => false);
+			if (!applied || !refreshed) throw new Error("Lorebook attachment could not be saved.");
+		},
+	});
+	const controlsDisabled = disabled || write.isPending || attachments.isFetching;
 
-	useEffect(() => {
-		let cancelled = false;
-		setState(null);
-		setLoadingError(false);
-		void Promise.all([
-			listLorebooks(),
-			owner === "character" ? getCharacterLorebookAttachments(ownerId) : getParticipantLorebookAttachments(ownerId),
-		]).then(([loadedBooks, loadedState]) => {
-			if (cancelled) return;
-			setBooks(loadedBooks);
-			setState(loadedState);
-		}).catch(() => { if (!cancelled) setLoadingError(true); });
-		return () => { cancelled = true; };
-	}, [owner, ownerId, loadAttempt]);
-
-	const bookNames = useMemo(() => new Map(books.map((book) => [book.id, book.name])), [books]);
-	const send = async (command: LoreAttachmentCommand) => {
-		setPending(true);
-		setNotice(null);
-		try {
-			const result = await applyLorebookAttachmentCommand(command);
-			if (result.outcome !== "available") {
-				if (result.outcome === "conflict") setState(await (owner === "character" ? getCharacterLorebookAttachments(ownerId) : getParticipantLorebookAttachments(ownerId)));
-				throw new Error(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Lorebook attachment changed elsewhere.");
-			}
-			const refreshed = owner === "character" ? await getCharacterLorebookAttachments(ownerId) : await getParticipantLorebookAttachments(ownerId);
-			setState(refreshed);
-		} catch { setNotice("Lorebook attachment could not be saved."); }
-		finally { setPending(false); }
-	};
-
-	if (state === null) {
-		if (loadingError) return <LoreAttachmentLoadError owner={owner} onRetry={() => { setState(null); setLoadAttempt((attempt) => attempt + 1); }} />;
+	if ((attachments.isError && state === null) || (library.isError && library.data === undefined)) {
+		return <LoreAttachmentLoadError owner={owner} onRetry={() => { void attachments.refetch(); void library.refetch(); }} />;
+	}
+	if (state === null || library.data === undefined) {
 		return <LoreAttachmentLoading owner={owner} />;
 	}
 
+	const bookNames = new Map(books.map((book) => [book.id, book.name]));
+	const send = (edit: AttachmentEdit) => write.mutate({ edit, revision: state.revision });
 	const attach = () => {
 		const bookId = Number(selectedBookId);
 		if (!Number.isInteger(bookId)) return;
-		void send(owner === "character"
-			? { type: "attach-character", characterId: ownerId, bookId, expectedRevision: state.revision, scope: selectedScope }
-			: { type: "attach-participant", participantId: ownerId, bookId, expectedRevision: state.revision, scope: selectedScope });
+		send({ type: "attach", bookId, scope: selectedScope });
 	};
-	const detach = (attachment: LorebookOwnerAttachmentState["attachments"][number]) => void send(owner === "character"
-		? { type: "detach-character", characterId: ownerId, bookId: attachment.bookId, scope: attachment.scope, expectedRevision: state.revision }
-		: { type: "detach-participant", participantId: ownerId, bookId: attachment.bookId, scope: attachment.scope, expectedRevision: state.revision });
-	const toggle = (attachment: LorebookOwnerAttachmentState["attachments"][number]) => void send(owner === "character"
-		? { type: "attach-character", characterId: ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope, enabled: !attachment.enabled }
-		: { type: "attach-participant", participantId: ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope, enabled: !attachment.enabled });
+	const detach = ({ bookId, scope }: Attachment) => send({ type: "detach", bookId, scope });
+	const toggle = ({ bookId, scope, enabled }: Attachment) => send({ type: "attach", bookId, scope, enabled: !enabled });
 
 	return <section className="editor-section" aria-label={`${ownerLabel(owner)} Lorebooks`}>
 		<h3>Lorebooks</h3>
@@ -82,7 +66,7 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 			<AppSelect
 			className="field-input"
 			value={selectedBookId}
-			disabled={disabled || pending || books.length === 0}
+			disabled={controlsDisabled || books.length === 0}
 			onValueChange={setSelectedBookId}
 			aria-label="Lorebook to attach"
 			emptyLabel="Select a Lorebook"
@@ -91,7 +75,7 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 			<AppSelect
 			className="field-input"
 			value={selectedScope}
-			disabled={disabled || pending}
+			disabled={controlsDisabled}
 			onValueChange={(value) => setSelectedScope(value === "controlled-participant" ? "controlled-participant" : "cast")}
 			aria-label="Lorebook attachment scope"
 			options={[
@@ -99,7 +83,7 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 				{ value: "controlled-participant", label: "Controlled Participant" },
 			]}
 		/>
-			<Button variant="outline" size="sm" type="button" disabled={disabled || pending || selectedBookId === ""} onClick={attach}>Attach</Button>
+			<Button variant="outline" size="sm" type="button" disabled={controlsDisabled || selectedBookId === ""} onClick={attach}>Attach</Button>
 		</div>
 		{state.attachments.length === 0 ? (
 			<p className="panel-note">No Lorebooks attached.</p>
@@ -110,17 +94,17 @@ export function LoreAttachmentEditor({ owner, ownerId, disabled = false }: { own
 						<span>
 							{bookNames.get(attachment.bookId) ?? `Book ${attachment.bookId}`} · {attachment.scope} · {attachment.enabled ? "Enabled" : "Disabled"}
 						</span>
-						<Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => toggle(attachment)}>
+						<Button variant="outline" size="sm" type="button" disabled={controlsDisabled} onClick={() => toggle(attachment)}>
 							{attachment.enabled ? "Disable" : "Enable"}
 						</Button>
-						<Button variant="outline" size="sm" type="button" disabled={disabled || pending} onClick={() => detach(attachment)}>
+						<Button variant="outline" size="sm" type="button" disabled={controlsDisabled} onClick={() => detach(attachment)}>
 							Detach
 						</Button>
 					</li>
 				))}
 			</ul>
 		)}
-		{notice !== null && <p className="panel-note" role="status">{notice}</p>}
+		{write.error !== null && <p className="panel-note" role="status">{write.error.message}</p>}
 	</section>;
 }
 
