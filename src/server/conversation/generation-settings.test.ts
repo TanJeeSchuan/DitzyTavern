@@ -56,14 +56,14 @@ describe("Conversation Generation Settings", () => {
 
 	test("rejects persisted settings outside the sampling, budget and limit domains", () => {
 		const conversation = createConversationWithHistory(database, { name: "Corrupt settings", participants: [] });
-		for (const [column, value] of [
-			["temperature", 3], ["context_limit", 0], ["response_budget", -1],
-			["safety_allowance", -1], ["sibling_generation_limit", 0],
-			["context_limit", 1.5], ["response_budget", 1.5], ["safety_allowance", 1.5], ["sibling_generation_limit", 1.5],
-		] satisfies [string, number][]) {
-			database.query(`UPDATE conversation_generation_settings SET ${column} = ? WHERE conversation_id = ?`).run(value, conversation.id);
+		for (const [field, value] of [
+			["temperature", 3], ["contextLimit", 0], ["responseBudget", -1],
+			["safetyAllowance", -1], ["siblingGenerationLimit", 0],
+			["contextLimit", 1.5], ["responseBudget", 1.5], ["safetyAllowance", 1.5], ["siblingGenerationLimit", 1.5],
+		] satisfies [keyof CanonicalGenerationSettings, number][]) {
+			database.query("UPDATE conversation_generation_settings SET settings_json = ? WHERE conversation_id = ?")
+				.run(JSON.stringify(completeSettings({ [field]: value })), conversation.id);
 			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow(`Conversation ${conversation.id} Generation Settings are corrupt`);
-			database.query(`UPDATE conversation_generation_settings SET ${column} = ? WHERE conversation_id = ?`).run(column === "temperature" ? null : 1, conversation.id);
 		}
 	});
 
@@ -74,8 +74,8 @@ describe("Conversation Generation Settings", () => {
 			{ "chat-completions": [], responses: {}, "anthropic-messages": {} },
 			{ "chat-completions": {}, responses: {}, "anthropic-messages": {}, unexpected: {} },
 		]) {
-			database.query("UPDATE conversation_generation_settings SET request_overrides_json = ? WHERE conversation_id = ?")
-				.run(JSON.stringify(overrides), conversation.id);
+			database.query("UPDATE conversation_generation_settings SET settings_json = ? WHERE conversation_id = ?")
+				.run(JSON.stringify({ ...completeSettings(), requestOverrides: overrides }), conversation.id);
 			expect(() => readConversationGenerationSettings(database, conversation.id)).toThrow(`Conversation ${conversation.id} Generation Request Overrides are corrupt`);
 		}
 	});

@@ -1,15 +1,13 @@
-import { Value } from "@sinclair/typebox/value";
+import { TransformDecodeCheckError, Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
-import {
-	conversationGenerationSettingsTable,
-} from "../database/schema";
+import { eq, sql } from "drizzle-orm";
+import { conversationGenerationSettingsTable } from "../database/schema";
 import {
 	connectConversationDatabase,
 	findConversation,
 	type ConversationDatabase,
 } from "./internal";
-import { InvalidConversationCommandError, ConversationNotFoundError } from "./errors";
+import { InvalidConversationCommandError } from "./errors";
 import {
 	canonicalGenerationSettings,
 	isRepeatedImagePlacement,
@@ -21,18 +19,6 @@ import type {
 	ConversationGenerationSettingsInput,
 	ContinuationPrefillSuffix,
 } from "./types";
-
-const DEFAULT_REQUEST_OVERRIDES = {
-	"chat-completions": {},
-	responses: {},
-	"anthropic-messages": {},
-} as const;
-
-export const DEFAULT_SIBLING_GENERATION_LIMIT = 4;
-export const DEFAULT_CONTINUATION_STRATEGY = "instruction";
-export const DEFAULT_SAFETY_ALLOWANCE = 500;
-export const DEFAULT_CONTINUATION_INSTRUCTION =
-	"Continue the narrative naturally without repeating the previous text.";
 
 // @approved
 //  The domain default derives from the canonical Generation Settings
@@ -47,72 +33,27 @@ export const DEFAULT_CONVERSATION_GENERATION_SETTINGS: ConversationGenerationSet
 	presencePenalty: null,
 	contextLimit: 32768,
 	responseBudget: 1024,
-	safetyAllowance: DEFAULT_SAFETY_ALLOWANCE,
-	siblingGenerationLimit: DEFAULT_SIBLING_GENERATION_LIMIT,
-	continuationStrategy: DEFAULT_CONTINUATION_STRATEGY,
-	continuationInstruction: DEFAULT_CONTINUATION_INSTRUCTION,
+	safetyAllowance: 500,
+	siblingGenerationLimit: 4,
+	continuationStrategy: "instruction",
+	continuationInstruction: "Continue the narrative naturally without repeating the previous text.",
 	continuationPrefillSuffix: "",
 	repeatedImagePlacement: "first",
-	requestOverrides: DEFAULT_REQUEST_OVERRIDES,
+	requestOverrides: { "chat-completions": {}, responses: {}, "anthropic-messages": {} },
 };
-
-// @approved
-//  Database storage participates with every canonical field: each one has a
-// settings-table column, and rows round-trip reads and writes field for
-// field. The column map below is the storage boundary's exhaustive
-// participation decision.
 
 type SettingsRow = typeof conversationGenerationSettingsTable.$inferSelect;
+const missingGenerationSettings = (conversationId: number) => new Error(`Conversation ${conversationId} is missing Generation Settings.`);
 
-// @approved
-//  The settings-table column for each canonical field. Compile-locked to the
-// canonical vocabulary: adding a field fails typecheck until its column is
-// named here, and the read and write paths below consume this map.
-const settingsColumn = {
-	modelId: "model_id",
-	temperature: "temperature",
-	topP: "top_p",
-	frequencyPenalty: "frequency_penalty",
-	presencePenalty: "presence_penalty",
-	contextLimit: "context_limit",
-	responseBudget: "response_budget",
-	safetyAllowance: "safety_allowance",
-	siblingGenerationLimit: "sibling_generation_limit",
-	continuationStrategy: "continuation_strategy",
-	continuationInstruction: "continuation_instruction",
-	continuationPrefillSuffix: "continuation_prefill_suffix",
-	repeatedImagePlacement: "repeated_image_placement",
-	requestOverrides: "request_overrides_json",
-} as const satisfies Record<GenerationSettingsField, keyof SettingsRow>;
-
-// @approved
-//  The persisted row values for each canonical field. Adding a canonical
-// field fails typecheck here before it can reach the database.
-type SettingsRowValues = {
-	[K in GenerationSettingsField as (typeof settingsColumn)[K]]: SettingsRow[(typeof settingsColumn)[K]];
-};
-
-const settingsRowValues = (settings: CanonicalGenerationSettings): SettingsRowValues => ({
-	model_id: settings.modelId,
-	temperature: settings.temperature,
-	top_p: settings.topP,
-	frequency_penalty: settings.frequencyPenalty,
-	presence_penalty: settings.presencePenalty,
-	context_limit: settings.contextLimit,
-	response_budget: settings.responseBudget,
-	safety_allowance: settings.safetyAllowance,
-	sibling_generation_limit: settings.siblingGenerationLimit,
-	continuation_strategy: settings.continuationStrategy,
-	continuation_instruction: settings.continuationInstruction,
-	continuation_prefill_suffix: settings.continuationPrefillSuffix,
-	repeated_image_placement: settings.repeatedImagePlacement,
-	request_overrides_json: JSON.stringify(settings.requestOverrides),
-});
-
-const modelSelectionRowValues = (settings: ConversationGenerationSettings) => ({
-	connection_profile_id: settings.connectionProfileId,
-	model_id: settings.modelId,
-});
+export function insertConversationGenerationSettings(
+	db: ConversationDatabase,
+	conversationId: number,
+	{ connectionProfileId, ...settings }: ConversationGenerationSettings,
+): void {
+	db.insert(conversationGenerationSettingsTable)
+		.values({ conversation_id: conversationId, connection_profile_id: connectionProfileId, settings_json: JSON.stringify(settings) })
+		.run();
+}
 
 export function readConversationGenerationSettings(
 	database: Database,
@@ -135,25 +76,25 @@ export function readConversationGenerationSettingsFromConnection(
 	return row === undefined ? undefined : readGenerationSettingsRow(row);
 }
 
+export function requireConversationGenerationSettings(db: ConversationDatabase, conversationId: number): ConversationGenerationSettings {
+	const settings = readConversationGenerationSettingsFromConnection(db, conversationId);
+	if (settings === undefined) throw missingGenerationSettings(conversationId);
+	return settings;
+}
+
 export function updateConversationGenerationSettings(
 	db: ConversationDatabase,
 	conversationId: number,
 	input: ConversationGenerationSettingsInput,
 ): ConversationGenerationSettings {
 	const normalized = normalizeGenerationSettings(input);
-	db.insert(conversationGenerationSettingsTable)
-		.values({ conversation_id: conversationId, ...settingsRowValues(normalized) })
-		.onConflictDoNothing()
-		.run();
 	const updated = db
 		.update(conversationGenerationSettingsTable)
-		.set(settingsRowValues(normalized))
+		.set({ settings_json: JSON.stringify(normalized) })
 		.where(eq(conversationGenerationSettingsTable.conversation_id, conversationId))
 		.returning()
 		.get();
-	if (updated === undefined) {
-		throw new ConversationNotFoundError(conversationId);
-	}
+	if (updated === undefined) throw missingGenerationSettings(conversationId);
 	return readGenerationSettingsRow(updated);
 }
 
@@ -255,43 +196,30 @@ const normalizeGenerationSettings = (
 
 const readGenerationSettingsRow = (row: SettingsRow): ConversationGenerationSettings => {
 	try {
-		return {
-			connectionProfileId: row.connection_profile_id,
-			...Value.Decode<typeof canonicalGenerationSettings>(canonicalGenerationSettings, {
-				modelId: row.model_id,
-				temperature: row.temperature,
-				topP: row.top_p,
-				frequencyPenalty: row.frequency_penalty,
-				presencePenalty: row.presence_penalty,
-				contextLimit: row.context_limit,
-				responseBudget: row.response_budget,
-				safetyAllowance: row.safety_allowance,
-				siblingGenerationLimit: row.sibling_generation_limit,
-				continuationStrategy: row.continuation_strategy,
-				continuationInstruction: row.continuation_instruction,
-				continuationPrefillSuffix: row.continuation_prefill_suffix,
-				repeatedImagePlacement: row.repeated_image_placement,
-				requestOverrides: parseRequestOverrides(row.request_overrides_json, row.conversation_id),
-			}),
-		};
+		const settings = Value.Decode<typeof canonicalGenerationSettings>(canonicalGenerationSettings, JSON.parse(row.settings_json));
+		return { ...settings, connectionProfileId: row.connection_profile_id };
 	} catch (cause) {
-		throw new Error(`Conversation ${row.conversation_id} Generation Settings are corrupt: ${cause instanceof Error ? cause.message : "invalid stored row"}`, { cause });
+		const reason = cause instanceof TransformDecodeCheckError && cause.error?.path.startsWith("/requestOverrides")
+			? `Conversation ${row.conversation_id} Generation Request Overrides are corrupt.`
+			: cause instanceof Error ? cause.message : "invalid stored row";
+		throw new Error(`Conversation ${row.conversation_id} Generation Settings are corrupt: ${reason}`, { cause });
 	}
 };
 
 export function updateConversationModelSelection(
 	db: ConversationDatabase,
 	conversationId: number,
-	settings: ConversationGenerationSettings,
-): ConversationGenerationSettings {
+	{ connectionProfileId, modelId }: Pick<ConversationGenerationSettings, "connectionProfileId" | "modelId">,
+): void {
 	const updated = db
 		.update(conversationGenerationSettingsTable)
-		.set(modelSelectionRowValues(settings))
+		.set({
+			connection_profile_id: connectionProfileId,
+			settings_json: sql`json_set(${conversationGenerationSettingsTable.settings_json}, '$.modelId', ${modelId})`,
+		})
 		.where(eq(conversationGenerationSettingsTable.conversation_id, conversationId))
-		.returning()
-		.get();
-	if (updated === undefined) throw new ConversationNotFoundError(conversationId);
-	return readGenerationSettingsRow(updated);
+		.run();
+	if (updated.changes === 0) throw missingGenerationSettings(conversationId);
 }
 
 function validateContinuationPrefillSuffix(
@@ -301,14 +229,6 @@ function validateContinuationPrefillSuffix(
 	throw new InvalidConversationCommandError(
 		"Continuation prefill suffix must be none, a space, a newline, or a double newline.",
 	);
-}
-
-function parseRequestOverrides(value: string, conversationId: number): ConversationGenerationSettings["requestOverrides"] {
-	try {
-		return Value.Decode(canonicalGenerationSettings.properties.requestOverrides, JSON.parse(value));
-	} catch (cause) {
-		throw new Error(`Conversation ${conversationId} Generation Request Overrides are corrupt.`, { cause });
-	}
 }
 
 function cloneRequestOverrides(

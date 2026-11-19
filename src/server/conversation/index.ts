@@ -11,11 +11,6 @@ export {
 	ParticipantNotFoundError,
 } from "./errors";
 export type { ContinuationUnavailableReason } from "./errors";
-export {
-	DEFAULT_CONTINUATION_INSTRUCTION,
-	DEFAULT_SAFETY_ALLOWANCE,
-	DEFAULT_SIBLING_GENERATION_LIMIT,
-} from "./generation-settings";
 export { acceptGeneration } from "./commands/accept-generation";
 export { promptIntentOf, requireSiblingHistoricalControl, requireTerminalTarget } from "./generation-target";
 export {

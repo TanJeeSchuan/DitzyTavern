@@ -1,12 +1,11 @@
 import type { Database } from "bun:sqlite";
 import { asc, eq } from "drizzle-orm";
-import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS, insertConversationGenerationSettings } from "./generation-settings";
 import { compileOpening } from "../prompt-compiler";
 import {
 	artifactTable,
 	conversationDataTable,
 	conversationTable,
-	conversationGenerationSettingsTable,
 	connectionProfilePinnedModelTable,
 	connectionProfileTable,
 	messageDataTable,
@@ -391,13 +390,11 @@ export function createConversation(
 			.where(eq(connectionProfilePinnedModelTable.profile_id, defaultProfile.id))
 			.orderBy(asc(connectionProfilePinnedModelTable.position))
 			.get();
-		const generationSettings: typeof conversationGenerationSettingsTable.$inferInsert = {
-			conversation_id: conversation.id,
-			request_overrides_json: JSON.stringify(DEFAULT_CONVERSATION_GENERATION_SETTINGS.requestOverrides),
-			connection_profile_id: defaultProfile?.id ?? null,
-		};
-		if (defaultModel !== undefined) generationSettings.model_id = defaultModel.modelId;
-		db.insert(conversationGenerationSettingsTable).values(generationSettings).run();
+		insertConversationGenerationSettings(db, conversation.id, {
+			...DEFAULT_CONVERSATION_GENERATION_SETTINGS,
+			connectionProfileId: defaultProfile?.id ?? null,
+			modelId: defaultModel?.modelId ?? DEFAULT_CONVERSATION_GENERATION_SETTINGS.modelId,
+		});
 		// @approved
 		//  A new Conversation selects the shared Default preset. The selection
 		// is persisted rather than derived, so a later Default change never
