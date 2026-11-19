@@ -33,8 +33,6 @@ const STORY_COMMAND_NOTICES = {
 const noPresentation = () => undefined;
 
 type RequestedSelection = { messageId: number; request: RequestedWrite<number> };
-// Each Chat visit's latest-wins slot, keyed by the visit's signal: whether a select-variant waits in the command
-// queue, and the Variant it will send. A later visit never shares a slot with a command an earlier one queued.
 const selections = new WeakMap<AbortSignal, { queued: boolean; requested: RequestedSelection | null }>();
 
 type StoryMessageActionsOptions = {

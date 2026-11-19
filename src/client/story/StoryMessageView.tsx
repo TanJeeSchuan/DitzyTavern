@@ -23,7 +23,6 @@ import { BoxMessageActions } from "../box-windows/BoxMessageActions";
 import {
 	type StoryMessage,
 	type StoryVariant,
-	displayedVariantId as getDisplayedVariantId,
 	visibleVariantContent,
 } from "../story";
 import { formatTimestamp } from "../lib/format";
@@ -51,7 +50,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	onPaint,
 	message,
 	isLatest = false,
-	displayedVariantId,
+	displayedVariantId: visibleId,
 	mutationsDisabled = false,
 	saveAsNewDisabled = false,
 	generationActive = false,
@@ -82,9 +81,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
 	isLatest?: boolean;
-	// The Variant to show when it differs from the persisted selection: a Preview's or a Requested selection's.
-	// Persisted activeSwipe remains untouched until the server applies the selection.
-	displayedVariantId?: number | null;
+	displayedVariantId: number | null;
 	mutationsDisabled?: boolean;
 	// @approved
 	//  The server refuses a new Variant while any Generation in the Chat runs.
@@ -123,7 +120,6 @@ export const StoryMessageView = memo(function StoryMessageView({
 }) {
 	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
-	const visibleId = displayedVariantId ?? getDisplayedVariantId(message, null);
 	const streamed = useStreamedVariant(message.swipes.find((variant) => variant.id === visibleId));
 	const { variant: active, failed: textFailed } = useVariantText(conversationId, message.id, streamed);
 	const activeIndex = active === undefined

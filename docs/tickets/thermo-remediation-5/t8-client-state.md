@@ -66,7 +66,7 @@ Report 06, finding 1; report 05, findings 3 and 5.
 
 - [x] Slices a and b, one PR, ADR 0036 amended
 - [x] Slice c first write
-- [ ] Slice c owner review and fixes
+- [x] Slice c owner review and fixes
 - [ ] Slice d (Astra), fixes (Sol), PR
 
 ## Acceptance
@@ -90,10 +90,12 @@ Report 06, finding 1; report 05, findings 3 and 5.
 - `a failed recipe read after switching presets hides the old editor` verifies that the panel shows the error when the selected preset's recipe fails to load.
 - `a Prompt Preset draft survives a failed recipe read for the same Chat` verifies that editing and saving are disabled during the failure, SaveGuard still prompts, and the draft returns when the recipe reloads.
 
-### Slice c first write
+### Slice c
 
 - Query pages supply the Message window. The story reducer holds Preview, requested selections, requested Moves and an unplaced Generation. Successful selection and Moves overlays stay visible until history reaches their applied Revision.
-- Removed the Chat-open reducer effect, the history adoption effect, the revision-refetch effect, and the navigation `flushSync`. Page revision checks run in the history query.
-- `paging follows the current edge and deduplicates rapid calls independently of window size` covers older prepend and row identity. `newer paging extends a detached window and generation refresh retains that complete window` covers newer append. `a source jump supersedes paging without allowing the old completion to extend its window` covers the discarded read.
-- `an older Variant only changes the local reading until Confirm` covers local display and downstream blocking. `a reload discards the local Preview even when React Query still has history` covers reload. Streaming cases moved to `story/variant-streams.test.ts`.
-- Changed-file lint and `git diff --check` passed. Typecheck, tests and browser verification are pending.
+- Removed the Chat-open, history adoption and revision-refetch effects and the navigation `flushSync`. A source jump cancels the pending history query. The history query rejects pages whose revision differs from the window they would extend, then paging refreshes the window.
+- `paging follows the current edge and deduplicates rapid calls independently of window size` covers deduplication, older prepend and row identity. `newer paging extends a detached window and generation refresh retains that complete window` covers newer append.
+- `a source jump supersedes paging without allowing the old completion to extend its window` and `a Conversation write supersedes a pending older page at the latest anchor` cover late responses to cancelled reads. `a late older page from another revision cannot extend the current window` and `a late newer page from another revision cannot extend the current window` cover a server revision change during paging and a successful retry after refresh.
+- `Preview blocks a later Swipe and sends only the older Variant confirmed by the writer` checks the local Preview, downstream blocking, and the Confirm command. `reloading the Chat discards an unconfirmed Swipe Preview` checks the same selected Variant after a browser reload. The session test also checks a remount with a warm history cache. Streaming cases moved to `story/variant-streams.test.ts`.
+- A failed source jump keeps the previous transcript. A failed jump to latest keeps the detached transcript and shows the history error. Both have regression tests.
+- Changed-file lint and `git diff --check` passed locally. BuildBuddy passed `bun run check`. The draft PR's Check workflow also runs the browser suite.

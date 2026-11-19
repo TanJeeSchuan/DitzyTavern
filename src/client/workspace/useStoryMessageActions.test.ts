@@ -6,6 +6,7 @@ import type { ConversationSummary } from "../../shared/contract/conversation-sch
 
 const originalFetch = globalThis.fetch;
 const { useStoryMessageActions } = await import("./useStoryMessageActions");
+const { usePreviewController } = await import("./usePreviewController");
 const { createStoryOverlays, displayedVariantId, readStory, reduceStoryOverlays, retireStoryOverlays, toStoryMessage } = await import("../story");
 
 afterEach(() => {
@@ -112,16 +113,16 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	let overlays = createStoryOverlays();
 	const initial = firstPage(withLaterMessage);
 	let window = { revision: initial.revision, page: initial.page, messages: initial.messages.map(toStoryMessage) };
-	let conversation = summary(5);
+	let conversation: ConversationSummary | null = summary(5);
 
 	const story = () => readStory({ overlays, window, conversationId: 1, historyFailed: false, loadingMore: false });
 	const dispatchStory = (action: StoryAction) => {
 		events.push(`action:${action.type}`);
 		overlays = retireStoryOverlays(reduceStoryOverlays(overlays, action), window, conversation);
 	};
-	const setConversation = (value: ConversationSummary) => {
+	const setConversation = (value: ConversationSummary | null) => {
 		conversation = value;
-		events.push(`adopt:${value.revision}`);
+		if (value !== null) events.push(`adopt:${value.revision}`);
 	};
 	const publishHistory = (variantId: number) => {
 		const page = initial.messages.map((message) => message.id === 10 ? {
@@ -132,12 +133,15 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	};
 
 	const visit = new AbortController();
-	const actions = () => useStoryMessageActions({
+	const surface = () => ({
 		signal: visit.signal,
 		story: story(),
 		conversation,
 		dispatchStory,
 		setConversation,
+	});
+	const actions = () => useStoryMessageActions({
+		...surface(),
 		queueSwipeScroll: (target) => {
 			events.push(`scroll:${target}`);
 		},
@@ -173,6 +177,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		swipe,
 		edit,
 		select: (messageId: number, variantId: number) => actions().selectSwipe(messageId, variantId),
+		confirm: () => usePreviewController(surface()).confirmPreview(),
 		activeVariantId,
 		shownVariantId,
 		hold,
@@ -267,7 +272,7 @@ describe("Requested selection", () => {
 		}
 	});
 
-	test("a Swipe with later Messages previews locally without a command", async () => {
+	test("Preview blocks a later Swipe and sends only the older Variant confirmed by the writer", async () => {
 		const harness = createHarness({ kind: "applied" }, true);
 
 		await harness.swipe(10, 1);
@@ -286,5 +291,14 @@ describe("Requested selection", () => {
 		await harness.select(11, 111);
 		expect(harness.commands).toEqual([]);
 		expect(harness.story().preview?.variantId).toBe(102);
+
+		await harness.confirm();
+		expect(harness.commands).toEqual([
+			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 102 } },
+		]);
+		expect(harness.story().preview).toBeNull();
+		expect(harness.shownVariantId()).toBe(102);
+		harness.publishHistory(102);
+		expect(harness.activeVariantId()).toBe(102);
 	});
 });

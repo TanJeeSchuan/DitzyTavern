@@ -112,6 +112,7 @@ function Preview() {
 								key={entry.id}
 								conversationId={1}
 								message={entry}
+								displayedVariantId={entry.swipes[entry.activeSwipe]?.id ?? null}
 								isLatest={entry.id === reply.id}
 								generationActive={entry.id === reply.id && generating}
 								onContinue={entry.id === reply.id && !generating ? () => {} : undefined}

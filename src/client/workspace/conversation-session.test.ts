@@ -169,6 +169,18 @@ test("a newer source position aborts the old window and never scrolls to its lat
 	expect(scrolls).toEqual(['[data-message-id="103"]']);
 });
 
+test("a failed source jump leaves the current transcript readable", async () => {
+	const h = await harness(({ url }) => Promise.resolve(url.searchParams.has("aroundMessageId")
+		? Response.json({ error: "Server bug" }, { status: 500 })
+		: Response.json(url.pathname.endsWith("history") ? page() : summary())));
+	await h.hook.act(async () => {
+		await expect(h.hook.current.navigateToSourceMessage(101)).rejects.toBeInstanceOf(Error);
+	});
+	await flushHook();
+	expect(h.hook.current.story.status).toBe("ready");
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+});
+
 test("paging follows the current edge and deduplicates rapid calls independently of window size", async () => {
 	const h = await harness(({ url }) => {
 		const around = Number(url.searchParams.get("aroundMessageId"));
@@ -183,6 +195,7 @@ test("paging follows the current edge and deduplicates rapid calls independently
 	expect(h.requests).toHaveLength(3);
 	expect(h.hook.current.story.messages[2]).toBe(first);
 	await h.hook.act(async () => h.hook.current.loadMoreHistory());
+	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104, 105, 106]);
 	expect(h.requests).toHaveLength(4);
 	for (let i = 0; i < 5; i++) await h.hook.rerender();
@@ -199,6 +212,7 @@ test("newer paging extends a detached window and generation refresh retains that
 	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
 	await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
+	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104]);
 	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(true);
 	refreshing = true;
@@ -210,6 +224,7 @@ test("newer paging extends a detached window and generation refresh retains that
 	expect(readyStory(h.hook.current.story).revision).toBe(6);
 	expect(h.requests.slice(before).map(({ url }) => url.search)).toEqual(["", "?page=2", "?page=3"]);
 	await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
+	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104, 105, 106]);
 	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
 });
@@ -265,6 +280,71 @@ test("a source jump supersedes paging without allowing the old completion to ext
 	expect(h.hook.current.story.status).toBe("ready");
 });
 
+test("a Conversation write supersedes a pending older page at the latest anchor", async () => {
+	const late = Promise.withResolvers<Response>();
+	const fresh = Promise.withResolvers<Response>();
+	let written = false;
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return Response.json(summary());
+		if (url.searchParams.get("page") === "2") return late.promise;
+		return written ? fresh.promise : Response.json(page());
+	});
+	let paging = Promise.resolve();
+	await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(); });
+	const pending = h.requests.at(-1);
+	expect(pending?.url.search).toBe("?page=2");
+	written = true;
+	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
+	expect(pending?.init?.signal?.aborted).toBe(true);
+
+	await h.hook.act(async () => late.resolve(Response.json(page(1, 2))));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	await h.hook.act(async () => { fresh.resolve(Response.json(page(1, 1, 6))); await paging; });
+	await flushHook();
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+});
+
+for (const direction of ["older", "newer"] as const) {
+	test(`a late ${direction} page from another revision cannot extend the current window`, async () => {
+		const adjacent = direction === "older" ? 3 : 1;
+		const late = Promise.withResolvers<Response>();
+		const fresh = Promise.withResolvers<Response>();
+		let holdPage = false;
+		let revision = 5;
+		const h = await harness(({ url }) => {
+			if (!url.pathname.endsWith("history")) return Promise.resolve(Response.json(summary(1, revision)));
+			if (url.searchParams.has("aroundMessageId")) return revision === 5 ? Promise.resolve(Response.json(page(1, 2))) : fresh.promise;
+			const index = Number(url.searchParams.get("page"));
+			return holdPage && index === adjacent ? late.promise : Promise.resolve(Response.json(page(1, index, revision)));
+		});
+		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+		await h.hook.act(async () => h.hook.current.navigateToSourceMessage(103));
+		holdPage = true;
+		let paging = Promise.resolve();
+		await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(direction); });
+		expect(h.requests.at(-1)?.url.search).toBe(`?page=${adjacent}`);
+
+		revision = 6;
+		holdPage = false;
+		await h.hook.act(async () => late.resolve(Response.json(page(1, adjacent, 6))));
+		await flushHook();
+		expect(h.requests.at(-1)?.url.search).toBe("?aroundMessageId=103");
+		expect(readyStory(h.hook.current.story).revision).toBe(5);
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104]);
+
+		await h.hook.act(async () => { fresh.resolve(Response.json(page(1, 2, 6))); await paging; });
+		await flushHook();
+		expect(readyStory(h.hook.current.story).revision).toBe(6);
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104]);
+
+		await h.hook.act(async () => h.hook.current.loadMoreHistory(direction));
+		await flushHook();
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual(direction === "older" ? [101, 102, 103, 104] : [103, 104, 105, 106]);
+	});
+}
+
 test("a Conversation switch during the render wait suppresses the old jump's scroll", async () => {
 	const h = await harness();
 	const frames: FrameRequestCallback[] = [];
@@ -287,11 +367,32 @@ test("jump to latest replaces a detached window and ensureLatest reads newly pub
 	Object.defineProperty(globalThis, "document", { configurable: true, value: {
 		querySelector: (selector: string) => selector === ".story-scroll" ? { scrollHeight: 99, scrollTo: ({ top }: { top: number }) => scrolls.push(top) } : null,
 	} });
+	const ensureLatest = h.hook.current.ensureLatest;
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
-	await h.hook.act(async () => { expect((await h.hook.current.ensureLatest())?.revision).toBe(5); });
+	await h.hook.act(async () => { expect((await ensureLatest())?.revision).toBe(5); });
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
 	expect(scrolls).toEqual([99]);
 	await h.hook.act(async () => { h.hook.current.setConversation(summary(1, 8)); expect((await h.hook.current.ensureLatest())?.revision).toBe(8); });
+});
+
+test("a failed jump to latest reports the failure and keeps the detached transcript", async () => {
+	let unavailable = false;
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return Response.json(summary());
+		if (url.searchParams.has("aroundMessageId")) return Response.json(page(1, 3));
+		return unavailable ? Response.json({ error: "Server bug" }, { status: 500 }) : Response.json(page());
+	});
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+	unavailable = true;
+	await h.hook.act(async () => { await expect(h.hook.current.jumpToLatest()).rejects.toBeInstanceOf(Error); });
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+
+	unavailable = false;
+	await h.hook.act(async () => h.hook.current.jumpToLatest());
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
 });
 
 test("an old Stop mutation cannot settle a newer Stop after A to B to A", async () => {
@@ -460,8 +561,10 @@ test("navigation to a visible Message cancels paging and permits another older p
 	expect(signal?.aborted).toBe(true);
 	expect(h.hook.current.story.status).toBe("ready");
 	await h.hook.act(async () => { late.resolve(Response.json(page(1, 2))); await paging; });
+	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
 	await h.hook.act(async () => h.hook.current.loadMoreHistory());
+	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
 });
 

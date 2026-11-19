@@ -157,6 +157,23 @@ test("a Swipe on the final Message shows its Variant before the server applies i
 	await expect(story(page).locator("article[data-message-id]").last().getByText("Second take.")).toBeVisible();
 });
 
+test("reloading the Chat discards an unconfirmed Swipe Preview", async ({ page, request }) => {
+	await appendModelMessage(request, ["First take.", "Second take."]);
+	await appendModelMessage(request, ["Later Message."]);
+	await page.goto("/");
+	const older = story(page).locator("article[data-message-id]").nth(-2);
+	const preview = story(page).getByRole("status", { name: "Swipe preview" });
+	await expect(older.getByText("First take.")).toBeVisible();
+	await older.hover();
+	await older.getByRole("button", { name: "Next Swipe" }).click();
+	await expect(preview).toBeVisible();
+	await expect(older.getByText("Second take.")).toBeVisible();
+
+	await page.reload();
+	await expect(older.getByText("First take.")).toBeVisible();
+	await expect(preview).toHaveCount(0);
+});
+
 test("swiping past the last Variant shows the new Variant in progress before the server accepts it", async ({ page, llm }) => {
 	const { reply, route } = await swipePastLast(page, llm);
 	await route.continue();

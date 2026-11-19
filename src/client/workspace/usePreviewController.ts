@@ -1,7 +1,5 @@
 import type { Dispatch } from "react";
-import {
-	type ConversationSummary,
-} from "../conversation";
+import type { ConversationSummary } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import {
 	type StoryAction,
@@ -10,7 +8,6 @@ import {
 } from "../story";
 
 type PreviewControllerOptions = {
-	// The Chat visit's signal: a confirmation settling after the writer left never touches a later visit.
 	signal: AbortSignal;
 	story: StoryState;
 	conversation: ConversationSummary | null;
@@ -18,10 +15,6 @@ type PreviewControllerOptions = {
 	setConversation: (conversation: ConversationSummary | null) => void;
 };
 
-/**
- * Owns the local Preview transaction. Confirm Change ends Preview at once and shows the previewed Variant as a
- * Requested selection; if the revision-guarded command does not apply, the server's selection shows again.
- */
 export function usePreviewController({
 	signal,
 	story,
