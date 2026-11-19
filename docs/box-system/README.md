@@ -83,7 +83,7 @@ Every server hook is optional, as are the descriptor keys marked optional. The l
 | Work | Read |
 |---|---|
 | Write or install a trusted Box; use hooks, client surfaces, Row References, or the SDK | [Authoring a trusted Box](authoring.md) |
-| Run a built-in Box's agent that explores the Chat and submits a result | [The code agent](authoring.md#the-code-agent) |
+| Run a trusted Box's agent that explores the Chat and submits a result | [The code agent](authoring.md#the-code-agent) |
 | Write or install a sandboxed Box; work on its descriptor, imports, logic, digest, UI, or versions | [Sandboxed Boxes and versions](sandboxed.md) |
 | Work on Creator Mode, scenarios, export, submission, or installation | [Creator Mode](creator-mode.md) |
 | Work on loading, client modules, storage, lifecycle, generation, digests, timelines, lenses, Moves, or windows | [Box host mechanics](host.md) |

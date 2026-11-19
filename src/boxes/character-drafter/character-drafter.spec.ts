@@ -1,8 +1,9 @@
 import type { APIRequestContext } from "@playwright/test";
 import { test, expect, enableDecisionModels, send, story } from "../../../e2e/fixtures";
 import type { DecisionRule } from "../../../e2e/protocol";
+import { emptyPromptChannels } from "../../shared/definition";
 
-const blank = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const blank = emptyPromptChannels();
 
 /** @approved The default delegate model, which a Box without its own runs its code agent on, pointed at the scripted authoring fake. */
 const chooseAgentModel = async (request: APIRequestContext, url: string) => {
@@ -66,6 +67,15 @@ test("a person Memory knows is drafted from the window and added to the Cast onl
 	await expect(window.getByRole("textbox", { name: "Step 1 output" })).toContainText("Old Pell keeps the observatory's spare keys.");
 	expect((await (await request.get(url)).json()).cast.map(({ name }: { name: string }) => name)).not.toContain("Old Pell");
 
+	await page.getByRole("textbox", { name: "Message draft" }).fill("What did Pell say?");
+	await page.getByRole("button", { name: "Generate Variant" }).click();
+	const plan = page.getByRole("complementary", { name: "Prompt Plan preview" });
+	await expect(plan).toBeVisible();
+	const openDraft = window.getByRole("button", { name: "Open draft", exact: true });
+	await expect(openDraft).toBeDisabled();
+	await plan.getByRole("button", { name: "Close Prompt Plan preview" }).click();
+	await expect(openDraft).toBeEnabled();
+
 	await page.getByRole("button", { name: "Characters", exact: true }).click();
 	await page.getByRole("button", { name: /Theodora Kline maps coastlines/ }).first().click();
 	const name = page.getByRole("textbox", { name: "Name", exact: true });
@@ -83,6 +93,12 @@ test("a person Memory knows is drafted from the window and added to the Cast onl
 	await expect(window.getByText("Opened the draft of Old Pell in the Characters panel.")).toBeVisible();
 	await expect(window.getByRole("button", { name: "Open draft", exact: true })).toHaveCount(0);
 	await expect(page.getByRole("textbox", { name: "Identity" })).toContainText("Reputation: Theodora says he keeps the spare keys.");
+	await name.fill("Pell with unsaved edits");
+	await page.getByRole("button", { name: "Settings", exact: true }).click();
+	await expect(unsaved.getByRole("button", { name: "Save and leave" })).toHaveCount(0);
+	await unsaved.getByRole("button", { name: "Keep editing" }).click();
+	await expect(name).toHaveValue("Pell with unsaved edits");
+	await name.fill("Old Pell");
 	const releaseSave = Promise.withResolvers<void>();
 	await page.route(`**${url}/commands`, async (route) => {
 		await releaseSave.promise;

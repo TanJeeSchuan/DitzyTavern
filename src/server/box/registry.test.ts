@@ -15,7 +15,7 @@ import { configureDecisionModels } from "../contract/decision-model-test-fixture
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { acceptConversationTailGeneration, observeConversationWrites } from "../conversation";
 import { openInitializedDatabase } from "../database/database";
-import { insertBox, openObservedDatabase, setBoxState, checkpointFromStart } from "../test-fixtures/conversation";
+import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState, checkpointFromStart } from "../test-fixtures/conversation";
 import { addPromptPresetBlock, setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
 import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
@@ -28,7 +28,7 @@ import { boxExports } from "./exports";
 test("the Character Drafter starts enabled without a preset block and cannot participate in a Generation", () => {
 	const database = openObservedDatabase();
 	try {
-		const chat = createChat(database);
+		const chat = createConversationWithHistory(database, { name: "Box test" });
 		const recipe = () => readConversationPromptPresetRecipeFromConnection(drizzle(database), chat.id)!;
 		const box = "character-drafter";
 		const reference = "box:character-drafter";
@@ -185,12 +185,14 @@ test("a Box's Exports answer through boxExports only while the Box is enabled in
 	const database = openObservedDatabase();
 	try {
 		await loadBoxes([builtInBoxes, plugins]);
-		const chat = createChat(database);
+		const chat = createConversationWithHistory(database, { name: "Box test" });
 		expect(boxExports(database, chat.id).greeter).toBeUndefined();
 		insertBox(database, chat.id, "greeter");
 		const exports = boxExports(database, chat.id);
 		expect(exports.greeter).toBeDefined();
 		expect(exports["author-note"]).toBeUndefined();
+		expect(exports.toString).toBeUndefined();
+		expect(exports.greeter?.toString).toBeUndefined();
 		const greet = exports.greeter?.greet;
 		if (greet === undefined) throw new Error("The greeter Box's Export is missing.");
 		expect(greet({ name: "Ann" })).toEqual({ greeting: "Hello, Ann." });
@@ -207,7 +209,7 @@ test("an Export's input and output are checked against its declared schemas, fai
 	const database = openObservedDatabase();
 	try {
 		await loadBoxes([builtInBoxes, plugins]);
-		const chat = createChat(database);
+		const chat = createConversationWithHistory(database, { name: "Box test" });
 		insertBox(database, chat.id, "crooked");
 		const greet = boxExports(database, chat.id).crooked?.greet;
 		if (greet === undefined) throw new Error("The crooked Box's Export is missing.");
@@ -236,20 +238,26 @@ test("an Export with a loose schema still refuses non-JSON answers and names the
 			return answer;
 		} } };` },
 		decorated: { fields: looseExports, server: `export default { exports: { greet: () => ({ at: Object.assign([1], { extra: 2 }) }) } };` },
+		subclassed: { fields: looseExports, server: `
+			class HiddenArray extends Array { toJSON() { return []; } }
+			export default { exports: { greet: () => ({ at: new HiddenArray(1, 2) }) } };
+		` },
 	});
 	const database = openObservedDatabase();
 	try {
 		await loadBoxes([builtInBoxes, plugins]);
-		const chat = createChat(database);
+		const chat = createConversationWithHistory(database, { name: "Box test" });
 		insertBox(database, chat.id, "eager");
 		insertBox(database, chat.id, "dated");
 		insertBox(database, chat.id, "cyclic");
 		insertBox(database, chat.id, "decorated");
+		insertBox(database, chat.id, "subclassed");
 		const exports = boxExports(database, chat.id);
 		expect(() => exports.eager?.greet?.({ name: "Ann" })).toThrow("The eager Box's greet Export answered with a Promise; an Export answers synchronously.");
 		expect(() => exports.dated?.greet?.({ name: "Ann" })).toThrow("The dated Box's greet Export output is not JSON at /at/0.");
 		expect(() => exports.cyclic?.greet?.({ name: "Ann" })).toThrow("The cyclic Box's greet Export output is not JSON at /a~1b~0c.");
 		expect(() => exports.decorated?.greet?.({ name: "Ann" })).toThrow("The decorated Box's greet Export output is not JSON at /at/extra.");
+		expect(() => exports.subclassed?.greet?.({ name: "Ann" })).toThrow("The subclassed Box's greet Export output is not JSON at /at.");
 	} finally {
 		database.close();
 		await loadBoxes([builtInBoxes]);
@@ -266,7 +274,7 @@ test("a Box's routes read another Box's Exports through the exportsOf the host h
 	const database = openObservedDatabase();
 	try {
 		await loadBoxes([builtInBoxes, plugins], database);
-		const chat = createChat(database);
+		const chat = createConversationWithHistory(database, { name: "Box test" });
 		insertBox(database, chat.id, "greeter");
 		const response = await serverBoxes().get("reader")?.routes?.handle(new Request(`http://localhost/api/boxes/reader/greetings/${chat.id}`));
 		expect(await response?.json()).toEqual({ greeting: "Hello, Ann." });

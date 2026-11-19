@@ -89,7 +89,9 @@ export function useDraftRun({ conversationId, replaces, opensOnDraft = false }: 
 			} finally { reader.releaseLock(); }
 			if (!ended) throw new Error("The draft stream ended before the draft. Try again.");
 		} catch (error) {
-			if (!active.signal.aborted) update((current) => ({ status: "failed", activities: activitiesOf(current), reason: error instanceof Error ? error.message : String(error) }));
+			if (active.signal.aborted) return;
+			active.abort();
+			update((current) => ({ status: "failed", activities: activitiesOf(current), reason: error instanceof Error ? error.message : String(error) }));
 		} finally {
 			if (controller.current === active) controller.current = null;
 		}

@@ -8,7 +8,7 @@ Source: `docs/specs/character-drafter.md`, Implementation Decision 4.
 
 ## Goal
 
-A built-in Box can run a libfx agent that explores frozen globals by writing JavaScript in a QuickJS sandbox and ends by submitting a schema-checked result.
+A trusted Box can run a libfx agent that explores frozen globals by writing JavaScript in a QuickJS sandbox and ends by submitting a schema-checked result.
 
 ## Ownership
 

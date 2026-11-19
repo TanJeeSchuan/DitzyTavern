@@ -30,20 +30,21 @@ export function DraftStatus({ run, unavailable }: { run: DraftRun; unavailable: 
 //  The drafter's window: whom to draft, picked from the people Memory knows
 // or typed, an optional steer, then the agent's steps as it reads the story
 // and, once it submits, the draft to open in the Definition editor.
-export function DrafterWindow({ conversation }: { conversation: ConversationSummary }) {
+export function DrafterWindow({ conversation, disabled }: { conversation: ConversationSummary; disabled: boolean }) {
 	const { unavailable, people } = useDrafterRead(conversation);
 	const { run, start, cancel, open } = useDraftRun({ conversationId: conversation.id });
 	const [person, setPerson] = useState("");
 	const [instruction, setInstruction] = useState("");
 	const running = run.status === "running";
+	const locked = disabled || running;
 	const draft = () => void start({ conversationId: conversation.id, person: person.trim(), instruction });
 	const drafted = run.status === "drafted" ? run.draft : undefined;
 	return <div className="character-drafter-window">
 		<Field label="Person" htmlFor="character-drafter-person" helper={people.length === 0 ? "Type a name as the story writes it." : undefined}>
-			<Input id="character-drafter-person" value={person} placeholder="Name" maxLength={PERSON_MAX} disabled={running} onChange={(event) => setPerson(event.target.value)} />
+			<Input id="character-drafter-person" value={person} placeholder="Name" maxLength={PERSON_MAX} disabled={locked} onChange={(event) => setPerson(event.target.value)} />
 		</Field>
 		{people.length > 0 && <div className="character-drafter-people" role="group" aria-label="People Memory knows">
-			{people.map((label) => <Button key={label} type="button" size="xs" variant="ghost" aria-pressed={person === label} disabled={running || label.length > PERSON_MAX} onClick={() => setPerson(label)}>
+			{people.map((label) => <Button key={label} type="button" size="xs" variant="ghost" aria-pressed={person === label} disabled={locked || label.length > PERSON_MAX} onClick={() => setPerson(label)}>
 				{label}
 			</Button>)}
 		</div>}
@@ -55,17 +56,17 @@ export function DrafterWindow({ conversation }: { conversation: ConversationSumm
 				rows={2}
 				placeholder={STEER}
 				maxLength={INSTRUCTION_MAX}
-				disabled={running}
+				disabled={locked}
 				onChange={(event) => setInstruction(event.target.value)}
 			/>
 		</Field>
 		<div className="character-drafter-actions">
 			{running
 				? <Button type="button" variant="outline" onClick={cancel}>Cancel</Button>
-				: <Button type="button" variant={drafted === undefined ? "default" : "outline"} disabled={unavailable !== null || person.trim() === ""} onClick={draft}>
+				: <Button type="button" variant={drafted === undefined ? "default" : "outline"} disabled={disabled || unavailable !== null || person.trim() === ""} onClick={draft}>
 					{run.status === "idle" ? "Draft" : "Draft again"}
 				</Button>}
-			{drafted !== undefined && <Button type="button" onClick={() => open(drafted)}>Open draft</Button>}
+			{drafted !== undefined && <Button type="button" disabled={disabled} onClick={() => open(drafted)}>Open draft</Button>}
 		</div>
 		<DraftStatus run={run} unavailable={unavailable} />
 		{run.status !== "idle" && <ActivityFeed activities={run.activities} />}

@@ -202,6 +202,7 @@ export type MemorySources = Static<typeof memorySources>;
 // answer, never to stored records. `people` takes no input, so its input
 // schema is `undefined` itself, as is the input for `selectedClaims`.
 export const memoryExportInput = Type.Undefined();
+/** @approved The output contract for Memory's `people()` Export. */
 export const memoryPeople = Type.Array(Type.String());
 export type MemoryPeople = Static<typeof memoryPeople>;
 export const memorySelectedClaims = Type.Array(Type.Object({ messageId: MessageId, ...publicClaim.properties }));

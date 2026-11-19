@@ -33,8 +33,11 @@ export const draftEvent = Type.Union([
 ]);
 export type DraftEvent = Static<typeof draftEvent>;
 
+/** @approved The label list the Drafter expects for grouping Claims and populating the picker. */
+export const draftPeople = Type.Array(Type.String());
+
 /** @approved The window's read for one Chat: the person labels Memory knows, empty without Memory, and why a draft cannot start, or null when the agent's model is ready. */
-export const drafterRead = Type.Object({ people: Type.Array(Type.String()), unavailable: Type.Union([Type.String(), Type.Null()]) });
+export const drafterRead = Type.Object({ people: draftPeople, unavailable: Type.Union([Type.String(), Type.Null()]) });
 export type DrafterRead = Static<typeof drafterRead>;
 export const drafterConversationParams = Type.Object({ id: numericWire });
 /** @approved The summary Elysia's validation answer carries when a draft request fails its schema. */
@@ -48,11 +51,9 @@ export type DraftMessages = Static<typeof draftMessages>;
 /** @approved The `cast` global: each Participant in the Cast, with its current name first and then the other names its Messages were written under. */
 export const draftCast = Type.Array(Type.Object({ id: Type.Integer(), names: Type.Array(Type.String()) }));
 export type DraftCast = Static<typeof draftCast>;
-/** @approved People labels as Memory's `people()` answers them. */
-export const draftPeople = Type.Array(Type.String());
 /** @approved The part of Memory's selected Claims that the Drafter uses to group them. */
 export const draftClaimPeople = Type.Array(Type.Object({ people: draftPeople }));
 
-/** @approved The `memory` global's schema: Memory's people and the Claims about each, typed by the schemas Memory's Exports declare, or null when Memory is not there to ask. */
-export const draftMemory = (declared?: { readonly people: TSchema; readonly claims: TSchema }) => declared === undefined ? Type.Null()
-	: Type.Union([Type.Object({ people: declared.people, claims: Type.Record(Type.String(), declared.claims) }), Type.Null()]);
+/** @approved The `memory` global groups Claims from Memory's Export under the Drafter's labels. */
+export const draftMemory = (claims?: TSchema) => claims === undefined ? Type.Null()
+	: Type.Union([Type.Object({ people: draftPeople, claims: Type.Record(Type.String(), claims) }), Type.Null()]);

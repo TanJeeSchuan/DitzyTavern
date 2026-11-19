@@ -67,7 +67,7 @@ const memoryGlobal = (exports: BoxExports): CodeAgentGlobal => {
 		const output = selectedClaims.output;
 		const claims = selectedClaims();
 		if (!TypeGuard.IsArray(output) || !Value.Check(draftClaimPeople, claims)) throw new Error("its selected Claims do not list their people.");
-		const schema = draftMemory({ people: draftPeople, claims: output });
+		const schema = draftMemory(output);
 		return { description: MEMORY, schema, value: groupClaims(claims) };
 	} catch (error) {
 		return { description: `Null: Memory could not answer: ${error instanceof Error ? error.message : String(error)}`, schema: draftMemory(), value: null };
@@ -82,9 +82,11 @@ const memoryPeople = (exports: BoxExports): readonly string[] => {
 	} catch { return []; }
 };
 
-/** @approved The window's read: the people Memory knows, and why a draft cannot start. */
-export const readDrafter = (database: Database, exports: BoxExports): DrafterRead =>
-	({ people: [...memoryPeople(exports)], unavailable: codeAgentUnavailable(database) ?? null });
+/** @approved Model availability and Memory's labels for an existing Chat. */
+export const readDrafter = (database: Database, conversationId: number, exportsOf: (conversationId: number) => BoxExports): DrafterRead | undefined => {
+	if (!conversationExists(database, conversationId)) return undefined;
+	return { people: [...memoryPeople(exportsOf(conversationId))], unavailable: codeAgentUnavailable(database) ?? null };
+};
 
 const MESSAGES = "The story's Selected narrative path, in order: each Message's id, its index on the path, its author's name and Participant id as written, and its text.";
 const CAST = "The Chat's Cast: each Participant's id and the names it has been written under, its current name first.";

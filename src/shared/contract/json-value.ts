@@ -43,10 +43,11 @@ const arrayIndex = (key: string | symbol, length: number) => typeof key === "str
 const nonJsonPath = (value: unknown, ancestors: Set<object>, path = ""): string | undefined => {
 	if (value === null || typeof value === "string" || typeof value === "boolean") return undefined;
 	if (typeof value === "number") return Number.isFinite(value) ? undefined : path || "/";
-	if (!Array.isArray(value) && !isPlainObject(value)) return path || "/";
+	const array = Array.isArray(value);
+	if (!array && !isPlainObject(value)) return path || "/";
+	if (array && Object.getPrototypeOf(value) !== Array.prototype) return path || "/";
 	if (ancestors.has(value)) return path || "/";
 	ancestors.add(value);
-	const array = Array.isArray(value);
 	const properties = Reflect.ownKeys(value);
 	if (array) {
 		const extra = properties.find((key) => key !== "length" && !arrayIndex(key, value.length));

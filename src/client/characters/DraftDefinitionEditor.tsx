@@ -5,8 +5,9 @@ import { applyCommand, LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
 import { ConflictBanner } from "../ConflictBanner";
 import type { ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
+import { useSaveGuard } from "../SaveGuard";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
-import { DefinitionEditor, definitionOf, submittableDefinition } from "./DefinitionEditor";
+import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { DefinitionDraftRequest } from "./definition-draft";
 
 const NOTICES = {
@@ -36,12 +37,26 @@ export function DraftDefinitionEditor({ conversation, request, onConversationCha
 	const replaced = conversation.cast.find(({ id }) => id === request.replaces);
 	const kept = (current: typeof replaced) =>
 		({ sendAppearanceImages: current?.sendAppearanceImages ?? true, openings: current?.openings ?? [], portrait: current?.portrait });
-	const [draft, setDraft] = useState<ParticipantDefinition>(() => definitionOf({ name: request.draft.name, prompt: request.draft.prompt, ...kept(replaced) }));
-	const [keptRevision, setKeptRevision] = useState(conversation.revision);
+	const [initial] = useState(() => ({
+		definition: definitionOf({ name: request.draft.name, prompt: request.draft.prompt, ...kept(replaced) }),
+		revision: conversation.revision,
+	}));
+	const [draft, setDraft] = useState<ParticipantDefinition>(initial.definition);
+	const [keptRevision, setKeptRevision] = useState(initial.revision);
 	const [conflict, setConflict] = useState(false);
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [confirming, setConfirming] = useState(false);
+	useSaveGuard({
+		dirty: !sameDefinition(draft, initial.definition),
+		saving: pending,
+		discard: () => {
+			setDraft(initial.definition);
+			setKeptRevision(initial.revision);
+			setConflict(false);
+			setNotice(null);
+		},
+	});
 	const surface = { conversationId: conversation.id, revision: () => conversation.revision, onConversationChange, setNotice };
 	const pend = async (work: () => Promise<void>) => {
 		setPending(true);

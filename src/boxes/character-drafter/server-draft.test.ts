@@ -16,7 +16,7 @@ import { writeAutomaticRecord, writeWriterRecord } from "../../server/box/record
 import { readBoxLifecycles } from "../../server/box/setup";
 import type { CodeAgentActivity } from "@/box-sdk/server";
 import type { CharacterDraft, DraftMessages } from "./contract";
-import { draftPerson, draftRefusal } from "./server-draft";
+import { draftPerson, draftRefusal, readDrafter } from "./server-draft";
 
 const messages: DraftMessages = [
 	{ id: 7, index: 0, author: "Maren", authorParticipantId: 1, text: "Maren pours. \"Another round, then.\"" },
@@ -96,6 +96,10 @@ beforeEach(() => {
 	applyBoxDelegateSettings(database, DEFAULT_BOX_DELEGATE, { type: "apply", expectedRevision: readBoxDelegateSettings(database, DEFAULT_BOX_DELEGATE).revision, profileId, model: "stage-1" });
 });
 afterEach(() => database.close());
+
+test("the Drafter does not read Exports for a missing Chat", () => {
+	expect(readDrafter(database, -1, () => { throw new Error("Read Exports for a missing Chat"); })).toBeUndefined();
+});
 
 /** @approved One Memory record holding a single kept Claim about Bob. */
 const bobClaim = (messageId: number, claim: string) => ({ claims: [{
