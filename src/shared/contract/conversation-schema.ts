@@ -707,7 +707,7 @@ export const generationPreview = Type.Object({
 	outcome: Type.Literal("available"),
 	previewId: Type.String(),
 	conversationId: Type.Integer(),
-	kind: Type.Union(generationTarget.anyOf.map(({ properties }) => properties.kind)),
+	kind: Type.Index(generationTarget, ["kind"]),
 	promptPlan,
 	participants: Type.Object({
 		human: Type.Union([Type.Null(), Type.Object({ id: Type.Integer(), name: Type.String() })]),
