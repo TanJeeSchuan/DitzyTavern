@@ -267,6 +267,15 @@ export const selectPreset = async (
 };
 
 // @approved
+//  A request the test waits for fails the test after `ms` instead of hanging
+// until the runner's timeout, naming what never arrived.
+export const withinBound = <T>(promise: Promise<T>, waitingFor: string, ms = 5_000): Promise<T> => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const expired = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`Timed out after ${ms} ms waiting for ${waitingFor}.`)), ms); });
+	return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
+};
+
+// @approved
 //  The controlled provider fake captures every Chat Completions
 // request behind a barrier, so a test runs mid-attempt Conversation
 // operations against a held provider stream before releasing it.
@@ -278,7 +287,7 @@ export const gatedProvider = () => {
 	return {
 		requests,
 		waitForRequests: async (count: number) => {
-			while (requests.length < count) await nextRequest.promise;
+			while (requests.length < count) await withinBound(nextRequest.promise, `provider request ${requests.length + 1} of ${count}`);
 		},
 		release: () => {
 			open = true;
@@ -308,7 +317,7 @@ export const captureModelFetch = (
 		onCapture?.(request);
 		return sseReply([{ content: "Done." }], { beforeDeltas: waitFor, singleChunk: true });
 	};
-	return { fetch, captured };
+	return { fetch, get captured() { return withinBound(captured, "the provider request"); } };
 };
 
 export const startGeneration = async (

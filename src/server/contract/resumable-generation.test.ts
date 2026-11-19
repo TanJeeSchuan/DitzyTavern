@@ -1,4 +1,4 @@
-import { profile as chatProfile, sseReply } from "./prompt-preset-test-fixtures";
+import { profile as chatProfile, sseReply, withinBound } from "./prompt-preset-test-fixtures";
 import { readTestConversationSnapshot, shortReplyPrompt, pairChat } from "../test-fixtures/conversation";
 import { readActiveGenerationDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
@@ -249,7 +249,7 @@ describe("Resumable generation transport", () => {
 		const accepted = await acceptedResponse.json() as { generationId: number };
 		expect(acceptedResponse.status).toBe(200);
 
-		const providerSignal = await providerStarted.promise;
+		const providerSignal = await withinBound(providerStarted.promise, "the provider request");
 		const stoppedResponse = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/stop`,
 			{ method: "POST", body: "{}" },
