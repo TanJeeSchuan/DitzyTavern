@@ -41,11 +41,11 @@ test.each([null, 4_000])("an authoring request rejects a cross-origin 307 (idle 
 			return new Response("ok");
 		},
 	});
-	let authorization: string | null = null;
+	const authorizations: (string | null)[] = [];
 	const origin = Bun.serve({
 		hostname: "127.0.0.1", port: 0,
 		fetch(request) {
-			authorization = request.headers.get("authorization");
+			authorizations.push(request.headers.get("authorization"));
 			return new Response(null, { status: 307, headers: { location: destination.url.href } });
 		},
 	});
@@ -57,7 +57,7 @@ test.each([null, 4_000])("an authoring request rejects a cross-origin 307 (idle 
 			await response.text();
 			return response.status;
 		}, () => "rejected");
-		expect(authorization).toBe("Bearer test-key");
+		expect(authorizations).toEqual(["Bearer test-key"]);
 		expect(signal.aborted).toBe(false);
 		expect({ outcome, redirectedWithAuthorization }).toEqual({ outcome: "rejected", redirectedWithAuthorization: false });
 	} finally {
