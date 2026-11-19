@@ -1,3 +1,4 @@
+import { queueConversationCommand } from "../conversation-command-runner";
 import { historyVariant, historyMessage, historyPage, conversationSummary, installFetch, type FetchHandler } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ChatHistoryPage } from "../chat-history";
@@ -133,7 +134,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	const surface = () => ({
 		signal: visit.signal,
 		story: story(),
-		conversation,
+		commandRevision: () => conversation?.revision ?? null,
 		dispatchStory,
 		setConversation,
 	});
@@ -178,6 +179,11 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		hold,
 		story,
 		publishHistory,
+		appendMessage: () => {
+			revision++;
+			conversation = summary(revision);
+			window = { ...window, revision, messages: firstPage(true).messages.map(toStoryMessage) };
+		},
 		conversation: () => conversation,
 	};
 }
@@ -296,4 +302,23 @@ describe("Requested selection", () => {
 		harness.publishHistory(101);
 		expect(harness.shownVariantId()).toBe(101);
 	});
+});
+
+
+test("coalescing Swipes across Messages retires the displaced unsent selection", async () => {
+	const harness = createHarness({ kind: "applied" });
+	const gate = Promise.withResolvers<void>();
+	const blocker = queueConversationCommand(1, async () => { await gate.promise; return false; });
+	const first = harness.select(10, 101);
+	expect(harness.shownVariantId()).toBe(101);
+	harness.appendMessage();
+	const second = harness.select(11, 111);
+	gate.resolve();
+	await Promise.all([blocker, first, second]);
+	expect(harness.commands).toEqual([
+		{ expectedRevision: 6, action: { type: "select-variant", messageId: 11, variantId: 111 } },
+	]);
+	harness.publishHistory(100);
+	expect(harness.shownVariantId()).toBe(100);
+	expect(harness.story().requestedSelections.size).toBe(0);
 });

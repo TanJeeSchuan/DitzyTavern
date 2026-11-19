@@ -38,7 +38,7 @@ const selections = new WeakMap<AbortSignal, { queued: boolean; requested: Reques
 type StoryMessageActionsOptions = {
 	signal: AbortSignal;
 	story: StoryState;
-	conversation: ConversationSummary | null;
+	commandRevision: () => number | null;
 	dispatchStory: Dispatch<StoryAction>;
 	setConversation: (conversation: ConversationSummary | null) => void;
 	queueSwipeScroll: (messageId: number) => void;
@@ -49,7 +49,7 @@ type StoryMessageActionsOptions = {
 export function useStoryMessageActions({
 	signal,
 	story,
-	conversation,
+	commandRevision,
 	dispatchStory,
 	setConversation,
 	queueSwipeScroll,
@@ -57,7 +57,7 @@ export function useStoryMessageActions({
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
 	const surface = {
-		revision: () => conversation?.revision ?? (isStoryReady(story) ? story.revision : null),
+		revision: commandRevision,
 		onConversationChange: setConversation,
 		setNotice: noPresentation,
 		isCurrent: () => !signal.aborted,
@@ -66,6 +66,7 @@ export function useStoryMessageActions({
 		const requested = { messageId, request: { value: variantId } };
 		const current = selections.get(signal) ?? { queued: false, requested: null };
 		selections.set(signal, current);
+		if (current.requested !== null) dispatchStory({ type: "selection-settled", ...current.requested, revision: null });
 		current.requested = requested;
 		dispatchStory({ type: "selection-requested", ...requested });
 		if (current.queued) return;
@@ -114,7 +115,7 @@ export function useStoryMessageActions({
 			return;
 		}
 		if (!canEnterPreview) return;
-		if (conversation === null) return;
+		if (commandRevision() === null) return;
 
 		const selection = classifyVariantSelection(story, messageId, variantId);
 		if (selection.kind === "noop" || selection.kind === "blocked") return;
@@ -143,7 +144,7 @@ export function useStoryMessageActions({
 		if (variantId === undefined) return false;
 
 		let applied = false;
-		await runConversationCommand({ ...surface, conversationId, revision: () => story.revision }, asNew
+		await runConversationCommand({ ...surface, conversationId }, asNew
 			? { type: "create-variant", messageId, sourceVariantId: variantId, content }
 			: { type: "edit-variant", messageId, variantId, content }, {
 			notices: STORY_COMMAND_NOTICES,
@@ -156,7 +157,7 @@ export function useStoryMessageActions({
 		if (!isStoryReady(story) || story.preview !== null) return;
 		const request = { value: moves };
 		dispatchStory({ type: "moves-requested", messageId, request });
-		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
+		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId }, { type: "set-message-moves", messageId, moves }, {
 			notices: STORY_COMMAND_NOTICES,
 			onApplied: (result) => dispatchStory({ type: "moves-settled", messageId, request, revision: result.revision }),
 		});

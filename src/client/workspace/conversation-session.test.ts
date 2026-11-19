@@ -47,7 +47,7 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 	const hook = await renderHook(() => {
 		const session = useConversationSession({ initialChatId: "1" });
 		const commands = useStoryMessageActions({
-			signal: session.signal, story: session.story, conversation: session.conversation,
+			signal: session.signal, story: session.story, commandRevision: session.commandRevision,
 			dispatchStory: session.dispatchStory, setConversation: session.setConversation,
 			queueSwipeScroll() {}, canEnterPreview: true, onEnterPreview: (enter) => enter(),
 		});
@@ -743,3 +743,133 @@ function readyStory(state: StoryState) {
 	if (state.status !== "ready") throw new Error("Story was not ready.");
 	return state;
 }
+
+
+for (const operation of ["edit", "save as new", "Moves"] as const) test(`${operation} uses accepted writes while displayed history is held behind`, async () => {
+	let revision = 5;
+	const history = Promise.withResolvers<Response>();
+	const h = await harness(async ({ url, init }) => {
+		if (init?.method === "POST") return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+		return revision === 5 ? Response.json(page()) : history.promise.then((response) => response.clone());
+	});
+	const write = () => operation === "Moves" ? h.hook.current.setMessageMoves(105, {})
+		: h.hook.current.editStoryMessage(105, "Edited", operation === "save as new");
+	await h.hook.act(write);
+	await flushHook();
+	expect(readyStory(h.hook.current.story).revision).toBe(5);
+	await h.hook.act(write);
+	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).expectedRevision)).toEqual([5, 6]);
+	await h.hook.act(async () => history.resolve(Response.json(page(1, 1, 7))));
+	await flushHook();
+	expect(readyStory(h.hook.current.story).revision).toBe(7);
+});
+
+test("a retained command callback reads newly accepted authority before React renders", async () => {
+	const h = await harness(async ({ url, init }) => init?.method === "POST"
+		? Response.json({ outcome: "invalid", reason: "Probe" }, { status: 422 })
+		: Response.json(url.pathname.endsWith("history") ? page() : summary()));
+	const remove = h.hook.current.deleteStoryMessage;
+	await h.hook.act(async () => {
+		h.hook.current.setConversation(summary(1, 9));
+		await remove(105);
+	});
+	const command = h.requests.find(({ init }) => init?.method === "POST");
+	expect(JSON.parse(String(command?.init?.body)).expectedRevision).toBe(9);
+});
+
+test("a failed jump that advances Summary refreshes the window the reader stays on", async () => {
+	let revision = 5;
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+		if (url.searchParams.has("aroundMessageId")) { revision = 7; return Response.json(page(1, 3, 6)); }
+		return Response.json(page(1, 1, revision));
+	});
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101).catch(() => undefined));
+	await flushHook();
+	expect(h.hook.current.conversation?.revision).toBe(7);
+	expect(readyStory(h.hook.current.story).revision).toBe(7);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+});
+
+test("opening a Chat at a missing source opens its latest Messages", async () => {
+	const h = await harness(async ({ url }) => {
+		const id = Number(url.pathname.split("/")[3]);
+		return url.searchParams.has("aroundMessageId") ? Response.json({ outcome: "not-found" }, { status: 404 })
+			: Response.json(url.pathname.endsWith("history") ? page(id) : summary(id));
+	});
+	await h.hook.act(async () => h.hook.current.selectChat("2", 999));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([205, 206]);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
+});
+
+for (const recovery of ["reselect", "latest"] as const) test(`${recovery} recovers an initial history failure`, async () => {
+	let failed = true;
+	const h = await harness(async ({ url }) => url.pathname.endsWith("history") && failed
+		? Response.json({ error: "Unavailable" }, { status: 500 }) : Response.json(url.pathname.endsWith("history") ? page() : summary()));
+	expect(h.hook.current.story.status).toBe("error");
+	failed = false;
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	await h.hook.act(async () => {
+		if (recovery === "reselect") h.hook.current.selectChat("1");
+		else await h.hook.current.jumpToLatest();
+	});
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+});
+
+test("a remount with a warm cache opens latest instead of the previous visit's detached window", async () => {
+	const h = await harness(async ({ url }) => Response.json(url.pathname.endsWith("history")
+		? page(1, url.searchParams.has("aroundMessageId") ? 3 : 1) : summary()));
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+	await h.hook.unmount();
+	const reopened = await renderHook(() => useConversationSession({ initialChatId: "1" }), h.client);
+	await flushHook();
+	expect(reopened.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	expect(readyStory(reopened.current.story).page.hasNewer).toBe(false);
+});
+
+test("a cancelled page cannot clear the replacement page's loading indicator", async () => {
+	const old = Promise.withResolvers<Response>();
+	const replacement = Promise.withResolvers<Response>();
+	let pages = 0;
+	const h = await harness(async ({ url }) => url.searchParams.get("page") === "2"
+		? (++pages === 1 ? old : replacement).promise : Response.json(url.pathname.endsWith("history") ? page() : summary()));
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	let first = Promise.resolve();
+	let second = Promise.resolve();
+	await h.hook.act(async () => { first = h.hook.current.loadMoreHistory(); });
+	expect(readyStory(h.hook.current.story).loadingMore).toBe(true);
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(105));
+	expect(readyStory(h.hook.current.story).loadingMore).toBe(false);
+	await h.hook.act(async () => { second = h.hook.current.loadMoreHistory(); });
+	await h.hook.act(async () => { old.resolve(Response.json(page(1, 2))); await first; });
+	expect(readyStory(h.hook.current.story).loadingMore).toBe(true);
+	await h.hook.act(async () => { replacement.resolve(Response.json(page(1, 2))); await second; });
+	expect(readyStory(h.hook.current.story).loadingMore).toBe(false);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
+});
+
+
+test("accepted authority supersedes a Summary reconciliation without stranding its history refresh", async () => {
+	const late = Promise.withResolvers<Response>();
+	let summaries = 0;
+	let histories = 0;
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return ++summaries === 1 ? Response.json(summary()) : late.promise;
+		return Response.json(page(1, 1, [5, 7, 8][histories++] ?? 8));
+	});
+	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
+	await flushHook();
+	expect(summaries).toBe(2);
+	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 8)));
+	await flushHook();
+	expect(readyStory(h.hook.current.story).revision).toBe(8);
+	await h.hook.act(async () => late.resolve(Response.json(summary(1, 7))));
+	await flushHook();
+	expect(h.hook.current.conversation?.revision).toBe(8);
+	expect(readyStory(h.hook.current.story).revision).toBe(8);
+});

@@ -97,6 +97,7 @@ async function executeConversationCommand<TOperation>(
 	options: ConversationCommandRunOptions<TOperation>,
 	previous: number | null,
 ): Promise<Settled> {
+	if (surface.isCurrent?.() === false) return false;
 	const effect = (apply: () => void) => {
 		if (surface.isCurrent?.() !== false) apply();
 	};

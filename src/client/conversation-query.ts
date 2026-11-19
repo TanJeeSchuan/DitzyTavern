@@ -41,10 +41,10 @@ async function invalidateConversationHistory(client: QueryClient, id: number, re
 //  A newer revision can change any page and any Variant's text: the story
 // reads them again when it next shows them. An older copy never replaces the
 // cached one.
-const adoptConversation = (client: QueryClient, incoming: ConversationSummary | null, id: number, invalidateHistory: boolean) => {
+const adoptConversation = (client: QueryClient, incoming: ConversationSummary | null, id: number) => {
 	const current = client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
 	if (incoming !== null && incoming.revision > (current?.revision ?? 0)) {
-		if (invalidateHistory) void invalidateConversationHistory(client, id, incoming.revision);
+		void invalidateConversationHistory(client, id, incoming.revision);
 		void client.invalidateQueries({ queryKey: variantTextKey(id) });
 	}
 	return incoming !== null && current !== null && current.revision > incoming.revision ? current : incoming;
@@ -59,13 +59,13 @@ export const publishConversation = (client: QueryClient, conversation: Conversat
 	const queryKey = conversationKey(conversation.id);
 	const publish = () => {
 		void client.cancelQueries({ queryKey });
-		client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id, true));
+		client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id));
 	};
 	if (boxVersionsBuilt(conversation)) publish();
 	else void loadBoxVersions(conversation).then(publish);
 };
 
-export const conversationQuery = (client: QueryClient, id: number, { owner, invalidateHistory = true }: { owner?: AbortSignal; invalidateHistory?: boolean } = {}) => ({
+export const conversationQuery = (client: QueryClient, id: number, { owner }: { owner?: AbortSignal } = {}) => ({
 	queryKey: conversationKey(id),
 	staleTime: Infinity,
 	refetchOnReconnect: false,
@@ -73,7 +73,7 @@ export const conversationQuery = (client: QueryClient, id: number, { owner, inva
 	queryFn: async ({ signal }: { signal: AbortSignal }) => {
 		const incoming = await cancellableFetch(signal, owner, (cancellation) => loadConversation(id, cancellation));
 		if (incoming !== null) await loadBoxVersions(incoming);
-		return adoptConversation(client, incoming, id, invalidateHistory);
+		return adoptConversation(client, incoming, id);
 	},
 });
 

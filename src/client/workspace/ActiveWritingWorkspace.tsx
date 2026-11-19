@@ -76,6 +76,7 @@ export function ActiveWritingWorkspace({
 	const client = useQueryClient();
 	const session = useConversationSession({ initialChatId });
 	const { story, dispatchStory } = session;
+	const onNavigateSource = (messageId: number) => { void session.navigateToSourceMessage(messageId).catch(() => undefined); };
 	const [panelState, dispatchPanel] = useReducer(
 		(state: PanelCoordinationState, action: PanelCoordinationAction) => reducePanelCoordination(state, action, story.preview !== null),
 		undefined,
@@ -127,7 +128,7 @@ export function ActiveWritingWorkspace({
 	const preview = usePreviewController({
 		signal: session.signal,
 		story,
-		conversation: session.conversation,
+		commandRevision: session.commandRevision,
 		dispatchStory,
 		setConversation: session.setConversation,
 	});
@@ -188,7 +189,7 @@ export function ActiveWritingWorkspace({
 		if (conversation === null || forkAt === null) return "The Chat is not available.";
 		let error: string | null = null;
 		const applied = await runConversationCommand({
-			conversationId: conversation.id, revision: () => conversation.revision,
+			conversationId: conversation.id, revision: session.commandRevision,
 			onConversationChange: session.setConversation, setNotice: (notice) => { error = notice; },
 			isCurrent: () => !session.signal.aborted,
 		}, async (revision) => {
@@ -205,7 +206,7 @@ export function ActiveWritingWorkspace({
 	};
 	const unlinkFork = () => {
 		if (conversation === null) return;
-		void runConversationCommand({ conversationId: conversation.id, revision: () => conversation.revision, onConversationChange: session.setConversation, setNotice: setForkNotice, isCurrent: () => !session.signal.aborted }, { type: "unlink-fork" });
+		void runConversationCommand({ conversationId: conversation.id, revision: session.commandRevision, onConversationChange: session.setConversation, setNotice: setForkNotice, isCurrent: () => !session.signal.aborted }, { type: "unlink-fork" });
 	};
 	const openForkSource = () => {
 		const source = conversation?.forkedFrom;
@@ -367,7 +368,7 @@ export function ActiveWritingWorkspace({
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}
-					onNavigateSource={session.navigateToSourceMessage}
+					onNavigateSource={onNavigateSource}
 					onClose={generation.cancelPromptPlanPreview}
 					onOpenSettings={() => saveNavigation.requestNavigation(() => togglePanel("settings"))}
 				/>
@@ -411,7 +412,7 @@ export function ActiveWritingWorkspace({
 							onConversationChange={session.setConversation}
 							focusRequest={panelState.boxFocus}
 							onClose={() => dispatchPanel({ type: "details-closed" })}
-							onNavigateSource={session.navigateToSourceMessage}
+							onNavigateSource={onNavigateSource}
 							onOpenSettings={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: `box-settings:${inspectorBox}` }))}
 							onOpenConnections={() => openConnections()}
 						/>
@@ -422,7 +423,7 @@ export function ActiveWritingWorkspace({
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
-					onNavigateSource={session.navigateToSourceMessage}
+					onNavigateSource={onNavigateSource}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}

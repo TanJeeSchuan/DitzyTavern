@@ -110,7 +110,7 @@ export function StoryStage({
 	const storyActions = useStoryMessageActions({
 		signal: session.signal,
 		story,
-		conversation,
+		commandRevision: session.commandRevision,
 		dispatchStory,
 		setConversation: session.setConversation,
 		queueSwipeScroll: viewport.queueSwipeScroll,
@@ -281,7 +281,7 @@ export function StoryStage({
 				</div>
 			</div>
 
-			{readyStory?.page.hasNewer && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
+			{(story.status === "error" || readyStory?.page.hasNewer) && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
 				<button
 					className="secondary-button"
 					type="button"

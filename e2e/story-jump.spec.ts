@@ -1,6 +1,8 @@
 import { test, expect, send, story } from "./fixtures";
 
-test("jumping to a source reads one window, pages newer, returns to latest and sends", async ({ page, request, llm }) => {
+test.use({ allowedBrowserErrors: /status of 404/ });
+
+test("a missing Inspector source reports failure; jumping to a source reads one window, pages newer, returns to latest and sends", async ({ page, request, llm }) => {
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 	const historyUrl = `/api/conversations/${activeChatId}/history`;
 	const initial = await (await request.get(historyUrl)).json();
@@ -25,6 +27,12 @@ test("jumping to a source reads one window, pages newer, returns to latest and s
 	await coverage.focus();
 	await coverage.press("Home");
 	for (let step = 1; step < 50; step++) await coverage.press("ArrowRight");
+	const missingSource = `${historyUrl}?aroundMessageId=${target.id}`;
+	await page.route(`**${missingSource}`, (route) => route.fulfill({ status: 404, json: { outcome: "not-found" } }));
+	await coverage.press("Enter");
+	await expect(story(page).getByRole("alert").filter({ hasText: "The Chat history could not be loaded." })).toBeVisible();
+	await expect(articles).toHaveCount(50);
+	await page.unroute(`**${missingSource}`);
 	requests.length = 0;
 	await coverage.press("Enter");
 	const targetMessage = story(page).locator(`[data-message-id="${target.id}"]`);

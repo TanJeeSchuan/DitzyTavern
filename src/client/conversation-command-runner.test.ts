@@ -166,10 +166,10 @@ describe("runConversationCommand", () => {
 		]);
 	});
 
-	test("a superseded surface adopts nothing and shows no notice", async () => {
+	test("a superseded surface never sends, adopts or shows a notice", async () => {
 		const events: string[] = [];
 		await run(events, applied(events), {}, { isCurrent: () => false });
-		expect(events).toEqual(["send:7"]);
+		expect(events).toEqual([]);
 	});
 
 	test("an operation outcome is forwarded untouched to the typed operation callback", async () => {
@@ -239,4 +239,18 @@ test("a refusal between two commands preserves the revision the first command pr
 	const last = run(events, applied(events));
 	expect(await Promise.all([first, refused, last])).toEqual([true, false, true]);
 	expect(events).toEqual(["send:7", "adopt:8", "send:8", "notice:No change applied.", "send:8", "adopt:7"]);
+});
+
+
+test("leaving a visit cancels its queued command before dispatch without blocking the next visit", async () => {
+	const gate = Promise.withResolvers<CommandOutcome>();
+	const events: string[] = [];
+	const visit = new AbortController();
+	const first = run(events, () => gate.promise);
+	const abandoned = run(events, applied(events), {}, { isCurrent: () => !visit.signal.aborted });
+	const nextVisit = run(events, applied(events));
+	visit.abort();
+	gate.resolve({ outcome: "available", value: { outcome: "applied", conversation: summary({ revision: 8 }) } });
+	expect(await Promise.all([first, abandoned, nextVisit])).toEqual([true, false, true]);
+	expect(events).toEqual(["adopt:8", "send:8", "adopt:7"]);
 });

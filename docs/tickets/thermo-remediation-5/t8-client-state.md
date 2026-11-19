@@ -8,7 +8,7 @@ Model: Sol 6.2 high writes and fixes slices a, b and c. Astra 6 high writes d; S
 
 Slices a and b ship as one PR: both move server data into the query cache, in different files.
 
-**Slice c stops after the first write. The owner reads the new state model before fixes begin.**
+**Slice c: the owner approved the overlay model. Current phase: enforce the transcript invariants below, add regression coverage, and complete CI fix rounds.**
 
 The rule, from `CODING_STANDARDS.md`: server data lives in the query cache. A reducer or `useState` holds only what the user has done that the server does not know yet. Each slice removes a second copy of server data and the code that kept it in step.
 
@@ -44,8 +44,6 @@ Reports 05, finding 2; 06, finding 2.
 - Guarantees to keep: rapid paging calls are deduplicated; older pages prepend and newer append; a late page from a superseded read does not extend the window; Preview blocks a selection further down; an older Variant selection is local until confirmed; a reload drops a client-only Preview.
 - Rewrite `story.test.ts` around those guarantees. Move its streaming tests to `story/variant-streams.test.ts`.
 
-Stop here after the first write and report: the overlay state's type, how the displayed Variant is chosen, and which effects were deleted.
-
 ## Slice d: one owner for a Generation
 
 Report 06, finding 1; report 05, findings 3 and 5.
@@ -65,8 +63,8 @@ Report 06, finding 1; report 05, findings 3 and 5.
 ## TODO
 
 - [x] Slices a and b, one PR, ADR 0036 amended
-- [x] Slice c first write
-- [x] Slice c owner review and fixes
+- [x] Slice c overlay model approved
+- [ ] Slice c invariant fixes and CI verification
 - [ ] Slice d (Astra), fixes (Sol), PR
 
 ## Acceptance
@@ -92,6 +90,16 @@ Report 06, finding 1; report 05, findings 3 and 5.
 
 ### Slice c
 
+Invariants for the current fix round (recorded before implementation):
+
+1. Transcript commands read the newest accepted Conversation revision at dispatch from the query cache; the command queue accounts for preceding writes. Displayed history is never a command revision source. Exact draft saves outside the transcript retain their explicit base.
+2. Every history read commits through one gate: all pages have one revision, equal to the accepted Summary and no older than the displayed window. Only the current visit and unsuperseded window may commit. Failed navigation retains the readable window; Summary advancement still schedules its refresh.
+3. Each visit has a unique cache identity across selections and remounts. Missing initial source anchors open latest history; an existing window survives a missing anchor. Failed initial reads remain recoverable through normal selection and Jump to latest.
+4. Every optimistic selection or Moves request either settles with its accepted revision, is refused, or is displaced before dispatch. Displacement retires the unsent request; a later refusal preserves the earlier accepted value until authoritative history replaces it. Ending a visit discards its overlays and prevents queued commands from sending.
+5. Paging has one observable owner for deduplication, cancellation and the loading indicator. A stale completion cannot clear a newer operation's activity.
+6. Navigation failures are reported in the transcript and consumed at the event boundary; Inspector and trace clicks cannot create unhandled rejections.
+
+
 - One committed window per Chat visit lives in the query cache. The story reducer holds Preview, requested selections, requested Moves and an unplaced Generation. Successful selection and Moves overlays stay visible until history reaches their applied Revision.
 - Removed the Chat-open, history adoption and revision-refetch effects and the navigation `flushSync`. Initial opens, explicit refreshes, write-triggered refreshes, paging and jumps all commit through the same function. It rejects mixed or older revisions and reconciles the Conversation Summary before publishing a newer window.
 - `paging follows the current edge and deduplicates rapid calls independently of window size` covers deduplication, older prepend and row identity. `newer paging extends a detached window and generation refresh retains that complete window` covers newer append.
@@ -101,3 +109,10 @@ Report 06, finding 1; report 05, findings 3 and 5.
 - Every read retries obsolete or inconsistent results up to three total attempts. A paging mismatch refreshes the current window before the writer can request another page. A write that joins a completing refresh triggers another read if that refresh did not cover the write's revision. Tests cover failed jumps during write refresh, write-triggered retry, older anchor responses, the revision sent by Delete after a jump, and a 404 during refresh.
 - A refused Swipe or Moves edit reveals the previous accepted value until history catches up. The assembly test renders the Requested Send placeholder before and after history places it.
 - Changed-file lint and `git diff --check` passed locally. BuildBuddy passed `bun run check`. The PR's Check workflow also runs the browser suite.
+
+- Current invariant coverage: `edit / save as new / Moves uses accepted writes while displayed history is held behind` and `a retained command callback reads newly accepted authority before React renders` cover command authority; `a failed jump that advances Summary refreshes the window the reader stays on` and `accepted authority supersedes a Summary reconciliation without stranding its history refresh` cover reconciliation, including cancellation by a write.
+- `opening a Chat at a missing source opens its latest Messages`, `reselect / latest recovers an initial history failure`, and `a remount with a warm cache opens latest instead of the previous visit's detached window` cover recovery and visit isolation.
+- `coalescing Swipes across Messages retires the displaced unsent selection` covers overlay displacement; existing Swipe/Moves refusal tests cover preserving prior accepted values. `leaving a visit cancels its queued command before dispatch without blocking the next visit` covers cancellation before send.
+- `a cancelled page cannot clear the replacement page's loading indicator` covers the observable paging lifecycle, alongside the rapid-call deduplication test. Paging activity is now one subscribed controller; no test asserts its implementation shape. The obsolete first-write stop instructions were removed by document review, without a tautological document test.
+- The source-jump browser flow now forces a missing Inspector source, checks that the transcript remains readable and reports failure, then retries successfully. The browser fixture rejects unhandled promise rejections. Inspector, trace and Prompt Plan preview share one event handler that consumes navigation failures.
+- Changed-file lint passed (two pre-existing comment warnings in the command runner). Unit tests, typecheck and browser tests are delegated to PR CI; no such checks ran on this host in this round.
