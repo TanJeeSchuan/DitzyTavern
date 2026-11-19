@@ -43,7 +43,7 @@ export interface GenerationPreviewAcceptance {
 /** @approved One preview request is one attempt target carrying its own capture
  * configuration, so the inspected Prompt Plan dispatches on the same union
  * the lifecycles do. */
-export type GenerationPreviewRequest = GenerationCaptureOptions & GenerationTarget;
+type GenerationPreviewRequest = GenerationCaptureOptions & { target: GenerationTarget };
 
 export const GENERATION_PREVIEW_SESSION_TTL_MS = 60 * 60 * 1000;
 
@@ -123,10 +123,7 @@ export const createGenerationPreviewAsync = async (
 	const { conversationId } = input;
 	const requestVersion = (store.versions.get(conversationId) ?? 0) + 1;
 	store.versions.set(conversationId, requestVersion);
-	const target: GenerationTarget = input.kind === "send"
-		? { kind: input.kind, content: input.content, moves: input.moves }
-		: input.kind === "sibling" ? { kind: input.kind, messageId: input.messageId, reroll: input.reroll } : { kind: input.kind };
-	const capture = await captureGeneration(database, target, input);
+	const capture = await captureGeneration(database, input.target, input);
 	const now = Date.now();
 	const record: GenerationPreviewRecord = {
 		id: crypto.randomUUID(),

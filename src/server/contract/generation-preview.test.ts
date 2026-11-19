@@ -17,7 +17,7 @@ import { uploadImage } from "../image";
 import { formatImageReference } from "../../shared/image-reference";
 import type {
 	GenerationPreview,
-	GenerationPreviewBody,
+	GenerationTarget,
 } from "../../shared/contract/conversation-schema";
 import { processStateFor } from "../application/process-state";
 import { GENERATION_PREVIEW_SESSION_TTL_MS } from "../workflows/generation-preview";
@@ -45,14 +45,14 @@ const createChat = (database: Database) => createConversationWithHistory(databas
 const preview = async (
 	app: ReturnType<typeof createConversationRoutes>,
 	conversationId: number,
-	body: GenerationPreviewBody,
+	target: GenerationTarget,
 ) => {
 	const response = await app.handle(new Request(
 		`http://localhost/api/conversations/${conversationId}/generations/preview`,
 		{
 			method: "POST",
 			headers: { "content-type": "application/json" },
-			body: JSON.stringify(body),
+			body: JSON.stringify({ target }),
 		},
 	));
 	expect(response.status).toBe(200);
@@ -61,18 +61,18 @@ const preview = async (
 	return await response.json() as Pick<GenerationPreview, "previewId" | "promptPlan">;
 };
 
-type PreviewRequestBody = GenerationPreviewBody | { kind: "send" } | { kind: "sibling" };
+type PreviewRequestTarget = GenerationTarget | { kind: "send" } | { kind: "sibling" };
 
 const previewResponse = (
 	app: ReturnType<typeof createConversationRoutes>,
 	conversationId: number,
-	body: PreviewRequestBody,
+	target: PreviewRequestTarget,
 ) => app.handle(new Request(
 	`http://localhost/api/conversations/${conversationId}/generations/preview`,
 	{
 		method: "POST",
 		headers: { "content-type": "application/json" },
-		body: JSON.stringify(body),
+		body: JSON.stringify({ target }),
 	},
 ));
 
@@ -254,7 +254,7 @@ describe("Prompt Plan inspection", () => {
 				].join(""), { headers: { "content-type": "text/event-stream" } });
 			},
 		});
-		const body: GenerationPreviewBody = { kind: "send", content: "The next scene begins." };
+		const body: GenerationTarget = { kind: "send", content: "The next scene begins." };
 		const firstPreview = await preview(app, conversation.id, body);
 		const editedPlan = {
 			...firstPreview.promptPlan,
@@ -557,11 +557,11 @@ describe("Prompt Plan inspection", () => {
 			messageId: target.id,
 		});
 		const request = () => app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
+			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "sibling",  previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "sibling", messageId: target.id, previewId: plan.previewId }),
 			},
 		));
 		const accepted = await request();
@@ -617,8 +617,8 @@ describe("Prompt Plan inspection", () => {
 			},
 		});
 		const occupied = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
-			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling" }) },
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling", messageId: target.id }) },
 		));
 		expect(occupied.status).toBe(200);
 		const plan = await preview(app, conversation.id, {
@@ -626,11 +626,11 @@ describe("Prompt Plan inspection", () => {
 			messageId: target.id,
 		});
 		const request = () => app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
+			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "sibling",  previewId: plan.previewId }),
+				body: JSON.stringify({ kind: "sibling", messageId: target.id, previewId: plan.previewId }),
 			},
 		));
 		const rejected = await request();

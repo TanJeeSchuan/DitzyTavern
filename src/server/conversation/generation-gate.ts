@@ -41,6 +41,8 @@ const policies = {
 	"update-generation-settings": { rule: "allowed" },
 	"set-generation-model": { rule: "allowed" },
 	"select-prompt-preset": { rule: "allowed" },
+	"select-paint-preset": { rule: "allowed" },
+	"set-brief-message-count": { rule: "allowed" },
 	"set-box-setup": { rule: "allowed" },
 	"set-box-state": { rule: "allowed" },
 	"upgrade-box": { rule: "allowed" },

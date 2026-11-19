@@ -1,5 +1,5 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { generationFormattingContext } from "./conversation-schema";
+import { briefMessageCount, generationFormattingContext } from "./conversation-schema";
 import { modelSelection } from "./model-selection";
 import { invalidOutcome, notFoundOutcome, notPlayableOutcome } from "./outcomes";
 
@@ -21,19 +21,13 @@ export const DEFAULT_BRIEF_MESSAGE_COUNT = 5;
 
 export const paintPresetSettings = Type.Object({
 	paintPresetId: Type.Integer(),
-	briefMessageCount: Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]),
+	briefMessageCount,
 	paintPresets: Type.Array(Type.Object({ id: Type.Integer(), name: Type.String() })),
 });
 export type PaintPresetSettings = Static<typeof paintPresetSettings>;
-export const paintPresetCommand = Type.Union([
-	Type.Object({ type: Type.Literal("select-paint-preset"), paintPresetId: Type.Integer() }),
-	Type.Object({ type: Type.Literal("set-brief-message-count"), briefMessageCount: paintPresetSettings.properties.briefMessageCount }),
-]);
-export type PaintPresetCommand = Static<typeof paintPresetCommand>;
 export const illustrationsRead = Type.Object({ ...paintPresetSettings.properties, aspectRatio: paintingAspectRatio, paintings: Type.Array(painting) });
 export type IllustrationsRead = Static<typeof illustrationsRead>;
 export const paintingCommand = Type.Union([
-	paintPresetCommand,
 	Type.Object({ type: Type.Literal("paint"), variantId: Type.Integer(), brief: Type.String({ minLength: 1 }), ask: Type.String(), aspectRatio: paintingAspectRatio }),
 	Type.Object({ type: Type.Literal("retry"), variantId: Type.Integer(), id: Type.String() }),
 	Type.Object({ type: Type.Literal("dismiss"), variantId: Type.Integer(), id: Type.String() }),

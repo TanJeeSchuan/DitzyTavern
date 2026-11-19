@@ -43,7 +43,7 @@ const readClock = async (app: ReturnType<typeof createContract>, id: number) =>
 
 const preview = async (app: ReturnType<typeof createContract>, id: number) => {
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${id}/generations/preview`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Look outside." }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: { kind: "send", content: "Look outside." } }),
 	}));
 	expect(response.status).toBe(200);
 	return Value.Decode(generationPreview, await response.json());
@@ -238,7 +238,7 @@ test("Moves outside their Box's Move schema, or for a Box that takes none, are r
 	const app = createContract(database);
 	insertBox(database, chat.id, "phone");
 	const send = async (moves: Readonly<Record<string, readonly object[]>>) => (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations/preview`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Hello.", moves }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: { kind: "send", content: "Hello.", moves } }),
 	}))).json();
 	expect(await send({ phone: [{ to: "Maren" }] })).toEqual({ outcome: "invalid", reason: "The Phone Moves do not match their schema." });
 	expect(await send({ "world-clock": [{}] })).toEqual({ outcome: "invalid", reason: "No world-clock Box takes Moves." });

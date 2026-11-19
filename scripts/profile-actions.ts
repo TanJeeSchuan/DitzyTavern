@@ -25,7 +25,7 @@ import { readMemoryEmbedding } from "../src/boxes/memory/server-settings";
 import { observeConversationWrites } from "../src/server/conversation";
 import { prepareBoxDigests } from "../src/server/box/digest";
 import type { ModelFetch } from "../src/server/model-client";
-import { conversationCommandBody, forkConversationBody, generationBody, generationPreviewBody, siblingGenerationBody } from "../src/shared/contract/conversation-schema";
+import { conversationCommandBody, forkConversationBody, generationAccepted, generationBody, generationPreviewBody } from "../src/shared/contract/conversation-schema";
 
 const { values, positionals } = parseArgs({
 	allowPositionals: true,
@@ -161,7 +161,7 @@ const chatId = values.chat === undefined
 if (chatId === undefined) throw new Error("The database has no Chat with Messages.");
 
 const formatting = { timeZone: "UTC", locale: "en-US" };
-const routeBodies = [generationBody, siblingGenerationBody, generationPreviewBody, forkConversationBody, conversationCommandBody];
+const routeBodies = [generationBody, generationPreviewBody, forkConversationBody, conversationCommandBody];
 type RouteBody = Static<(typeof routeBodies)[number]>;
 const request = async (method: string, path: string, body?: RouteBody) => {
 	const response = await app.handle(new Request(`http://localhost${path}`, {
@@ -173,7 +173,7 @@ const request = async (method: string, path: string, body?: RouteBody) => {
 };
 const revision = async () => (await request("GET", `/api/conversations/${chatId}`)).parse(Type.Object({ revision: Type.Integer() })).revision;
 const awaitGeneration = async (accepted: Awaited<ReturnType<typeof request>>) => {
-	const { generationId } = accepted.parse(Type.Object({ generationId: Type.String() }));
+	const { generationId } = accepted.parse(generationAccepted);
 	const { text } = await request("GET", `/api/conversations/${chatId}/generations/${generationId}/events`);
 	// @approved A failed Generation still closes its stream normally; only a `complete` terminal frame counts as settled.
 	const terminal = text.split("\n\n").findLast((frame) => /^event: (complete|stopped|error)$/m.test(frame));
@@ -204,7 +204,7 @@ await measure("Open history page", repeat, () => read(`/api/conversations/${chat
 await measure("Box window: Memory", repeat, () => read(`/api/conversations/${chatId}/boxes/memory`));
 await measure("Box status: Memory", repeat, () => read(`/api/conversations/${chatId}/boxes/memory/status`));
 await measure("Inspect prompt (Send)", repeat, async () =>
-	(await request("POST", `/api/conversations/${chatId}/generations/preview`, { kind: "send", content: "The lantern gutters as the door opens.", ...formatting })).text.length);
+	(await request("POST", `/api/conversations/${chatId}/generations/preview`, { target: { kind: "send", content: "The lantern gutters as the door opens." }, ...formatting })).text.length);
 await measure("Send to settled", 1, async () => awaitGeneration(await request("POST", `/api/conversations/${chatId}/generations`, {
 	kind: "send", expectedRevision: await revision(), content: "The lantern gutters as the door opens.", ...formatting,
 })));
@@ -217,7 +217,7 @@ const latestMessage = async () => {
 };
 const latest = await latestMessage();
 await measure("Swipe (Sibling) to settled", 1, async () =>
-	awaitGeneration(await request("POST", `/api/conversations/${chatId}/messages/${latest.id}/sibling/generations`, { kind: "sibling", ...formatting })));
+	awaitGeneration(await request("POST", `/api/conversations/${chatId}/generations`, { kind: "sibling", messageId: latest.id, ...formatting })));
 const [first, second] = (await latestMessage()).variants;
 if (first === undefined || second === undefined) throw new Error("The swipe left fewer than two Variants.");
 const command = async (action: Static<typeof conversationCommandBody>["action"]) =>

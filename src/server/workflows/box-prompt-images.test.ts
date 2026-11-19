@@ -91,7 +91,7 @@ test.each([formatImageReference, macroReference])("an unchanged preview keeps it
 	setup(reference("portrait", portrait.hash));
 	const target = { kind: "send", content: "Look." } as const;
 	const context = { database, conversationId: chat.id, connection: null };
-	const record = await createGenerationPreviewAsync(database, { ...context, ...target });
+	const record = await createGenerationPreviewAsync(database, { ...context, target });
 	const capture = await withGenerationBoxOperations(context, () => captureGenerationPreview(context, { record, editedPlan: record.capture.plan.promptPlan }, target));
 	expect(capture.plan.promptPlan.images).toEqual([]);
 	expect(capture.plan.promptPlan.warnings).toContainEqual({ block: "Probe Box", macro: "portrait", reason: "ungranted-image" });
@@ -179,7 +179,7 @@ test("writer edits to a preview may add an ungranted image to the Box block", as
 	setup(macroReference("portrait", portrait.hash));
 	const target = { kind: "send", content: "Look." } as const;
 	const context = { database, conversationId: chat.id, connection: null };
-	const record = await createGenerationPreviewAsync(database, { ...context, ...target });
+	const record = await createGenerationPreviewAsync(database, { ...context, target });
 	const editedPlan = structuredClone(record.capture.plan.promptPlan);
 	const block = editedPlan.blocks.find(({ kind }) => kind === "box:probe");
 	if (block === undefined) throw new Error("The fixture has no Box block.");

@@ -57,7 +57,7 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 	};
 	const hook = await renderHook(() => useAssemblyController(options), cache, strict);
 	const open = async (content = "Draft") => {
-		await hook.act(async () => hook.current.requestGeneration({ kind: "send", content }));
+		await hook.act(async () => hook.current.requestGeneration({ target: { kind: "send", content } }));
 		await flushHook();
 		await flushHook();
 	};
@@ -102,13 +102,13 @@ describe("assembly session", () => {
 		h.options.ensureLatest = async () => { reads += 1; return h.options.conversation; };
 		await h.hook.rerender();
 		await h.hook.act(async () => {
-			h.hook.current.requestGeneration({ kind: "send", content: "First" });
-			h.hook.current.requestGeneration({ kind: "send", content: "Second" });
+			h.hook.current.requestGeneration({ target: { kind: "send", content: "First" } });
+			h.hook.current.requestGeneration({ target: { kind: "send", content: "Second" } });
 		});
 		await flushHook();
 		await flushHook();
 		expect(reads).toBe(1);
-		expect(h.requests.map(({ init }) => JSON.parse(String(init?.body)).content)).toEqual(["First"]);
+		expect(h.requests.map(({ init }) => JSON.parse(String(init?.body)).target.content)).toEqual(["First"]);
 	});
 
 	test("an accepted preview shows its requested Send until a page places it", async () => {
@@ -151,7 +151,7 @@ describe("assembly session", () => {
 
 	test("a Send whose seat changed before its turn is not sent with the old seat's seat-bound Moves", async () => {
 		const h = await assemblyHarness(async () => Response.json(preview()));
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "", moves: { phone: [{ to: "Mara", text: "u up?" }] } }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "", moves: { phone: [{ to: "Mara", text: "u up?" }] } } }));
 		await flushHook();
 		await flushHook();
 		h.options.conversation = conversation(7, 3);
@@ -166,7 +166,7 @@ describe("assembly session", () => {
 		const pinned = (version: string): ConversationSummary => ({ ...conversation(), boxVersions: { jar: version } });
 		await h.hook.act(async () => { h.options.inspectPromptPlanBeforeGenerating = false; h.options.conversation = pinned("v1"); });
 		await h.hook.rerender();
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "", moves: { jar: [{ coins: 1 }] } }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "", moves: { jar: [{ coins: 1 }] } } }));
 		await flushHook();
 		await flushHook();
 		const starts = () => h.requests.filter(({ url }) => !url.endsWith("/preview")).length;
@@ -249,7 +249,7 @@ describe("assembly session", () => {
 		const h = await assemblyHarness(() => response.promise);
 		h.options.inspectPromptPlanBeforeGenerating = false;
 		await h.hook.rerender();
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Draft" }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "Draft" } }));
 		await flushHook();
 		await h.hook.act(async () => {
 			for (const id of [8, 7]) {
@@ -269,7 +269,7 @@ describe("assembly session", () => {
 		const latest = Promise.withResolvers<ConversationSummary | null>();
 		h.options.ensureLatest = () => latest.promise;
 		await h.hook.rerender();
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Draft" }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "Draft" } }));
 		h.options.conversation = null;
 		await h.hook.rerender();
 		await h.hook.act(async () => latest.resolve(null));
@@ -310,7 +310,7 @@ describe("assembly session", () => {
 		const latest = Promise.withResolvers<ConversationSummary>();
 		h.options.ensureLatest = () => latest.promise;
 		await h.hook.rerender();
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Draft" }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "Draft" } }));
 		await h.leave();
 		await h.hook.act(async () => latest.resolve(conversation()));
 		await flushHook();

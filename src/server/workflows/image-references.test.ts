@@ -439,7 +439,7 @@ describe("Image Reference lifetime", () => {
 		const art = await picture(4);
 		const ghost = formatImageReference("ghost", "f".repeat(64));
 
-		const preview = Value.Parse(generationPreview, await (await post("/generations/preview", { kind: "send", content: "Hello" })).json());
+		const preview = Value.Parse(generationPreview, await (await post("/generations/preview", { target: { kind: "send", content: "Hello" } })).json());
 		expect(preview.promptPlan.images).toEqual([]);
 		const last = preview.promptPlan.blocks.length - 1;
 		const edited = {

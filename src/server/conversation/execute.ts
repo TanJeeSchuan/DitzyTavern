@@ -33,6 +33,7 @@ import {
 	detachParticipantLorebook,
 	saveConversationLoreSettings,
 } from "./commands/lore-attachments";
+import { selectPaintPreset, setBriefMessageCount } from "./commands/paint-preset";
 import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
@@ -87,6 +88,8 @@ const handlers = {
 	"update-generation-settings": (db, input) => { updateConversationGenerationSettings(db, input.conversationId, input.settings); },
 	"set-generation-model": (db, input) => { setGenerationModel(db, input); },
 	"select-prompt-preset": selectPromptPreset,
+	"select-paint-preset": selectPaintPreset,
+	"set-brief-message-count": setBriefMessageCount,
 	"set-box-setup": setBoxSetup,
 	"set-box-state": setBoxState,
 	"upgrade-box": upgradeBox,

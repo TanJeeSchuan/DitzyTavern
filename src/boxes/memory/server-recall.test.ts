@@ -123,7 +123,7 @@ describe("Memory recall in Generation preparation", () => {
 		withProfile(database);
 		const requests: { role: string; content: string }[][] = [];
 		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => requests.push(request.messages)) });
-		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
+		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
 		expect(memoryOf(preview)).toMatchObject({ state: "rebuilding", candidates: [], pendingSourceCount: 1 });
@@ -184,7 +184,7 @@ describe("Memory recall in Generation preparation", () => {
 		withProfile(database);
 		const vectorOf = (text: string) => vectors.get(text.split(" (attribution:")[0] ?? "") ?? pad(scene);
 		const app = createConversationRoutes(database, { masterKey: key, fetch: recallFetch(recallCounts(), undefined, vectorOf) });
-		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "Where is the brass key?" }));
+		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "Where is the brass key?" } }));
 		expect(inspected.status).toBe(200);
 		const { candidates } = Value.Parse(memoryActivationRecord, memoryOf(Value.Parse(generationPreview, await inspected.json())));
 		const shortlisted = candidates.map(({ messageId }) => messageId);
@@ -201,7 +201,7 @@ describe("Memory recall in Generation preparation", () => {
 		if (change === "reset") correct(database, conversation.id, source.variantId, claims);
 		let writingCalls = 0;
 		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => { writingCalls++; }) });
-		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
+		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
 		if (change === "settings") {
@@ -231,7 +231,7 @@ describe("Memory recall in Generation preparation", () => {
 		await remember(database, conversation.id, source.variantId, [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]);
 		const counts = recallCounts();
 		const app = createConversationRoutes(database, { masterKey: key, fetch: recallFetch(counts) });
-		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
+		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
 		expect(memoryOf(preview)).toMatchObject({ candidates: [{ relevance: "useful", admission: "admitted" }] });
@@ -263,7 +263,7 @@ describe("Memory recall in Generation preparation", () => {
 			if (String(input).endsWith("/systemone")) models.push(JSON.parse(String(init?.body)).model);
 			return answer(input, init);
 		} });
-		const preview = Value.Parse(generationPreview, await (await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }))).json());
+		const preview = Value.Parse(generationPreview, await (await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }))).json());
 		expect(models).toEqual(["jev-1.13.0"]);
 		expect(memoryOf(preview)).toMatchObject({ decisionModel: "jev-1.13.0", candidates: [{ admission: "admitted" }] });
 	});
@@ -280,7 +280,7 @@ describe("Memory recall in Generation preparation", () => {
 		const counts = recallCounts();
 		const app = createConversationRoutes(database, { masterKey: key, fetch: recallFetch(counts) });
 		for (let attempt = 0; attempt < 2; attempt += 1) {
-			const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
+			const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }));
 			expect(Value.Parse(generationPreview, await inspected.json()).promptPlan.blocks).toContainEqual({ kind: "box:memory", role: "system", content: `[Message 1] ${renderMemoryClaim(corrected)}` });
 		}
 		expect(counts.embedding.filter((texts) => texts.includes(renderMemoryClaim(corrected)))).toEqual([[renderMemoryClaim(corrected)]]);
@@ -306,7 +306,7 @@ describe("Memory recall in Generation preparation", () => {
 			}
 			return new Promise<Response>((_resolve, reject) => init?.signal?.addEventListener("abort", () => { sceneCancelled = true; reject(new Error("Cancelled.")); }, { once: true }));
 		} });
-		expect((await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }))).status).toBe(422);
+		expect((await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }))).status).toBe(422);
 		expect(sceneCancelled).toBe(true);
 	});
 
@@ -332,7 +332,7 @@ describe("Memory recall in Generation preparation", () => {
 			}
 			return answer(input, init);
 		} });
-		expect((await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }))).status).toBe(200);
+		expect((await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }))).status).toBe(200);
 		expect(sceneStartedDuringClaims).toBe(true);
 	});
 
@@ -377,7 +377,7 @@ describe("Memory recall in Generation preparation", () => {
 		};
 		withProfile(database);
 		const app = createConversationRoutes(database, { masterKey: key, fetch: recallFetch(counts, writing) });
-		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "The next scene begins." }));
+		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
 		const memoryText = `[Message 1] ${renderMemoryClaim(extraction)}`;
@@ -421,7 +421,7 @@ describe("Memory recall in Generation preparation", () => {
 
 		await remember(database, conversation.id, variant.id, [memoryClaim(latest.id, "Maren and Writer kept their promise.", "The key stays between them.")]);
 		const previewOperation = async (body: { kind: "continuation" } | { kind: "sibling"; messageId: number }) => {
-			const response = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, body));
+			const response = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: body }));
 			expect(response.status).toBe(200);
 			const preview = Value.Parse(generationPreview, await response.json());
 			// SAFETY: Memory's advance checked its trace against the activation record schema.
@@ -430,7 +430,7 @@ describe("Memory recall in Generation preparation", () => {
 		const continuation = await previewOperation({ kind: "continuation" });
 		expect(continuation.memoryActivation.candidates.map((candidate) => candidate.messageId)).toEqual(expect.arrayContaining([source.messageId, latest.id]));
 		expect(continuation.memoryActivation.candidates.map((candidate) => candidate.variantId)).not.toContain(alternativeVariantId);
-		const acceptedContinuation = await app.handle(post(`/api/conversations/${conversation.id}/continue/generations`, { kind: "continuation", expectedRevision: readTestConversationSnapshot(database, conversation.id)!.revision, previewId: continuation.previewId }));
+		const acceptedContinuation = await app.handle(post(`/api/conversations/${conversation.id}/generations`, { kind: "continuation", expectedRevision: readTestConversationSnapshot(database, conversation.id)!.revision, previewId: continuation.previewId }));
 		expect(acceptedContinuation.status).toBe(200);
 		// SAFETY: the successful acceptance route response schema guarantees a generation ID.
 		const continuationGeneration = await acceptedContinuation.json() as { generationId: number };
@@ -444,13 +444,13 @@ describe("Memory recall in Generation preparation", () => {
 		expect(counts.decisions).toBe(3);
 
 		const failedApp = createConversationRoutes(database, { masterKey: key, fetch: async () => new Response("provider unavailable", { status: 503 }) });
-		const failedRecall = await failedApp.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "continuation" }));
+		const failedRecall = await failedApp.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "continuation" } }));
 		expect(failedRecall.status).toBe(422);
 		expect(await failedRecall.json()).toMatchObject({ reason: "Memory recall failed: The embedding endpoint rejected the request." });
 
 		const stalePreview = await previewOperation({ kind: "continuation" });
 		correct(database, conversation.id, source.variantId, [{ ...extraction, claim: "Maren kept the key." }]);
-		const staleAcceptance = await app.handle(post(`/api/conversations/${conversation.id}/continue/generations`, { kind: "continuation", expectedRevision: readTestConversationSnapshot(database, conversation.id)!.revision, previewId: stalePreview.previewId }));
+		const staleAcceptance = await app.handle(post(`/api/conversations/${conversation.id}/generations`, { kind: "continuation", expectedRevision: readTestConversationSnapshot(database, conversation.id)!.revision, previewId: stalePreview.previewId }));
 		expect(staleAcceptance.status).toBe(422);
 		expect(await staleAcceptance.json()).toMatchObject({ outcome: "invalid" });
 	});
@@ -462,7 +462,7 @@ describe("Memory recall in Generation preparation", () => {
 		withProfile(database);
 		let providerCalls = 0;
 		const app = createConversationRoutes(database, { masterKey: key, fetch: async () => { providerCalls += 1; throw new Error("Unexpected Memory provider call."); } });
-		const preview = async () => memoryOf(Value.Parse(generationPreview, await (await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "A new scene." }))).json()));
+		const preview = async () => memoryOf(Value.Parse(generationPreview, await (await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "A new scene." } }))).json()));
 		expect(await preview()).toMatchObject({ state: "empty", candidates: [] });
 		const source = insertSelectedSource(database, conversation.id);
 		expect(await preview()).toMatchObject({ state: "rebuilding", readyRecordCount: 0, pendingSourceCount: 1, candidates: [] });
@@ -484,7 +484,7 @@ describe("Memory recall in Generation preparation", () => {
 		await remember(database, conversation.id, source.variantId, [memoryClaim(source.messageId, "Maren returned Writer's key.", "Maren returned Writer's key.")]);
 		withProfile(database);
 		setBoxState(database, conversation.id, "memory", "disabled");
-		const preview = await createConversationRoutes(database, { masterKey: key }).handle(post(`/api/conversations/${conversation.id}/generations/preview`, { kind: "send", content: "A new scene." }));
+		const preview = await createConversationRoutes(database, { masterKey: key }).handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "A new scene." } }));
 		expect(memoryTrace(Value.Parse(generationPreview, await preview.json()))).toBeUndefined();
 	});
 

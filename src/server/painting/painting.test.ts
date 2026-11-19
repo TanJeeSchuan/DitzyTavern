@@ -41,7 +41,7 @@ test("an Illustration lands on its original Variant after a swipe without a Conv
 	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "painting", variantId }]);
 	expect(database.query("SELECT * FROM message_variant_data WHERE namespace = 'painting'").all()).toHaveLength(0);
 	const targets = [{ kind: "send", content: "Continue the scene" }, { kind: "continuation" }, { kind: "sibling", messageId: message.id }] as const;
-	const plans = async () => Promise.all(targets.map(async (target) => (await createGenerationPreviewAsync(database, { conversationId: chat.id, connection: null, ...target })).capture.plan.promptPlan));
+	const plans = async () => Promise.all(targets.map(async (target) => (await createGenerationPreviewAsync(database, { conversationId: chat.id, connection: null, target })).capture.plan.promptPlan));
 	const provisionalPlans = await plans();
 	expect(JSON.stringify(provisionalPlans)).not.toContain("Private painted scene");
 	const selected = executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "select-variant", messageId: message.id, variantId: message.variants[1]!.id } });

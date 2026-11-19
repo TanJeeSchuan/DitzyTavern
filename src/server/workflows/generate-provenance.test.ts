@@ -243,8 +243,7 @@ describe("Generation capture and provenance", () => {
 
 		const preview = await createGenerationPreviewAsync(database, {connection: createGenerationCoordinator(database, { masterKey: key }).resolveTransport(database, readConversationGenerationSettings(database, conversationId)?.connectionProfileId ?? null).connection,
 			conversationId,
-			kind: "send",
-			content: "Send with narrowed overrides.",
+			target: { kind: "send", content: "Send with narrowed overrides." },
 			connectionSettings: { masterKey: key },
 		});
 		if (preview.capture.preparation.target.kind !== "send") throw new Error("Expected a Send preview.");

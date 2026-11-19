@@ -307,7 +307,7 @@ export function useGenerationController({
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
 		if (!assemblyAvailable || conversation === null || (draft.get().trim() === "" && !hasMoves(moves))) return;
-		requestGeneration({ kind: "send", content: draft.get(), moves, ...clientFormattingContext() });
+		requestGeneration({ target: { kind: "send", content: draft.get(), moves }, ...clientFormattingContext() });
 	};
 
 	const continueMessage = (messageId: number) => {
@@ -318,7 +318,7 @@ export function useGenerationController({
 			latest.continuable !== true ||
 			!isModelAuthoredMessage(latest)
 		) return;
-		requestGeneration({ kind: "continuation", ...clientFormattingContext() });
+		requestGeneration({ target: { kind: "continuation" }, ...clientFormattingContext() });
 	};
 
 	const regenerateResponse = (messageId: number) => {
@@ -329,7 +329,7 @@ export function useGenerationController({
 		if (latest?.id !== messageId || latest.authorParticipantId !== conversation.control.humanParticipantId || shown === undefined) return;
 		const content = shownContent(client, conversation.id, shown);
 		if (content === null || (content.trim() === "" && !hasMoves(latest.moves))) return;
-		requestGeneration({ kind: "send", content, moves: latest.moves, ...clientFormattingContext() });
+		requestGeneration({ target: { kind: "send", content, moves: latest.moves }, ...clientFormattingContext() });
 	};
 
 	const siblingMessage = (messageId: number, reroll = false) => {
@@ -344,7 +344,7 @@ export function useGenerationController({
 				activeGenerationMessageIds,
 			})
 		) return;
-		requestGeneration({ kind: "sibling", messageId, reroll, ...clientFormattingContext() });
+		requestGeneration({ target: { kind: "sibling", messageId, reroll }, ...clientFormattingContext() });
 	};
 
 	const canOfferSiblingMessage = (message: StoryMessage) =>

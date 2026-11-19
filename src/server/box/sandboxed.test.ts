@@ -11,6 +11,7 @@ import { insertBox, openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
+import type { GenerationBody, GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import type { ConversationAction } from "../conversation";
 import type { DigestContext } from "./contract";
@@ -300,10 +301,10 @@ test("sending an unchanged preview uses the same fold and dependency context as 
 		writeAutomaticRecord(drizzle(database), boxDescriptor("probe"), instance, variant.id, { n: 1 }, sha256("A record."));
 		withProfile(database);
 		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
-		const post = (path: string, body: { kind: "send"; content: string; expectedRevision?: number; previewId?: string; promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
+		const post = (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const preview = await post("/preview", { kind: "send", content: "Continue." });
+		const preview = await post("/preview", { target: { kind: "send", content: "Continue." } });
 		expect(preview.status).toBe(200);
 		const { previewId, promptPlan } = await preview.json();
 		const expectedRevision = readConversationSummaryFromConnection(drizzle(database), chat.id)!.revision; // @approved This test created the Chat.

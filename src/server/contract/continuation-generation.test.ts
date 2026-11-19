@@ -72,7 +72,7 @@ describe("Continuation transport contract", () => {
 			fetch: async () => streamResponse(),
 		});
 		const acceptedResponse = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/continue/generations`,
+			`http://localhost/api/conversations/${conversation.id}/generations`,
 			{
 				method: "POST",
 				headers: { "content-type": "application/json" },

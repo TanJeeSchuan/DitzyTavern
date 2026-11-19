@@ -59,8 +59,7 @@ const sendPreview = async (
 ) => {
 	const preview = await createGenerationPreviewAsync(database, {connection: null,
 		conversationId,
-		kind: "send",
-		content: options.content ?? "Draft",
+		target: { kind: "send", content: options.content ?? "Draft" },
 		tokenEstimator: options.tokenEstimator,
 	});
 	if (preview.capture.preparation.target.kind !== "send") throw new Error("Expected a Send preview.");
@@ -68,7 +67,7 @@ const sendPreview = async (
 };
 
 const continuationPreview = async (database: Database, conversationId: number) => {
-	const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, kind: "continuation" });
+	const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, target: { kind: "continuation" } });
 	if (preview.capture.preparation.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
 	return preview.capture;
 };
@@ -586,7 +585,7 @@ describe("Generation runtime behavior", () => {
 
 		const estimates = [300, 100];
 		const preview = await createGenerationPreviewAsync(database, {
-			connection: null, conversationId, kind: "send", content: "Latest human input.",
+			connection: null, conversationId, target: { kind: "send", content: "Latest human input." },
 			tokenEstimator: (transcript) => transcript.startsWith("ditzytavern-estimation-transcript") ? estimates.shift() ?? 100 : 0,
 		});
 		expect(preview.capture.plan.omittedContext).toHaveLength(1);

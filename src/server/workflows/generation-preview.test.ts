@@ -10,7 +10,7 @@ test("consuming an accepted preview leaves a replacement preview available", asy
 		const chat = createConversationWithHistory(database, {
 			name: "Preview replacement", participants: [{ definition: definition("Writer") }, { definition: definition("Model") }], control: { human: 0, model: 1 },
 		});
-		const input = { connection: null, conversationId: chat.id, kind: "send", content: "Hello" } as const;
+		const input = { connection: null, conversationId: chat.id, target: { kind: "send", content: "Hello" } } as const;
 		const accepted = await createGenerationPreviewAsync(database, input);
 		const replacement = await createGenerationPreviewAsync(database, input);
 		expect(() => consumeGenerationPreview(database, accepted)).not.toThrow();
