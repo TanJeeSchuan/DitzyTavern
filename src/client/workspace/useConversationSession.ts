@@ -18,7 +18,7 @@ function createNavigation() {
 	let paging: AbortController | null = null;
 	const listeners = new Set<() => void>();
 	return {
-		jumps: new Set<AbortController>(), window: new AbortController(),
+		jumps: new Set<AbortController>(), window: new AbortController(), selection: new AbortController(),
 		getPaging: () => paging,
 		subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
 		setPaging: (next: AbortController | null) => { paging = next; for (const notify of listeners) notify(); },
@@ -139,8 +139,10 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	}>(() => ({
 		activeChatId: initialChatId, visit: crypto.randomUUID(), initialHistory: { page: 1 },
 	}));
-	const signal = useVisitSignal(visit);
+	const mounted = useVisitSignal(visit);
 	const navigation = useRef(createNavigation());
+	const selection = navigation.current.selection.signal;
+	const signal = useMemo(() => AbortSignal.any([mounted, selection]), [mounted, selection]);
 	const paging = useSyncExternalStore(navigation.current.subscribe, navigation.current.getPaging);
 	const [historyFailed, setHistoryFailed] = useState(false);
 	const pendingMessage = useRef<number | null>(null);
@@ -172,7 +174,9 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		},
 	});
 	const [overlays, setOverlays] = useState(createStoryOverlays);
-	const dispatchStory = useCallback((action: StoryAction) => setOverlays((current) => reduceStoryOverlays(current, action)), []);
+	const dispatchStory = useCallback((action: StoryAction) => {
+		if (!signal.aborted) setOverlays((current) => reduceStoryOverlays(current, action));
+	}, [signal]);
 	const conversation = conversationRead.data ?? null;
 	const commandRevision = () => client.getQueryData<ConversationSummary | null>(conversationKey(conversationId))?.revision ?? null;
 	const setConversation = useCallback((next: ConversationSummary | null) => {
@@ -197,6 +201,7 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	};
 	const selectChat = (chatId: string, messageId: number | null = null) => {
 		if (chatId === activeChatIdRef.current && !historyFailed && messageId === null) return;
+		navigation.current.selection.abort();
 		for (const jump of navigation.current.jumps) jump.abort();
 		navigation.current.window.abort();
 		cancelPaging();

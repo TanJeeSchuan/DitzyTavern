@@ -874,3 +874,33 @@ test("accepted authority supersedes a Summary reconciliation without stranding i
 	expect(h.hook.current.conversation?.revision).toBe(8);
 	expect(readyStory(h.hook.current.story).revision).toBe(8);
 });
+
+
+test("an overlay callback retained from an ended visit cannot change the reopened Chat", async () => {
+	const h = await harness();
+	const abandoned = h.hook.current.dispatchStory;
+	await h.switchTo(2);
+	await h.switchTo(1);
+	await h.hook.act(async () => abandoned({ type: "generation-requested", request: { kind: "send", content: "Old draft" } }));
+	expect(h.hook.current.story.requestedGeneration).toBeNull();
+	await h.hook.act(async () => h.hook.current.dispatchStory({ type: "generation-requested", request: { kind: "send", content: "Current draft" } }));
+	await h.hook.act(async () => abandoned({ type: "generation-request-failed" }));
+	expect(h.hook.current.story.requestedGeneration?.request).toEqual({ kind: "send", content: "Current draft" });
+});
+
+
+test("batched reselection ends the visit before old queued work or overlays can run", async () => {
+	const h = await harness();
+	const departed = h.hook.current;
+	await h.hook.act(async () => {
+		const command = departed.deleteStoryMessage(105);
+		departed.selectChat("2");
+		departed.selectChat("1");
+		departed.dispatchStory({ type: "generation-requested", request: { kind: "send", content: "Abandoned" } });
+		await command;
+	});
+	await flushHook();
+	expect(h.requests.filter(({ init }) => init?.method === "POST")).toEqual([]);
+	expect(h.hook.current.story.requestedGeneration).toBeNull();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+});
