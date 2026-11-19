@@ -49,12 +49,12 @@ A scout's line numbers were read at `91184797`. Find the code again by name when
 | 4 | [T4 Generation lifecycle](t4-generation-lifecycle.md) | a, b, c, d | Astra for a and b; Sol for c and d | Sol |
 | 5 | [T5 Wire](t5-wire.md) | a, b, c, d | Sol | Sol |
 | 5b | [T9 Authoring requests and redirects](t9-authoring-fetch.md) | one PR | Sol | Sol |
-| 6 | [T6 Generation Settings column](t6-generation-settings-column.md) | one PR | Astra | Sol |
+| 6 | [T6 Generation Settings column](t6-generation-settings-column.md) | one PR | Sol | Sol |
 | 7 | [T7 Tests](t7-tests.md) | a, b, c | Sol | Sol |
-| 8 | [T8 Client state](t8-client-state.md) | a, b, c, d | Sol for a; Astra for b, c, d | Sol |
+| 8 | [T8 Client state](t8-client-state.md) | a, b, c, d | Sol for a; Opus for b and c; Astra for d | Sol for a and d; Opus for b and c |
 | 9 | [T10 Guardrails](t10-guardrails.md) | a, b, c, d | Sol | Sol |
 
-T9 and T10 were added on 2026-11-19 from the round 5 retro; the owner asked for both. Sol means Sol 6.2 from T2 on (owner, 2026-11-19).
+T9 and T10 were added on 2026-11-19 from the round 5 retro; the owner asked for both. Sol means Sol 6.2 from T2 on, and T6, T8b and T8c moved off Astra (owner, 2026-11-19). An Opus writer gets `codex gpt-6.2-sol high` as reviewer.
 
 ## For the orchestrator
 

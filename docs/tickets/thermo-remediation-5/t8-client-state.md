@@ -4,7 +4,7 @@ Status: READY
 
 Blocked By: T7
 
-Model: Sol 6.1 high writes slice a; Astra 6 high writes b, c and d; Sol fixes all four.
+Model: Sol 6.2 high writes and fixes slice a. Opus 5.5 high writes and fixes b and c, reviewed by `codex gpt-6.2-sol high`. Astra 6 high writes d; Sol 6.2 high fixes it.
 
 **Slice c stops after the first write. The owner reads the new state model before fixes begin.**
 
