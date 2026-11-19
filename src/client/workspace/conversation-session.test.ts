@@ -181,6 +181,113 @@ test("a failed source jump leaves the current transcript readable", async () => 
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
 });
 
+test("a failed off-window jump leaves the applied write's history refresh running", async () => {
+	const fresh = Promise.withResolvers<Response>();
+	let written = false;
+	const h = await harness(async ({ url }) => {
+		if (url.searchParams.has("aroundMessageId")) return Response.json({ error: "Server bug" }, { status: 500 });
+		if (!url.pathname.endsWith("history")) return Response.json(summary());
+		return written ? fresh.promise.then((response) => response.clone()) : Response.json(page());
+	});
+	written = true;
+	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
+	await flushHook();
+	await h.hook.act(async () => { await expect(h.hook.current.navigateToSourceMessage(101)).rejects.toBeInstanceOf(Error); });
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	await h.hook.act(async () => fresh.resolve(Response.json(page(1, 1, 6))));
+	await flushHook();
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
+});
+
+test("a failed source jump leaves an earlier source read eligible to commit", async () => {
+	const earlier = Promise.withResolvers<Response>();
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return Response.json(summary());
+		const source = url.searchParams.get("aroundMessageId");
+		if (source === "101") return earlier.promise;
+		if (source === "103") return Response.json({ outcome: "not-found" }, { status: 404 });
+		return Response.json(page());
+	});
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	let jump = Promise.resolve();
+	await h.hook.act(async () => { jump = h.hook.current.navigateToSourceMessage(101); });
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(103).catch(() => undefined));
+	await flushHook();
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
+	await h.hook.act(async () => { earlier.resolve(Response.json(page(1, 3))); await jump; });
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+});
+
+test("a write-triggered refresh retries a stale page and shows the applied revision", async () => {
+	let historyReads = 0;
+	const h = await harness(async ({ url }) => Response.json(url.pathname.endsWith("history")
+		? page(1, 1, ++historyReads > 2 ? 6 : 5) : summary()));
+	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
+	await flushHook();
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
+});
+
+test("a write during refresh completion gets its own current transcript", async () => {
+	let revision = 5;
+	const h = await harness(async ({ url }) => Response.json(url.pathname.endsWith("history") ? page(1, 1, revision) : summary(1, revision)));
+	const unsubscribe = h.client.getQueryCache().subscribe((event) => {
+		if (revision !== 5 || event.type !== "updated" || event.action.type !== "success" || event.query.queryKey[0] !== "history-window") return;
+		revision = 6;
+		h.hook.current.setConversation(summary(1, revision));
+	});
+	try {
+		await h.hook.act(async () => h.hook.current.refreshStory(1));
+		await flushHook();
+		expect(h.hook.current.conversation?.revision).toBe(6);
+		expect(readyStory(h.hook.current.story).revision).toBe(6);
+	} finally { unsubscribe(); }
+});
+
+test("a source jump cannot replace the displayed window with an older revision", async () => {
+	let summaryReads = 0;
+	const h = await harness(async ({ url }) => Response.json(url.pathname.endsWith("history")
+		? url.searchParams.has("aroundMessageId") ? page(1, 3, 5) : page(1, 1, 6)
+		: summary(1, ++summaryReads === 1 ? 5 : 6)));
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101).catch(() => undefined));
+	await flushHook();
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
+});
+
+test("Delete uses the newer Conversation Summary after a source jump", async () => {
+	let revision = 5;
+	const h = await harness(async ({ url, init }) => {
+		if (init?.method === "POST") return Response.json({ outcome: "invalid", reason: "Test command" }, { status: 422 });
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+		if (url.searchParams.has("aroundMessageId")) { revision = 6; return Response.json(page(1, 3, 6)); }
+		return Response.json(page());
+	});
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+	await flushHook();
+	await h.hook.act(async () => h.hook.current.deleteStoryMessage(101));
+	const command = h.requests.find(({ init }) => init?.method === "POST");
+	expect(JSON.parse(String(command?.init?.body))).toMatchObject({ expectedRevision: 6, action: { type: "delete-message", messageId: 101 } });
+});
+
+test("a history refresh that returns 404 reports failure and keeps the loaded transcript", async () => {
+	let missing = false;
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return Response.json(summary());
+		return missing ? Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(page());
+	});
+	missing = true;
+	await h.hook.act(async () => h.hook.current.refreshStory(1).catch(() => null));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
+});
+
 test("paging follows the current edge and deduplicates rapid calls independently of window size", async () => {
 	const h = await harness(({ url }) => {
 		const around = Number(url.searchParams.get("aroundMessageId"));
@@ -261,6 +368,7 @@ test("source navigation cancels a refresh still reading the Conversation before 
 	expect(refreshSignal?.aborted).toBe(true);
 	const count = h.requests.length;
 	await h.hook.act(async () => { late.resolve(Response.json(summary())); await refresh; });
+	await flushHook();
 	expect(h.requests).toHaveLength(count);
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
 });
@@ -287,7 +395,7 @@ test("a Conversation write supersedes a pending older page at the latest anchor"
 	const h = await harness(async ({ url }) => {
 		if (!url.pathname.endsWith("history")) return Response.json(summary());
 		if (url.searchParams.get("page") === "2") return late.promise;
-		return written ? fresh.promise : Response.json(page());
+		return written ? fresh.promise.then((response) => response.clone()) : Response.json(page());
 	});
 	let paging = Promise.resolve();
 	await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(); });
@@ -295,8 +403,6 @@ test("a Conversation write supersedes a pending older page at the latest anchor"
 	expect(pending?.url.search).toBe("?page=2");
 	written = true;
 	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
-	expect(pending?.init?.signal?.aborted).toBe(true);
-
 	await h.hook.act(async () => late.resolve(Response.json(page(1, 2))));
 	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
@@ -330,7 +436,7 @@ test("jumping to a visible Message preserves the history refresh from an applied
 test("refresh retries a history page older than the Conversation revision", async () => {
 	let historyReads = 0;
 	const h = await harness(async ({ url }) => Response.json(url.pathname.endsWith("history")
-		? page(1, 1, [6, 5, 7][historyReads++] ?? 7) : summary(1, 6)));
+		? page(1, 1, [6, 5, 7][historyReads++] ?? 7) : summary(1, historyReads >= 3 ? 7 : 6)));
 	await h.hook.act(async () => h.hook.current.refreshStory(1));
 	await flushHook();
 	expect(readyStory(h.hook.current.story).revision).toBe(7);
@@ -340,7 +446,7 @@ test("refresh restarts from the first page when the revision changes mid-window"
 	let refreshing = false;
 	let revision = 5;
 	const h = await harness(async ({ url }) => {
-		if (!url.pathname.endsWith("history")) return Response.json(summary());
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
 		const index = Number(url.searchParams.get("page"));
 		if (refreshing && index === 2) revision = 6;
 		const result = page(1, index, revision);
@@ -422,6 +528,7 @@ test("jump to latest replaces a detached window and ensureLatest reads newly pub
 	const ensureLatest = h.hook.current.ensureLatest;
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
 	await h.hook.act(async () => { expect((await ensureLatest())?.revision).toBe(5); });
+	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
 	expect(scrolls).toEqual([99]);
 	await h.hook.act(async () => { h.hook.current.setConversation(summary(1, 8)); expect((await h.hook.current.ensureLatest())?.revision).toBe(8); });
@@ -554,7 +661,7 @@ test("refresh stops retrying stale pages and keeps the newer cached window", asy
 	expect(h.hook.current.story.messages[0]?.swipes[0]?.content).toBe("Before");
 });
 
-test("a deleted source anchor returns to the latest history", async () => {
+test("refresh reports a deleted source anchor and keeps the detached transcript", async () => {
 	let deleted = false;
 	const h = await harness(({ url }) => Promise.resolve(url.pathname.endsWith("history")
 		? url.searchParams.has("aroundMessageId") && deleted ? Response.json({ outcome: "not-found" }, { status: 404 })
@@ -563,12 +670,10 @@ test("a deleted source anchor returns to the latest history", async () => {
 	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
 	deleted = true;
-	await h.hook.act(async () => h.hook.current.refreshStory(1));
+	await h.hook.act(async () => { await expect(h.hook.current.refreshStory(1)).rejects.toBeInstanceOf(Error); });
 	await flushHook();
-	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
-	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
-	expect(readyStory(h.hook.current.story).revision).toBe(6);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
 });
 
 test("initial history behind Conversation authority refetches and finishes opening", async () => {

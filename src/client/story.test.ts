@@ -126,7 +126,7 @@ test("an earlier Moves settlement leaves a later edit visible until history catc
 	const second = { value: newMoves };
 	let overlays = reduceStoryOverlays(createStoryOverlays(), { type: "moves-requested", messageId, request: first });
 	overlays = reduceStoryOverlays(overlays, { type: "moves-requested", messageId, request: second });
-	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: first, revision: null });
+	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: first, revision: 4 });
 	const firstApplied = read(overlays, history([{ ...older, moves: olderMoves }], 4));
 	expect(shownMessage(firstApplied, firstApplied.messages[0]!).moves).toEqual(newMoves);
 	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: second, revision: 5 });

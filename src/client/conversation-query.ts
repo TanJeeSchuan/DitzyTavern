@@ -4,6 +4,7 @@ import { variantTextKey } from "./story/variant-text";
 import { boxVersionsBuilt, loadBoxVersions } from "./box-windows/registry";
 
 export const conversationKey = (id: number | null) => ["conversation", id] as const;
+export const conversationHistoryKey = (id: number) => ["conversation-history", id] as const;
 
 // @approved
 //  One abortable query step: combine the query's signal with the owner's, yield
@@ -22,14 +23,28 @@ export const cancellableFetch = async <T>(
 	return value;
 };
 
+async function invalidateConversationHistory(client: QueryClient, id: number, revision: number) {
+	const queryKey = conversationHistoryKey(id);
+	await client.invalidateQueries({ queryKey }, { cancelRefetch: false });
+	// @approved
+	// A write can join a refresh after it commits its window but before the query completes.
+	await client.refetchQueries({
+		queryKey, type: "active",
+		predicate: (query) => {
+			const refreshedRevision = client.getQueryData<number | null>(query.queryKey);
+			return query.state.status === "success" && refreshedRevision != null && refreshedRevision < revision;
+		},
+	}, { cancelRefetch: false });
+}
+
 // @approved
 //  A newer revision can change any page and any Variant's text: the story
 // reads them again when it next shows them. An older copy never replaces the
 // cached one.
-const adoptConversation = (client: QueryClient, incoming: ConversationSummary | null, id: number) => {
+const adoptConversation = (client: QueryClient, incoming: ConversationSummary | null, id: number, invalidateHistory: boolean) => {
 	const current = client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
 	if (incoming !== null && incoming.revision > (current?.revision ?? 0)) {
-		void client.invalidateQueries({ queryKey: ["conversation-history", id] });
+		if (invalidateHistory) void invalidateConversationHistory(client, id, incoming.revision);
 		void client.invalidateQueries({ queryKey: variantTextKey(id) });
 	}
 	return incoming !== null && current !== null && current.revision > incoming.revision ? current : incoming;
@@ -44,13 +59,13 @@ export const publishConversation = (client: QueryClient, conversation: Conversat
 	const queryKey = conversationKey(conversation.id);
 	const publish = () => {
 		void client.cancelQueries({ queryKey });
-		client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id));
+		client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id, true));
 	};
 	if (boxVersionsBuilt(conversation)) publish();
 	else void loadBoxVersions(conversation).then(publish);
 };
 
-export const conversationQuery = (client: QueryClient, id: number, owner?: AbortSignal) => ({
+export const conversationQuery = (client: QueryClient, id: number, { owner, invalidateHistory = true }: { owner?: AbortSignal; invalidateHistory?: boolean } = {}) => ({
 	queryKey: conversationKey(id),
 	staleTime: Infinity,
 	refetchOnReconnect: false,
@@ -58,7 +73,7 @@ export const conversationQuery = (client: QueryClient, id: number, owner?: Abort
 	queryFn: async ({ signal }: { signal: AbortSignal }) => {
 		const incoming = await cancellableFetch(signal, owner, (cancellation) => loadConversation(id, cancellation));
 		if (incoming !== null) await loadBoxVersions(incoming);
-		return adoptConversation(client, incoming, id);
+		return adoptConversation(client, incoming, id, invalidateHistory);
 	},
 });
 

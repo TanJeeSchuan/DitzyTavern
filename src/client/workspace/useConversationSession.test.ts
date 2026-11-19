@@ -59,12 +59,10 @@ describe("history refresh error classification", () => {
 		expect(story.messages.map(({ id }) => id)).toEqual([11]);
 	});
 
-	test("a missing history page still returns the refreshed Conversation without applying a page", async () => {
+	test("a missing history page rejects the refresh", async () => {
 		const missing = mock(async () => Response.json({ outcome: "not-found" }, { status: 404 }));
-		const { conversation, story } = await historyRefresh(missing);
+		await expect(historyRefresh(missing)).rejects.toThrow("The Chat history could not be loaded.");
 		expect(missing).toHaveBeenCalledTimes(1);
-		expect(conversation).toMatchObject({ id: 1, name: "Chat", revision: 1 });
-		expect(story.messages).toEqual([]);
 	});
 
 	test("a rejected fetch stays an offline NetworkError", async () => {

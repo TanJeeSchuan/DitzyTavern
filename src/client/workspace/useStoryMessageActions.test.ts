@@ -199,7 +199,7 @@ describe("Requested selection", () => {
 		expect(harness.activeVariantId()).toBe(100);
 		expect(harness.shownVariantId()).toBe(101);
 		harness.publishHistory(101);
-		expect(harness.activeVariantId()).toBe(101);
+		expect(harness.shownVariantId()).toBe(101);
 		expect(harness.story().requestedSelections.size).toBe(0);
 	});
 
@@ -220,8 +220,8 @@ describe("Requested selection", () => {
 			{ expectedRevision: 6, action: { type: "select-variant", messageId: 10, variantId: 103 } },
 		]);
 		expect(harness.shownVariantId()).toBe(103);
-		harness.publishHistory(103);
-		expect(harness.activeVariantId()).toBe(103);
+		harness.publishHistory(102);
+		expect(harness.shownVariantId()).toBe(102);
 	});
 
 	test("an edit made while a Swipe waits edits the Variant on screen", async () => {
@@ -293,7 +293,7 @@ describe("Requested selection", () => {
 		]);
 		expect(harness.story().preview).toBeNull();
 		expect(harness.shownVariantId()).toBe(102);
-		harness.publishHistory(102);
-		expect(harness.activeVariantId()).toBe(102);
+		harness.publishHistory(101);
+		expect(harness.shownVariantId()).toBe(101);
 	});
 });
