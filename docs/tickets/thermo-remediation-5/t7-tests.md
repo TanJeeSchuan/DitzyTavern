@@ -41,7 +41,7 @@ Report 24.
 ## TODO
 
 - [x] Slice a, PR
-- [ ] Slice b, PR
+- [x] Slice b, PR
 - [ ] Slice c, PR
 
 ## Acceptance
@@ -55,3 +55,28 @@ Report 24.
 - Changed-file lint and `git diff --check` passed. GitHub Actions runs the test suites and typecheck.
 - Migration tests stage their journals under `.scratch/`. The responsiveness test still drives a 20,000-event pull stream. Acceptance tests that exercise a historical Control pair construct their own capture.
 - The first CI run caught two fixture caller types. The Generation runner now passes only the Generation ID to the target builder, and the Connection Settings test adapts fetch inputs to URL strings.
+
+### Slice b
+
+- The preview workflow suite exercises capture, acceptance, expiry and staleness directly. Three preview wire tests remain in the contract suite. Fork, Box trace and Lore Activation Record tests now live in Conversation, including the T6 assertion that a Fork preserves Generation Settings. Author's Note mapping cases now exercise the SillyTavern adapter, and the contract suite checks that warnings reach Import Details.
+- Provider fakes resolve request-capture promises on arrival. Static searches found zero former capture polls and nine test files that declare `postHistoryInstruction`. Changed-file lint and `git diff --check` passed. The CI `check` job runs the unit suite and typecheck.
+- A static comparison of test declarations and literal parameter tables found 14 fewer cases. The existing domain tests now check that parallel Siblings settle as separate Variants and that recovery preserves checkpointed text and is safe to rerun. The responsiveness test stays.
+
+Deleted tests:
+
+| File in `src/server/contract/` | Test |
+|---|---|
+| `send-generation.test.ts` | persists partial provider output as an interrupted Variant through the HTTP routes |
+| `send-generation.test.ts` | zero output retries only on an explicit second start and never duplicates the human Message |
+| `generation.test.ts` | persists the complete canonical settings the settings update command carries |
+| `generation.test.ts` | streams a server-owned Sibling Generation on the target Message |
+| `generation.test.ts` | runs parallel Sibling Generations as independent accepted outcomes |
+| `continuation-generation.test.ts` | accepts Continue without a human Message and uses the instruction strategy |
+| `resumable-generation.test.ts` | restart recovery exposes checkpointed output as a terminal interrupted Variant |
+| `edited-plan-images.test.ts` | sends a copied Image unknown to the original preview once the edited plan is accepted |
+| `prompt-preset-instruction-macros.test.ts` | an instruction save never overwrites separately saved ordering, toggles or roles |
+| `contract.test.ts` | lists Characters in library order |
+| `contract.test.ts` | applies commands, propagates revisions, and maps conflicts to the typed 409 payload |
+| `contract.test.ts` | reads a Conversation summary with derived Cast and Control fields |
+| `contract.test.ts` | maps removal of a seated Participant to the typed not-removable outcome |
+| `contract.test.ts` | promotes a Participant with the applied outcome and the new Character payload |

@@ -4,7 +4,6 @@ import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationRoutes } from "./conversation";
 import {
-	CapturedRequest,
 	completeGeneration,
 	captureModelFetch,
 	createChat,
@@ -69,15 +68,15 @@ describe("Prompt Preset capture", () => {
 			throw new Error("The Default recipe is missing its reference slots.");
 		}
 
-		let captured: CapturedRequest | undefined;
 		let release = () => {};
 		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const provider = captureModelFetch({ waitFor: gate });
 		const gated = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }, gate),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(gated, conversation.id, conversation.revision);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// While the attempt streams, the shared recipe is edited.
 		await readOperation(moveBlock(database, preset.id, postHistory.id, 1));
@@ -85,7 +84,7 @@ describe("Prompt Preset capture", () => {
 
 		// The Active Generation consumes the Prompt Plan captured when it was
 		// prepared; the saved edit cannot rewrite the request in flight.
-		expect(captured?.messages).toEqual([
+		expect(captured.messages).toEqual([
 			{ role: "system", content: "Answer briefly." },
 			{ role: "user", content: "I write as Writer opposite Maren." },
 			{ role: "assistant", content: "I am Maren." },
@@ -101,10 +100,10 @@ describe("Prompt Preset capture", () => {
 		await completeGeneration(gated, conversation.id, generationId);
 		// The next Generation compiles the latest saved recipe without
 		// reconstructing the Conversation.
-		let capturedNext: CapturedRequest | undefined;
+		const nextProvider = captureModelFetch();
 		const subsequent = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { capturedNext = request; }),
+			fetch: nextProvider.fetch,
 		});
 		const summaryResponse = await app.handle(
 			new Request(`http://localhost/api/conversations/${conversation.id}`),
@@ -113,9 +112,9 @@ describe("Prompt Preset capture", () => {
 		const summary = await summaryResponse.json() as { revision: number };
 		const nextId = await startGeneration(subsequent, conversation.id, summary.revision);
 		await completeGeneration(subsequent, conversation.id, nextId);
-		while (capturedNext === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const capturedNext = await nextProvider.captured;
 
-		expect(capturedNext?.messages).toEqual([
+		expect(capturedNext.messages).toEqual([
 			{ role: "system", content: "Continue." },
 			{ role: "system", content: "Answer briefly." },
 			{ role: "user", content: "I write as Writer opposite Maren." },

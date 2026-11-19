@@ -580,18 +580,18 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
 		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
 
-		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// The adjacent backslash pair remains authored text, then the active
 		// `{{self}}` names the human-controlled Participant.
-		expect(captured?.messages).toContainEqual({
+		expect(captured.messages).toContainEqual({
 			role: "system",
 			content: "\\\\Writer precedes Writer.",
 		});
@@ -640,19 +640,19 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		});
 		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
 
-		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// This Conversation's own model Participant content reaches the request
 		// with the reference's default outgoing role; the disabled history and
 		// human Identity slots contribute nothing.
-		expect(captured?.messages).toEqual([
+		expect(captured.messages).toEqual([
 			{ role: "system", content: "main" },
 			{ role: "assistant", content: "I am Maren." },
 		]);
@@ -695,13 +695,13 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
 		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
 
-		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const provider = captureModelFetch();
 		let inspection: {
 			promptPlan: { warnings: { block: string; macro: string }[] };
 		} | undefined;
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
 		const inspected = await generating.handle(new Request(
@@ -710,11 +710,11 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		// SAFETY: the route's response schema is the active inspection payload.
 		inspection = await inspected.json() as typeof inspection;
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// Compilation drops the active comments whole without evaluating or
 		// warning about their contents; the escaped comments stay literal.
-		expect(captured?.messages).toEqual([{
+		expect(captured.messages).toEqual([{
 			role: "system",
 			content: "Start  inline  scoped  multi \\{{// kept {{user}} }} \\{{//}} kept {{char}} {{///}} end",
 		}]);
@@ -752,10 +752,10 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
 		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
 
-		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
 		const inspected = await generating.handle(new Request(
@@ -766,12 +766,12 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			promptPlan: { warnings: { block: string; macro: string }[] };
 		};
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// The supported time macro expands; the malformed delimiter stays raw
 		// text without a warning, and Generation is available throughout.
-		expect(captured?.messages).toHaveLength(1);
-		expect(captured?.messages[0]?.content).toMatch(/^\d{1,2}:\d{2} [AP]M stays and \{\{user stays open$/);
+		expect(captured.messages).toHaveLength(1);
+		expect(captured.messages[0]?.content).toMatch(/^\d{1,2}:\d{2} [AP]M stays and \{\{user stays open$/);
 		expect(inspection.promptPlan.warnings).toEqual([]);
 	});
 });

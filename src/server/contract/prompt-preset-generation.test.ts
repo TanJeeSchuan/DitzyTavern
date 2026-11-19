@@ -29,7 +29,7 @@ describe("Prompt Preset budget", () => {
 		withProfile(database);
 		const app = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch(() => {}),
+			fetch: captureModelFetch().fetch,
 		});
 
 		const generationId = await startGeneration(app, conversation.id, conversation.revision);

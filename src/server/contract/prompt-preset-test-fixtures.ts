@@ -273,9 +273,13 @@ export const selectPreset = async (
 export const gatedProvider = () => {
 	const requests: CapturedRequest[] = [];
 	const waiters: (() => void)[] = [];
+	let nextRequest = Promise.withResolvers<void>();
 	let open = false;
 	return {
 		requests,
+		waitForRequests: async (count: number) => {
+			while (requests.length < count) await nextRequest.promise;
+		},
 		release: () => {
 			open = true;
 			for (const waiter of waiters.splice(0)) waiter();
@@ -284,30 +288,34 @@ export const gatedProvider = () => {
 			// @approved
 			//  SAFETY: the controlled fake receives the AI SDK Chat Completions body.
 			requests.push(JSON.parse(String(init?.body)) as CapturedRequest);
+			nextRequest.resolve();
+			nextRequest = Promise.withResolvers<void>();
 			if (!open) await new Promise<void>((resolve) => { waiters.push(resolve); });
 			return sseReply([{ content: "Done." }]);
 		}) satisfies ModelFetch,
 	};
 };
 
-// @approved
-//  SAFETY: the controlled fake receives the AI SDK Chat Completions body and
-// answers with a single completed delta.
 export const captureModelFetch = (
-	onCapture: (captured: CapturedRequest) => void,
-	waitFor?: Promise<void>,
-): ModelFetch => async (_input, init) => {
-	// @approved
-	//  SAFETY: this test's fake owns the request body shape.
-	onCapture(JSON.parse(String(init?.body)) as CapturedRequest);
-	return sseReply([{ content: "Done." }], { beforeDeltas: waitFor, singleChunk: true });
+	{ onCapture, waitFor }: { onCapture?: (request: CapturedRequest) => void; waitFor?: Promise<void> } = {},
+) => {
+	const { promise: captured, resolve } = Promise.withResolvers<CapturedRequest>();
+	const fetch: ModelFetch = async (_input, init) => {
+		// @approved
+		//  SAFETY: this test's fake owns the request body shape.
+		const request = JSON.parse(String(init?.body)) as CapturedRequest;
+		resolve(request);
+		onCapture?.(request);
+		return sseReply([{ content: "Done." }], { beforeDeltas: waitFor, singleChunk: true });
+	};
+	return { fetch, captured };
 };
 
 export const startGeneration = async (
 	app: ReturnType<typeof createConversationRoutes>,
 	conversationId: number,
 	expectedRevision: number,
-	gate?: { requests: CapturedRequest[] },
+	gate?: Pick<ReturnType<typeof gatedProvider>, "waitForRequests">,
 	minimumRequests = 1,
 ): Promise<number> => {
 	const response = await app.handle(
@@ -321,11 +329,7 @@ export const startGeneration = async (
 	// @approved
 	//  SAFETY: this contract test controls the typed acceptance response.
 	const accepted = await response.json() as { generationId: number };
-	if (gate !== undefined) {
-		while (gate.requests.length < minimumRequests) {
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		}
-	}
+	await gate?.waitForRequests(minimumRequests);
 	return accepted.generationId;
 };
 

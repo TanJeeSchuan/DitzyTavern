@@ -1,5 +1,5 @@
 import { profile as chatProfile, sseReply } from "./prompt-preset-test-fixtures";
-import { readTestConversationSnapshot, createConversationWithHistory, shortReplyPrompt, participantSeed, pairChat } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, shortReplyPrompt, pairChat } from "../test-fixtures/conversation";
 import { readVariantDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -134,66 +134,6 @@ describe("Generation transport contract", () => {
 		expect(body).not.toContain("127.0.0.1:43127");
 		expect(requestBody?.model).toBe("free-text-model");
 		expect(requestBody?.max_tokens).toBe(32);
-	});
-
-	test("persists the complete canonical settings the settings update command carries", async () => {
-		// The update command derives from the canonical declaration, so the
-		// complete settings object the settings panel submits — including the
-		// Sibling Generation limit — persists field for field instead of
-		// being silently dropped by the transport boundary.
-		const conversation = pairChat(database, "Canonical Settings Update", { prompt });
-		const app = createConversationRoutes(database, { masterKey: key });
-		const updated = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({
-					expectedRevision: conversation.revision,
-					action: {
-						type: "update-generation-settings",
-						settings: {
-							modelId: "deepseek-chat",
-							temperature: 0.7,
-							topP: null,
-							frequencyPenalty: null,
-							presencePenalty: null,
-							contextLimit: 4096,
-							responseBudget: 128,
-							safetyAllowance: 321,
-							siblingGenerationLimit: 2,
-							continuationStrategy: "assistant-prefill",
-							continuationInstruction: "Continue the scene.",
-							continuationPrefillSuffix: "\n",
-							repeatedImagePlacement: "every",
-							requestOverrides: {
-								"chat-completions": {},
-								responses: {},
-								"anthropic-messages": {},
-							},
-						},
-					},
-				}),
-			}),
-		);
-		expect(updated.status).toBe(200);
-
-		const settings = await app.handle(
-			new Request(`http://localhost/api/conversations/${conversation.id}/generation-settings`),
-		);
-		expect(settings.status).toBe(200);
-		// SAFETY: this contract test controls the typed settings response.
-		expect(await settings.json()).toMatchObject({
-			modelId: "deepseek-chat",
-			temperature: 0.7,
-			contextLimit: 4096,
-			responseBudget: 128,
-			safetyAllowance: 321,
-			siblingGenerationLimit: 2,
-			continuationStrategy: "assistant-prefill",
-			continuationInstruction: "Continue the scene.",
-			continuationPrefillSuffix: "\n",
-			repeatedImagePlacement: "every",
-		});
 	});
 
 	test("does not contact a provider when the Conversation has no selected Profile", async () => {
@@ -355,111 +295,5 @@ describe("Generation transport contract", () => {
 		expect(request?.url).toBe("http://127.0.0.1:43127/generate");
 		expect(request?.headers.get("authorization")).toBe("Custom auth never returned");
 		expect(request?.headers.get("x-route")).toBe("route secret never returned");
-	});
-
-	test("streams a server-owned Sibling Generation on the target Message", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Sibling Generation Contract",
-			participants: [
-				participantSeed("Writer", { prompt }),
-				participantSeed("Maren", { prompt, openings: ["Opening."] }),
-			],
-			control: { human: 0, model: 1 },
-		});
-		const target = conversation.messages[0];
-		if (target === undefined) throw new Error("Sibling target missing.");
-		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
-			expectedRevision: 0,
-			profile,
-			credential: "sibling-contract-secret",
-		});
-		const app = createConversationRoutes(database, {
-			masterKey: key,
-			fetch: async () => sseReply([{ content: "Contract " }, { content: "reply." }]),
-		});
-		const response = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations`,
-			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling", messageId: target.id }) },
-		));
-		// SAFETY: this contract test controls the typed acceptance response.
-		const accepted = await response.json() as { generationId: number };
-		const events = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
-		));
-		const body = await events.text();
-		const persisted = readTestConversationSnapshot(database, conversation.id);
-		const targetAfter = persisted?.messages.find((message) => message.id === target.id);
-		expect(response.status).toBe(200);
-		expect(body).toContain("event: complete");
-		expect(targetAfter?.variants.at(-1)?.content).toBe("Contract reply.");
-		expect(targetAfter?.variants.at(-1)?.selected).toBe(true);
-	});
-
-	test("runs parallel Sibling Generations as independent accepted outcomes", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Parallel Sibling Contract",
-			participants: [
-				participantSeed("Writer", { prompt }),
-				participantSeed("Maren", { prompt, openings: ["Opening."] }),
-			],
-			control: { human: 0, model: 1 },
-		});
-		const target = conversation.messages[0];
-		if (target === undefined) throw new Error("Sibling target missing.");
-		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
-			expectedRevision: 0,
-			profile,
-			credential: "parallel-sibling-secret",
-		});
-		let release!: () => void;
-		const paused = new Promise<void>((resolve) => { release = resolve; });
-		let providerRequest = 0;
-		const app = createConversationRoutes(database, {
-			masterKey: key,
-			fetch: async () => {
-				providerRequest += 1;
-				const content = `Alternative ${providerRequest}.`;
-				await paused;
-				return sseReply([{ content }]);
-			},
-		});
-		const startSibling = () => app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations`,
-			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling", messageId: target.id }) },
-		));
-		const firstResponse = await startSibling();
-		const secondResponse = await startSibling();
-		// SAFETY: both responses come from the typed Sibling acceptance route.
-		const first = await firstResponse.json() as { generationId: number; variantId: number };
-		// SAFETY: both responses come from the typed Sibling acceptance route.
-		const second = await secondResponse.json() as { generationId: number; variantId: number };
-		expect(firstResponse.status).toBe(200);
-		expect(secondResponse.status).toBe(200);
-		expect(first.generationId).not.toBe(second.generationId);
-		expect(first.variantId).not.toBe(second.variantId);
-		expect(readTestConversationSnapshot(database, conversation.id)?.activeGenerations).toHaveLength(2);
-
-		const firstEvents = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations/${first.generationId}/events`,
-		));
-		const secondEvents = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations/${second.generationId}/events`,
-		));
-		const firstBody = firstEvents.text();
-		const secondBody = secondEvents.text();
-		release();
-		expect(await firstBody).toContain("event: complete");
-		expect(await secondBody).toContain("event: complete");
-
-		const persisted = readTestConversationSnapshot(database, conversation.id);
-		const variants = persisted?.messages.find((message) => message.id === target.id)?.variants ?? [];
-		expect(providerRequest).toBe(2);
-		expect(variants.map((variant) => variant.content)).toEqual([
-			"Opening.",
-			"Alternative 1.",
-			"Alternative 2.",
-		]);
-		expect(variants.filter((variant) => variant.selected)).toHaveLength(1);
-		expect(persisted?.activeGenerations).toEqual([]);
 	});
 });

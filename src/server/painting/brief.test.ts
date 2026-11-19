@@ -41,7 +41,7 @@ test("a Brief uses its Paint Preset, the last N selected Messages ending at the 
 		const variantRows = database.query("SELECT * FROM message_variant_data").all();
 		const requests: CapturedRequest[] = [];
 		const events = await Array.fromAsync(writeBrief(database, chat.id, { variantId: snapshot.messages[3]!.variants[0]!.id, ask: "Focus on {{self}} at the bridge.", locale: "fr-FR", timeZone: "Pacific/Honolulu" },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		expect(requests).toHaveLength(1);
 		const messages = requests[0]!.messages;
 		expect(messages).toEqual([
@@ -68,7 +68,7 @@ test("an empty Ask names the scene, and Image References in an Ask reach the mod
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const requests: CapturedRequest[] = [];
-		const routes = createPaintingRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) });
+		const routes = createPaintingRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch });
 		const write = async (ask: string) => {
 			const response = await routes.handle(new Request(`http://localhost/api/conversations/${chat.id}/brief`, {
 				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variantId: chat.messages[0]!.variants[0]!.id, ask }),
@@ -171,7 +171,7 @@ test("a Brief pins its target Variant after a swipe and reads only its own prese
 		const rows = database.query("SELECT * FROM message_variant_data").all();
 		const requests: CapturedRequest[] = [];
 		const write = () => Array.fromAsync(writeBrief(database, chat.id, { variantId: original.id, ask: "Paint this." },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		await write();
 		expect(requests[0]!.messages).toEqual([
 			{ role: "assistant", content: "Original lantern" },
@@ -232,7 +232,7 @@ test("a Brief reads unseated Cast Appearance by name or authorship and sends onl
 		withProfile(database);
 		const requests: CapturedRequest[] = [];
 		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint Nora beside her." },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		const sent = JSON.stringify(requests[0]!.messages);
 		expect(sent).toContain("Maren\\nA red cloak beside Writer.");
 		expect(sent).toContain("Iris\\nIris has silver hair. [Image: Silver hair]");
@@ -242,11 +242,11 @@ test("a Brief reads unseated Cast Appearance by name or authorship and sends onl
 		const nora = chat.cast.find((participant) => participant.name === "Nora")!;
 		database.query("UPDATE messages SET author_participant_id = ?, author_name = 'A witness' WHERE id = ?").run(nora.id, chat.messages[0]!.id);
 		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint the bridge." },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		expect(JSON.stringify(requests[1]!.messages)).toContain("Nora\\nA blue scarf.");
 		database.query("UPDATE participant_prompt SET send_appearance_images = 1 WHERE participant_id = ?").run(chat.cast.find((participant) => participant.name === "Iris")!.id);
 		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint the bridge." },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		expect(JSON.stringify(requests[2]!.messages)).toContain(`data:image/png;base64,${pngFixture().toString("base64")}`);
 	} finally { database.close(); }
 });

@@ -9,7 +9,6 @@ import {
 	readPromptPresetRecipe,
 } from "../prompt-preset";
 import {
-	CapturedRequest,
 	addBlock,
 	captureModelFetch,
 	completeGeneration,
@@ -140,23 +139,23 @@ describe("Prompt Preset transport", () => {
 	test("assembles the outgoing request through the stored recipe and agrees with active inspection", async () => {
 		const conversation = createChat(database);
 		withProfile(database);
-		let captured: CapturedRequest | undefined;
 		let release = () => {};
 		const gate = new Promise<void>((resolve) => { release = resolve; });
+		const provider = captureModelFetch({ waitFor: gate });
 		const app = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }, gate),
+			fetch: provider.fetch,
 		});
 
 		const generationId = await startGeneration(app, conversation.id, conversation.revision);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		const inspection = await readInspection(app, conversation.id, generationId);
 
 		// The Default recipe reproduces the established request: system text,
 		// both Identity blocks under their roles, Scenario, Example Dialogue,
 		// the selected history, then the Post-History Instruction.
-		expect(captured?.messages).toEqual([
+		expect(captured.messages).toEqual([
 			{ role: "system", content: "Answer briefly." },
 			{ role: "user", content: "I write as Writer opposite Maren." },
 			{ role: "assistant", content: "I am Maren." },
@@ -261,18 +260,18 @@ describe("Prompt Preset transport", () => {
 			["model-scenario", true],
 		]);
 
-		let captured: CapturedRequest | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, conversation.revision);
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// The request honors the saved order, the omitted slot, and the
 		// deliberately repeated history and Scenario.
-		expect(captured?.messages).toEqual([
+		expect(captured.messages).toEqual([
 			{ role: "system", content: "Continue." },
 			{ role: "system", content: "Answer briefly." },
 			{ role: "user", content: "I write as Writer opposite Maren." },
@@ -346,16 +345,16 @@ describe("Prompt Preset transport", () => {
 		expect(summary.cast.find((participant) => participant.name === "Maren")?.prompt)
 			.toEqual(modelPrompt);
 
-		let captured: CapturedRequest | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, conversation.revision);
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
-		expect(captured?.messages).toEqual([
+		expect(captured.messages).toEqual([
 			{ role: "system", content: "Answer briefly." },
 			{ role: "user", content: "I write as Writer opposite Maren." },
 			{ role: "system", content: "I am Maren." },

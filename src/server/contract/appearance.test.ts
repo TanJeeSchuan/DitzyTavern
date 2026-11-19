@@ -23,7 +23,7 @@ test("the Default preset sends each Appearance immediately after its Identity", 
 	});
 	withProfile(database);
 	let captured: unknown;
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 	const generationId = await startGeneration(app, chat.id, chat.revision);
 	await completeGeneration(app, chat.id, generationId);
 	expect(captured).toMatchObject({ messages: [
@@ -49,7 +49,7 @@ for (const sendAppearanceImages of [true, false]) {
 		});
 		withProfile(database);
 		let captured: unknown;
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 		const id = await startGeneration(app, chat.id, chat.revision);
 		await completeGeneration(app, chat.id, id);
 		expect(captured).toMatchObject({ messages: [
@@ -70,7 +70,7 @@ test("empty Appearance adds no message to the existing request", async () => {
 	const chat = createConversation(database, { name: "Empty Appearance", participants: [{ definition }, { definition: { ...definition, name: "Maren" } }], control: { human: 0, model: 1 } });
 	withProfile(database);
 	let captured: unknown;
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 	const id = await startGeneration(app, chat.id, chat.revision);
 	await completeGeneration(app, chat.id, id);
 	expect(captured).toMatchObject({ messages: [

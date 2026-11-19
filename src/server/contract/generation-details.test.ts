@@ -81,6 +81,14 @@ describe("Generation detail transport", () => {
 			expect(body).toContain("Omitted.");
 			expect(body).not.toContain("credential-do-not-expose");
 
+			database.run("UPDATE active_generation SET box_traces_json = ? WHERE id = ?", ["[]", accepted.generationId]);
+			const corruptInspection = await app.handle(new Request(
+				`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/inspection`,
+			));
+			expect(corruptInspection.status).toBe(422);
+			expect(await corruptInspection.json()).toEqual({ outcome: "invalid", reason: "Persisted Box traces do not match their schema." });
+			database.run("UPDATE active_generation SET box_traces_json = ? WHERE id = ?", ["{}", accepted.generationId]);
+
 			resolveConversationGeneration(module, {
 				conversationId: conversation.id,
 				generationId: accepted.generationId,
@@ -134,6 +142,15 @@ describe("Generation detail transport", () => {
 			expect(expiredInspection.status).toBe(404);
 			expect(readVariantDetails(module, conversation.id, message.id, variant.id)?.provenance?.status)
 				.toBe("length-limited");
+
+			const detailsUrl = `http://localhost/api/conversations/${conversation.id}/messages/${message.id}/variants`;
+			database.run("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'lore-activation', 'record', '{}')", [variant.id]);
+			const corruptDetails = await app.handle(new Request(`${detailsUrl}/${variant.id}/details`));
+			expect(corruptDetails.status).toBe(422);
+			expect(await corruptDetails.json()).toEqual({ outcome: "invalid", reason: "Persisted Lore Activation Record does not match the canonical schema." });
+			const missingDetails = await app.handle(new Request(`${detailsUrl}/${variant.id + 1}/details`));
+			expect(missingDetails.status).toBe(404);
+			expect(await missingDetails.json()).toEqual({ outcome: "not-found" });
 		});
 	});
 });

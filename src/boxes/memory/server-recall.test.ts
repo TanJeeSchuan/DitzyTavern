@@ -87,7 +87,7 @@ const recallCounts = (): RecallCounts => ({ embedding: [], decisions: 0 });
 // @approved
 //  Embeddings answer one vector per text and the Decision Model scores every
 //  recall question useful; writing requests are captured.
-const recallFetch = (counts: RecallCounts, writing: ModelFetch = captureModelFetch(() => {}), vectorOf: (text: string) => number[] = () => [1, 0]): ModelFetch => async (input, init) => {
+const recallFetch = (counts: RecallCounts, writing: ModelFetch = captureModelFetch().fetch, vectorOf: (text: string) => number[] = () => [1, 0]): ModelFetch => async (input, init) => {
 	const url = String(input);
 	if (url.includes("embedding.test")) {
 		// SAFETY: the embedding request carries its text batch as `input`.
@@ -122,7 +122,7 @@ describe("Memory recall in Generation preparation", () => {
 		configureMemoryEmbeddings(database, "http://embedding.test/v1/embeddings", "test-embedding");
 		withProfile(database);
 		const requests: { role: string; content: string }[][] = [];
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => requests.push(request.messages)) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request.messages) }).fetch });
 		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());
@@ -200,7 +200,7 @@ describe("Memory recall in Generation preparation", () => {
 		if (change === "decision-model" || change === "decision-limit") configureDecisionModels(database, key);
 		if (change === "reset") correct(database, conversation.id, source.variantId, claims);
 		let writingCalls = 0;
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => { writingCalls++; }) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: () => { writingCalls++; } }).fetch });
 		const inspected = await app.handle(post(`/api/conversations/${conversation.id}/generations/preview`, { target: { kind: "send", content: "The next scene begins." } }));
 		expect(inspected.status).toBe(200);
 		const preview = Value.Parse(generationPreview, await inspected.json());

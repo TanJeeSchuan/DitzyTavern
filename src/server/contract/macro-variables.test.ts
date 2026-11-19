@@ -200,7 +200,7 @@ describe("Macro Variables transport", () => {
 		let captured: { messages: { role: string; content: string }[] } | undefined;
 		const app = createConversationRoutes(database, {
 			masterKey: new Uint8Array(32).fill(11),
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch,
 		});
 		const edit = async (body: MacroVariablesEditBody) => app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/macro-variables`,

@@ -1,13 +1,11 @@
 import { profile as chatProfile, sseReply } from "./prompt-preset-test-fixtures";
-import { readTestConversationSnapshot, checkpointFromStart, shortReplyPrompt, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, shortReplyPrompt, pairChat } from "../test-fixtures/conversation";
 import { readActiveGenerationDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { checkpointConversationGeneration } from "../conversation";
-import { recoverActiveGenerations } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 import { GenerationRuntime } from "../workflows/generation-runtime";
 import { generationSubscriptionEvents } from "./generation-sse";
@@ -220,18 +218,20 @@ describe("Resumable generation transport", () => {
 			profile,
 			credential: "stop-secret",
 		});
-		let providerSignal: AbortSignal | undefined;
+		const providerStarted = Promise.withResolvers<AbortSignal>();
 		const app = createConversationRoutes(database, {
 			masterKey: new Uint8Array(32).fill(6),
 			fetch: async (_input, init) => {
-				providerSignal = init?.signal ?? undefined;
+				const signal = init?.signal;
+				if (signal === undefined || signal === null) throw new Error("Provider request is missing its cancellation signal.");
+				providerStarted.resolve(signal);
 				// Keep the provider request pending until the explicit Stop aborts it.
 				await new Promise<void>((resolve) => {
-					if (init?.signal?.aborted === true) {
+					if (signal.aborted) {
 						resolve();
 						return;
 					}
-					init?.signal?.addEventListener("abort", () => resolve(), { once: true });
+					signal.addEventListener("abort", () => resolve(), { once: true });
 				});
 				return new Response(null, { headers: { "content-type": "text/event-stream" } });
 			},
@@ -249,12 +249,7 @@ describe("Resumable generation transport", () => {
 		const accepted = await acceptedResponse.json() as { generationId: number };
 		expect(acceptedResponse.status).toBe(200);
 
-		// Let the detached attempt reach the injected provider before issuing the
-		// command; the command remains valid if it is issued earlier as well.
-		for (let attempt = 0; attempt < 20 && providerSignal === undefined; attempt += 1) {
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		}
-		expect(providerSignal).toBeDefined();
+		const providerSignal = await providerStarted.promise;
 		const stoppedResponse = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/stop`,
 			{ method: "POST", body: "{}" },
@@ -268,7 +263,7 @@ describe("Resumable generation transport", () => {
 			outcome: "stopped",
 			generationId: accepted.generationId,
 		}));
-		expect(providerSignal?.aborted).toBe(true);
+		expect(providerSignal.aborted).toBe(true);
 		const snapshot = readTestConversationSnapshot(database, conversation.id);
 		expect(snapshot?.activeGenerations).toEqual([]);
 		expect(snapshot?.messages).toHaveLength(1);
@@ -329,55 +324,5 @@ describe("Resumable generation transport", () => {
 		expect(providerSignal?.aborted).toBe(false);
 		expect(body).toContain('"text":"Survives."');
 		expect(body).toContain("event: complete");
-	});
-
-	test("restart recovery exposes checkpointed output as a terminal interrupted Variant", async () => {
-		const conversationModule = database;
-		const conversation = pairChat(conversationModule, "Restart Recovery Chat", { prompt });
-		const accepted = acceptTestGeneration(database, conversation, { kind: "send", expectedRevision: conversation.revision, content: "Keep the recovered scene." }, { timestamp: "2026-08-27T00:00:00.000Z" });
-		checkpointFromStart(database, {
-			conversationId: conversation.id,
-			generationId: accepted.generationId,
-			content: "Recovered checkpoint.",
-			reasoning: "Recovered reasoning.",
-			latestEventId: 2,
-		});
-
-		expect(recoverActiveGenerations(database)).toEqual({
-			inspected: 1,
-			interrupted: 1,
-			removed: 0,
-			failed: 0,
-		});
-		expect(recoverActiveGenerations(database)).toEqual({
-			inspected: 0,
-			interrupted: 0,
-			removed: 0,
-			failed: 0,
-		});
-
-		const app = createConversationRoutes(database);
-		const summaryResponse = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}`,
-		));
-		// SAFETY: this contract test controls the typed Conversation response.
-		const summary = await summaryResponse.json() as { activeGenerations: unknown[] };
-		expect(summaryResponse.status).toBe(200);
-		expect(summary.activeGenerations).toEqual([]);
-
-		const recoveredMessage = readTestConversationSnapshot(conversationModule, conversation.id)?.messages.at(-1);
-		const recoveredVariant = recoveredMessage?.variants[0];
-		if (recoveredMessage === undefined || recoveredVariant === undefined) {
-			throw new Error("Recovered terminal Variant missing.");
-		}
-		const detailsResponse = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/messages/${recoveredMessage.id}/variants/${recoveredVariant.id}/details`,
-		));
-		const detailsBody = await detailsResponse.text();
-		expect(detailsResponse.status).toBe(200);
-		expect(detailsBody).toContain('"content":"Recovered checkpoint."');
-		expect(detailsBody).toContain('"status":"interrupted"');
-		expect(detailsBody).toContain('"interruptionCause":"server-restart"');
-		expect(detailsBody).not.toContain("Recovered reasoning.");
 	});
 });
