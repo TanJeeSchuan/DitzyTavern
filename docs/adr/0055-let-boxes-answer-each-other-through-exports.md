@@ -1,8 +1,8 @@
 # Let Boxes answer each other through Exports
 
-[ADR-0050](0050-build-story-features-as-boxes.md) let Boxes compose only through the Prompt Plan. The Character Drafter needs what Memory knows about a person, and copying their extraction would build Memory a second time. So a built-in Box may declare Box Exports: named, read-only questions about its own state in one Chat, each with an input and an output schema, answered synchronously. Another built-in Box reads every enabled Box's Exports in a Chat only from its route handlers, through the `exportsOf` the host hands to `routes`; the SDK exports no way to read them anywhere else. The host checks input and output against the declared schemas, so the consumer never sees the provider's records, storage or types.
+[ADR-0050](0050-build-story-features-as-boxes.md) let Boxes compose only through the Prompt Plan. The Character Drafter needs Memory's Claims about a person. Box Exports let the Drafter read those Claims without reimplementing Memory's extraction or interpreting its records. [Box Export rules](../box-system/README.md#the-rules)
 
-Exports are readable from routes and not from `advance`, digests or `fold`. Reading another Box there would make a Box's result depend on state outside its `dependencies`, so the preview fingerprint would miss the change, and a swipe would no longer reproduce the same outcome. ADR-0050's rule still holds for everything that shapes a Generation: Boxes advance in parallel and never read each other's output from the same turn.
+Generation logic runs on captured inputs. An Export read during Generation would introduce a dependency outside the preview fingerprint and could change the outcome of a Swipe. The composition rule from ADR-0050 still applies within a Generation.
 
 ## Considered Options
 

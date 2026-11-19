@@ -24,7 +24,7 @@ const readSelectedPathClaims = (database: Database, conversationId: number): Mem
 };
 
 /** @approved The `people` Export: each person label on the Selected narrative path, in first-appearance order, after the Chat's label merges. */
-export const readMemoryPeople = (database: Database, conversationId: number): MemoryPeople => {
+const readMemoryPeople = (database: Database, conversationId: number): MemoryPeople => {
 	const people = new Set<string>();
 	for (const claim of readSelectedPathClaims(database, conversationId)) for (const person of claim.people) people.add(person);
 	return [...people];

@@ -26,7 +26,10 @@ export const boxExports = (database: Database, conversationId: number): BoxExpor
 		const declared = descriptor.exports;
 		const byName = Object.fromEntries(Object.entries(box.exports).flatMap(([name, exportOf]) => {
 			const declaration = declared[name];
-			return declaration === undefined ? [] : [[name, Object.assign((input?: BoxValue) => exportOf(input, { database, conversationId }), declaration)]];
+			if (declaration === undefined) return [];
+			const { description, input, output } = declaration;
+			const answer = (value?: BoxValue) => exportOf(value, { database, conversationId });
+			return [[name, Object.assign(answer, { description, input, output })]];
 		}));
 		return [[id, withoutPrototype(byName)]];
 	})));

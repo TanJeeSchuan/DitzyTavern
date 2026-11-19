@@ -8,7 +8,7 @@ Source: `docs/specs/character-drafter.md`, Implementation Decisions 1–3; ADR-0
 
 ## Goal
 
-A built-in Box can declare read-only Exports, another built-in Box's route handlers can read them through the `exportsOf(conversationId)` the host hands its `routes(database, exportsOf)`, and Memory exports `people()` and `selectedClaims()`.
+Expose Memory's `people()` and `selectedClaims()` to the Character Drafter through Box Exports. [Box Export rules](../../box-system/README.md#the-rules)
 
 ## Ownership
 

@@ -55,6 +55,7 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		[box.records === undefined || ("initial" in box.records) === (box.records.fold !== undefined), "a fold exactly when it declares an initial state"],
 		[(descriptor.decision === undefined) === (box.records?.digest === undefined), "a digest exactly when it declares a decision"],
 		[(descriptor.moves === undefined) === (box.moves === undefined), "a Move render exactly when it declares Moves"],
+		[descriptor.prompt !== false || descriptor.moves === undefined, "no Moves, since it declares prompt: false"],
 		[descriptor.decision === undefined || box.read === undefined, "no read, since it digests"],
 		[descriptor.decision !== undefined || box.status === undefined, "no status, since it does not digest"],
 		[(descriptor.delegate === undefined) === (box.delegate === undefined), "delegate.apply exactly when it declares a delegate"],

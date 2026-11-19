@@ -5,13 +5,13 @@ import { Value } from "@sinclair/typebox/value";
 import {
 	codeAgentUnavailable, conversationExists, readBoxLifecycles, readChatVariants, readParticipants, runCodeAgent, type BoxExports, type CodeAgentActivity, type CodeAgentGlobal,
 } from "@/box-sdk/server";
-import { parseImageReferences, stripThoughts } from "@/box-sdk/shared";
+import { parseImageReferences, proseOutsideThoughts } from "@/box-sdk/shared";
 import descriptor from "./shared-descriptor";
 import { characterDraft, draftCast, draftClaimPeople, draftMemory, draftMessages, draftPeople } from "./contract";
 import type { CharacterDraft, DraftCast, DraftMessages, DraftRequest, DrafterRead } from "./contract";
 
 /** @approved The Selected narrative path as the agent reads it, a settled Variant per Message. */
-export const readDraftMessages = (database: Database, conversationId: number): DraftMessages =>
+const readDraftMessages = (database: Database, conversationId: number): DraftMessages =>
 	readChatVariants(database, conversationId, { selectedOrVariantIds: [] })
 		.map(({ messageId, speaker, authorParticipantId, content }, index) => ({ id: messageId, index, author: speaker, authorParticipantId, text: content }));
 
@@ -32,7 +32,7 @@ export const draftRefusal = (messages: DraftMessages, draft: CharacterDraft): st
 		const text = texts.get(quote.messageId);
 		if (text === undefined) return `Message ${quote.messageId} is not on the story's path.`;
 		if (!text.includes(quote.text)) return `The quote "${quote.text}" is not in Message ${quote.messageId} word for word.`;
-		if (!stripThoughts(text).some((segment) => segment.kind === "prose" && segment.text.includes(quote.text))) {
+		if (!proseOutsideThoughts(text).some((segment) => segment.includes(quote.text))) {
 			return `The quote "${quote.text}" is inside a <thought> in Message ${quote.messageId}; a thought is never said aloud.`;
 		}
 	}
@@ -122,13 +122,13 @@ const instructions = ({ person, instruction, participantId }: DraftRequest, cast
 // quotes and example dialogue hold up against the path. Nothing is stored;
 // the draft goes back to the writer, whose choice in the Definition editor
 // is the only write.
-export const draftPerson = async (database: Database, exports: BoxExports, request: DraftRequest, signal: AbortSignal, onActivity: (activity: CodeAgentActivity) => void): Promise<CharacterDraft> => {
+export const draftPerson = async (database: Database, resolveExports: (id: number) => BoxExports, request: DraftRequest, signal: AbortSignal, onActivity: (activity: CodeAgentActivity) => void) => {
 	const { conversationId, participantId } = request;
-	if (!conversationExists(database, conversationId)) throw new Error("The Chat is no longer available.");
-	if (readBoxLifecycles(drizzle(database), conversationId)[descriptor.id]?.state !== "enabled") throw new Error("The Character Drafter is off in this Chat.");
 	const { messages, cast, memory } = database.transaction(() => {
+		if (!conversationExists(database, conversationId)) throw new Error("The Chat is no longer available.");
+		if (readBoxLifecycles(drizzle(database), conversationId)[descriptor.id]?.state !== "enabled") throw new Error("The Character Drafter is off in this Chat.");
 		const path = readDraftMessages(database, conversationId);
-		return { messages: path, cast: readDraftCast(database, conversationId, path), memory: memoryGlobal(exports) };
+		return { messages: path, cast: readDraftCast(database, conversationId, path), memory: memoryGlobal(resolveExports(conversationId)) };
 	})();
 	if (participantId !== undefined && !cast.some(({ id }) => id === participantId)) throw new Error("That Participant is no longer in the Cast.");
 	return await runCodeAgent(database, {

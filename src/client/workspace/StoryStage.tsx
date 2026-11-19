@@ -305,7 +305,7 @@ export function StoryStage({
 					key={conversation?.id ?? "no-chat"}
 					conversation={conversation}
 					controller={boxWindows}
-					disabled={previewMode || assemblyActive}
+					disabled={previewMode || assemblyActive || generation.inspectionPreparing}
 					staging={{ moves: generation.moves, onChange: generation.setMoves }}
 					onConversationChange={session.setConversation}
 					onOpenConnections={onOpenConnections}

@@ -9,7 +9,7 @@ export { boxSdkVersion, describeMoves, describeSetup, type BoxDescriptor } from 
 export { invalidOutcome, notFoundOutcome } from "../shared/contract/outcomes";
 export { numericWire } from "../shared/contract/wire";
 export { parseImageReferences, projectImageAnchors } from "../shared/image-reference";
-export { stripThoughts } from "../shared/thought-markup";
+export { proseOutsideThoughts, stripThoughts } from "../shared/thought-markup";
 export { codeAgentActivity, type CodeAgentActivity } from "../shared/contract/code-agent";
 export { MessageId, VariantId, ParticipantId, ParticipantKey } from "../shared/contract/box-row-reference";
 export { promptChannels, type PromptChannels } from "../shared/contract/prompt-schema";

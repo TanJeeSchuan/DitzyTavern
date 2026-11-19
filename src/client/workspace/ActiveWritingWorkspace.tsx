@@ -156,8 +156,9 @@ export function ActiveWritingWorkspace({
 
 	// @approved
 	// Settings stays reachable during Prompt Plan inspection; it cannot change the captured plan.
-	const panelAccess = useRef({ inspecting: assemblyActive, swiping: story.preview !== null });
-	panelAccess.current = { inspecting: assemblyActive, swiping: story.preview !== null };
+	const inspectionLocked = assemblyActive || generation.inspectionPreparing;
+	const panelAccess = useRef({ inspecting: inspectionLocked, swiping: story.preview !== null });
+	panelAccess.current = { inspecting: inspectionLocked, swiping: story.preview !== null };
 	const requestPrimaryPanel = useCallback((panel: PrimaryPanelName, action: () => void) => {
 		const canOpen = () => !panelAccess.current.inspecting || panel === "settings";
 		if (canOpen()) saveNavigation.requestNavigation(() => { if (canOpen()) action(); });
@@ -306,12 +307,12 @@ export function ActiveWritingWorkspace({
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
-			<NavigationRail activePanel={panelState.primaryPanel} inspecting={assemblyActive} onOpenPanel={togglePanel} />
+			<NavigationRail activePanel={panelState.primaryPanel} inspecting={inspectionLocked} onOpenPanel={togglePanel} />
 			<NavigationDrawer
 				open={navigationOpen}
 				onOpenChange={setNavigationOpen}
 				activePanel={panelState.primaryPanel}
-				inspecting={assemblyActive}
+				inspecting={inspectionLocked}
 				onOpenPanel={togglePanel}
 			/>
 

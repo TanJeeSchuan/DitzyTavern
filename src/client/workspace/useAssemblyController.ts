@@ -214,10 +214,10 @@ export function useAssemblyController({
 		const requested = { conversationId: conversation.id, seat, versions, request };
 		const inspect = inspectPromptPlanBeforeGenerating;
 		const prepare = () => {
-			if (!transition({ type: "requested", visit: signal, request: requested })) return;
+			if (!transition({ type: "requested", visit: signal, request: requested, inspect })) return;
 			void ensureLatest().then(() => {
 				if (Number(activeChatIdRef.current) !== requested.conversationId) return void transition({ type: "cancelled", visit: signal });
-				if (!transition({ type: "prepared", visit: signal, inspect })) return;
+				if (!transition({ type: "prepared", visit: signal })) return;
 				if (inspect) client.removeQueries({ queryKey: ["assembly-preview"] });
 				else launch(requested);
 			}, () => transition({ type: "failed", visit: signal, error: "The latest Messages could not be loaded." }));
@@ -230,6 +230,7 @@ export function useAssemblyController({
 
 	return {
 		assembly,
+		inspectionPreparing: start.phase === "preparing" && start.inspect,
 		directStartError: start.phase === "idle" ? start.error : null,
 		acknowledgeDirectStartError: () => void transition({ type: "error-acknowledged", visit: signal }),
 		assemblyAvailable: canStartAssembly({

@@ -60,6 +60,15 @@ test("a draft with an Image Reference in Appearance is refused", () => {
 	expect(draftRefusal(messages, proposed)).toContain("Appearance must be text only.");
 });
 
+test("a nested thought cannot make any text inside the closed outer thought quotable", () => {
+	const message = { ...messages[0]!, text: "Before. <thought >Outer start. <thought>Inner.</thought> Outer end.</thought> After." };
+	for (const text of ["Outer start.", "Inner.", "Outer end."]) {
+		expect(draftRefusal([message], draft([{ messageId: message.id, text }], text))).toContain("inside a <thought>");
+	}
+	const quotes = ["Before.", "After."].map((text) => ({ messageId: message.id, text }));
+	expect(draftRefusal([message], draft(quotes, "Before.\nAfter."))).toBeUndefined();
+});
+
 // @approved
 //  The agent's model, a localhost fake speaking Chat Completions: each
 // request takes the next scripted tool call, and `onRequest` runs before it
@@ -123,7 +132,11 @@ test("the agent reads Memory as it was when the draft started, not as a change m
 		{ name: "submit", arguments: JSON.stringify({ draft: { name: "Bob", prompt: emptyPromptChannels(), quotes: [] } }) },
 	);
 	const activities: CodeAgentActivity[] = [];
-	expect(await draftPerson(database, boxExports(database, chat.id), { conversationId: chat.id, person: "Bob" }, new AbortController().signal, (activity) => activities.push(activity)))
+	const resolveExports = (id: number) => {
+		expect(database.inTransaction).toBe(true);
+		return boxExports(database, id);
+	};
+	expect(await draftPerson(database, resolveExports, { conversationId: chat.id, person: "Bob" }, new AbortController().signal, (activity) => activities.push(activity)))
 		.toEqual({ name: "Bob", prompt: emptyPromptChannels(), quotes: [] });
 	expect(boxExports(database, chat.id).memory?.selectedClaims?.()).toMatchObject([{ claim: "Bob broke the glass." }]);
 	expect(activities.map(({ output }) => output)).toEqual(['Returned:\n[["Bob"],["Bob keeps the glass."]]']);

@@ -18,7 +18,8 @@ export const drafterRoutes = (database: Database, exportsOf: (conversationId: nu
 		const send = (event: DraftEvent) => emit(sse({ data: event }));
 		const finish = async () => {
 			try {
-				send({ type: "draft", draft: await draftPerson(database, exportsOf(body.conversationId), body, run.signal, (activity) => send({ type: "activity", activity })) });
+				const draft = await draftPerson(database, exportsOf, body, run.signal, (activity) => send({ type: "activity", activity }));
+				send({ type: "draft", draft });
 			} catch (error) {
 				send({ type: "failed", message: error instanceof Error ? error.message : String(error) });
 			} finally { close(); }

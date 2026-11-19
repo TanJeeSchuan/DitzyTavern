@@ -98,6 +98,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		unschemed: { fields: "setup: { schema: {}, initial: null }" },
 		"bad-initial": { fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, initial: 3 }' },
 		"old-sdk": { fields: `sdk: ${boxSdkVersion - 1}` },
+		"promptless-moves": { fields: `prompt: false, ${movesField}`, server: 'export default { moves: { render: () => "A Move." } };' },
 		mood: {},
 		renamed: { fields: 'id: "lantern"' },
 		broken: { server: 'throw new Error("The wick is wet.");' },
@@ -128,6 +129,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		["map-initial", "The map-initial Box's records.initial is invalid at /: Expected union value."],
 		["mood", "A Box with the id mood is already loaded."],
 		["old-sdk", `It was built for Box SDK ${boxSdkVersion - 1}; this host runs ${boxSdkVersion}.`],
+		["promptless-moves", "The promptless-moves Box must declare no Moves, since it declares prompt: false."],
 		["renamed", "Its folder must be named for its id, lantern."],
 		["unhooked", "The unhooked Box must declare a digest exactly when it declares a decision."],
 		["unlabelled", "Its descriptor is invalid at /label: Expected string."],
@@ -181,7 +183,10 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 });
 
 test("a Box's Exports answer through boxExports only while the Box is enabled in the Chat", async () => {
-	const plugins = installPlugins({ greeter: { fields: exportsField, server: "export default { exports: { greet: ({ name }) => ({ greeting: `Hello, ${name}.` }) } };" } });
+	const plugins = installPlugins({ greeter: {
+		fields: exportsField.replace("greet: {", 'greet: { name: "Greeting metadata",'),
+		server: "export default { exports: { greet: ({ name }) => ({ greeting: `Hello, ${name}.` }) } };",
+	} });
 	const database = openObservedDatabase();
 	try {
 		await loadBoxes([builtInBoxes, plugins]);
