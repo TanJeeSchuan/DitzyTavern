@@ -1,3 +1,5 @@
+import { installFetch } from "./test-fixtures/conversation";
+import { emptyPromptChannels } from "../shared/definition";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -30,9 +32,6 @@ Object.defineProperty(globalThis, "window", {
 const originalFetch = globalThis.fetch;
 const { commitImport, discardImport, previewImport, stageImport } = await import("./import-chat");
 
-const installFetch = (handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void => {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-};
 
 const json = (status: number, payload: WirePayload): Response =>
 	new Response(JSON.stringify(payload), {
@@ -80,14 +79,7 @@ describe("Chat import client boundary", () => {
 			type: "create",
 			definition: {
 				name: "Writer",
-				prompt: {
-					systemInstruction: "",
-					identity: "",
-					appearance: "",
-					scenario: "",
-					exampleDialogue: "",
-					postHistoryInstruction: "",
-				},
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: [],
 			},

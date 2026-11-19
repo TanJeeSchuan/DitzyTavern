@@ -1,3 +1,4 @@
+import { installFetch } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { GenerationStreamDelta, GenerationStreamState } from "./conversation-stream";
 
@@ -24,11 +25,7 @@ const attemptTarget = {
 const terminalPayload = <Payload extends object>(payload: Payload): string =>
 	JSON.stringify({ ...attemptTarget, ...payload });
 
-type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-const installFetch = (handler: FetchHandler): void => {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-};
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;

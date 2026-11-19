@@ -1,3 +1,4 @@
+import { generationTarget as target } from "./test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import type { GenerationEvent, GenerationStatePayload } from "../shared/contract/generation-events";
 import type {
@@ -11,7 +12,6 @@ import { NetworkError } from "./lib/request-outcome";
 import { hasActiveGenerationSessions } from "./generation-sessions";
 import type {
 	GenerationSessionsState,
-	GenerationSessionTarget,
 } from "./generation-sessions";
 
 // Thin integration tests for the session runner: a fake stream adapter
@@ -20,11 +20,6 @@ import type {
 // effects — subscriptions, aborts, story effects, and refresh requests —
 // without React or a network.
 
-const target = (generationId: number): GenerationSessionTarget => ({
-	generationId,
-	messageId: 900 + generationId,
-	variantId: 9_000 + generationId,
-});
 
 const contentEvent = (text: string): GenerationEvent => ({ type: "content", text });
 

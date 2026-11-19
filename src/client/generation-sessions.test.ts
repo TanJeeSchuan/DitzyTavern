@@ -1,3 +1,4 @@
+import { generationTarget as target } from "./test-fixtures/conversation";
 import { describe, expect, test } from "bun:test";
 import type { GenerationEvent, GenerationStatePayload } from "../shared/contract/generation-events";
 import type { GenerationStreamResult } from "./conversation-stream";
@@ -18,15 +19,6 @@ import {
 // plus ordered effects out, so subscription phases, cursors, stop state,
 // errors, and terminal handling stay verifiable without React or a network.
 
-const target = (
-	generationId: number,
-	overrides: Partial<GenerationSessionTarget> = {},
-): GenerationSessionTarget => ({
-	generationId,
-	messageId: 900 + generationId,
-	variantId: 9_000 + generationId,
-	...overrides,
-});
 
 const targetsFor = (...generationIds: readonly number[]): readonly GenerationSessionTarget[] =>
 	generationIds.map((generationId) => target(generationId));

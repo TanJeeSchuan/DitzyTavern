@@ -1,3 +1,4 @@
+import { installFetch } from "../../test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { flushHook, renderHook } from "../../test-fixtures/render-hook";
 import { QueryClient } from "@tanstack/react-query";
@@ -14,9 +15,6 @@ const profile = (name: string): ConnectionProfile => ({
 });
 const settings = (revision: number, name: string): ConnectionSettings => ({ revision, profiles: [profile(name)] });
 const client = () => new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
-const installFetch = (handler: (url: string, init?: RequestInit) => Promise<Response>) => {
-	globalThis.fetch = Object.assign((input: RequestInfo | URL, init?: RequestInit) => handler(String(input), init), { preconnect() {} });
-};
 
 test("a late settings read cannot roll back a successful save", async () => {
 	const cache = client();

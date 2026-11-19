@@ -1,8 +1,8 @@
 # T7: Tests
 
-Status: READY
+Status: IN PROGRESS
 
-Blocked By: T6 (branch from T6's tip; T6's PR may still be open)
+Blocked By: T6 (merged)
 
 Model: Sol 6.2 high. Reviewer: Sonnet 5.5 high.
 
@@ -40,7 +40,7 @@ Report 24.
 
 ## TODO
 
-- [ ] Slice a, PR
+- [x] Slice a, PR
 - [ ] Slice b, PR
 - [ ] Slice c, PR
 
@@ -49,3 +49,7 @@ Report 24.
 `git grep -l 'postHistoryInstruction:' -- 'src/*.test.ts' | wc -l` is under 10. `git grep -n 'while (captured === undefined)' -- src` is empty. The unit suite passes in CI with the same count of tests minus those the slices delete; list the deleted tests in the Outcome.
 
 ## Outcome
+
+- Slice a uses the shared prompt constructor and fixture builders for Participants, Chats, Generation acceptance, Connection Profiles, SSE replies, Lore entries, migration cutoffs, and client tests.
+- The prompt field search went from 73 test files to nine. No tests or assertions were removed or changed. A static comparison against the base checked 999 test declarations and 3,442 assertions in the edited tests.
+- Changed-file lint and `git diff --check` passed. GitHub Actions runs the test suites and typecheck.
