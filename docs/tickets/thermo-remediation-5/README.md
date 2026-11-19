@@ -48,18 +48,22 @@ A scout's line numbers were read at `91184797`. Find the code again by name when
 | 3 | [T3 Stylesheets](t3-stylesheets.md) | one PR | Opus | Opus |
 | 4 | [T4 Generation lifecycle](t4-generation-lifecycle.md) | a, b, c, d | Astra for a and b; Sol for c and d | Sol |
 | 5 | [T5 Wire](t5-wire.md) | a, b, c, d | Sol | Sol |
-| 6 | [T6 Generation Settings column](t6-generation-settings-column.md) | one PR | Astra | Sol |
+| 5b | [T9 Authoring requests and redirects](t9-authoring-fetch.md) | one PR | Sol | Sol |
+| 6 | [T6 Generation Settings column](t6-generation-settings-column.md) | one PR | Sol | Sol |
 | 7 | [T7 Tests](t7-tests.md) | a, b, c | Sol | Sol |
-| 8 | [T8 Client state](t8-client-state.md) | a, b, c, d | Sol for a; Astra for b, c, d | Sol |
+| 8 | [T8 Client state](t8-client-state.md) | a, b, c, d | Sol for a, b and c; Astra for d | Sol |
+| 9 | [T10 Guardrails](t10-guardrails.md) | a, b, c, d | Sol | Sol |
+
+T9 and T10 were added on 2026-11-19 from the round 5 retro; the owner asked for both. Sol means Sol 6.2 from T2 on; T6, T8b and T8c moved off Astra; reviews from T6 on run on Sonnet 5.5 high instead of Opus (owner, 2026-11-19).
 
 ## For the orchestrator
 
 - Follow `~/.claude/skills/orchestrate-implementation/SKILL.md`. The owner has approved this plan, so start without asking again.
 - One implementer at a time. Dispatch a ticket with slices one slice per implementer run, in order, so the model column above can change between slices.
-- Give each implementer the standard prompt plus one line naming its reviewer: Opus 5.5 high for a Codex implementer, `codex gpt-6.1-sol high` for an Opus implementer.
-- Astra writes the first implementation and stops when its focused checks pass. A Sol delegate in the same checkout then fixes review findings and CI and watches the PR.
+- Give each implementer the standard prompt plus one line naming its reviewer: Sonnet 5.5 high for a Codex implementer, `codex gpt-6.2-sol high` for a Claude implementer.
+- Where the table names Astra as first writer, Astra stops when its focused checks pass, and a Sol delegate in the same checkout fixes review findings and CI.
 - Before a wait on a Codex 429, check quota through the cliproxy management API.
 - **Merging.** Merge bottom-up when CI is green and the newest `github-actions` review comment on the head commit raises nothing. Retarget the next PR to master after each merge. Two exceptions wait for the owner: T6, and T8 slice c.
-- **T8 slice c** stops after Astra's first write. Report the new state model to the owner and wait before starting fixes.
+- **T8 slice c** stops after the first write. Report the new state model to the owner and wait before starting fixes.
 - **Eval.** After each bug fix in T1 merges, copy its new test file into `~/Projects/DitzyTavern-eval/solutions/` with a one-line note of which bug it covers.
 - Stop and ask the owner when a ticket's premise turns out false, when kept surface is in the way, or when a slice cannot stay behaviour-preserving.

@@ -32,6 +32,39 @@ test("a profile maps to libfx's provider: its base URL, key, custom headers and 
 	}
 });
 
+test.each([null, 4_000])("an authoring request rejects a cross-origin 307 (idle timeout %p)", async (timeoutMs) => {
+	const destinationRequests: { authorizationPresent: boolean }[] = [];
+	const destination = Bun.serve({
+		hostname: "127.0.0.1", port: 0,
+		fetch(request) {
+			destinationRequests.push({ authorizationPresent: request.headers.has("authorization") });
+			return new Response("ok");
+		},
+	});
+	const authorizations: (string | null)[] = [];
+	const origin = Bun.serve({
+		hostname: "127.0.0.1", port: 0,
+		fetch(request) {
+			authorizations.push(request.headers.get("authorization"));
+			return new Response(null, { status: 307, headers: { location: destination.url.href } });
+		},
+	});
+	try {
+		const mapped = libfxProvider(profile({ requestUrl: origin.url.href, timeoutMs }), { credential: "test-key", headers: {} }, choice);
+		if (mapped.outcome !== "mapped") throw new Error(mapped.reason);
+		const signal = AbortSignal.timeout(3_000);
+		const outcome = await mapped.options.fetch(new URL("/chat/completions", origin.url).href, { method: "POST", body: "{}", signal }).then(async (response) => {
+			await response.text();
+			return response.status;
+		}, () => "rejected");
+		expect(authorizations).toEqual(["Bearer test-key"]);
+		expect(signal.aborted).toBe(false);
+		expect({ outcome, destinationRequests }).toEqual({ outcome: "rejected", destinationRequests: [] });
+	} finally {
+		await Promise.all([origin.stop(true), destination.stop(true)]);
+	}
+});
+
 test("a profile setting libfx cannot carry is refused with the reason the writer sees", () => {
 	const reason = (fields: Partial<ConnectionProfilePayload>) => {
 		const mapped = libfxProvider(profile(fields), null, choice);
