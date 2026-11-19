@@ -62,6 +62,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	onSelectVariant,
 	swipeBrowsing,
 	onEdit,
+	waitForHistory,
 	continueLabel = "Continue",
 	onContinue,
 	onRegenerate,
@@ -103,6 +104,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	onSelectVariant: (messageId: number, variantId: number) => void;
 	swipeBrowsing: SwipeBrowsing;
 	onEdit: (messageId: number, content: string, asNew: boolean, baseRevision: number) => Promise<boolean>;
+	waitForHistory: () => Promise<void>;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
 	onRegenerate?: (messageId: number) => void;
@@ -134,34 +136,35 @@ export const StoryMessageView = memo(function StoryMessageView({
 	const [editText, setEditText] = useState("");
 	const authorName = message.authorName ?? "Unknown author";
 
-	useEffect(() => setIsEditing(false), [active?.id]);
-
-	const [editBase, setEditBase] = useState({ content: "", revision: historyRevision });
-	const [changedElsewhere, setChangedElsewhere] = useState(false);
+	const [editBase, setEditBase] = useState<{ variantId: number | undefined; content: string; revision: number }>({ variantId: undefined, content: "", revision: historyRevision });
+	const [editConflict, setEditConflict] = useState<"review" | "overwrite" | null>(null);
 	const [saving, setSaving] = useState(false);
+	const canSave = !mutationsDisabled && !saving && active?.content != null && (editText.trim() !== "" || hasMoves(message.moves));
 	const openEditor = () => {
-		if (!isEditing) setEditText(active?.content ?? "");
-		setEditBase({ content: active?.content ?? "", revision: historyRevision });
-		setChangedElsewhere(false);
+		if (isEditing) return;
+		setEditText(active?.content ?? "");
+		setEditBase({ variantId: active?.id, content: active?.content ?? "", revision: historyRevision });
+		setEditConflict(null);
 		setIsEditing(true);
 	};
-	const saveEdit = async (asNew: boolean) => {
+	const saveEdit = async (asNew: boolean, revalidate = false) => {
 		const duplicate = asNew && editText === editBase.content;
 		const value = duplicate ? editBase.content : editText.trim();
 		if (mutationsDisabled || saving) return false;
 		if ((!value && !duplicate && !hasMoves(message.moves)) || active === undefined || active.content === null) return false;
-		if ((!asNew && active.content !== editBase.content) || historyRevision !== editBase.revision) {
-			setEditBase({ content: active.content, revision: historyRevision });
-			setChangedElsewhere(true);
+		if (active.id !== editBase.variantId || (!asNew && active.content !== editBase.content) || (!revalidate && historyRevision !== editBase.revision)) {
+			if (!revalidate) setEditBase({ variantId: active.id, content: active.content, revision: historyRevision });
+			setEditConflict(revalidate ? "review" : "overwrite");
 			return false;
 		}
 		setSaving(true);
-		const applied = await onEdit(message.id, value, asNew, editBase.revision);
-		setSaving(false);
-		if (applied) setIsEditing(false);
-		return applied;
+		try {
+			const applied = await onEdit(message.id, value, asNew, historyRevision);
+			if (applied) setIsEditing(false);
+			return applied;
+		} finally { setSaving(false); }
 	};
-	useSaveGuard({ dirty: isEditing && editText !== editBase.content, saving, save: () => saveEdit(false), discard: () => setIsEditing(false) });
+	useSaveGuard({ dirty: isEditing && editText !== editBase.content, saving, canSave, save: () => saveEdit(false, true), waitAfterSave: waitForHistory, discard: () => setIsEditing(false) });
 	const movePrevious = () => {
 		setSwipeDirection("previous");
 		onMoveSwipe(message.id, -1);
@@ -283,7 +286,9 @@ export const StoryMessageView = memo(function StoryMessageView({
 				<div className="message-editor">
 					<span>Edit Message</span>
 					<ProseEditor value={editText} onChange={setEditText} ariaLabel="Edit Message" autoFocus disabled={saving} />
-					{changedElsewhere && <small className="field-error" role="alert">Changed elsewhere. Save again to overwrite.</small>}
+					{editConflict !== null && <small className="field-error" role="alert">
+						{editConflict === "overwrite" ? "Changed elsewhere. Save again to overwrite." : "Changed elsewhere. Review this draft before saving."}
+					</small>}
 					<div>
 						<button
 							className="secondary-button"
@@ -304,7 +309,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 						<button
 							className="primary-button"
 							type="button"
-							disabled={mutationsDisabled || saving}
+							disabled={!canSave}
 							onClick={() => saveEdit(false)}
 						>
 							Save

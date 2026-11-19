@@ -205,7 +205,7 @@ export function ActiveWritingWorkspace({
 	};
 	const unlinkFork = () => {
 		if (conversation === null) return;
-		void runConversationCommand({ conversationId: conversation.id, revision: () => isStoryReady(story) ? story.revision : null, exact: true, onConversationChange: session.setConversation, setNotice: setForkNotice, isCurrent: () => !session.signal.aborted }, { type: "unlink-fork" });
+		void runConversationCommand({ conversationId: conversation.id, revision: () => conversation.revision, exact: true, onConversationChange: session.setConversation, setNotice: setForkNotice, isCurrent: () => !session.signal.aborted }, { type: "unlink-fork" });
 	};
 	const openForkSource = () => {
 		const source = conversation?.forkedFrom;

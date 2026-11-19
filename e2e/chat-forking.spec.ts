@@ -9,6 +9,28 @@ const forkOrigin = async (page: Page) => {
 	return page.getByRole("button", { name: /Forked from/ });
 };
 
+test("Remove Fork link uses the Summary while the Fork's history is loading", async ({ page, request }) => {
+	await page.goto("/");
+	const message = story(page).locator("article[data-message-id]").last();
+	await message.hover();
+	await message.getByRole("button", { name: "Fork", exact: true }).click();
+	const held = Promise.withResolvers<void>();
+	await page.route("**/api/conversations/*/history*", async (route) => { await held.promise; await route.continue(); });
+	const forked = page.waitForResponse((response) => response.url().endsWith("/fork") && response.ok());
+	await page.getByRole("dialog", { name: "Fork Chat" }).getByRole("button", { name: "Fork", exact: true }).click();
+	const { conversation } = await (await forked).json();
+	const origin = await forkOrigin(page);
+	await expect(origin).toBeVisible();
+	await expect(story(page).locator("article[data-message-id]")).toHaveCount(0);
+	const url = `/api/conversations/${conversation.id}`;
+	const unlink = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok());
+	await page.getByRole("button", { name: "Remove Fork link" }).click();
+	expect((await unlink).request().postDataJSON()).toMatchObject({ expectedRevision: conversation.revision, action: { type: "unlink-fork" } });
+	await expect(origin).toBeHidden();
+	expect((await (await request.get(url)).json()).forkedFrom).toBeNull();
+	held.resolve();
+});
+
 test("a trimmed Fork is independent and Rewind restores the human draft", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["First answer."] }, { chunks: ["Second answer."] }, { chunks: ["Fork answer."] }, { chunks: ["Rewritten answer."] });
 	await page.goto("/");

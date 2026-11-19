@@ -169,6 +169,22 @@ test("a newer source position aborts the old window and never scrolls to its lat
 	expect(scrolls).toEqual(['[data-message-id="103"]']);
 });
 
+test("a source request can open before the first transcript page arrives", async () => {
+	const first = Promise.withResolvers<Response>();
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return Response.json(summary());
+		return url.searchParams.has("aroundMessageId") ? Response.json(page(1, 3)) : first.promise;
+	});
+	const scrolls: string[] = [];
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: (selector: string) => ({ scrollIntoView: () => scrolls.push(selector) }) } });
+	let jump = Promise.resolve();
+	await h.hook.act(async () => { jump = h.hook.current.navigateToSourceMessage(101); });
+	await h.hook.act(async () => { first.resolve(Response.json(page())); await jump; });
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+	expect(scrolls).toEqual(['[data-message-id="101"]']);
+});
+
 test("a failed source jump leaves the current transcript readable", async () => {
 	const h = await harness(({ url }) => Promise.resolve(url.searchParams.has("aroundMessageId")
 		? Response.json({ error: "Server bug" }, { status: 500 })
@@ -206,7 +222,7 @@ test("a failed source jump leaves an earlier source read eligible to commit", as
 		if (!url.pathname.endsWith("history")) return Response.json(summary());
 		const source = url.searchParams.get("aroundMessageId");
 		if (source === "101") return earlier.promise;
-		if (source === "103") return Response.json({ outcome: "not-found" }, { status: 404 });
+		if (source === "103") return Response.json({ error: "Server bug" }, { status: 500 });
 		return Response.json(page());
 	});
 	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
@@ -259,20 +275,32 @@ test("a source jump cannot replace the displayed window with an older revision",
 	expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
 });
 
-test("Delete uses the newer Conversation Summary after a source jump", async () => {
+test("Delete uses the displayed history revision after a source jump", async () => {
 	let revision = 5;
+	const refreshed = Promise.withResolvers<Response>();
 	const h = await harness(async ({ url, init }) => {
 		if (init?.method === "POST") return Response.json({ outcome: "invalid", reason: "Test command" }, { status: 422 });
 		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
-		if (url.searchParams.has("aroundMessageId")) { revision = 6; return Response.json(page(1, 3, 6)); }
+		if (url.searchParams.has("aroundMessageId")) {
+			if (revision === 7) return refreshed.promise;
+			revision = 6;
+			return Response.json(page(1, 3, 6));
+		}
 		return Response.json(page());
 	});
 	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
 	await flushHook();
+	revision = 7;
+	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 7)));
+	await flushHook();
+	expect(h.hook.current.conversation?.revision).toBe(7);
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
 	await h.hook.act(async () => h.hook.current.deleteStoryMessage(101));
 	const command = h.requests.find(({ init }) => init?.method === "POST");
 	expect(JSON.parse(String(command?.init?.body))).toMatchObject({ expectedRevision: 6, action: { type: "delete-message", messageId: 101 } });
+	await h.hook.act(async () => refreshed.resolve(Response.json(page(1, 3, 7))));
+	await flushHook();
 });
 
 test("a history refresh that returns 404 reports failure and keeps the loaded transcript", async () => {
@@ -661,7 +689,7 @@ test("refresh stops retrying stale pages and keeps the newer cached window", asy
 	expect(h.hook.current.story.messages[0]?.swipes[0]?.content).toBe("Before");
 });
 
-test("refresh reports a deleted source anchor and keeps the detached transcript", async () => {
+test("refresh falls back to latest when the detached source anchor is deleted", async () => {
 	let deleted = false;
 	const h = await harness(({ url }) => Promise.resolve(url.pathname.endsWith("history")
 		? url.searchParams.has("aroundMessageId") && deleted ? Response.json({ outcome: "not-found" }, { status: 404 })
@@ -670,10 +698,10 @@ test("refresh reports a deleted source anchor and keeps the detached transcript"
 	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
 	deleted = true;
-	await h.hook.act(async () => { await expect(h.hook.current.refreshStory(1)).rejects.toBeInstanceOf(Error); });
+	await h.hook.act(async () => h.hook.current.refreshStory(1));
 	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
-	expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
 });
 
 test("initial history behind Conversation authority refetches and finishes opening", async () => {
@@ -1010,6 +1038,42 @@ test("a missing initial source on the final consistency attempt still opens late
 	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
 });
 
+for (const index of [1, 3]) test(`a deleted source on page ${index} returns to latest on active Chat retry`, async () => {
+	let unreachable = false;
+	let deleted = false;
+	const sourceId = index === 1 ? 205 : 201;
+	const h = await harness(async ({ url }) => {
+		const id = Number(url.pathname.split("/")[3]);
+		const revision = deleted ? 6 : 5;
+		if (!url.pathname.endsWith("history")) return Response.json(summary(id, revision));
+		if (unreachable) return Response.json({ error: "Server bug" }, { status: 500 });
+		if (url.searchParams.has("aroundMessageId")) return deleted ? Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(page(id, index));
+		const latest = page(id, 1, revision);
+		return Response.json(deleted ? { ...latest, messages: latest.messages.filter(({ id }) => id !== sourceId) } : latest);
+	});
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	await h.hook.act(async () => h.hook.current.selectChat("2", sourceId));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toContain(sourceId);
+	unreachable = true;
+	await h.hook.act(async () => h.hook.current.refreshStory(2).catch(() => null));
+	await flushHook();
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
+	const signal = h.hook.current.signal;
+	unreachable = false;
+	deleted = true;
+	await h.hook.act(async () => h.hook.current.selectChat("2"));
+	await flushHook();
+	expect(h.hook.current.signal).toBe(signal);
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).not.toContain(sourceId);
+	expect(h.requests.filter(({ url }) => url.searchParams.has("aroundMessageId"))).toHaveLength(3);
+	await h.hook.act(async () => h.hook.current.refreshStory(2));
+	expect(h.requests.filter(({ url }) => url.searchParams.has("aroundMessageId"))).toHaveLength(3);
+});
+
 test("paging survives a same-revision refresh that changes the live checkpoint", async () => {
 	const pending = Promise.withResolvers<Response>();
 	let refreshed = false;
@@ -1029,6 +1093,7 @@ test("paging survives a same-revision refresh that changes the live checkpoint",
 	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
 	expect(h.hook.current.story.messages.find(({ id }) => id === 105)?.swipes[0]?.content).toBe("Live checkpoint");
+	expect(pages).toBe(1);
 });
 
 test("selectChat retires a queued command before dispatch and leaves the replacement visit usable", async () => {

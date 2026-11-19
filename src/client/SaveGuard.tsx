@@ -2,7 +2,14 @@ import { createContext, useCallback, useContext, useEffect, useReducer, useRef, 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-export type SaveGuard = { dirty: boolean; saving?: boolean; canSave?: boolean; save: () => Promise<boolean>; discard: () => void };
+export type SaveGuard = {
+	dirty: boolean;
+	saving?: boolean;
+	canSave?: boolean;
+	save: () => Promise<boolean>;
+	waitAfterSave?: () => Promise<void>;
+	discard: () => void;
+};
 export const SaveGuardContext = createContext<(guard: SaveGuard) => () => void>(() => () => undefined);
 export const SaveNavigationContext = createContext<(action: () => void) => void>((action) => action());
 
@@ -32,7 +39,8 @@ export function useSaveNavigation(): SaveNavigationController {
 		return () => { guards.current.delete(guard); bumpGuards(); };
 	}, []);
 
-	// @approved Stable, because it is a context value: a new one each render made every consumer below the workspace re-render with each streamed event.
+	// @approved
+	// Stable context identity keeps streamed events from re-rendering every consumer.
 	const requestNavigation = useCallback((action: () => void) => {
 		if ([...guards.current].some((guard) => guard.dirty || guard.saving)) { setError(null); setLeaveAction(() => action); }
 		else action();
@@ -46,7 +54,10 @@ export function useSaveNavigation(): SaveNavigationController {
 		setLeaveSaving(true);
 		setError(null);
 		try {
-			for (const guard of dirty) if (!(await guard.save())) { setError(SAVE_ERROR); return; }
+			for (const [index, guard] of dirty.entries()) {
+				if (!(await guard.save())) { setError(SAVE_ERROR); return; }
+				if (index < dirty.length - 1) await guard.waitAfterSave?.();
+			}
 			const action = leaveAction;
 			setLeaveAction(null);
 			action();
@@ -83,6 +94,7 @@ export function useSaveGuard(guard: SaveGuard) {
 		get dirty() { return live.current.dirty; },
 		get saving() { return live.current.saving; },
 		get canSave() { return live.current.canSave; },
+		get waitAfterSave() { return live.current.waitAfterSave; },
 		save: () => live.current.save(),
 		discard: () => live.current.discard(),
 	});

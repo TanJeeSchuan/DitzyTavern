@@ -9,19 +9,15 @@ export const historyWindowKey = (refreshKey: QueryKey) => ["history-window", ...
 export const conversationHistoryKey = (id: number) => ["conversation-history", id] as const;
 
 // @approved
-//  One abortable query step: combine the query's signal with the owner's, yield
-// once so an already-aborted owner rejects before the request, and surface
-// cancellation before and after the load.
+// Yield before the request and surface cancellation before and after the load.
 export const cancellableFetch = async <T>(
 	signal: AbortSignal,
-	owner: AbortSignal | undefined,
 	load: (cancellation: AbortSignal) => Promise<T>,
 ): Promise<T> => {
-	const cancellation = owner ? AbortSignal.any([signal, owner]) : signal;
 	await Promise.resolve();
-	cancellation.throwIfAborted();
-	const value = await load(cancellation);
-	cancellation.throwIfAborted();
+	signal.throwIfAborted();
+	const value = await load(signal);
+	signal.throwIfAborted();
 	return value;
 };
 
@@ -73,7 +69,7 @@ export const conversationQuery = (client: QueryClient, id: number) => ({
 	refetchOnReconnect: false,
 	refetchOnWindowFocus: "always" as const,
 	queryFn: async ({ signal }: { signal: AbortSignal }) => {
-		const incoming = await cancellableFetch(signal, undefined, (cancellation) => loadConversation(id, cancellation));
+		const incoming = await cancellableFetch(signal, (cancellation) => loadConversation(id, cancellation));
 		if (incoming !== null) await loadBoxVersions(incoming);
 		return adoptConversation(client, incoming, id);
 	},

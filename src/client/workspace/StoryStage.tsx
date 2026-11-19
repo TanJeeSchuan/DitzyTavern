@@ -120,8 +120,8 @@ export function StoryStage({
 	//  Message rows are memoized, so a streamed event re-renders only the row
 	// whose text changed. Their handlers keep one identity across renders and
 	// call the latest render's.
-	const latest = useRef({ generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint });
-	latest.current = { generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint };
+	const latest = useRef({ session, generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint });
+	latest.current = { session, generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint };
 	const rows = useMemo(() => ({
 		paint: (variantId: number) => latest.current.onPaint(variantId),
 		continueMessage: (messageId: number) => latest.current.generation.continueMessage(messageId),
@@ -139,6 +139,7 @@ export function StoryStage({
 		moveSwipe: (messageId: number, direction: -1 | 1) => void latest.current.storyActions.changeSwipe(messageId, direction),
 		selectVariant: (messageId: number, variantId: number) => void latest.current.storyActions.selectSwipe(messageId, variantId),
 		edit: (messageId: number, content: string, asNew: boolean, baseRevision: number) => latest.current.storyActions.editStoryMessage(messageId, content, asNew, baseRevision),
+		waitForHistory: () => latest.current.session.waitForHistory(),
 		fork: (messageId: number) => latest.current.onFork({ through: messageId }),
 		rewind: (messageId: number) => latest.current.onFork({ rewind: messageId }),
 		setMoves: (messageId: number, moves: BoxMoves) => void latest.current.storyActions.setMessageMoves(messageId, moves),
@@ -259,6 +260,7 @@ export function StoryStage({
 							onMoveSwipe={rows.moveSwipe}
 							onSelectVariant={rows.selectVariant}
 							onEdit={rows.edit}
+							waitForHistory={rows.waitForHistory}
 							onFork={rows.fork}
 							onRewind={message.authorRole === "human" ? rows.rewind : undefined}
 							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating ? rows.setMoves : undefined}
@@ -282,7 +284,7 @@ export function StoryStage({
 				</div>
 			</div>
 
-			{(story.status === "error" || readyStory?.page.hasNewer) && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
+			{(story.status === "error" || readyStory?.historyFailed || readyStory?.page.hasNewer) && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
 				<button
 					className="secondary-button"
 					type="button"

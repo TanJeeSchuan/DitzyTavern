@@ -18,14 +18,14 @@ const recipeKey = ["prompt-preset-editor"] as const;
 export const presetLibraryQuery = queryOptions({
 	queryKey: ["prompt-presets"],
 	staleTime: Infinity,
-	queryFn: ({ signal }) => cancellableFetch(signal, undefined, listPromptPresets),
+	queryFn: ({ signal }) => cancellableFetch(signal, listPromptPresets),
 });
 
 export const presetRecipeQuery = (conversationId: number, revision: number, presetId: number | undefined) => queryOptions({
 	queryKey: [...recipeKey, conversationId, presetId, revision] as const,
 	staleTime: Infinity,
 	refetchOnReconnect: false,
-	queryFn: ({ signal }) => cancellableFetch(signal, undefined, (cancellation) => loadConversationPromptPreset(conversationId, cancellation, presetId)),
+	queryFn: ({ signal }) => cancellableFetch(signal, (cancellation) => loadConversationPromptPreset(conversationId, cancellation, presetId)),
 });
 
 const operationProblem = (outcome: Exclude<PromptPresetOperationOutcome, { outcome: "available" }>, message: string) =>

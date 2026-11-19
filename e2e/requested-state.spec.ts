@@ -164,7 +164,12 @@ test("accepted writes disable transcript controls until displayed history catche
 	await expect(reply.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
 	await expect(reply.getByRole("button", { name: "Previous Swipe", exact: true })).toBeDisabled();
 	await expect(reply.getByRole("textbox", { name: "Edit Message" })).toHaveText("Draft kept while history loads.");
+	await page.getByRole("button", { name: "Chats", exact: true }).click();
+	const guard = page.getByRole("dialog", { name: "Unsaved changes" });
+	await expect(guard.getByRole("button", { name: "Save and leave" })).toBeDisabled();
 	held.resolve();
+	await expect(guard.getByRole("button", { name: "Save and leave" })).toBeEnabled();
+	await guard.getByRole("button", { name: "Keep editing" }).click();
 	await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: B" })).toBeEnabled();
 	await expect(reply.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
 	await expect(reply.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();

@@ -122,6 +122,7 @@ function Preview() {
 								onSelectVariant={() => {}}
 								swipeBrowsing="fan"
 								onEdit={async () => false}
+								waitForHistory={async () => {}}
 								onFork={() => {}}
 								generationControls={entry.id === reply.id && generating && (
 									<GenerationControls
