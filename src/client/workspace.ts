@@ -31,8 +31,8 @@ export function resolveWorkspaceActiveChat(
 	return chats.find((chat) => chat.id === authoritativeActiveChatId) ?? null;
 }
 
-const fetchWorkspace = async ({ signal }: { signal: AbortSignal }) => {
-	const data = await requestData(api.api.workspace.get({ fetch: { signal } }), workspaceResponse);
+const fetchWorkspace = async () => {
+	const data = await requestData(api.api.workspace.get(), workspaceResponse);
 	return {
 		activeChatId: data.activeChatId === null ? null : String(data.activeChatId),
 		chats: data.chats.map((chat): ChatSummary => ({

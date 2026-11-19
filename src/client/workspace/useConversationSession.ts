@@ -101,12 +101,8 @@ export function useConversationSession({ initialChatId, story, dispatchStory }: 
 		if (new Set(revisions).size > 1 || revisions.some((revision) => revision < (conversation?.revision ?? 0))) void history.refetch({ cancelRefetch: false });
 	}, [history.data, conversation, history.refetch]);
 
-	const listedTitle = useQuery({
-		...workspaceQuery,
-		enabled: false,
-		select: useCallback((workspace) => workspace.chats.find((chat) => chat.id === activeChatId)?.title, [activeChatId]),
-	}).data;
-	const activeChatTitle = conversation?.name ?? listedTitle ?? "Chat";
+	const workspace = useQuery({ ...workspaceQuery, enabled: false }).data;
+	const activeChatTitle = conversation?.name ?? workspace?.chats.find((chat) => chat.id === activeChatId)?.title ?? "Chat";
 	const selectChat = (chatId: string, messageId: number | null = null) => {
 		if (chatId === activeChatIdRef.current) return;
 		navigation.current.window.abort();
