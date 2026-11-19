@@ -228,11 +228,12 @@ export const addPromptPresetBlock = (
 ): PromptPresetRecipe =>
 	withRecipe(database, presetId, (db, recipe) => {
 		if (conversationId === undefined) return placeBlock(db, recipe, reference);
-		if (readConversationPromptPresetRecipeFromConnection(db, conversationId)?.id !== presetId) {
+		const chat = drizzle(database);
+		if (readConversationPromptPresetRecipeFromConnection(chat, conversationId)?.id !== presetId) {
 			throw new InvalidPromptPresetOperationError("This Chat no longer uses that Prompt Preset.");
 		}
 		const id = boxIdOf(reference);
-		const box = id === undefined ? undefined : chatBox(db, conversationId, id)?.descriptor;
+		const box = id === undefined ? undefined : chatBox(chat, conversationId, id)?.descriptor;
 		return placeBlock(db, recipe, reference, box);
 	});
 

@@ -309,7 +309,7 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 			const result = vm.evalCode(code, "run.js", { type: "global" });
 			const failure = result.error === undefined ? undefined : failureOf(result.error);
 			if (failure !== undefined && guestLimit(failure)) return runFailure(failure);
-			using value = result.value;
+			using value = "value" in result ? result.value : undefined;
 			while (!expired() && runtime.hasPendingJob()) {
 				const jobs = runtime.executePendingJobs(64);
 				if (jobs.error !== undefined) return runFailure(failureOf(jobs.error));
