@@ -76,4 +76,5 @@ Report 18, finding 5; report 20, finding 5.
 - Changed-file lint and `git diff --check` passed for the library PR. Typecheck, unit tests, and e2e run in GitHub Actions.
 - Slice b shares the Connection, Semantic Trigger, Model Selection, and Box Decision Model and delegate settings response maps across the server and client. It removes the unused core error unions. The Box SDK keeps its three-argument `requestOutcome` API.
 - Slice c uses one Generation start route for Send, Continue, and Sibling. Preview takes the same target under `target`. The Paint Preset and Brief Message count actions advance the Chat revision through the Conversation dispatcher.
+- Slice c, not stated in the ticket: a Sibling start carrying an edited Prompt Plan without a preview token now returns 422, as Send and Continue already did. Master generated it and dropped the edit. Accepted by the orchestrator on 2026-11-19. Merged as PR #282; its first e2e run failed `story-jump.spec.ts` on "Send exact plan" and passed on rerun.
 - GitHub Actions reproduced bug 8 on the test-only commit. `src/server/contract/paint-preset-commands.test.ts` expected HTTP 422 for a revisionless write and got 200.
