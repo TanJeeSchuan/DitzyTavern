@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { test, expect, story } from "./fixtures";
 
 const sentAt = (minute: number, second = 0) => new Date(Date.UTC(2026, 0, 1, 0, minute, second)).toISOString();
@@ -22,7 +23,7 @@ for (const layout of [{ name: "desktop", viewport: { width: 1440, height: 900 } 
 	test.describe(layout.name, () => {
 		test.use({ viewport: layout.viewport });
 
-		test("an imported SillyTavern chat opens with its swipes, history and preserved source", async ({ page }) => {
+		test("an imported SillyTavern chat opens with its swipes, history and preserved source", async ({ page, request, llm }) => {
 			const filename = `import-${layout.name}.jsonl`;
 			const source = exportFile(`e2e-${layout.name}`);
 			await page.goto("/");
@@ -66,6 +67,16 @@ for (const layout of [{ name: "desktop", viewport: { width: 1440, height: 900 } 
 			await page.getByRole("button", { name: "Download original file", exact: true }).click();
 			expect((await download).suggestedFilename()).toBe(filename);
 			expect(readFileSync((await (await download).path())).equals(source)).toBe(true);
+
+			if (layout.name === "desktop") {
+				const id = await page.getByText("Chat ID", { exact: true }).locator("..").locator("dd").textContent();
+				const details = await (await request.get(`/api/conversations/${id}/import-details`)).json();
+				rmSync(join(await llm.directory(), "artifacts", details.artifact.relativePath));
+				await page.getByRole("button", { name: "Close Chat information" }).click();
+				await page.getByRole("button", { name: "Chat information", exact: true }).click();
+				await expect(page.getByRole("alert").filter({ hasText: "The original file is missing" })).toBeVisible();
+				await expect(page.getByRole("button", { name: "Download original file", exact: true })).toBeDisabled();
+			}
 		});
 	});
 }

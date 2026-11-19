@@ -6,7 +6,6 @@ import { boxMetadata, type BoxId } from "../../shared/contract/box";
 import { BoxBoundary, BoxIcon } from "../box-windows/BoxBoundary";
 import { boxClients, boxPresent } from "../box-windows/registry";
 import type { ConversationSummary } from "../conversation";
-import type { ChatSummary } from "../workspace";
 
 const headerItemLook = "max-w-56 rounded-xl text-[0.78rem] font-semibold text-muted-foreground tabular-nums";
 const offHeaderItemLook = "max-w-56 rounded-xl text-[0.78rem] font-normal text-[var(--text-faint)] tabular-nums opacity-75";
@@ -28,7 +27,7 @@ function HeaderItem({ conversation, box, icon: Icon, Status, onOpen }: {
 }
 
 export function StoryHeader({
-	chat,
+	chatTitle,
 	conversation,
 	onOpenNavigation,
 	onOpenCast,
@@ -37,7 +36,7 @@ export function StoryHeader({
 	onOpenInspector,
 	onOpenWindow,
 }: {
-	chat: ChatSummary;
+	chatTitle: string;
 	conversation: ConversationSummary | null;
 	onOpenNavigation: () => void;
 	onOpenCast: () => void;
@@ -61,7 +60,7 @@ export function StoryHeader({
 				<DropdownMenu>
 					<h1>
 						<DropdownMenuTrigger className="story-title-trigger">
-							<span>{chat.title}</span>
+							<span>{chatTitle}</span>
 							<ChevronDown aria-hidden="true" />
 						</DropdownMenuTrigger>
 					</h1>

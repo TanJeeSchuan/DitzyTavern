@@ -1,71 +1,189 @@
-import type { ConversationSummary } from "../../conversation";
-import { usePromptPresetEditorRuntime } from "./usePromptPresetEditorRuntime";
+import { queryOptions, useQueryClient } from "@tanstack/react-query";
+import { useRef, useState } from "react";
+import { loadConversationPromptPreset, type ConversationSummary } from "../../conversation";
+import { runConversationCommand } from "../../conversation-command-runner";
+import { conversationKey } from "../../conversation-query";
+import { useVisitSignal } from "../../lib/visit";
+import {
+	listPromptPresets,
+	savePromptPresetBlockPatches,
+	type PromptPresetOperationOutcome,
+} from "../../prompt-preset-library";
+import { dirtyBlockPatches, draftIsDirty, type BlockDraft } from "../../prompt-preset-editor-state";
+import type { ConversationPromptPreset } from "../../../shared/contract/prompt-preset";
 import { usePromptPresetLibrary } from "./usePromptPresetLibrary";
-import { usePromptPresetLeave } from "./usePromptPresetLeave";
-import { usePromptPresetRecipe } from "./usePromptPresetRecipe";
 
-/** @approved
- * Owns the Prompt Preset panel by composing focused units over one runtime:
- * the runtime owns the session state and the single operation-settlement owner, the
- * library unit owns the shared list, selection and interchange, the recipe unit owns
- * the block drafts and recipe operations, and the leave unit owns the unsaved-drafts
- * guard. Every flow consults the runtime's ownership rules after an await, so response
- * ordering lives in one place instead of in every handler.
- */
+const recipeKey = ["prompt-preset-editor"] as const;
+
+export const presetLibraryQuery = queryOptions({
+	queryKey: ["prompt-presets"],
+	staleTime: Infinity,
+	queryFn: async ({ signal }) => {
+		await Promise.resolve();
+		signal.throwIfAborted();
+		return listPromptPresets(signal);
+	},
+});
+
+export const presetRecipeQuery = (conversationId: number, revision: number, presetId: number | undefined) => queryOptions({
+	queryKey: [...recipeKey, conversationId, presetId, revision],
+	staleTime: Infinity,
+	refetchOnReconnect: false,
+	queryFn: async ({ signal }) => {
+		await Promise.resolve();
+		signal.throwIfAborted();
+		return loadConversationPromptPreset(conversationId, signal, presetId);
+	},
+});
+
+const operationProblem = (outcome: Exclude<PromptPresetOperationOutcome, { outcome: "available" }>, message: string) =>
+	outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason
+		: outcome.outcome === "not-found" ? "The selected preset no longer exists."
+		: message;
+
 export function usePromptPresetEditor({
-	conversation, presetId,
+	conversation,
+	preset,
+	presetId,
+	recipePending,
 	onConversationChange,
-	onClose,
 }: {
-	conversation: ConversationSummary | null;
-	presetId?: number;
-	onConversationChange: (conversation: ConversationSummary | null) => void;
-	onClose: () => void;
+	conversation: ConversationSummary;
+	preset: ConversationPromptPreset;
+	presetId: number | undefined;
+	recipePending: boolean;
+	onConversationChange: (conversation: ConversationSummary) => void;
 }) {
-	const runtime = usePromptPresetEditorRuntime({ conversation, presetId });
-	const library = usePromptPresetLibrary({ runtime, conversation, onConversationChange });
-	const recipe = usePromptPresetRecipe({ runtime, conversation });
-	const leave = usePromptPresetLeave({
-		runtime,
-		conversation,
-		onClose,
-		applySelection: library.applySelection,
-		saveDrafts: recipe.saveDrafts,
+	const client = useQueryClient();
+	const signal = useVisitSignal();
+	const [drafts, setDrafts] = useState<Record<number, BlockDraft>>({});
+	const latestDrafts = useRef(drafts);
+	const replaceDrafts = (next: Record<number, BlockDraft>) => {
+		latestDrafts.current = next;
+		setDrafts(next);
+	};
+	const [busy, setBusy] = useState<"save" | "change" | null>(null);
+	const inFlight = useRef(false);
+	const [problem, setProblem] = useState<string | null>(null);
+	const [notice, setNotice] = useState<string | null>(null);
+	const dirty = preset.slots.some((slot) => {
+		const draft = drafts[slot.id];
+		return draft !== undefined && draftIsDirty(slot, draft);
 	});
-	const save = async () => {
-		const live = runtime.current();
-		if (live.view.status !== "ready" || !runtime.dirty) return false;
-		const selected = live.view.selected;
-		const result = await runtime.runOperation({ supersedesReads: false, ownsConversation: false, clearNotice: false, clearProblem: false }, (claim) => recipe.saveDrafts(selected, claim));
-		if (result?.status === "failed") runtime.dispatch({ type: "leave-failed", problem: result.problem });
-		return result?.status === "saved";
+
+	async function runOperation<R>(kind: NonNullable<typeof busy>, run: () => Promise<R>): Promise<R | undefined> {
+		if (signal.aborted || inFlight.current || recipePending) return;
+		inFlight.current = true;
+		setBusy(kind);
+		try {
+			return await run();
+		} finally {
+			inFlight.current = false;
+			setBusy(null);
+		}
+	}
+
+	const { id } = conversation;
+	const revision = () => client.getQueryData<ConversationSummary | null>(conversationKey(id))?.revision ?? conversation.revision;
+	const refreshRecipe = async () => {
+		await client.cancelQueries({ queryKey: recipeKey });
+		await client.invalidateQueries({ queryKey: recipeKey });
+		if (signal.aborted) return null;
+		const options = presetRecipeQuery(id, revision(), presetId);
+		const state = client.getQueryState(options.queryKey);
+		if (state?.status === "error") throw state.error;
+		return client.fetchQuery(options);
 	};
 
+	const applySelection = (selectedId: number) => runOperation("change", async () => {
+		const conflict = "The Conversation changed elsewhere; the current state was loaded.";
+		const applied = await runConversationCommand({
+			conversationId: id,
+			revision,
+			onConversationChange,
+			setNotice,
+			isCurrent: () => !signal.aborted,
+		}, {
+			type: "select-prompt-preset",
+			promptPresetId: selectedId,
+		}, {
+			notices: { conflict, notFound: "The Conversation no longer exists." },
+			onNotPlayable: () => setNotice(conflict),
+			onApplied: () => setNotice(null),
+		});
+		if (applied) void client.invalidateQueries({ queryKey: presetLibraryQuery.queryKey });
+	});
+
+	const runRecipeOperation = (run: () => Promise<PromptPresetOperationOutcome>) => runOperation("change", async () => {
+		setProblem(null);
+		const outcome = await run();
+		if (outcome.outcome !== "available") {
+			setProblem(operationProblem(outcome, "The Prompt Preset change could not be reached."));
+			return;
+		}
+		try {
+			await refreshRecipe();
+		} catch {
+			setProblem("The Prompt Preset change could not be reloaded.");
+		}
+	});
+
+	const save = async () => await runOperation("save", async () => {
+		const { patches, submitted } = dirtyBlockPatches(preset, latestDrafts.current);
+		if (patches.length === 0) return true;
+		setProblem(null);
+		const outcome = await savePromptPresetBlockPatches(preset.id, patches);
+		if (outcome.outcome !== "available") {
+			setProblem(operationProblem(outcome, "The Prompt Preset change could not be saved."));
+			return false;
+		}
+		try {
+			const fresh = await refreshRecipe();
+			if (signal.aborted || fresh?.id !== preset.id) return false;
+
+			const kept = Object.fromEntries(Object.entries(latestDrafts.current).filter(([id, draft]) => draft !== submitted[Number(id)]));
+			replaceDrafts(kept);
+			return !Object.keys(submitted).some((id) => kept[Number(id)] !== undefined)
+				&& dirtyBlockPatches(fresh, kept).patches.length === 0;
+		} catch {
+			setProblem("The saved Prompt Preset could not be reloaded.");
+			return false;
+		}
+	}) ?? false;
+
+	const library = usePromptPresetLibrary({
+		selectedId: preset.id,
+		dirty,
+		setNotice,
+		refreshRecipe,
+		refreshLibrary: () => client.invalidateQueries({ queryKey: presetLibraryQuery.queryKey }, { throwOnError: true }),
+		run: async (operation) => { await runOperation("change", operation); },
+		signal,
+	});
+
 	return {
-		view: runtime.state.view,
-		drafts: runtime.state.drafts,
-		busy: runtime.state.busy,
-		dirtyCount: runtime.dirtyCount,
+		...library,
+		applySelection,
+		runRecipeOperation,
+		drafts,
+		dirty,
+		busy,
+		problem,
+		notice,
 		save,
-		discard: () => runtime.dispatch({ type: "leave-resolved" }),
-		notice: runtime.state.notice,
-		problem: runtime.state.problem,
-		leaveRequest: runtime.state.leaveRequest,
-		review: runtime.state.review,
-		requestClose: leave.requestClose,
-		selectPreset: library.selectPreset,
-		runPresetCommand: library.runPresetCommand,
-		exportSelectedPreset: library.exportSelectedPreset,
-		importPresetFile: library.importPresetFile,
-		commitSillyTavernReview: library.commitSillyTavernReview,
-		selectSillyTavernOrder: library.selectSillyTavernOrder,
-		cancelSillyTavernReview: library.cancelSillyTavernReview,
-		runRecipeOperation: recipe.runRecipeOperation,
-		setDraft: recipe.setDraft,
-		setEnabled: recipe.setEnabled,
-		clearDraft: recipe.clearDraft,
-		saveAndLeave: leave.saveAndLeave,
-		keepEditing: leave.keepEditing,
-		discardAndLeave: leave.discardAndLeave,
+		discard: () => replaceDrafts({}),
+		setDraft: (blockId: number, draft: BlockDraft) => {
+			const enabled = latestDrafts.current[blockId]?.enabled;
+			replaceDrafts({ ...latestDrafts.current, [blockId]: enabled === undefined ? draft : { ...draft, enabled } });
+		},
+		setEnabled: (blockId: number, enabled: boolean) => {
+			const draft = latestDrafts.current[blockId];
+			replaceDrafts({ ...latestDrafts.current, [blockId]: draft === undefined ? { kind: "enabled", enabled } : { ...draft, enabled } });
+		},
+		clearDraft: (blockId: number) => {
+			const next = { ...latestDrafts.current };
+			delete next[blockId];
+			replaceDrafts(next);
+		},
 	};
 }

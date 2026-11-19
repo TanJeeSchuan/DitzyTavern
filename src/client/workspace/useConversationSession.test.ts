@@ -22,11 +22,10 @@ async function historyRefresh(historyResponse: () => Promise<Response>) {
 	installFetch(async (input: RequestInfo | URL) =>
 		String(input).includes("/history") ? refreshing ? historyResponse() : Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(conversation));
 	const dispatched: StoryAction[] = [];
-	const activeChat = { id: "1", title: "Chat", revision: 1, updatedAt: "", cast: [], excerpt: "" };
 	const dispatchStory = (action: StoryAction) => { dispatched.push(action); };
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const hook = await renderHook(() => useConversationSession({
-		initialWorkspace: { activeChat, chats: [activeChat], characters: [] },
+		initialChatId: "1",
 		story: { ...createStoryState(), status: "loading-first", conversationId: 1 },
 		dispatchStory,
 	}), client);

@@ -1,3 +1,6 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { charactersQuery } from "./character-library";
+import { workspaceQuery } from "./workspace";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ShieldAlert, X } from "lucide-react";
 import { useRef } from "react";
@@ -36,9 +39,6 @@ interface ImportChatPanelProps {
 	flow: ChatImportFlowState;
 	onDispatch: (action: ChatImportFlowAction) => void;
 	// @approved
-	//  Library Characters available to fork from during resolution.
-	characters: { id: number; name: string }[];
-	// @approved
 	//  The committed Chat is opened: the workspace reloads and selects it.
 	onImportLaunched: (conversationId: number) => void;
 	// @approved
@@ -52,11 +52,12 @@ interface ImportChatPanelProps {
 export function ImportChatPanel({
 	flow,
 	onDispatch,
-	characters,
 	onImportLaunched,
 	onBackToList,
 	onClose,
 }: ImportChatPanelProps) {
+	const client = useQueryClient();
+	const characters = useQuery(charactersQuery).data ?? [];
 	const signal = useVisitSignal();
 	const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,11 +139,13 @@ export function ImportChatPanel({
 			duplicateConfirmed: flow.duplicateConfirmed,
 			participants: buildResolvedParticipants(flow),
 		});
-		if (signal.aborted) return;
 		if (outcome.outcome === "available") {
-			onDispatch({ type: "commit-succeeded", receipt: outcome.value.receipt });
+			void client.invalidateQueries({ queryKey: workspaceQuery.queryKey });
+			void client.invalidateQueries({ queryKey: charactersQuery.queryKey });
+			if (!signal.aborted) onDispatch({ type: "commit-succeeded", receipt: outcome.value.receipt });
 			return;
 		}
+		if (signal.aborted) return;
 		onDispatch({
 			type: "commit-failed",
 			reason:

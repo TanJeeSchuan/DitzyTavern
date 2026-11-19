@@ -1,6 +1,6 @@
 # T8: Client state
 
-Status: READY
+Status: IN PROGRESS
 
 Blocked By: T7
 
@@ -64,7 +64,7 @@ Report 06, finding 1; report 05, findings 3 and 5.
 
 ## TODO
 
-- [ ] Slices a and b, one PR, ADR 0036 amended
+- [x] Slices a and b, one PR, ADR 0036 amended
 - [ ] Slice c, report to the owner, then fixes, PR
 - [ ] Slice d (Astra), fixes (Sol), PR
 
@@ -73,3 +73,14 @@ Report 06, finding 1; report 05, findings 3 and 5.
 `src/client/chat-info.ts`, `src/client/pending-generation-starts.ts`, `usePromptPresetLeave.ts` and `UnsavedBlockEditDialog.tsx` do not exist. `git grep -n -E 'ReadClaim|OperationClaim|pendingRetire|flushSync' -- src/client` is empty. Each guarantee listed above has a named test or e2e check in the Outcome. Typecheck, unit tests and e2e pass in CI on each slice.
 
 ## Outcome
+
+### Slices a and b
+
+- Import Details and the Character and Chat lists read the query cache. Commands invalidate affected lists. Import source download is a mutation. The Chat information reducer and its tests were removed.
+- Prompt Preset drafts are scoped to the Conversation and resolved preset. The shared SaveGuard handles closing and switching. The editor waits for a recipe refresh before retiring submitted drafts. The reducer, response claims, and private leave flow were removed.
+- The desktop import e2e removes the source artifact and checks the disabled download and missing-file message.
+- `Escape cannot dismiss a prompt save that is still running` exercises the shared guard.
+- `text typed during a Prompt Preset save survives its refresh` exercises edits while the refresh is held.
+- `a response from a Prompt Preset editor that was left cannot publish a Conversation` holds a selection response until the editor unmounts.
+- `a Prompt Preset save blocks another operation until its refresh settles` tries to select a preset in the same turn as starting a save.
+- Six pure draft and patch tests remain. The draft PR's Check workflow runs build, typecheck, unit tests, and e2e. Slices c and d are pending.

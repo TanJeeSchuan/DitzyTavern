@@ -45,13 +45,11 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		return handler?.(request) ?? Promise.resolve(Response.json(request.url.pathname.endsWith("history") ? page(id) : summary(id)));
 	});
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
-	const chat = (id: number) => ({ id: String(id), title: `Chat ${id}`, revision: 1, updatedAt: "", cast: [], excerpt: "" });
-	const initialWorkspace = { activeChat: chat(1), chats: [chat(1), chat(2)], characters: [] };
 	const actions: StoryAction[] = [];
 	const hook = await renderHook(() => {
 		const [story, dispatch] = useReducer(reduceStory, undefined, createStoryState);
 		const dispatchStory = useCallback((action: StoryAction) => { actions.push(action); dispatch(action); }, []);
-		const session = useConversationSession({ initialWorkspace, story, dispatchStory });
+		const session = useConversationSession({ initialChatId: "1", story, dispatchStory });
 		const commands = useStoryMessageActions({
 			signal: session.signal,
 			story, conversation: session.conversation, dispatchStory, setConversation: session.setConversation,
@@ -91,7 +89,7 @@ test("StrictMode, 21 summary readers, rerenders and reconnect issue one open pai
 	expect(readers.current.map(({ data }) => data?.name)).toEqual(Array(21).fill("Saved"));
 	const later = await renderHook(() => useConversationQuery(1), h.client);
 	expect(later.current.data?.revision).toBe(6);
-	expect(h.hook.current.activeChat.title).toBe("Saved");
+	expect(h.hook.current.activeChatTitle).toBe("Saved");
 	expect(h.requests).toHaveLength(3);
 });
 
@@ -344,10 +342,9 @@ test("reopening after a write and late refresh fetches fresh history and never d
 	await h.hook.act(async () => { late.resolve(Response.json(page())); });
 	await h.hook.unmount();
 	await refresh;
-	const activeChat = { id: "1", title: "Chat", revision: 1, updatedAt: "", cast: [], excerpt: "" };
 	const reopened = await renderHook(() => {
 		const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
-		const session = useConversationSession({ initialWorkspace: { activeChat, chats: [activeChat], characters: [] }, story, dispatchStory });
+		const session = useConversationSession({ initialChatId: "1", story, dispatchStory });
 		return { session, story };
 	}, h.client);
 	await flushHook();

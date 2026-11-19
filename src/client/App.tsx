@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { createPortal } from "react-dom";
-import {
-	type Workspace,
-	workspaceClient,
-} from "./workspace";
+import { loadActiveChatId } from "./workspace";
 import { ActiveWritingWorkspace } from "./workspace/ActiveWritingWorkspace";
 import { ConnectionSettingsPanelHost } from "./workspace/ConnectionSettingsPanel";
 import { NewChatSurface } from "./workspace/NewChatSurface";
@@ -16,26 +14,22 @@ import {
 
 type WorkspaceState =
 	| { status: "loading" }
-	| { status: "ready"; workspace: Workspace }
+	| { status: "ready"; activeChatId: string | null }
 	| { status: "error" };
 
-const hasActiveChat = (
-	workspace: Workspace,
-): workspace is Workspace & { activeChat: NonNullable<Workspace["activeChat"]> } =>
-	workspace.activeChat !== null;
-
 export function App() {
+	const client = useQueryClient();
 	const [state, setState] = useState<WorkspaceState>({ status: "loading" });
 
 	const loadWorkspace = useCallback(async (preferredChatId?: string) => {
 		setState({ status: "loading" });
 		try {
-			const workspace = await workspaceClient.loadActiveWorkspace(preferredChatId);
-			setState({ status: "ready", workspace });
+			const activeChatId = await loadActiveChatId(client, preferredChatId);
+			setState({ status: "ready", activeChatId });
 		} catch {
 			setState({ status: "error" });
 		}
-	}, []);
+	}, [client]);
 
 	const handleImportLaunched = useCallback(
 		async (conversationId: number) => {
@@ -58,7 +52,7 @@ export function App() {
 
 	return (
 		<WritingWorkspace
-			initialWorkspace={state.workspace}
+			initialChatId={state.activeChatId}
 			onReload={loadWorkspace}
 			onImportLaunched={(conversationId) =>
 				void handleImportLaunched(conversationId)
@@ -68,11 +62,11 @@ export function App() {
 }
 
 function WritingWorkspace({
-	initialWorkspace,
+	initialChatId,
 	onReload,
 	onImportLaunched,
 }: {
-	initialWorkspace: Workspace;
+	initialChatId: string | null;
 	onReload: () => Promise<void>;
 	onImportLaunched: (conversationId: number) => void;
 }) {
@@ -85,7 +79,7 @@ function WritingWorkspace({
 		await onReload();
 	};
 
-	if (!hasActiveChat(initialWorkspace)) {
+	if (initialChatId === null) {
 		return (
 			<>
 				<WorkspaceWithoutChats
@@ -123,7 +117,6 @@ function WritingWorkspace({
 				{importChatOpen && (
 					createPortal(
 						<ImportChatSurface
-							characters={initialWorkspace.characters}
 							onImportLaunched={onImportLaunched}
 							onClose={() => setImportChatOpen(false)}
 						/>,
@@ -137,8 +130,8 @@ function WritingWorkspace({
 	return (
 		<>
 			<ActiveWritingWorkspace
-				key={initialWorkspace.activeChat.id}
-				initialWorkspace={initialWorkspace}
+				key={initialChatId}
+				initialChatId={initialChatId}
 				onNewChat={() => setNewChatOpen(true)}
 				newChatOpen={newChatOpen}
 				onNewChatClose={() => setNewChatOpen(false)}

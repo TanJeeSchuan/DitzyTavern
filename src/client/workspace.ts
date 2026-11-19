@@ -1,3 +1,4 @@
+import { queryOptions, type QueryClient } from "@tanstack/react-query";
 import { applyConversationCommand, type ConversationSummary } from "./conversation";
 import { api } from "./lib/eden";
 import { requestData } from "./lib/request-outcome";
@@ -16,16 +17,6 @@ export type ChatSummary = {
 	excerpt: string;
 };
 
-export type Workspace = {
-	activeChat: ChatSummary | null;
-	chats: ChatSummary[];
-	characters: { id: number; name: string }[];
-};
-
-export interface WorkspaceClient {
-	loadActiveWorkspace(preferredChatId?: string): Promise<Workspace>;
-}
-
 export function resolveWorkspaceActiveChat(
 	chats: ChatSummary[],
 	authoritativeActiveChatId: string | null,
@@ -39,10 +30,10 @@ export function resolveWorkspaceActiveChat(
 	return chats.find((chat) => chat.id === authoritativeActiveChatId) ?? null;
 }
 
-const fetchWorkspace = async () => {
-	const data = await requestData(api.api.workspace.get(), workspaceResponse);
+const fetchWorkspace = async ({ signal }: { signal: AbortSignal }) => {
+	const data = await requestData(api.api.workspace.get({ fetch: { signal } }), workspaceResponse);
 	return {
-		...data,
+		activeChatId: data.activeChatId === null ? null : String(data.activeChatId),
 		chats: data.chats.map((chat): ChatSummary => ({
 			id: String(chat.id),
 			title: chat.name,
@@ -54,7 +45,7 @@ const fetchWorkspace = async () => {
 	};
 };
 
-export const listChats = async () => (await fetchWorkspace()).chats;
+export const workspaceQuery = queryOptions({ queryKey: ["workspace"], queryFn: fetchWorkspace });
 
 export async function deleteChat(chatId: string): Promise<string | null> {
 	const { error } = await api.api.conversations({ id: Number(chatId) }).delete();
@@ -73,19 +64,7 @@ export async function renameChat(chat: Pick<ChatSummary, "id" | "revision">, nam
 	return { outcome: "failed", reason: outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Chat could not be renamed." };
 }
 
-export const workspaceClient: WorkspaceClient = {
-	async loadActiveWorkspace(preferredChatId?: string) {
-		const data = await fetchWorkspace();
-		const chats = data.chats;
-
-		return {
-			activeChat: resolveWorkspaceActiveChat(
-				chats,
-				data.activeChatId === null ? null : String(data.activeChatId),
-				preferredChatId,
-			),
-			chats,
-			characters: data.characters.map((character) => ({ ...character })),
-		};
-	},
-};
+export async function loadActiveChatId(client: QueryClient, preferredChatId?: string) {
+	const { chats, activeChatId } = await client.fetchQuery(workspaceQuery);
+	return resolveWorkspaceActiveChat(chats, activeChatId, preferredChatId)?.id ?? null;
+}

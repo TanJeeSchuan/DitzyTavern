@@ -164,7 +164,7 @@ export function StoryStage({
 		<main className="story-stage" aria-label="Active Chat" inert={inert} onFocus={onLayerFocus}>
 			{conversation !== null && conversation.background !== null && <BackgroundImage key={conversation.background} hash={conversation.background} className="story-background" />}
 			<StoryHeader
-				chat={session.activeChat}
+				chatTitle={session.activeChatTitle}
 				conversation={conversation}
 				onOpenNavigation={onOpenNavigation}
 				onOpenCast={onOpenCast}

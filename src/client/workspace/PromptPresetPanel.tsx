@@ -1,124 +1,118 @@
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import type { ConversationPromptPreset, PromptPresetSummary } from "../../shared/contract/prompt-preset";
 import type { ConversationSummary } from "../conversation";
 import { PanelHeader } from "../PanelHeader";
 import { SaveFooter } from "../SaveFooter";
-import { useSaveGuard } from "../SaveGuard";
+import { useNavigationRequest, useSaveGuard } from "../SaveGuard";
 import { PromptPresetLibrarySection } from "./prompt-preset/PromptPresetLibrarySection";
 import { PromptPresetRecipeEditor } from "./prompt-preset/PromptPresetRecipeEditor";
 import { PromptPresetImportReviewDialog } from "./prompt-preset/PromptPresetImportReviewDialog";
-import { UnsavedBlockEditDialog } from "./prompt-preset/UnsavedBlockEditDialog";
-import { usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
+import { presetLibraryQuery, presetRecipeQuery, usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
 
-// @approved
-//  Prompt Presets are first-order Chat configuration and live in the
-// primary side panel. The library manages shared presets and the per-Chat selection;
-// ordering persists through its authoritative operation. Enablement and authored fields
-// stay as block drafts until the panel footer saves them. Focused import review and unsaved-edit choices
-// remain dialogs above the panel.
-export function PromptPresetPanel({
-	conversation, presetId,
-	onConversationChange,
-	onClose,
-	mutationsDisabled = false,
-}: {
+type PanelProps = {
 	conversation: ConversationSummary | null;
 	presetId?: number;
 	onConversationChange: (conversation: ConversationSummary | null) => void;
 	onClose: () => void;
 	mutationsDisabled?: boolean;
-}) {
-	const editor = usePromptPresetEditor({
-		conversation, presetId,
-		onConversationChange,
-		onClose,
-	});
-	const ready = editor.view.status === "ready" ? editor.view : null;
-	useSaveGuard({ dirty: editor.dirtyCount > 0, saving: editor.busy, save: editor.save, discard: editor.discard });
+};
 
+export function PromptPresetPanel({ conversation, presetId, onConversationChange, onClose, mutationsDisabled = false }: PanelProps) {
+	const navigate = useNavigationRequest();
+	const paint = presetId !== undefined;
 	return (
 		<>
 			<PanelHeader
-				title={presetId === undefined ? "Prompt Presets" : "Paint / Paint Preset"}
-				nested={presetId !== undefined}
-				backLabel={presetId === undefined ? "Back to Chat" : "Back to Paint"}
-				onClose={editor.requestClose}
+				title={paint ? "Paint / Paint Preset" : "Prompt Presets"}
+				nested={paint}
+				backLabel={paint ? "Back to Paint" : "Back to Chat"}
+				onClose={paint ? () => navigate(onClose) : onClose}
 			/>
-			<div
-				className="panel-body flex flex-col gap-6"
-				inert={mutationsDisabled || undefined}
-				aria-disabled={mutationsDisabled}
-			>
-				{editor.view.status === "loading" && (
-					<div role="status">
-						<span className="sr-only">Loading the Prompt Preset library…</span>
-						<ol aria-hidden="true" className="flex flex-col gap-3">
-							{Array.from({ length: 4 }, (_, index) => (
-								<li
-									key={index}
-									className="h-16 animate-pulse rounded-lg bg-muted/50 ring-1 ring-foreground/10"
-								/>
-							))}
-						</ol>
-					</div>
-				)}
-				{editor.view.status === "unavailable" && (
-					<p className="text-muted-foreground">
-						The Prompt Preset library could not be loaded.
-					</p>
-				)}
-				{ready !== null && (
-					<>
-						{presetId === undefined ? <PromptPresetLibrarySection
-							presets={ready.presets}
-							selectedId={ready.selected.id}
-							pending={editor.busy}
-							problem={editor.problem}
-							notice={editor.notice}
-							onSelect={editor.selectPreset}
-							onCommand={(command, successNotice) =>
-								void editor.runPresetCommand(command, successNotice)
-							}
-							onImportFile={(file) => void editor.importPresetFile(file)}
-							onExport={(presetId, name) =>
-								void editor.exportSelectedPreset(presetId, name)
-							}
-						/> : <p className="font-medium">{ready.selected.name}</p>}
-						<PromptPresetRecipeEditor
-							preset={ready.selected}
-							drafts={editor.drafts}
-							pending={editor.busy}
-							problem={editor.problem}
-							onDraftChange={editor.setDraft}
-							onEnabledChange={editor.setEnabled}
-							onDraftCancel={editor.clearDraft}
-							onOperation={(run) =>
-								void editor.runRecipeOperation(run)
-							}
-						/>
-					</>
-				)}
-				{editor.notice !== null && (
-					<p className="text-sm text-muted-foreground" role="status">
-						{editor.notice}
-					</p>
-				)}
-			</div>
-			{ready !== null && <SaveFooter dirty={editor.dirtyCount > 0} saving={editor.busy} error={editor.problem} onSave={() => void editor.save()} />}
-			{ready !== null && editor.leaveRequest !== null && (
-				<UnsavedBlockEditDialog
-					open
-					count={editor.dirtyCount}
-					kind={editor.leaveRequest.kind}
-					onKeepEditing={editor.keepEditing}
-					onDiscard={editor.discardAndLeave}
-					onSave={editor.saveAndLeave}
+			{conversation === null ? <LoadingPresets /> : <PresetQueries
+				key={`${conversation.id}:${presetId ?? "story"}`}
+				conversation={conversation}
+				presetId={presetId}
+				mutationsDisabled={mutationsDisabled}
+				onConversationChange={onConversationChange}
+			/>}
+		</>
+	);
+}
+
+type PresetProps = {
+	conversation: ConversationSummary;
+	presetId: number | undefined;
+	mutationsDisabled: boolean;
+	onConversationChange: PanelProps["onConversationChange"];
+};
+
+function PresetQueries(props: PresetProps) {
+	const { conversation, presetId } = props;
+	const library = useQuery(presetLibraryQuery);
+	const recipe = useQuery({ ...presetRecipeQuery(conversation.id, conversation.revision, presetId), placeholderData: keepPreviousData });
+	if (library.data !== undefined && recipe.data) {
+		return <PresetEditor key={recipe.data.id} {...props} presets={library.data} preset={recipe.data} recipePending={recipe.isPlaceholderData} />;
+	}
+	if (library.isError || recipe.isError || recipe.data === null) {
+		return <p className="panel-body text-muted-foreground">The Prompt Preset library could not be loaded.</p>;
+	}
+	return <LoadingPresets />;
+}
+
+function LoadingPresets() {
+	return <div className="panel-body" role="status">
+		<span className="sr-only">Loading the Prompt Preset library…</span>
+		<ol aria-hidden="true" className="flex flex-col gap-3">
+			{Array.from({ length: 4 }, (_, index) => (
+				<li key={index} className="h-16 animate-pulse rounded-lg bg-muted/50 ring-1 ring-foreground/10" />
+			))}
+		</ol>
+	</div>;
+}
+
+function PresetEditor({ mutationsDisabled, presets, ...props }: PresetProps & {
+	presets: PromptPresetSummary[];
+	preset: ConversationPromptPreset;
+	recipePending: boolean;
+}) {
+	const editor = usePromptPresetEditor(props);
+	const navigate = useNavigationRequest();
+	const busy = editor.busy !== null;
+	const pending = busy || props.recipePending;
+	useSaveGuard({ dirty: editor.dirty, saving: busy, save: editor.save, discard: editor.discard });
+
+	return (
+		<>
+			<div className="panel-body flex flex-col gap-6" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
+				{props.presetId === undefined ? <PromptPresetLibrarySection
+					presets={presets}
+					selectedId={props.preset.id}
+					pending={pending}
+					problem={editor.problem}
+					notice={editor.notice}
+					onSelect={(id) => navigate(() => void editor.applySelection(id))}
+					onCommand={(command, successNotice) => void editor.runPresetCommand(command, successNotice)}
+					onImportFile={(file) => void editor.importPresetFile(file)}
+					onExport={(id, name) => void editor.exportSelectedPreset(id, name)}
+				/> : <p className="font-medium">{props.preset.name}</p>}
+				<PromptPresetRecipeEditor
+					preset={props.preset}
+					drafts={editor.drafts}
+					pending={pending}
+					editingDisabled={editor.busy === "change" || props.recipePending}
+					problem={editor.problem}
+					onDraftChange={editor.setDraft}
+					onEnabledChange={editor.setEnabled}
+					onDraftCancel={editor.clearDraft}
+					onOperation={editor.runRecipeOperation}
 				/>
-			)}
+				{editor.notice !== null && <p className="text-sm text-muted-foreground" role="status">{editor.notice}</p>}
+			</div>
+			<SaveFooter dirty={editor.dirty} saving={busy} valid={!props.recipePending} error={editor.problem} onSave={() => void editor.save()} />
 			<PromptPresetImportReviewDialog
 				review={editor.review}
-				busy={editor.busy}
-				onOrderSelect={(orderListId) =>
-					void editor.selectSillyTavernOrder(orderListId)
-				}
+				busy={pending}
+				onOrderSelect={(orderListId) => void editor.selectSillyTavernOrder(orderListId)}
 				onCancel={editor.cancelSillyTavernReview}
 				onCommit={() => void editor.commitSillyTavernReview()}
 			/>

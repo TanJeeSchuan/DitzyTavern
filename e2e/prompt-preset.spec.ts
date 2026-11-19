@@ -39,3 +39,41 @@ test("a Lore block above Chat history is labelled until it moves below it", asyn
 	await expect(lore.getByText("Breaks cache")).toHaveCount(0);
 	await expect(memory.getByText("Breaks cache")).toBeVisible();
 });
+
+test("text typed during a Prompt Preset save survives its refresh", async ({ page }) => {
+	await page.goto("/");
+	await page.getByRole("button", { name: "Prompt Presets" }).click();
+	const contents = page.getByRole("region", { name: "Preset contents" });
+	const openEditor = contents.getByRole("button", { name: "Edit Author Note" });
+	const editor = page.getByRole("dialog", { name: "Author Note" });
+	const instructions = editor.getByRole("textbox", { name: "Instructions" });
+	const save = page.getByRole("button", { name: "Save", exact: true });
+
+	await openEditor.click();
+	await instructions.fill("First version.");
+	await editor.getByRole("button", { name: "Done" }).click();
+	const refreshing = Promise.withResolvers<void>();
+	const release = Promise.withResolvers<void>();
+	await page.route("**/api/conversations/*/prompt-preset", async (route) => {
+		refreshing.resolve();
+		await release.promise;
+		await route.continue();
+	}, { times: 1 });
+
+	try {
+		await save.click();
+		await refreshing.promise;
+		await openEditor.click();
+		await instructions.fill("Second version, typed during the save.");
+		await editor.getByRole("button", { name: "Done" }).click();
+	} finally {
+		release.resolve();
+	}
+
+	await expect(save).toBeEnabled();
+	await openEditor.click();
+	await expect(instructions).toHaveValue("Second version, typed during the save.");
+	await editor.getByRole("button", { name: "Done" }).click();
+	await save.click();
+	await expect(page.locator(".save-footer").getByRole("status")).toHaveText("Saved");
+});

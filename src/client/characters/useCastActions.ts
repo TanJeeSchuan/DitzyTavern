@@ -1,5 +1,6 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
+import { charactersQuery, LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
 import {
 	CONVERSATION_CONFLICT_RELOAD_NOTICE,
 	CONVERSATION_UNREACHABLE_NOTICE,
@@ -81,6 +82,8 @@ export function useCastActions({
 	onConversationChange,
 	setRemoveTargetId,
 }: CastActionsOptions) {
+	const client = useQueryClient();
+	const refreshCharacters = () => void client.invalidateQueries({ queryKey: charactersQuery.queryKey });
 	const [pending, setPending] = useState(false);
 	const [notice, setNotice] = useState<string | null>(null);
 	// @approved
@@ -129,7 +132,7 @@ export function useCastActions({
 					notFound: `${participant.duplicateLabel} is no longer in this Cast.`,
 					unreachable: CONVERSATION_UNREACHABLE_NOTICE,
 				},
-				onApplied: () => setNotice(null),
+				onApplied: () => { refreshCharacters(); setNotice(null); },
 				onNotRemovable: () => {
 					setNotice(
 						`${participant.duplicateLabel} now holds a Control seat; reassign it before removing.`,
@@ -171,9 +174,10 @@ export function useCastActions({
 				return outcome;
 			}, {
 				notices: ADD_CHARACTER_NOTICES,
-				onApplied: () => setNotice(null),
+				onApplied: () => { refreshCharacters(); setNotice(null); },
 				onOperation: (operation) => {
 					if (operation.kind === "character-changed") {
+						refreshCharacters();
 						void refreshConversation();
 						setNotice(
 							`${operation.currentCharacterName ?? "The Character"} changed in the Library; the latest Definition was reloaded.`,
@@ -246,6 +250,7 @@ export function useCastActions({
 				// applied outcome carries the new Character and no snapshot
 				// to adopt, so it is forwarded as an operation outcome.
 				if (outcome.outcome === "available") {
+					refreshCharacters();
 					return {
 						outcome: "operation",
 						operation: { kind: "participant-saved", character: outcome.value.character },

@@ -13,10 +13,8 @@ import { PanelHeader } from "../PanelHeader";
 import { PromptPresetPanel } from "./PromptPresetPanel";
 import type { ConversationSummary } from "../conversation";
 import type {
-	ChatSummary,
 	SwipeBrowsing,
 	ThemePreference,
-	Workspace,
 } from "../workspace";
 import { SettingsPanel } from "./SettingsPanel";
 import { ConnectionSettingsPanel } from "./ConnectionSettingsPanel";
@@ -47,8 +45,7 @@ const parsePanel = (panel: PrimaryPanel) => isBoxSettings(panel) ? { kind: "sett
 
 export function PrimaryPanelView({
 	panel,
-	workspace,
-	activeChat,
+	activeChatId,
 	theme,
 	onThemeChange,
 	swipeBrowsing,
@@ -71,8 +68,7 @@ export function PrimaryPanelView({
 	mutationsDisabled = false,
 }: {
 	panel: PrimaryPanel;
-	workspace: Workspace;
-	activeChat: ChatSummary;
+	activeChatId: string;
 	theme: ThemePreference;
 	onThemeChange: (theme: ThemePreference) => void;
 	swipeBrowsing: SwipeBrowsing;
@@ -112,10 +108,8 @@ export function PrimaryPanelView({
 			 import flow survives; every other panel renders its own header. */}
 			<ImportChatHost
 				open={panel === "chats"}
-				chats={workspace.chats}
-				activeId={activeChat.id}
+				activeId={activeChatId}
 				mutationsDisabled={mutationsDisabled}
-				characters={workspace.characters}
 				onSelect={onSelectChat}
 				onNewChat={onNewChat}
 				onClose={onClose}
@@ -142,13 +136,13 @@ export function PrimaryPanelView({
 					{panel === "characters" && (
 						<div className="panel-fill" inert={mutationsDisabled || undefined} aria-disabled={mutationsDisabled}>
 							<CharactersPanel
-								key={activeChat.id}
+								key={activeChatId}
 								conversation={conversation}
 								onConversationChange={onConversationChange}
 							/>
 						</div>
 					)}
-					{panel === "gallery" && <div className="panel-body"><Gallery key={activeChat.id} conversationId={Number(activeChat.id)} /></div>}
+					{panel === "gallery" && <div className="panel-body"><Gallery key={activeChatId} conversationId={Number(activeChatId)} /></div>}
 					{panel === "boxes" && <BoxHeldNotices disabled={mutationsDisabled} />}
 					{panel === "boxes" && conversation !== null && (
 						<BoxManager key={conversation.id} conversation={conversation} disabled={mutationsDisabled} onConversationChange={onConversationChange}
@@ -156,7 +150,7 @@ export function PrimaryPanelView({
 					)}
 					{panel === "lorebooks" && (
 						<div className="panel-fill">
-							<LorebookPanel conversationId={Number(activeChat.id)} cast={conversation?.cast ?? []} onClose={onClose} mutationsDisabled={mutationsDisabled} />
+							<LorebookPanel conversationId={Number(activeChatId)} cast={conversation?.cast ?? []} onClose={onClose} mutationsDisabled={mutationsDisabled} />
 						</div>
 					)}
 					{panel === "settings" && (
