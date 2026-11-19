@@ -9,6 +9,7 @@ import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { boxAt, builtInBoxes, chatBox, checkSandboxedFolder, installVersion, loadBoxes, loadBoxVersion, unversionedBoxIds } from "./registry";
 import { readBoxLifecycles } from "./setup";
 import { versionFolder, writeLatest } from "./versions";
+import type { GenerationBody, GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { captureModelFetch, key, readConversation, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { createConversationRoutes } from "../contract/conversation";
@@ -277,12 +278,14 @@ for (const upgraded of [false, true]) {
 		setBoxState(database, chat.id, "tally", "enabled");
 		withProfile(database);
 		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
-		const post = async (path: string, body: Readonly<Record<string, BoxValue | undefined>>) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Tip it.", ...body }),
+		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const { previewId, promptPlan } = await (await post("/preview", {})).json();
+		const preview = await post("/preview", { target: { kind: "send", content: "Tip it." } });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
 		if (upgraded) upgrade(chat.id, box.v2);
-		const response = await post("", { expectedRevision: (await readConversation(app, chat.id)).revision, previewId, promptPlan });
+		const response = await post("", { kind: "send", content: "Tip it.", expectedRevision: (await readConversation(app, chat.id)).revision, previewId, promptPlan });
 		expect(response.status).toBe(upgraded ? 422 : 200);
 		if (upgraded) expect(await response.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
 	});

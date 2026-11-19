@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxDescriptor, boxDescriptors } from "../../shared/contract/box";
+import type { GenerationBody, GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { sha256 } from "../hash";
 import { readBoxFolds, writeAutomaticRecord } from "./records";
@@ -194,10 +195,12 @@ test("an unchanged preview of a Box block whose pinned items exceed its allowanc
 		withProfile(database);
 		let sent = "";
 		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { sent = JSON.stringify(request.messages); }) });
-		const post = async (path: string, body: { readonly kind: "send"; readonly content: string; readonly expectedRevision?: number; readonly previewId?: string; readonly promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
+		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const { previewId, promptPlan } = await (await post("/preview", { kind: "send", content: "Light it." })).json();
+		const preview = await post("/preview", { target: { kind: "send", content: "Light it." } });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
 		const accepted = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });
 		expect(accepted.status).toBe(200);
 		await completeGeneration(app, conversation.id, (await accepted.json()).generationId);
@@ -298,10 +301,12 @@ test("reinserting a participating Box makes its inspected Prompt Plan stale", as
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
 		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
-		const post = async (path: string, body: { readonly kind: "send"; readonly content: string; readonly expectedRevision?: number; readonly previewId?: string; readonly promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
+		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const { previewId, promptPlan } = await (await post("/preview", { kind: "send", content: "Light it." })).json();
+		const preview = await post("/preview", { target: { kind: "send", content: "Light it." } });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
 		setBoxState(database, conversation.id, "lantern", "absent");
 		insertBox(database, conversation.id, "lantern");
 		const response = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });

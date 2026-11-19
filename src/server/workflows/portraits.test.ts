@@ -168,7 +168,7 @@ describe("Portraits", () => {
 		});
 		const response = await createConversationRoutes(database).handle(new Request(
 			`http://localhost/api/conversations/${chat.id}/generations/preview`,
-			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "hello" }) },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: { kind: "send", content: "hello" } }) },
 		));
 		expect(response.status).toBe(200);
 		expect(JSON.stringify(await response.json())).not.toContain(carried.portrait.hash);

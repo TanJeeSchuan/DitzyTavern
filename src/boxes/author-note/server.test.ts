@@ -53,7 +53,7 @@ test("Author Note saves exact text, rejects stale edits, and clears with an empt
 
 const preview = async (app: ReturnType<typeof createConversationRoutes>, id: number) => {
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${id}/generations/preview`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Open the door." }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: { kind: "send", content: "Open the door." } }),
 	}));
 	expect(response.status).toBe(200);
 	return Value.Decode(generationPreview, await response.json());

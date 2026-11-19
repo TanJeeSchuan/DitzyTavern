@@ -108,7 +108,7 @@ describe("assembly session", () => {
 		await flushHook();
 		await flushHook();
 		expect(reads).toBe(1);
-		expect(h.requests.map(({ init }) => JSON.parse(String(init?.body)).content)).toEqual(["First"]);
+		expect(h.requests.map(({ init }) => JSON.parse(String(init?.body)).target.content)).toEqual(["First"]);
 	});
 
 	test("an accepted preview shows its requested Send until a page places it", async () => {
