@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import type { ConversationPromptPreset, PromptPresetSummary } from "../../shared/contract/prompt-preset";
 import type { ConversationSummary } from "../conversation";
 import { PanelHeader } from "../PanelHeader";
@@ -8,7 +8,7 @@ import { useNavigationRequest, useSaveGuard } from "../SaveGuard";
 import { PromptPresetLibrarySection } from "./prompt-preset/PromptPresetLibrarySection";
 import { PromptPresetRecipeEditor } from "./prompt-preset/PromptPresetRecipeEditor";
 import { PromptPresetImportReviewDialog } from "./prompt-preset/PromptPresetImportReviewDialog";
-import { presetLibraryQuery, presetRecipeQuery, presetRecipeScope, usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
+import { presetLibraryQuery, presetRecipeQuery, usePromptPresetEditor } from "./prompt-preset/usePromptPresetEditor";
 
 type PanelProps = {
 	conversation: ConversationSummary | null;
@@ -49,15 +49,10 @@ type PresetProps = {
 
 function PresetQueries(props: PresetProps) {
 	const { conversation, presetId } = props;
-	const client = useQueryClient();
 	const [notice, setNotice] = useState<string | null>(null);
 	const library = useQuery(presetLibraryQuery);
 	const recipe = useQuery({ ...presetRecipeQuery(conversation.id, conversation.revision, presetId), placeholderData: keepPreviousData });
-	let preset = recipe.data;
-	if (recipe.isError && preset === undefined) {
-		preset = client.getQueriesData<ConversationPromptPreset | null>({ queryKey: presetRecipeScope(conversation.id, presetId) })
-			.findLast(([, value]) => value !== undefined)?.[1];
-	}
+	const preset = recipe.data;
 	if (library.data !== undefined && preset) {
 		return <PresetEditor key={preset.id} {...props} presets={library.data} preset={preset}
 			recipePending={recipe.isPlaceholderData} notice={notice} onNotice={setNotice} />;

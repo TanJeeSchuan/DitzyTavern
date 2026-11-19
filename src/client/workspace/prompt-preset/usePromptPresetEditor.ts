@@ -14,7 +14,6 @@ import type { ConversationPromptPreset } from "../../../shared/contract/prompt-p
 import { usePromptPresetLibrary } from "./usePromptPresetLibrary";
 
 const recipeKey = ["prompt-preset-editor"] as const;
-export const presetRecipeScope = (conversationId: number, presetId: number | undefined) => [...recipeKey, conversationId, presetId] as const;
 
 export const presetLibraryQuery = queryOptions({
 	queryKey: ["prompt-presets"],
@@ -23,7 +22,7 @@ export const presetLibraryQuery = queryOptions({
 });
 
 export const presetRecipeQuery = (conversationId: number, revision: number, presetId: number | undefined) => queryOptions({
-	queryKey: [...presetRecipeScope(conversationId, presetId), revision],
+	queryKey: [...recipeKey, conversationId, presetId, revision] as const,
 	staleTime: Infinity,
 	refetchOnReconnect: false,
 	queryFn: ({ signal }) => cancellableFetch(signal, undefined, (cancellation) => loadConversationPromptPreset(conversationId, cancellation, presetId)),
@@ -136,8 +135,17 @@ export function usePromptPresetEditor({
 			const fresh = await refreshRecipe();
 			if (signal.aborted || fresh?.id !== preset.id) return false;
 
-			const kept = Object.fromEntries(Object.entries(latestDrafts.current).filter(([id, draft]) => draft !== submitted[Number(id)]));
+			const confirmed = fresh.slots.filter((slot) => {
+				const draft = submitted[slot.id];
+				return draft !== undefined && !draftIsDirty(slot, draft);
+			});
+			const kept = { ...latestDrafts.current };
+			for (const { id } of confirmed) if (kept[id] === submitted[id]) delete kept[id];
 			replaceDrafts(kept);
+			if (confirmed.length !== patches.length) {
+				setProblem("The Prompt Preset changed elsewhere while saving.");
+				return false;
+			}
 			return !Object.keys(submitted).some((id) => kept[Number(id)] !== undefined)
 				&& dirtyBlockPatches(fresh, kept).patches.length === 0;
 		} catch {
