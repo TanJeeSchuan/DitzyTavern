@@ -234,7 +234,6 @@ test("keeps a Sibling preview token retryable after acceptance fails", async () 
 		target: sibling,
 		modelClient: createFakeModelClient(() => gate.promise),
 	});
-	const emptyResult = expect(occupied.result).rejects.toThrow("Generation produced no usable output.");
 	let record: GenerationPreviewRecord;
 	try {
 		await occupied.accepted;
@@ -242,7 +241,7 @@ test("keeps a Sibling preview token retryable after acceptance fails", async () 
 		await expect(start(record)).rejects.toThrow("The Conversation already has 1 active Sibling Generations at this response position.");
 	} finally {
 		gate.resolve("");
-		await emptyResult;
+		await expect(occupied.result).rejects.toThrow("Generation produced no usable output.");
 	}
 	expect((await start(record)).conversation.id).toBe(chat.id);
 });

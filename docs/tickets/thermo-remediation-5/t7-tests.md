@@ -61,6 +61,7 @@ Report 24.
 - The preview workflow suite exercises capture, acceptance, expiry and staleness directly. Three preview wire tests remain in the contract suite. Fork, Box trace and Lore Activation Record tests now live in Conversation, including the T6 assertion that a Fork preserves Generation Settings. Author's Note mapping cases now exercise the SillyTavern adapter, and the contract suite checks that warnings reach Import Details.
 - Provider fakes resolve request-capture promises on arrival. Static searches found zero former capture polls and nine test files that declare `postHistoryInstruction`. Changed-file lint and `git diff --check` passed. The CI `check` job runs the unit suite and typecheck.
 - A static comparison of test declarations and literal parameter tables found 14 fewer cases. The existing domain tests now check that parallel Siblings settle as separate Variants and that recovery preserves checkpointed text and is safe to rerun. The responsiveness test stays.
+- The first CI run stalled while a rejection assertion waited on a held fake provider. The test now releases the provider before checking its result. The focused BuildBuddy run passed all 100 cases.
 
 Deleted tests:
 
