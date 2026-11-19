@@ -375,6 +375,9 @@ export const shownMessage = (state: StoryState, message: StoryMessage): StoryMes
 
 const requestedSwipeId = -1;
 
+export const canWriteMessage = (state: StoryState, messageId: number) =>
+	state.preview === null && !hasRequestedSwipe(state, messageId) && !state.requestedSelections.has(messageId) && !state.requestedMoves.has(messageId);
+
 export const hasRequestedSwipe = (state: Pick<StoryOverlays, "requestedGeneration">, messageId: number): boolean =>
 	state.requestedGeneration?.request.kind === "sibling" && state.requestedGeneration.request.messageId === messageId;
 

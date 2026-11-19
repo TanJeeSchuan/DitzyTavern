@@ -3,7 +3,7 @@ import type { StoryState } from "../story";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
-import { createStoryOverlays, displayedVariantId, readStory } from "../story";
+import { createStoryOverlays, displayedVariantId, readStory, shownMessage } from "../story";
 import type { ChatHistoryPage } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
 
@@ -185,6 +185,26 @@ test("a source request can open before the first transcript page arrives", async
 	expect(scrolls).toEqual(['[data-message-id="101"]']);
 });
 
+test("a newer source request retires the initial source's pending scroll", async () => {
+	const h = await harness(async ({ url }) => {
+		const id = Number(url.pathname.split("/")[3]);
+		return Response.json(url.pathname.endsWith("history") ? page(id, url.searchParams.has("aroundMessageId") ? 3 : 1) : summary(id));
+	});
+	const scrolls: string[] = [];
+	const frames: FrameRequestCallback[] = [];
+	const frame = async () => h.hook.act(async () => { for (const callback of frames.splice(0)) callback(0); });
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: (selector: string) => ({ scrollIntoView: () => scrolls.push(selector) }) } });
+	Object.assign(window, { requestAnimationFrame: (callback: FrameRequestCallback) => frames.push(callback) });
+	await h.hook.act(async () => h.hook.current.selectChat("2", 201));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([201, 202]);
+	let jump = Promise.resolve();
+	await h.hook.act(async () => { jump = h.hook.current.navigateToSourceMessage(202); });
+	for (let i = 0; i < 4; i++) await frame();
+	await jump;
+	expect(scrolls).toEqual(['[data-message-id="202"]']);
+});
+
 test("a failed source jump leaves the current transcript readable", async () => {
 	const h = await harness(({ url }) => Promise.resolve(url.searchParams.has("aroundMessageId")
 		? Response.json({ error: "Server bug" }, { status: 500 })
@@ -296,7 +316,7 @@ test("Delete uses the displayed history revision after a source jump", async () 
 	await flushHook();
 	expect(h.hook.current.conversation?.revision).toBe(7);
 	expect(readyStory(h.hook.current.story).revision).toBe(6);
-	await h.hook.act(async () => h.hook.current.deleteStoryMessage(101));
+	await h.hook.act(async () => h.hook.current.deleteStoryMessage(101, 6));
 	const command = h.requests.find(({ init }) => init?.method === "POST");
 	expect(JSON.parse(String(command?.init?.body))).toMatchObject({ expectedRevision: 6, action: { type: "delete-message", messageId: 101 } });
 	await h.hook.act(async () => refreshed.resolve(Response.json(page(1, 3, 7))));
@@ -666,7 +686,7 @@ test("Delete settling after A to B to A cannot remove a replacement Story Messag
 		return init?.method === "POST" ? late.promise : Promise.resolve(Response.json(url.pathname.endsWith("history") ? page(id) : summary(id)));
 	});
 	let command = Promise.resolve();
-	await h.hook.act(async () => { command = h.hook.current.deleteStoryMessage(105); });
+	await h.hook.act(async () => { command = h.hook.current.deleteStoryMessage(105, 5); });
 	await h.switchTo(2);
 	await h.switchTo(1);
 	await h.hook.act(async () => { late.resolve(Response.json({ outcome: "applied", conversation: summary(1, 6) })); await command; });
@@ -791,7 +811,7 @@ for (const operation of ["edit", "save as new", "Moves"] as const) test(`${opera
 	await h.hook.act(async () => h.hook.current.setConversation(summary(1, revision)));
 	await flushHook();
 	await h.hook.act(async () => {
-		if (operation === "Moves") await h.hook.current.setMessageMoves(105, {});
+		if (operation === "Moves") await h.hook.current.setMessageMoves(105, {}, 5);
 		else expect(await h.hook.current.editStoryMessage(105, "Edited", operation === "save as new", 5)).toBe(false);
 	});
 	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).expectedRevision)).toEqual([5]);
@@ -808,10 +828,50 @@ test("a retained transcript command keeps its displayed revision before React re
 	const remove = h.hook.current.deleteStoryMessage;
 	await h.hook.act(async () => {
 		h.hook.current.setConversation(summary(1, 9));
-		await remove(105);
+		await remove(105, 5);
 	});
 	const command = h.requests.find(({ init }) => init?.method === "POST");
 	expect(JSON.parse(String(command?.init?.body)).expectedRevision).toBe(5);
+});
+
+test("fresh history cannot authorize a second removal from pending Moves", async () => {
+	const moves = (...bodies: string[]) => ({ phone: bodies.map((text) => ({ to: "Mara", text })) });
+	let stored = moves("A", "B", "C");
+	let revision = 5;
+	const sent = Promise.withResolvers<void>();
+	const release = Promise.withResolvers<void>();
+	const h = await harness(async ({ url, init }) => {
+		if (init?.method === "POST") {
+			const { expectedRevision, action } = JSON.parse(String(init.body));
+			sent.resolve();
+			await release.promise;
+			if (expectedRevision !== revision) return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: revision, current: summary(1, revision) }, { status: 409 });
+			stored = action.moves;
+			return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
+		}
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+		const history = page(1, 1, revision);
+		history.messages[0]!.moves = stored;
+		return Response.json(history);
+	});
+	let first = Promise.resolve();
+	await h.hook.act(async () => { first = h.hook.current.setMessageMoves(105, moves("B", "C"), 5); await sent.promise; });
+	stored = moves("A", "B", "C", "From another tab");
+	revision++;
+	await h.hook.act(async () => h.hook.current.refreshStory(1));
+	await flushHook();
+	const story = readyStory(h.hook.current.story);
+	expect(story.revision).toBe(6);
+	const visible = shownMessage(story, story.messages[0]!);
+	expect(visible.moves).toEqual(moves("B", "C"));
+	await h.hook.act(async () => {
+		const second = h.hook.current.setMessageMoves(105, { phone: visible.moves.phone!.slice(1) }, story.revision);
+		release.resolve();
+		await Promise.all([first, second]);
+	});
+	await flushHook();
+	expect(stored).toEqual(moves("A", "B", "C", "From another tab"));
+	expect(h.requests.filter(({ init }) => init?.method === "POST")).toHaveLength(1);
 });
 
 test("a failed jump that advances Summary refreshes the window the reader stays on", async () => {
@@ -929,7 +989,7 @@ test("batched reselection ends the visit before old queued work or overlays can 
 	const h = await harness();
 	const departed = h.hook.current;
 	await h.hook.act(async () => {
-		const command = departed.deleteStoryMessage(105);
+		const command = departed.deleteStoryMessage(105, 5);
 		departed.selectChat("2");
 		departed.selectChat("1");
 		departed.dispatchStory({ type: "generation-requested", request: { kind: "send", content: "Abandoned" } });
@@ -1104,8 +1164,8 @@ test("selectChat retires a queued command before dispatch and leaves the replace
 	const gate = Promise.withResolvers<void>();
 	const blocker = queueConversationCommand(1, async () => { await gate.promise; return false; });
 	let abandoned = Promise.resolve();
-	await h.hook.act(async () => { abandoned = h.hook.current.deleteStoryMessage(105); h.hook.current.selectChat("2"); });
+	await h.hook.act(async () => { abandoned = h.hook.current.deleteStoryMessage(105, 5); h.hook.current.selectChat("2"); });
 	await h.switchTo(1);
-	await h.hook.act(async () => { gate.resolve(); await Promise.all([blocker, abandoned]); await h.hook.current.deleteStoryMessage(106); });
+	await h.hook.act(async () => { gate.resolve(); await Promise.all([blocker, abandoned]); await h.hook.current.deleteStoryMessage(106, 5); });
 	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).action.messageId)).toEqual([106]);
 });

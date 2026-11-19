@@ -16,6 +16,7 @@ import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
 import type { BoxWindowsController } from "../box-windows/useBoxWindows";
 import {
 	displayedVariantId,
+	canWriteMessage,
 	isModelAuthoredMessage,
 	isPreviewDownstream,
 	hasRequestedSwipe,
@@ -142,8 +143,8 @@ export function StoryStage({
 		waitForHistory: () => latest.current.session.waitForHistory(),
 		fork: (messageId: number) => latest.current.onFork({ through: messageId }),
 		rewind: (messageId: number) => latest.current.onFork({ rewind: messageId }),
-		setMoves: (messageId: number, moves: BoxMoves) => void latest.current.storyActions.setMessageMoves(messageId, moves),
-		remove: (messageId: number) => void latest.current.storyActions.deleteStoryMessage(messageId),
+		setMoves: (messageId: number, moves: BoxMoves, revision: number) => void latest.current.storyActions.setMessageMoves(messageId, moves, revision),
+		remove: (messageId: number, revision: number) => void latest.current.storyActions.deleteStoryMessage(messageId, revision),
 	}), []);
 	const onLayerFocus = useLayerFocus(inert);
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
@@ -224,6 +225,7 @@ export function StoryStage({
 							)}
 							displayedVariantId={displayedVariantId(story, message)}
 							mutationsDisabled={story.preview !== null || swiping || historyPending}
+							contentWritesDisabled={!canWriteMessage(story, message.id)}
 							saveAsNewDisabled={generation.isGenerating}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}

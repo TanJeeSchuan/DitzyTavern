@@ -7,8 +7,8 @@ import {
 import { runConversationCommand } from "../conversation-command-runner";
 import {
 	classifyVariantSelection,
+	canWriteMessage,
 	displayedVariantId,
-	shownVariant,
 	previewOnMessage,
 	type RequestedWrite,
 	type StoryAction,
@@ -55,11 +55,15 @@ export function useStoryMessageActions({
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
 	const surface = {
-		revision: () => isStoryReady(story) ? story.revision : null,
 		exact: true,
 		onConversationChange: setConversation,
 		setNotice: noPresentation,
 		isCurrent: () => !signal.aborted,
+	};
+	const messageForWrite = (messageId: number, revision: number) => {
+		if (!isStoryReady(story) || story.revision !== revision || !canWriteMessage(story, messageId)) return undefined;
+		const message = story.messages.find((entry) => entry.id === messageId);
+		return message === undefined ? undefined : { message, commandSurface: { ...surface, conversationId: story.conversationId, revision: () => revision } };
 	};
 	const requestSelection = async (conversationId: number, messageId: number, variantId: number, baseRevision: number) => {
 		const requested = { baseRevision, messageId, request: { value: variantId } };
@@ -131,18 +135,17 @@ export function useStoryMessageActions({
 	};
 
 	// @approved
-	//  Saving as new copies the shown Variant, with its edited text, to a new
+	//  Saving as new copies the selected Variant, with its edited text, to a new
 	// selected Swipe at the end and leaves the source untouched.
 	const editStoryMessage = async (messageId: number, content: string, asNew: boolean, baseRevision: number) => {
-		if (!isStoryReady(story) || story.preview !== null) return false;
-		const storyMessage = story.messages.find((entry) => entry.id === messageId);
-		if (storyMessage === undefined) return false;
-		const variantId = shownVariant(story, storyMessage)?.id;
-		const conversationId = story.conversationId;
+		const write = messageForWrite(messageId, baseRevision);
+		if (write === undefined) return false;
+		const { message, commandSurface } = write;
+		const variantId = message.swipes[message.activeSwipe]?.id;
 		if (variantId === undefined) return false;
 
 		let applied = false;
-		await runConversationCommand({ ...surface, conversationId, revision: () => baseRevision }, asNew
+		await runConversationCommand(commandSurface, asNew
 			? { type: "create-variant", messageId, sourceVariantId: variantId, content }
 			: { type: "edit-variant", messageId, variantId, content }, {
 			notices: STORY_COMMAND_NOTICES,
@@ -151,23 +154,22 @@ export function useStoryMessageActions({
 		return applied;
 	};
 
-	const setMessageMoves = async (messageId: number, moves: BoxMoves) => {
-		if (!isStoryReady(story) || story.preview !== null) return;
+	const setMessageMoves = async (messageId: number, moves: BoxMoves, baseRevision: number) => {
+		const write = messageForWrite(messageId, baseRevision);
+		if (write === undefined) return;
 		const request = { value: moves };
 		dispatchStory({ type: "moves-requested", messageId, request });
-		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId }, { type: "set-message-moves", messageId, moves }, {
+		const applied = await runConversationCommand(write.commandSurface, { type: "set-message-moves", messageId, moves }, {
 			notices: STORY_COMMAND_NOTICES,
 			onApplied: (result) => dispatchStory({ type: "moves-settled", messageId, request, revision: result.revision }),
 		});
 		if (!applied && !signal.aborted) dispatchStory({ type: "moves-settled", messageId, request, revision: null });
 	};
 
-	const deleteStoryMessage = async (messageId: number) => {
-		if (!isStoryReady(story) || story.preview !== null) return;
-		const conversationId = story.conversationId;
-		if (!story.messages.some((entry) => entry.id === messageId)) return;
-
-		await runConversationCommand({ ...surface, conversationId }, {
+	const deleteStoryMessage = async (messageId: number, baseRevision: number) => {
+		const write = messageForWrite(messageId, baseRevision);
+		if (write === undefined) return;
+		await runConversationCommand(write.commandSurface, {
 			type: "delete-message",
 			messageId,
 		}, {

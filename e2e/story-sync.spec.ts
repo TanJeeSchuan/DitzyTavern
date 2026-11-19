@@ -16,6 +16,46 @@ const focus = (page: Page, visibilityState: "hidden" | "visible") => page.evalua
 	window.dispatchEvent(new Event("visibilitychange"));
 }, visibilityState);
 
+test("Save and leave keeps a refused Save as new Swipe as a copy", async ({ page, request }) => {
+	const { activeChatId } = await (await request.get("/api/workspace")).json();
+	const url = `/api/conversations/${activeChatId}`;
+	const conversation = await (await request.get(url)).json();
+	const history = await (await request.get(`${url}/history`)).json();
+	const original = history.messages.at(-1);
+	const selected = original.variants.find((variant: { selected: boolean }) => variant.selected);
+	await page.goto("/");
+	const message = story(page).locator(`[data-message-id="${original.id}"]`);
+	await message.hover();
+	await message.getByRole("button", { name: "Edit", exact: true }).click();
+	await message.getByRole("textbox", { name: "Edit Message" }).fill("My draft belongs in a copy.");
+	const changed = await request.post(`${url}/commands`, { data: {
+		expectedRevision: conversation.revision,
+		action: { type: "edit-variant", messageId: original.id, variantId: selected.id, content: "Changed in another tab." },
+	} });
+	expect(changed.ok()).toBe(true);
+	const { conversation: changedConversation } = await changed.json();
+	const added = await request.post(`${url}/commands`, { data: {
+		expectedRevision: changedConversation.revision,
+		action: { type: "create-message", timestamp: new Date().toISOString(), authorParticipantId: conversation.control.humanParticipantId, variantContents: ["A new Message from the other tab."] },
+	} });
+	expect(added.ok()).toBe(true);
+	await focus(page, "hidden");
+	await focus(page, "visible");
+	await expect(story(page).getByText("A new Message from the other tab.")).toBeVisible();
+	await message.getByRole("button", { name: "Save as new Swipe" }).click();
+	await expect(message.getByRole("alert")).toContainText("Changed elsewhere");
+	await page.getByRole("button", { name: "Chats", exact: true }).click();
+	const guard = page.getByRole("dialog", { name: "Unsaved changes" });
+	await guard.getByRole("button", { name: "Save and leave" }).click();
+	await expect(guard).toBeHidden();
+	const stored = await (await request.get(`${url}/history`)).json();
+	const saved = stored.messages.find((entry: { id: number }) => entry.id === original.id);
+	const oldText = await (await request.get(`${url}/messages/${original.id}/variants/${selected.id}/text`)).json();
+	expect(oldText.content).toBe("Changed in another tab.");
+	expect(saved.variants.find((variant: { selected: boolean }) => variant.selected)).toMatchObject({ content: "My draft belongs in a copy." });
+	expect(saved.variants).toHaveLength(original.variants.length + 1);
+});
+
 for (const changeSecondDraft of [false, true]) test(`Save and leave ${changeSecondDraft ? "keeps a concurrently changed Message unsaved" : "saves two Message drafts in sequence"}`, async ({ page, request }) => {
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 	const url = `/api/conversations/${activeChatId}`;

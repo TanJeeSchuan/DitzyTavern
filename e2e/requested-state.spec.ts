@@ -128,6 +128,7 @@ test("accepted writes disable transcript controls until displayed history catche
 	await expect(moves.getByRole("listitem")).toHaveText(["To Theodora Kline: A", "To Theodora Kline: B", "To Theodora Kline: C"]);
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 	const url = `/api/conversations/${activeChatId}`;
+	await expect.poll(async () => (await (await request.get(url)).json()).activeGenerations.length).toBe(0);
 	const conversation = await (await request.get(url)).json();
 	const history = await (await request.get(`${url}/history`)).json();
 	const last = history.messages.at(-1);
@@ -148,6 +149,11 @@ test("accepted writes disable transcript controls until displayed history catche
 	const applied = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok());
 	await moves.getByRole("button", { name: "Remove To Theodora Kline: A" }).click();
 	const command = await applying;
+	await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: B" })).toBeDisabled();
+	const editedMoves = story(page).locator("article[data-message-id]").nth(-2);
+	await editedMoves.hover();
+	await expect(editedMoves.getByRole("button", { name: "Edit", exact: true })).toBeDisabled();
+	await expect(editedMoves.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
 	await reply.hover();
 	await reply.getByRole("button", { name: /browse Swipes/ }).click();
 	const browser = page.getByRole("dialog", { name: "Swipes", exact: true });

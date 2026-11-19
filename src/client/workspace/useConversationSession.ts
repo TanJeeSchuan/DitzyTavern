@@ -17,7 +17,7 @@ function createNavigation() {
 	let paging: AbortController | null = null;
 	const listeners = new Set<() => void>();
 	return {
-		jumps: new Set<AbortController>(), window: new AbortController(), selection: new AbortController(),
+		jumps: new Set<AbortController>(), window: new AbortController(), selection: new AbortController(), initialScroll: new AbortController(),
 		getPaging: () => paging,
 		subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; },
 		setPaging: (next: AbortController | null) => { paging = next; for (const notify of listeners) notify(); },
@@ -245,6 +245,8 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	};
 
 	const beginNavigation = () => {
+		pendingMessage.current = null;
+		navigation.current.initialScroll.abort();
 		const jump = new AbortController();
 		navigation.current.jumps.add(jump);
 		return jump;
@@ -267,7 +269,6 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	};
 	const navigateToSourceMessage = async (messageId: number) => {
 		if (conversationId === null || signal.aborted) return;
-		pendingMessage.current = null;
 		const jump = beginNavigation();
 		const navigationSignal = AbortSignal.any([signal, jump.signal]);
 		try {
@@ -287,8 +288,9 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		if (messageId === null || story.status !== "ready") return;
 		pendingMessage.current = null;
 		if (!story.messages.some((message) => message.id === messageId)) return;
+		const initialScroll = navigation.current.initialScroll.signal;
 		void afterRender().then(() => {
-			if (!signal.aborted) document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "instant", block: "center" });
+			if (!signal.aborted && !initialScroll.aborted) document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "instant", block: "center" });
 		});
 	}, [story.status, story.messages, signal]);
 

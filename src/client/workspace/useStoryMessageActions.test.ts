@@ -230,19 +230,19 @@ describe("Requested selection", () => {
 		expect(harness.shownVariantId()).toBe(102);
 	});
 
-	test("an edit made while a Swipe waits edits the Variant on screen", async () => {
+	test("an edit is refused without sending while the Message's Swipe is pending", async () => {
 		const harness = createHarness({ kind: "applied" });
 		const release = harness.hold();
 
 		const swiping = harness.swipe(10, 1);
 		const editing = harness.edit(10, "Second, revised");
 		release();
-		await Promise.all([swiping, editing]);
+		await swiping;
+		expect(await editing).toBe(false);
 
-		expect(harness.commands.map(({ action }) => [action.type, action.variantId])).toEqual([
-			["select-variant", 101],
-			["edit-variant", 101],
-		]);
+		expect(harness.commands.map(({ action }) => [action.type, action.variantId])).toEqual([["select-variant", 101]]);
+		harness.publishHistory(101);
+		expect(harness.story().messages[0]?.swipes[1]?.content).toBe("Second");
 	});
 
 	test("a conflicted Swipe returns to the Variant the server kept", async () => {

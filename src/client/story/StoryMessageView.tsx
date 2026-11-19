@@ -53,6 +53,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	isLatest = false,
 	displayedVariantId: visibleId,
 	mutationsDisabled = false,
+	contentWritesDisabled = false,
 	saveAsNewDisabled = false,
 	generationActive = false,
 	previewDownstream = false,
@@ -86,6 +87,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	isLatest?: boolean;
 	displayedVariantId: number | null;
 	mutationsDisabled?: boolean;
+	contentWritesDisabled?: boolean;
 	// @approved
 	//  The server refuses a new Variant while any Generation in the Chat runs.
 	saveAsNewDisabled?: boolean;
@@ -110,10 +112,10 @@ export const StoryMessageView = memo(function StoryMessageView({
 	onRegenerate?: (messageId: number) => void;
 	onSibling?: (messageId: number) => void;
 	onReroll?: (messageId: number) => void;
-	onMovesChange?: ((messageId: number, moves: BoxMoves) => void) | undefined;
+	onMovesChange?: ((messageId: number, moves: BoxMoves, revision: number) => void) | undefined;
 	onInspect?: (messageId: number, variantId: number) => void;
 	onOpenInspector?: (box: string, focus: { messageId: number }) => void;
-	onDelete?: (messageId: number) => void;
+	onDelete?: (messageId: number, revision: number) => void;
 	onFork: (messageId: number) => void;
 	onRewind?: (messageId: number) => void;
 	// @approved
@@ -137,24 +139,30 @@ export const StoryMessageView = memo(function StoryMessageView({
 	const authorName = message.authorName ?? "Unknown author";
 
 	const [editBase, setEditBase] = useState<{ variantId: number | undefined; content: string; revision: number }>({ variantId: undefined, content: "", revision: historyRevision });
-	const [editConflict, setEditConflict] = useState<"review" | "overwrite" | null>(null);
+	const [editConflict, setEditConflict] = useState<string | null>(null);
+	const [saveAsNew, setSaveAsNew] = useState(false);
 	const [saving, setSaving] = useState(false);
-	const canSave = !mutationsDisabled && !saving && active?.content != null && (editText.trim() !== "" || hasMoves(message.moves));
+	const writesDisabled = mutationsDisabled || contentWritesDisabled;
+	const selected = message.swipes[message.activeSwipe];
+	const canSave = (asNew: boolean) => !writesDisabled && !generationActive && !saving && selected?.content != null &&
+		(!asNew || !saveAsNewDisabled) && (editText.trim() !== "" || (asNew && editText === editBase.content) || hasMoves(message.moves));
 	const openEditor = () => {
-		if (isEditing) return;
-		setEditText(active?.content ?? "");
-		setEditBase({ variantId: active?.id, content: active?.content ?? "", revision: historyRevision });
+		if (isEditing || writesDisabled || selected?.content == null) return;
+		setEditText(selected.content);
+		setEditBase({ variantId: selected.id, content: selected.content, revision: historyRevision });
 		setEditConflict(null);
+		setSaveAsNew(false);
 		setIsEditing(true);
 	};
 	const saveEdit = async (asNew: boolean, revalidate = false) => {
+		if (!canSave(asNew) || selected?.content == null) return false;
+		setSaveAsNew(asNew);
 		const duplicate = asNew && editText === editBase.content;
 		const value = duplicate ? editBase.content : editText.trim();
-		if (mutationsDisabled || saving) return false;
-		if ((!value && !duplicate && !hasMoves(message.moves)) || active === undefined || active.content === null) return false;
-		if (active.id !== editBase.variantId || (!asNew && active.content !== editBase.content) || (!revalidate && historyRevision !== editBase.revision)) {
-			if (!revalidate) setEditBase({ variantId: active.id, content: active.content, revision: historyRevision });
-			setEditConflict(revalidate ? "review" : "overwrite");
+		if (selected.id !== editBase.variantId || (!asNew && selected.content !== editBase.content) || (!revalidate && historyRevision !== editBase.revision)) {
+			if (!revalidate) setEditBase({ variantId: selected.id, content: selected.content, revision: historyRevision });
+			if (revalidate) setEditConflict("Changed elsewhere. Review this draft before saving.");
+			else setEditConflict(asNew ? "Changed elsewhere. Save as new Swipe again to keep both versions." : "Changed elsewhere. Save again to overwrite.");
 			return false;
 		}
 		setSaving(true);
@@ -164,7 +172,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 			return applied;
 		} finally { setSaving(false); }
 	};
-	useSaveGuard({ dirty: isEditing && editText !== editBase.content, saving, canSave, save: () => saveEdit(false, true), waitAfterSave: waitForHistory, discard: () => setIsEditing(false) });
+	useSaveGuard({ dirty: isEditing && (saveAsNew || editText !== editBase.content), saving, canSave: canSave(saveAsNew), save: () => saveEdit(saveAsNew, true), waitAfterSave: waitForHistory, discard: () => setIsEditing(false) });
 	const movePrevious = () => {
 		setSwipeDirection("previous");
 		onMoveSwipe(message.id, -1);
@@ -274,21 +282,19 @@ export const StoryMessageView = memo(function StoryMessageView({
 					{onReroll !== undefined && <MessageAction label="Re-roll" disabled={mutationsDisabled} onClick={() => onReroll(message.id)}><Dices aria-hidden="true" /></MessageAction>}
 					{onInspect !== undefined && active !== undefined && <MessageAction label="Details" onClick={() => onInspect(message.id, active.id)}><Info aria-hidden="true" /></MessageAction>}
 					{lens !== undefined && onOpenInspector !== undefined && <BoxMessageActions conversation={lens.conversation} messageId={message.id} onOpen={onOpenInspector} />}
-					{onDelete !== undefined && <MessageAction label="Delete" className="edit-action delete-action" disabled={mutationsDisabled} onClick={() => {
-						if (window.confirm("Delete this Message?")) onDelete(message.id);
+					{onDelete !== undefined && <MessageAction label="Delete" className="edit-action delete-action" disabled={writesDisabled} onClick={() => {
+						if (window.confirm("Delete this Message?")) onDelete(message.id, historyRevision);
 					}}><Trash2 aria-hidden="true" /></MessageAction>}
 				</div>
 				</Tooltip.Provider>
 			</header>
-			<MoveChips moves={message.moves} disabled={mutationsDisabled}
-				onChange={onMovesChange === undefined ? undefined : (moves) => onMovesChange(message.id, moves)} />
+			<MoveChips moves={message.moves} disabled={writesDisabled}
+				onChange={onMovesChange === undefined ? undefined : (moves) => { if (!writesDisabled) onMovesChange(message.id, moves, historyRevision); }} />
 			{isEditing && active !== undefined ? (
 				<div className="message-editor">
 					<span>Edit Message</span>
 					<ProseEditor value={editText} onChange={setEditText} ariaLabel="Edit Message" autoFocus disabled={saving} />
-					{editConflict !== null && <small className="field-error" role="alert">
-						{editConflict === "overwrite" ? "Changed elsewhere. Save again to overwrite." : "Changed elsewhere. Review this draft before saving."}
-					</small>}
+					{editConflict !== null && <small className="field-error" role="alert">{editConflict}</small>}
 					<div>
 						<button
 							className="secondary-button"
@@ -301,7 +307,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 						<button
 							className="secondary-button"
 							type="button"
-							disabled={mutationsDisabled || saveAsNewDisabled || saving}
+							disabled={!canSave(true)}
 							onClick={() => saveEdit(true)}
 						>
 							Save as new Swipe
@@ -309,7 +315,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 						<button
 							className="primary-button"
 							type="button"
-							disabled={!canSave}
+							disabled={!canSave(false)}
 							onClick={() => saveEdit(false)}
 						>
 							Save
@@ -351,7 +357,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 					<button
 						className="edit-action"
 						type="button"
-						disabled={mutationsDisabled || generationActive || active?.content === null}
+						disabled={writesDisabled || generationActive || selected?.content == null}
 						onClick={openEditor}
 					>
 						<Edit3 aria-hidden="true" /> Edit

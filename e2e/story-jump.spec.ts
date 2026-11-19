@@ -27,18 +27,8 @@ test("a missing Inspector source opens latest; jumping to a source reads one win
 	await coverage.focus();
 	await coverage.press("Home");
 	for (let step = 1; step < 50; step++) await coverage.press("ArrowRight");
-	const missingSource = `${historyUrl}?aroundMessageId=${target.id}`;
-	await page.route(`**${missingSource}`, (route) => route.fulfill({ status: 404, json: { outcome: "not-found" } }));
-	const fallback = page.waitForResponse((response) => response.url().endsWith(`${historyUrl}?page=1`) && response.ok());
-	await coverage.press("Enter");
-	await fallback;
-	await expect(story(page).getByRole("alert").filter({ hasText: "The Chat history could not be loaded." })).toHaveCount(0);
-	await expect(articles).toHaveCount(50);
-	await page.unroute(`**${missingSource}`);
 	requests.length = 0;
-	const retried = page.waitForRequest((request) => request.url().endsWith(missingSource));
-	await page.getByRole("button", { name: / · #50$/ }).click();
-	await retried;
+	await coverage.press("Enter");
 	const targetMessage = story(page).locator(`[data-message-id="${target.id}"]`);
 	await expect(targetMessage).toBeInViewport();
 	await expect(articles).toHaveCount(50);
@@ -79,4 +69,20 @@ test("a missing Inspector source opens latest; jumping to a source reads one win
 	await expect(story(page).getByRole("button", { name: "Jump to latest", exact: true })).toHaveCount(0);
 	await expect(articles.last()).toContainText("Sending reattached the story.");
 	await expect(articles.last()).toBeInViewport();
+
+	await page.getByRole("button", { name: "Memories", exact: true }).click();
+	await coverage.press("Home");
+	await coverage.press("Enter");
+	const jumpToLatest = story(page).getByRole("button", { name: "Jump to latest", exact: true });
+	await expect(jumpToLatest).toBeVisible();
+	const latestReply = story(page).getByText("Sending reattached the story.", { exact: true });
+	await expect(latestReply).toHaveCount(0);
+
+	for (let step = 1; step < 50; step++) await coverage.press("ArrowRight");
+	await page.route(`**${historyUrl}?aroundMessageId=${target.id}`, (route) => route.fulfill({ status: 404, json: { outcome: "not-found" } }));
+	const fallback = page.waitForResponse((response) => response.url().endsWith(`${historyUrl}?page=1`) && response.ok());
+	await coverage.press("Enter");
+	await fallback;
+	await expect(latestReply).toBeInViewport();
+	await expect(jumpToLatest).toBeHidden();
 });
