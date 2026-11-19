@@ -755,10 +755,10 @@ for (const operation of ["edit", "save as new", "Moves"] as const) test(`${opera
 	});
 	const write = () => operation === "Moves" ? h.hook.current.setMessageMoves(105, {})
 		: h.hook.current.editStoryMessage(105, "Edited", operation === "save as new");
-	await h.hook.act(write);
+	await h.hook.act(async () => { await write(); });
 	await flushHook();
 	expect(readyStory(h.hook.current.story).revision).toBe(5);
-	await h.hook.act(write);
+	await h.hook.act(async () => { await write(); });
 	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).expectedRevision)).toEqual([5, 6]);
 	await h.hook.act(async () => history.resolve(Response.json(page(1, 1, 7))));
 	await flushHook();
@@ -824,6 +824,7 @@ test("a remount with a warm cache opens latest instead of the previous visit's d
 		? page(1, url.searchParams.has("aroundMessageId") ? 3 : 1) : summary()));
 	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
 	await h.hook.unmount();
 	const reopened = await renderHook(() => useConversationSession({ initialChatId: "1" }), h.client);

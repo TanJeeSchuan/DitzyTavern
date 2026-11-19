@@ -34,7 +34,7 @@ test("a missing Inspector source reports failure; jumping to a source reads one 
 	await expect(articles).toHaveCount(50);
 	await page.unroute(`**${missingSource}`);
 	requests.length = 0;
-	await coverage.press("Enter");
+	await page.getByRole("button", { name: / · #50$/ }).click();
 	const targetMessage = story(page).locator(`[data-message-id="${target.id}"]`);
 	await expect(targetMessage).toBeInViewport();
 	await expect(articles).toHaveCount(50);
