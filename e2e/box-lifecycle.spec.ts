@@ -1,4 +1,5 @@
 import { test, expect, insertBox, openBoxes as manager, send, story, closeBoxes } from "./fixtures";
+import { emptyPromptChannels } from "../src/shared/definition";
 
 test.describe("a Box lifecycle change from a stale read", () => {
 	// The deliberate 409 conflict response logs one browser console error.
@@ -27,8 +28,8 @@ test.describe("a Box lifecycle change from a stale read", () => {
 	});
 });
 
-test("a new Chat starts with only the Author Note and Memory enabled", async ({ page, request }) => {
-	const emptyPrompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+test("a new Chat starts with only the Author Note, Memory and the Character Drafter enabled", async ({ page, request }) => {
+	const emptyPrompt = emptyPromptChannels();
 	const created = await (await request.post("/api/conversations/native", { data: {
 		name: "Fresh Chat",
 		humanSeat: { type: "adhoc", definition: { name: "Writer", prompt: emptyPrompt, sendAppearanceImages: true, openings: [] } },
@@ -37,7 +38,7 @@ test("a new Chat starts with only the Author Note and Memory enabled", async ({ 
 	expect(created.outcome).toBe("created");
 	await page.goto("/");
 	const boxes = await manager(page);
-	for (const title of ["Author Note", "Memory"]) await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).toBeChecked();
+	for (const title of ["Author Note", "Memory", "Character Drafter"]) await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).toBeChecked();
 	for (const title of ["World Clock", "Race", "Phone"]) {
 		await expect(boxes.getByRole("switch", { name: `${title} in this Chat` })).toHaveCount(0);
 		await expect(boxes.getByRole("button", { name: `Add ${title}`, exact: true })).toBeVisible();

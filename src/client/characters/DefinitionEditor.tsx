@@ -9,7 +9,6 @@ import type { ParticipantDefinition } from "../../shared/contract/conversation-s
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { promptChannelLabels } from "../../shared/definition";
-import { SaveFooter } from "../SaveFooter";
 import { useNavigationRequest } from "../SaveGuard";
 
 export const definitionOf = ({
@@ -48,12 +47,9 @@ export function DefinitionEditor({
 	actions,
 	banner,
 	children,
-	dirty,
-	saving,
-	error = null,
-	valid = true,
+	footer,
 	autoSelectName = false,
-	onSave,
+	locked = false,
 	onBack,
 }: {
 	draft: ParticipantDefinition;
@@ -62,12 +58,10 @@ export function DefinitionEditor({
 	actions?: ReactNode;
 	banner?: ReactNode;
 	children?: ReactNode;
-	dirty: boolean;
-	saving: boolean;
-	error?: string | null;
-	valid?: boolean;
+	/** @approved The editor's footer, told whether the draft has a name, which every way of keeping a Definition needs. */
+	footer: (named: boolean) => ReactNode;
 	autoSelectName?: boolean;
-	onSave: () => void;
+	locked?: boolean;
 	onBack: () => void;
 }) {
 	const navigate = useNavigationRequest();
@@ -109,7 +103,7 @@ export function DefinitionEditor({
 
 	return (
 		<div className="editor-frame">
-			<div className="panel-body flex flex-col gap-6">
+			<div className="panel-body flex flex-col gap-6" inert={locked}>
 				<div className="-mx-2 -mt-1 flex items-center gap-1">
 					<Button type="button" size="sm" variant="ghost" className="text-muted-foreground" onClick={() => navigate(onBack)}><ArrowLeft aria-hidden="true" /> Characters</Button>
 					<span className="flex-1" />
@@ -179,7 +173,7 @@ export function DefinitionEditor({
 				</section>
 				{children}
 			</div>
-			<SaveFooter dirty={dirty} saving={saving} valid={valid && draft.name.trim() !== ""} error={error} onSave={onSave} />
+			{footer(draft.name.trim() !== "")}
 		</div>
 	);
 }

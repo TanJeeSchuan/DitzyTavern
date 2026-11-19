@@ -77,6 +77,21 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 }
 
 describe("assembly session", () => {
+	test("inspection locks editors from the history read through the open preview", async () => {
+		const latest = Promise.withResolvers<ConversationSummary>();
+		const h = await assemblyHarness(async () => Response.json(preview()));
+		h.options.ensureLatest = () => latest.promise;
+		await h.hook.rerender();
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "Keep reading" } }));
+		expect(h.hook.current.assembly).toBeNull();
+		expect(h.hook.current.inspectionLocked).toBe(true);
+		await h.hook.act(async () => latest.resolve(conversation()));
+		expect(h.hook.current.assembly).not.toBeNull();
+		expect(h.hook.current.inspectionLocked).toBe(true);
+		await h.hook.act(async () => h.hook.current.cancelPromptPlanPreview());
+		expect(h.hook.current.inspectionLocked).toBe(false);
+	});
+
 	test("acceptance sends the edited plan once and closes on success", async () => {
 		const response = Promise.withResolvers<Response>();
 		const h = await assemblyHarness(({ url }) => url.endsWith("/preview") ? Promise.resolve(Response.json(preview())) : response.promise);

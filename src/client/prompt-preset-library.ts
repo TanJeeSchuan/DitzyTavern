@@ -122,9 +122,10 @@ export type PromptPresetOperationOutcome = Awaited<ReturnType<typeof addPromptPr
 export function addPromptPresetReference(
 	presetId: number,
 	reference: PromptBlockReference,
+	conversationId?: number,
 ) {
 	return requestOutcome(
-		api.api["prompt-presets"]({ presetId }).blocks.post({ reference }),
+		api.api["prompt-presets"]({ presetId }).blocks.post({ reference, conversationId }),
 		promptPresetRecipeResponse,
 	);
 }

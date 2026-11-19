@@ -12,7 +12,7 @@ export type GenerationStart = { visit: AbortSignal; last: StartRequest | null } 
 	// @approved
 	//  `error` is why the last direct start, or the preparation of any start, failed.
 	| { phase: "idle"; error: string | null }
-	| { phase: "preparing"; request: StartRequest }
+	| { phase: "preparing"; request: StartRequest; inspect: boolean }
 	| { phase: "inspecting"; request: StartRequest; acceptance: { status: "open" | "accepting" } | { status: "failed"; error: string } }
 	| { phase: "starting" }
 );
@@ -20,8 +20,8 @@ export type GenerationStart = { visit: AbortSignal; last: StartRequest | null } 
 // @approved
 //  Every event names the visit it belongs to: an event from an ended visit changes nothing.
 export type GenerationStartEvent = { visit: AbortSignal } & (
-	| { type: "requested"; request: StartRequest }
-	| { type: "prepared"; inspect: boolean }
+	| { type: "requested"; request: StartRequest; inspect: boolean }
+	| { type: "prepared" }
 	| { type: "accepting" }
 	| { type: "start-accepted" }
 	| { type: "failed"; error: string }
@@ -39,10 +39,10 @@ const transition = (state: GenerationStart, event: GenerationStartEvent): Genera
 	const { visit, last } = state;
 	switch (event.type) {
 		case "requested":
-			return state.phase === "idle" ? { visit, last, phase: "preparing", request: event.request } : state;
+			return state.phase === "idle" ? { visit, last, phase: "preparing", request: event.request, inspect: event.inspect } : state;
 		case "prepared":
 			if (state.phase !== "preparing") return state;
-			return event.inspect ? { visit, last, phase: "inspecting", request: state.request, acceptance: { status: "open" } } : { visit, last: state.request, phase: "starting" };
+			return state.inspect ? { visit, last, phase: "inspecting", request: state.request, acceptance: { status: "open" } } : { visit, last: state.request, phase: "starting" };
 		case "accepting":
 			return state.phase === "inspecting" && state.acceptance.status !== "accepting" ? { ...state, last: state.request, acceptance: { status: "accepting" } } : state;
 		case "start-accepted":

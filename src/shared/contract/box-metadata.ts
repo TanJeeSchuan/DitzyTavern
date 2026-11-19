@@ -10,6 +10,7 @@ export const boxMetadataSchema = Type.Object({
 	label: Type.String(),
 	summary: Type.String(),
 	instructions: Type.String(),
+	prompt: Type.Optional(Type.Literal(false)),
 	block: Type.Optional(Type.Object({ description: Type.String(), source: Type.String() })),
 	decision: Type.Optional(Type.Object({ summary: Type.String(), description: Type.String(), off: Type.String(), context: Type.String() })),
 	lens: Type.Optional(boxTag),
