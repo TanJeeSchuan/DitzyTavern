@@ -75,7 +75,7 @@ type RecordedCommand = {
 };
 
 function createHarness(mode: CommandMode, withLaterMessage = false) {
-	const events: string[] = [];
+	let previewEntries = 0;
 	const commands: RecordedCommand[] = [];
 	const fetches: { method: string; url: string }[] = [];
 	let revision = 5;
@@ -95,7 +95,6 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 			// body to JSON, so parsing the recorded body restores that shape.
 			const body = JSON.parse(String(init?.body)) as RecordedCommand;
 			commands.push(body);
-			events.push(`send:${body.expectedRevision}`);
 			if (mode.kind === "conflict") revision += 1;
 			if (body.expectedRevision !== revision) {
 				return Response.json(
@@ -117,12 +116,10 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 
 	const story = () => readStory({ overlays, window, conversationId: 1, historyFailed: false, loadingMore: false });
 	const dispatchStory = (action: StoryAction) => {
-		events.push(`action:${action.type}`);
 		overlays = retireStoryOverlays(reduceStoryOverlays(overlays, action), window, conversation);
 	};
 	const setConversation = (value: ConversationSummary | null) => {
 		conversation = value;
-		if (value !== null) events.push(`adopt:${value.revision}`);
 	};
 	const publishHistory = (variantId: number) => {
 		const page = initial.messages.map((message) => message.id === 10 ? {
@@ -142,12 +139,10 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	});
 	const actions = () => useStoryMessageActions({
 		...surface(),
-		queueSwipeScroll: (target) => {
-			events.push(`scroll:${target}`);
-		},
+		queueSwipeScroll() {},
 		canEnterPreview: true,
 		onEnterPreview: (enter) => {
-			events.push("enter-preview");
+			previewEntries++;
 			enter();
 		},
 	});
@@ -171,7 +166,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	};
 
 	return {
-		events,
+		previewEntries: () => previewEntries,
 		commands,
 		fetches,
 		swipe,
@@ -278,7 +273,7 @@ describe("Requested selection", () => {
 		await harness.swipe(10, 1);
 
 		expect(harness.commands).toEqual([]);
-		expect(harness.events).toContain("enter-preview");
+		expect(harness.previewEntries()).toBe(1);
 		expect(harness.story().preview?.variantId).toBe(101);
 		// The stored selection stays untouched while Preview mode is active.
 		expect(harness.activeVariantId()).toBe(100);

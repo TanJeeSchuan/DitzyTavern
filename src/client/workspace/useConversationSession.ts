@@ -13,6 +13,7 @@ type HistoryOutcome = Awaited<ReturnType<typeof loadHistoryPage>>;
 type HistoryPageParam = ChatHistoryPageRequest & { revision?: number };
 type HistoryData = InfiniteData<HistoryOutcome, HistoryPageParam>;
 class SupersededHistory extends Error {}
+const HISTORY_REFRESH_ATTEMPTS = 3;
 
 const historyKey = (id: number) => ["conversation-history", id] as const;
 const initialRequest = (anchor: HistoryAnchor): HistoryPageParam => anchor === "latest" ? { page: 1 } : anchor;
@@ -71,8 +72,8 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	const [{ activeChatId, visit }, setSelection] = useState({ activeChatId: initialChatId, visit: 0 });
 	const signal = useVisitSignal(visit);
 	// @approved
-	//  The latest navigation within the visit: a newer one, or a Chat switch, aborts it.
-	const navigation = useRef({ window: new AbortController(), navigating: false });
+	// A jump within the window supersedes the scroll and paging. Only replacing the window aborts its refresh.
+	const navigation = useRef({ jump: new AbortController(), window: new AbortController(), navigating: false });
 	const [anchor, setAnchor] = useState<HistoryAnchor>("latest");
 	const [failedJump, setFailedJump] = useState<AbortSignal | null>(null);
 	const pendingMessage = useRef<number | null>(null);
@@ -112,8 +113,9 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	const activeChatTitle = conversation?.name ?? workspace?.chats.find((chat) => chat.id === activeChatId)?.title ?? "Chat";
 	const selectChat = (chatId: string, messageId: number | null = null) => {
 		if (chatId === activeChatIdRef.current) return;
+		navigation.current.jump.abort();
 		navigation.current.window.abort();
-		navigation.current = { window: new AbortController(), navigating: false };
+		navigation.current = { jump: new AbortController(), window: new AbortController(), navigating: false };
 		void client.cancelQueries({ queryKey: historyKey(id) });
 		void client.invalidateQueries({ queryKey: conversationKey(Number(chatId)) });
 		void client.invalidateQueries({ queryKey: historyKey(Number(chatId)) });
@@ -127,30 +129,37 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	const loadMoreHistory = async (direction: "older" | "newer" = "older") => {
 		if (history.isFetching || navigation.current.navigating || signal.aborted || !(direction === "older" ? history.hasNextPage : history.hasPreviousPage)) return;
 		const fetchPage = direction === "older" ? history.fetchNextPage : history.fetchPreviousPage;
-		const pageSignal = navigation.current.window.signal;
+		const pageSignal = navigation.current.jump.signal;
 		const result = await fetchPage({ cancelRefetch: false });
 		if (result.isSuccess && !pageSignal.aborted) setFailedJump(null);
 		if (result.error instanceof SupersededHistory && !pageSignal.aborted) await history.refetch({ cancelRefetch: false });
 	};
 
-	const beginNavigation = () => {
-		navigation.current.window.abort();
-		void client.cancelQueries({ queryKey: historyKey(id) });
-		navigation.current = { window: new AbortController(), navigating: true };
-		return AbortSignal.any([signal, navigation.current.window.signal]);
+	const beginNavigation = (replaceWindow: boolean) => {
+		const previous = navigation.current;
+		previous.jump.abort();
+		if (replaceWindow) previous.window.abort();
+		void client.cancelQueries({
+			queryKey: historyKey(id),
+			predicate: (query) => replaceWindow || !query.isActive() || query.state.fetchMeta?.fetchMore !== undefined,
+		});
+		navigation.current = { jump: new AbortController(), window: replaceWindow ? new AbortController() : previous.window, navigating: true };
+		return AbortSignal.any([signal, navigation.current.jump.signal]);
 	};
 	const openAnchor = async (next: HistoryAnchor, signal: AbortSignal) => {
 		client.removeQueries({ queryKey: historyQuery(id, next).queryKey, exact: true });
-		await client.fetchInfiniteQuery(historyQuery(id, next));
+		const result = await client.fetchInfiniteQuery(historyQuery(id, next));
 		signal.throwIfAborted();
+		if (result.pages[0]?.outcome !== "available") throw new Error("The Chat history could not be loaded.");
 		setAnchor(next);
 	};
 	const navigateToSourceMessage = async (messageId: number) => {
 		const current = currentSession().story;
 		if (!isStoryReady(current) || signal.aborted) return;
-		const navigationSignal = beginNavigation();
+		const replaceWindow = !current.messages.some((message) => message.id === messageId);
+		const navigationSignal = beginNavigation(replaceWindow);
 		try {
-			if (!current.messages.some((message) => message.id === messageId)) await openAnchor({ aroundMessageId: messageId }, navigationSignal);
+			if (replaceWindow) await openAnchor({ aroundMessageId: messageId }, navigationSignal);
 			await afterRender();
 			navigationSignal.throwIfAborted();
 			document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "instant", block: "center" });
@@ -172,11 +181,14 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		refresh.throwIfAborted();
 		await client.cancelQueries({ queryKey: conversationKey(id) });
 		const freshConversation = await client.fetchQuery({ ...conversationQuery(client, id, refresh), staleTime: 0 });
-		refresh.throwIfAborted();
-		try {
-			await client.refetchQueries({ queryKey: historyKey(id), type: "active" }, { cancelRefetch: false, throwOnError: true });
-		} catch (error) {
-			if (!(error instanceof SupersededHistory)) throw error;
+		for (let attempt = 1; ; attempt++) {
+			refresh.throwIfAborted();
+			try {
+				await client.refetchQueries({ queryKey: historyKey(id), type: "active" }, { cancelRefetch: false, throwOnError: true });
+				break;
+			} catch (error) {
+				if (!(error instanceof SupersededHistory) || attempt === HISTORY_REFRESH_ATTEMPTS) throw error;
+			}
 		}
 		refresh.throwIfAborted();
 		return freshConversation;
@@ -184,7 +196,7 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 
 	const jumpToLatest = async () => {
 		if (signal.aborted || !isStoryReady(currentSession().story)) return null;
-		const navigationSignal = beginNavigation();
+		const navigationSignal = beginNavigation(true);
 		try {
 			await client.cancelQueries({ queryKey: conversationKey(id) });
 			const loaded = await client.fetchQuery({ ...conversationQuery(client, id, navigationSignal), staleTime: 0 });

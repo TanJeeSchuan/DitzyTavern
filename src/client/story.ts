@@ -59,7 +59,12 @@ export interface StoryMessage {
 type Preview = { messageId: number; variantId: number };
 type StoryPreviewState = Preview & { targetPosition: number };
 
-export type RequestedWrite<Value> = { value: Value; appliedRevision: number | null };
+export type RequestedWrite<Value> = { value: Value };
+
+type WriteOverlay<Value> = {
+	pending: RequestedWrite<Value> | undefined;
+	accepted: { value: Value; revision: number } | undefined;
+};
 
 export type RequestedGeneration =
 	| { kind: "send"; content: string; moves?: BoxMoves | undefined }
@@ -68,8 +73,8 @@ export type RequestedGeneration =
 
 export type StoryOverlays = {
 	preview: Preview | null;
-	requestedSelections: ReadonlyMap<number, RequestedWrite<number>>;
-	requestedMoves: ReadonlyMap<number, RequestedWrite<BoxMoves>>;
+	requestedSelections: ReadonlyMap<number, WriteOverlay<number>>;
+	requestedMoves: ReadonlyMap<number, WriteOverlay<BoxMoves>>;
 	requestedGeneration: {
 		request: RequestedGeneration;
 		accepted: { generationId: number; variantId: number; sentRevision: number } | null;
@@ -199,19 +204,19 @@ export function reduceStoryOverlays(state: StoryOverlays, action: StoryAction): 
 			return {
 				...state,
 				preview: action.type === "preview-confirmed" ? null : state.preview,
-				requestedSelections: new Map(state.requestedSelections).set(action.messageId, action.request),
+				requestedSelections: requestWrite(state.requestedSelections, action.messageId, action.request),
 			};
 		case "selection-settled":
 			return { ...state, requestedSelections: settleWrite(state.requestedSelections, action) };
 		case "moves-requested":
-			return { ...state, requestedMoves: new Map(state.requestedMoves).set(action.messageId, action.request) };
+			return { ...state, requestedMoves: requestWrite(state.requestedMoves, action.messageId, action.request) };
 		case "moves-settled":
 			return { ...state, requestedMoves: settleWrite(state.requestedMoves, action) };
 		case "generation-requested":
 			return {
 				...state,
 				requestedGeneration: { request: action.request, accepted: null },
-				requestedSelections: action.request.kind === "sibling" ? without(state.requestedSelections, action.request.messageId) : state.requestedSelections,
+				requestedSelections: action.request.kind === "sibling" ? requestWrite(state.requestedSelections, action.request.messageId, undefined) : state.requestedSelections,
 			};
 		case "generation-request-accepted":
 			return state.requestedGeneration === null
@@ -222,18 +227,32 @@ export function reduceStoryOverlays(state: StoryOverlays, action: StoryAction): 
 	}
 }
 
-function settleWrite<Value>(
-	writes: ReadonlyMap<number, RequestedWrite<Value>>,
-	{ messageId, request, revision }: { messageId: number; request: RequestedWrite<Value>; revision: number | null },
-) {
-	if (writes.get(messageId) !== request) return writes;
-	return revision === null ? without(writes, messageId) : new Map(writes).set(messageId, { ...request, appliedRevision: revision });
+function setWrite<Value>(writes: ReadonlyMap<number, WriteOverlay<Value>>, messageId: number, overlay: WriteOverlay<Value>) {
+	const previous = writes.get(messageId);
+	if (previous?.pending === overlay.pending && previous?.accepted === overlay.accepted) return writes;
+	if (overlay.pending === undefined && overlay.accepted === undefined) return without(writes, messageId);
+	return new Map(writes).set(messageId, overlay);
 }
 
-function observedWrites<Value>(writes: ReadonlyMap<number, RequestedWrite<Value>>, revision: number) {
+function requestWrite<Value>(writes: ReadonlyMap<number, WriteOverlay<Value>>, messageId: number, pending: RequestedWrite<Value> | undefined) {
+	return setWrite(writes, messageId, { pending, accepted: writes.get(messageId)?.accepted });
+}
+
+function settleWrite<Value>(
+	writes: ReadonlyMap<number, WriteOverlay<Value>>,
+	{ messageId, request, revision }: { messageId: number; request: RequestedWrite<Value>; revision: number | null },
+) {
+	const previous = writes.get(messageId);
+	const pending = previous?.pending === request ? undefined : previous?.pending;
+	const accepted = revision !== null && (previous?.accepted === undefined || previous.accepted.revision < revision)
+		? { value: request.value, revision } : previous?.accepted;
+	return setWrite(writes, messageId, { pending, accepted });
+}
+
+function observedWrites<Value>(writes: ReadonlyMap<number, WriteOverlay<Value>>, revision: number) {
 	let next = writes;
-	for (const [id, { appliedRevision }] of writes) {
-		if (appliedRevision !== null && appliedRevision <= revision) next = without(next, id);
+	for (const [id, { pending, accepted }] of writes) {
+		if (accepted !== undefined && accepted.revision <= revision) next = setWrite(next, id, { pending, accepted: undefined });
 	}
 	return next;
 }
@@ -325,7 +344,8 @@ export const displayedVariantId = (
 ): number | null => {
 	if (state.preview?.messageId === message.id) return state.preview.variantId;
 	if (hasRequestedSwipe(state, message.id)) return requestedSwipeId;
-	const requested = state.requestedSelections.get(message.id)?.value;
+	const selection = state.requestedSelections.get(message.id);
+	const requested = selection?.pending?.value ?? selection?.accepted?.value;
 	if (requested !== undefined && message.swipes.some((variant) => variant.id === requested)) return requested;
 	return message.swipes[message.activeSwipe]?.id ?? null;
 };
@@ -345,7 +365,8 @@ const without = <Value>(requested: ReadonlyMap<number, Value>, messageId: number
 //  The Message the writer sees, with its Requested Moves in place of the persisted ones and, during a Requested
 // Swipe, an empty Variant selected at the end until a page places the real one.
 export const shownMessage = (state: StoryState, message: StoryMessage): StoryMessage => {
-	const moves = state.requestedMoves.get(message.id)?.value;
+	const overlay = state.requestedMoves.get(message.id);
+	const moves = overlay?.pending?.value ?? overlay?.accepted?.value;
 	const shown = moves === undefined ? message : { ...message, moves };
 	if (!hasRequestedSwipe(state, message.id)) return shown;
 	const requested = { id: requestedSwipeId, position: message.swipes.length + 1, content: "", hasReasoning: false, empty: true };

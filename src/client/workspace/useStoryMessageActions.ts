@@ -63,7 +63,7 @@ export function useStoryMessageActions({
 		isCurrent: () => !signal.aborted,
 	};
 	const requestSelection = async (conversationId: number, messageId: number, variantId: number) => {
-		const requested = { messageId, request: { value: variantId, appliedRevision: null } };
+		const requested = { messageId, request: { value: variantId } };
 		const current = selections.get(signal) ?? { queued: false, requested: null };
 		selections.set(signal, current);
 		current.requested = requested;
@@ -154,7 +154,7 @@ export function useStoryMessageActions({
 
 	const setMessageMoves = async (messageId: number, moves: BoxMoves) => {
 		if (!isStoryReady(story) || story.preview !== null) return;
-		const request = { value: moves, appliedRevision: null };
+		const request = { value: moves };
 		dispatchStory({ type: "moves-requested", messageId, request });
 		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
 			notices: STORY_COMMAND_NOTICES,

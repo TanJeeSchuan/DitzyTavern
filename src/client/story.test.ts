@@ -49,7 +49,7 @@ describe("Preview", () => {
 		expect(classifyVariantSelection(preview, last.id, 201).kind).toBe("blocked");
 		expect(displayedVariantId(read(clean, window), first)).toBe(100);
 
-		const request = { value: 101, appliedRevision: null };
+		const request = { value: 101 };
 		const confirmed = reduceStoryOverlays(previewing, { type: "preview-confirmed", messageId: first.id, request });
 		const accepted = reduceStoryOverlays(confirmed, { type: "selection-settled", messageId: first.id, request, revision: 4 });
 		expect(isPreviewDownstream(last, read(confirmed, window).preview)).toBe(false);
@@ -122,8 +122,8 @@ test("an earlier Moves settlement leaves a later edit visible until history catc
 	const messageId = older.id;
 	const olderMoves = { phone: [{ to: "Mara", text: "Wait" }] };
 	const newMoves = { phone: [{ to: "Mara", text: "Go" }] };
-	const first = { value: olderMoves, appliedRevision: null };
-	const second = { value: newMoves, appliedRevision: null };
+	const first = { value: olderMoves };
+	const second = { value: newMoves };
 	let overlays = reduceStoryOverlays(createStoryOverlays(), { type: "moves-requested", messageId, request: first });
 	overlays = reduceStoryOverlays(overlays, { type: "moves-requested", messageId, request: second });
 	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: first, revision: null });
@@ -133,6 +133,38 @@ test("an earlier Moves settlement leaves a later edit visible until history catc
 	expect(shownMessage(read(overlays), firstApplied.messages[0]!).moves).toEqual(newMoves);
 	const changedElsewhere = read(overlays, history([{ ...older, moves: {} }], 6));
 	expect(shownMessage(changedElsewhere, changedElsewhere.messages[0]!).moves).toEqual({});
+});
+
+test("a refused Swipe reveals the earlier accepted Variant before history catches up", () => {
+	const messageId = older.id;
+	const first = { value: 101 };
+	const second = { value: 100 };
+	let overlays = reduceStoryOverlays(createStoryOverlays(), { type: "selection-requested", messageId, request: first });
+	overlays = reduceStoryOverlays(overlays, { type: "selection-requested", messageId, request: second });
+	overlays = reduceStoryOverlays(overlays, { type: "selection-settled", messageId, request: first, revision: 4 });
+	const pending = read(overlays);
+	expect(displayedVariantId(pending, pending.messages[0]!)).toBe(100);
+	overlays = reduceStoryOverlays(overlays, { type: "selection-settled", messageId, request: second, revision: null });
+	const refused = read(overlays);
+	expect(displayedVariantId(refused, refused.messages[0]!)).toBe(101);
+	const refreshed = read(overlays, history([older, later], 5));
+	expect(displayedVariantId(refreshed, refreshed.messages[0]!)).toBe(100);
+});
+
+test("a refused Moves edit reveals the earlier accepted Moves before history catches up", () => {
+	const messageId = older.id;
+	const first = { value: { phone: [{ to: "Mara", text: "Wait" }] } };
+	const second = { value: { phone: [{ to: "Mara", text: "Go" }] } };
+	let overlays = reduceStoryOverlays(createStoryOverlays(), { type: "moves-requested", messageId, request: first });
+	overlays = reduceStoryOverlays(overlays, { type: "moves-requested", messageId, request: second });
+	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: first, revision: 4 });
+	const pending = read(overlays);
+	expect(shownMessage(pending, pending.messages[0]!).moves).toEqual(second.value);
+	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: second, revision: null });
+	const refused = read(overlays);
+	expect(shownMessage(refused, refused.messages[0]!).moves).toEqual(first.value);
+	const refreshed = read(overlays, history([{ ...older, moves: {} }, later], 5));
+	expect(shownMessage(refreshed, refreshed.messages[0]!).moves).toEqual({});
 });
 
 test("only an exact empty Variant shows the presentation placeholder", () => {

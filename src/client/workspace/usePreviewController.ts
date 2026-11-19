@@ -35,7 +35,7 @@ export function usePreviewController({
 		const preview = story.preview;
 		if (preview === null || !isStoryReady(story)) return;
 		const { messageId, variantId } = preview;
-		const request = { value: variantId, appliedRevision: null };
+		const request = { value: variantId };
 		dispatchStory({ type: "preview-confirmed", messageId, request });
 		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId }, { type: "select-variant", messageId, variantId }, {
 			onApplied: (result) => dispatchStory({ type: "selection-settled", messageId, request, revision: result.revision }),

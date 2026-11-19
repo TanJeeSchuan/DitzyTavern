@@ -19,7 +19,6 @@ import {
 	isModelAuthoredMessage,
 	isPreviewDownstream,
 	hasRequestedSwipe,
-	reusesTrailingHumanMessage,
 	shownMessage,
 	type StoryAction,
 	type StoryState,
@@ -158,7 +157,6 @@ export function StoryStage({
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
 	const humanParticipant = conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId) ?? null;
-	const requested = readyStory?.page.hasNewer ? null : story.requestedGeneration?.request ?? null;
 
 	return (
 		<main className="story-stage" aria-label="Active Chat" inert={inert} onFocus={onLayerFocus}>
@@ -266,14 +264,7 @@ export function StoryStage({
 							onDelete={!assemblyActive && !generation.isGenerating ? rows.remove : undefined}
 						/>
 					))}
-					{requested !== null && requested.kind !== "sibling" && humanParticipant !== null && modelParticipant !== null && (
-						<RequestedSendView
-							human={humanParticipant}
-							sent={requested.kind === "send" && !reusesTrailingHumanMessage(story, humanParticipant.id, requested.content, requested.moves) ? requested : null}
-							model={modelParticipant}
-							lens={lens}
-						/>
-					)}
+					<RequestedSendView story={story} human={humanParticipant} model={modelParticipant} lens={lens} />
 					{readyStory?.page.hasNewer === true && (
 						<div className="history-load-more">
 							<button className="secondary-button" type="button" disabled={readyStory?.loadingMore === true} onClick={() => void session.loadMoreHistory("newer")}>

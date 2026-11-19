@@ -1,5 +1,6 @@
-import { hasMoves, type BoxMoves } from "../../shared/contract/box-generation";
+import { hasMoves } from "../../shared/contract/box-generation";
 import type { Portrait as PortraitImage } from "../../shared/contract/image";
+import { isStoryReady, reusesTrailingHumanMessage, type StoryState } from "../story";
 import { GenerationSphere } from "./GenerationSphere";
 import { LensedProse, type StoryLens } from "./LensedProse";
 import { MoveChips } from "./MoveChips";
@@ -11,12 +12,15 @@ type Author = { name: string; portrait?: PortraitImage | undefined };
 //  A Requested Send (or Continue) before the server accepts it: the writer's Message, when it adds one, and the
 // reply in progress. The accepted Messages replace it in the same render that places them. The writer's Message
 // shows its Moves and goes through the story's lenses as the accepted one will.
-export function RequestedSendView({ human, sent, model, lens }: {
-	human: Author;
-	sent: { content: string; moves?: BoxMoves | undefined } | null;
-	model: Author;
+export function RequestedSendView({ story, human, model, lens }: {
+	story: StoryState;
+	human: (Author & { id: number }) | null;
+	model: Author | null;
 	lens: StoryLens | undefined;
 }) {
+	const request = story.requestedGeneration?.request;
+	if (human === null || model === null || request === undefined || request.kind === "sibling" || (isStoryReady(story) && story.page.hasNewer)) return null;
+	const sent = request.kind === "send" && !reusesTrailingHumanMessage(story, human.id, request.content, request.moves) ? request : null;
 	return (
 		<>
 			{sent !== null && (
