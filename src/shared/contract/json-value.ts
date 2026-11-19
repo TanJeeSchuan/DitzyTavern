@@ -1,8 +1,9 @@
 import { Kind, Type, TypeRegistry, type Static } from "@sinclair/typebox";
 import { TypeCompiler } from "@sinclair/typebox/compiler";
 
-TypeRegistry.Set("JsonObject", (_schema, value) =>
-	value !== null && value !== undefined && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null));
+const isPlainObject = (value: unknown): value is object =>
+	value !== null && typeof value === "object" && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+TypeRegistry.Set("JsonObject", (_schema, value) => isPlainObject(value));
 
 const plainObject = Type.Object({});
 const jsonObject = Type.Unsafe<Static<typeof plainObject>>({ [Kind]: "JsonObject" });
@@ -29,3 +30,49 @@ export type GenerationJsonValue = Static<typeof generationJsonValue>;
 
 export const generationJsonObject = Type.Readonly(Type.Record(Type.String(), generationJsonValue));
 export type GenerationJsonObject = Static<typeof generationJsonObject>;
+
+// @approved
+//  Where a value first stops being JSON, as a JSON Pointer, or undefined when
+// all of it is: a finite number, a string, a boolean, null, an array without
+// holes or a plain object of those. A Promise, a class instance, a function,
+// undefined or a non-finite number is where it stops.
+/* eslint-disable anti-slop/no-unknown-parameters, anti-slop/no-runtime-typeof -- This is the boundary check that proves a value is JSON. */
+const pointer = (path: string, key: string | symbol) => `${path}/${String(key).replaceAll("~", "~0").replaceAll("/", "~1")}`;
+const arrayIndex = (key: string | symbol, length: number) => typeof key === "string" && String(Math.trunc(Number(key))) === key && Number(key) >= 0 && Number(key) < length;
+
+const nonJsonPath = (value: unknown, ancestors: Set<object>, path = ""): string | undefined => {
+	if (value === null || typeof value === "string" || typeof value === "boolean") return undefined;
+	if (typeof value === "number") return Number.isFinite(value) ? undefined : path || "/";
+	const array = Array.isArray(value);
+	if (!array && !isPlainObject(value)) return path || "/";
+	if (array && Object.getPrototypeOf(value) !== Array.prototype) return path || "/";
+	if (ancestors.has(value)) return path || "/";
+	ancestors.add(value);
+	const properties = Reflect.ownKeys(value);
+	if (array) {
+		const extra = properties.find((key) => key !== "length" && !arrayIndex(key, value.length));
+		if (extra !== undefined) return pointer(path, extra);
+		if (properties.length !== value.length + 1) {
+			let index = 0;
+			while (Object.hasOwn(value, index)) index += 1;
+			return pointer(path, String(index));
+		}
+	}
+	for (const key of properties) {
+		if (array && key === "length") continue;
+		const child = pointer(path, key);
+		const property = Object.getOwnPropertyDescriptor(value, key);
+		if (typeof key === "symbol" || property === undefined || !property.enumerable || !("value" in property)) return child;
+		const found = nonJsonPath(property.value, ancestors, child);
+		if (found !== undefined) return found;
+	}
+	ancestors.delete(value);
+	return undefined;
+};
+/* eslint-enable anti-slop/no-unknown-parameters, anti-slop/no-runtime-typeof */
+
+/** @approved Throws naming `what` and where it stops being JSON, unless all of `value` is JSON. */
+export function assertJson(value: unknown, what: string): asserts value is GenerationJsonValue {
+	const path = nonJsonPath(value, new Set());
+	if (path !== undefined) throw new Error(`${what} is not JSON at ${path}.`);
+}

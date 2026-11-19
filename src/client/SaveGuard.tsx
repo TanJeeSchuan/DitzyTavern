@@ -6,99 +6,104 @@ export type SaveGuard = {
 	dirty: boolean;
 	saving?: boolean;
 	canSave?: boolean;
-	save: () => Promise<boolean>;
+	save?: () => Promise<boolean>;
 	waitAfterSave?: () => Promise<void>;
 	discard: () => void;
 };
-export const SaveGuardContext = createContext<(guard: SaveGuard) => () => void>(() => () => undefined);
-export const SaveNavigationContext = createContext<(action: () => void) => void>((action) => action());
+type RegisteredGuard = SaveGuard & { readonly scope?: string };
+export const SaveGuardContext = createContext<(guard: RegisteredGuard) => () => void>(() => () => undefined);
+export const SaveGuardScope = createContext<string | undefined>(undefined);
+export const SaveNavigationContext = createContext<(action: () => void, scope?: string) => void>((action) => action());
 
 const SAVE_ERROR = "The changes could not be saved. Keep editing to review them.";
 
 // @approved
 // Owns the guard protocol's navigation half: keeps the registered guards,
 // tracks their saving state, and reduces navigation requests to the Unsaved
-// Changes dialog. Floating windows and panels can hold unsaved edits at the
-// same time, so every mounted guard participates.
+// Changes dialog. Workspace navigation checks every mounted guard. Closing
+// a floating window checks the guards registered under that window's Box id.
 export type SaveNavigationController = {
-	registerSaveGuard: (guard: SaveGuard) => () => void;
-	requestNavigation: (action: () => void) => void;
+	registerSaveGuard: (guard: RegisteredGuard) => () => void;
+	requestNavigation: (action: () => void, scope?: string) => void;
 	dialogProps: ComponentProps<typeof UnsavedChangesDialog>;
 };
 
 export function useSaveNavigation(): SaveNavigationController {
-	const guards = useRef(new Set<SaveGuard>());
+	const guards = useRef(new Set<RegisteredGuard>());
 	const [, bumpGuards] = useReducer((count: number) => count + 1, 0);
-	const [leaveAction, setLeaveAction] = useState<(() => void) | null>(null);
+	const [leave, setLeave] = useState<{ action: () => void; scope?: string } | null>(null);
 	const [leaveSaving, setLeaveSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
-	const registerSaveGuard = useCallback((guard: SaveGuard) => {
+	const registerSaveGuard = useCallback((guard: RegisteredGuard) => {
 		guards.current.add(guard);
 		bumpGuards();
 		return () => { guards.current.delete(guard); bumpGuards(); };
 	}, []);
 
-	// @approved
-	// Stable context identity keeps streamed events from re-rendering every consumer.
-	const requestNavigation = useCallback((action: () => void) => {
-		if ([...guards.current].some((guard) => guard.dirty || guard.saving)) { setError(null); setLeaveAction(() => action); }
+	const guardsIn = useCallback((scope?: string) => [...guards.current].filter((guard) => scope === undefined || guard.scope === scope), []);
+	/** @approved A stable context value keeps stream updates from re-rendering every navigation consumer. */
+	const requestNavigation = useCallback((action: () => void, scope?: string) => {
+		if (guardsIn(scope).some((guard) => guard.dirty || guard.saving)) { setError(null); setLeave({ action, scope }); }
 		else action();
-	}, []);
+	}, [guardsIn]);
 
-	const canSave = () => ![...guards.current].some((guard) => guard.dirty && guard.canSave === false);
 	const saveAndLeave = async () => {
-		if (leaveAction === null || !canSave()) return;
-		const dirty = [...guards.current].filter((guard) => guard.dirty);
-		if (dirty.length === 0) { const action = leaveAction; setLeaveAction(null); action(); return; }
+		if (leave === null) return;
+		const dirty = guardsIn(leave.scope).filter((guard) => guard.dirty);
+		if (dirty.some((guard) => guard.save === undefined || guard.canSave === false)) return;
+		if (dirty.length === 0) { setLeave(null); leave.action(); return; }
 		setLeaveSaving(true);
 		setError(null);
 		try {
 			for (const [index, guard] of dirty.entries()) {
-				if (!(await guard.save())) { setError(SAVE_ERROR); return; }
+				if (!(await guard.save?.())) { setError(SAVE_ERROR); return; }
 				if (index < dirty.length - 1) await guard.waitAfterSave?.();
 			}
-			const action = leaveAction;
-			setLeaveAction(null);
-			action();
+			setLeave(null);
+			leave.action();
 		} catch {
 			setError(SAVE_ERROR);
 		} finally { setLeaveSaving(false); }
 	};
 
+	const affected = leave === null ? [] : guardsIn(leave.scope);
 	return {
 		registerSaveGuard,
 		requestNavigation,
 		dialogProps: {
-			open: leaveAction !== null,
-			saving: leaveSaving || [...guards.current].some((guard) => guard.saving),
-			canSave: canSave(),
+			open: leave !== null,
+			saving: leaveSaving || affected.some((guard) => guard.saving),
+			canSave: !affected.some((guard) => guard.dirty && guard.canSave === false),
 			error,
-			onSave: () => void saveAndLeave(),
+			onSave: affected.some((guard) => guard.dirty && guard.save === undefined) ? undefined : () => void saveAndLeave(),
 			onDiscard: () => {
-				for (const guard of guards.current) guard.discard();
-				const action = leaveAction;
-				setLeaveAction(null);
-				action?.();
+				if (leave === null) return;
+				for (const guard of guardsIn(leave.scope)) guard.discard();
+				setLeave(null);
+				leave.action();
 			},
-			onKeepEditing: () => setLeaveAction(null),
+			onKeepEditing: () => setLeave(null),
 		},
 	};
 }
 
 export function useSaveGuard(guard: SaveGuard) {
 	const register = useContext(SaveGuardContext);
-	const live = useRef(guard);
-	live.current = guard;
-	const registered = useRef<SaveGuard>({
+	const scope = useContext(SaveGuardScope);
+	const live = useRef<RegisteredGuard>({ ...guard, scope });
+	live.current = { ...guard, scope };
+	const hasSave = guard.save !== undefined;
+	const registered = useRef<RegisteredGuard>({
+		get scope() { return live.current.scope; },
 		get dirty() { return live.current.dirty; },
 		get saving() { return live.current.saving; },
 		get canSave() { return live.current.canSave; },
 		get waitAfterSave() { return live.current.waitAfterSave; },
-		save: () => live.current.save(),
+		get save() { return live.current.save; },
 		discard: () => live.current.discard(),
 	});
-	useEffect(() => register(registered.current), [register, guard.saving, guard.canSave]);
+	useEffect(() => register(registered.current), [register, guard.saving, guard.canSave, hasSave]);
 }
 
 export function useNavigationRequest() {
@@ -110,18 +115,21 @@ export function UnsavedChangesDialog({ open, saving, canSave, error, onSave, onD
 	saving: boolean;
 	canSave: boolean;
 	error: string | null;
-	onSave: () => void;
+	onSave: (() => void) | undefined;
 	onDiscard: () => void;
 	onKeepEditing: () => void;
 }) {
 	return <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) onKeepEditing(); }}>
 		<DialogContent showCloseButton={false} className="sm:max-w-sm">
-			<DialogHeader><DialogTitle>Unsaved changes</DialogTitle><DialogDescription>Save your edits before leaving?</DialogDescription></DialogHeader>
+			<DialogHeader>
+				<DialogTitle>Unsaved changes</DialogTitle>
+				<DialogDescription>{onSave === undefined ? "Discard your edits and leave?" : "Save your edits before leaving?"}</DialogDescription>
+			</DialogHeader>
 			{error !== null && <p role="alert" className="text-sm text-destructive">{error}</p>}
 			<DialogFooter>
-				<Button type="button" variant="ghost" disabled={saving} onClick={onKeepEditing}>Keep editing</Button>
+				<Button type="button" variant="ghost" autoFocus disabled={saving} onClick={onKeepEditing}>Keep editing</Button>
 				<Button type="button" variant="destructive" disabled={saving} onClick={onDiscard}>Discard</Button>
-				<Button type="button" disabled={saving || !canSave} onClick={onSave}>{saving ? "Saving…" : "Save and leave"}</Button>
+				{onSave !== undefined && <Button type="button" disabled={saving || !canSave} onClick={onSave}>{saving ? "Saving…" : "Save and leave"}</Button>}
 			</DialogFooter>
 		</DialogContent>
 	</Dialog>;

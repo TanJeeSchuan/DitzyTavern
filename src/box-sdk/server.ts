@@ -1,6 +1,6 @@
 // @approved
 //  What a Box's server files may use from the host, beside the shared entry.
-export type { AdvanceResult, Box, BoxContext, BoxWindowRead, CaptureRead, DigestContext, DigestWindow } from "../server/box/contract";
+export type { AdvanceResult, Box, BoxContext, BoxExport, BoxExports, BoxWindowRead, CaptureRead, DigestContext, DigestWindow, ExportsOf } from "../server/box/contract";
 export {
 	InvalidConversationCommandError, conversationExists, readActiveVariantIds, readChatVariants, readConversationRevision, readExistingSources, readMessageAuthors,
 	readParticipants,
@@ -10,6 +10,8 @@ export { effectiveRecord, readRecordSlots, slotStatus } from "../server/box/reco
 export { readBoxLifecycles } from "../server/box/setup";
 export { readBoxCatchUp } from "../server/box/digest";
 export { readBoxDecision, readBoxDecisionSettings } from "../server/box/decision-settings";
+export { codeAgentUnavailable, runCodeAgent, type CodeAgentCall, type CodeAgentFunction, type CodeAgentGlobal, type CodeAgentValue } from "../server/box/code-agent";
+export type { CodeAgentActivity } from "../shared/contract/code-agent";
 export { putChatValue, putLibraryValue, readChatValue, readLibraryValue } from "../server/box/stored-value";
 export { readProfileApiFormat } from "../server/connection-settings/persistence";
 export { readEmbeddingConfiguration, type EmbeddingConfiguration } from "../server/box/embedding";
@@ -20,3 +22,4 @@ export { cosineSimilarity } from "../server/model-client/embeddings";
 export { tokenxEstimator } from "../server/prompt-compiler";
 export { sha256 } from "../server/hash";
 export { presentDomainError } from "../server/contract/domain-error";
+export { subscriptionEvents } from "../server/contract/subscription-events";

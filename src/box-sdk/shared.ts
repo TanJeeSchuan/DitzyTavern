@@ -6,7 +6,10 @@ export { automaticStatus, boxCatchUp, boxSlotStatus, isStale, type DigestStatus,
 export { boxMovesOf, boxSetupOf } from "../shared/contract/box-value";
 export type { DecisionAnswer } from "../shared/contract/decision-model";
 export { boxSdkVersion, describeMoves, describeSetup, type BoxDescriptor } from "../shared/contract/box-descriptor";
-export { invalidOutcome } from "../shared/contract/outcomes";
+export { invalidOutcome, notFoundOutcome } from "../shared/contract/outcomes";
 export { numericWire } from "../shared/contract/wire";
-export { projectImageAnchors } from "../shared/image-reference";
+export { parseImageReferences, projectImageAnchors } from "../shared/image-reference";
+export { proseOutsideThoughts, stripThoughts } from "../shared/thought-markup";
+export { codeAgentActivity, type CodeAgentActivity } from "../shared/contract/code-agent";
 export { MessageId, VariantId, ParticipantId, ParticipantKey } from "../shared/contract/box-row-reference";
+export { promptChannels, type PromptChannels } from "../shared/contract/prompt-schema";

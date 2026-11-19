@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { boxValue, type BoxValue } from "./box-value";
 import type { BoxDescriptor } from "./box-descriptor";
-import { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
+import type { BoxMetadata } from "./box-metadata";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";
 import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
@@ -44,8 +44,8 @@ export const installBoxes = (boxes: readonly InstalledBox[]): void => {
 	installed = new Map(boxes.map((box) => [box.metadata.id, box]));
 };
 /** @approved The metadata the server lists for a Box, projected from its descriptor or from the list itself. */
-export const boxMetadataFrom = ({ id, label, summary, instructions, block, decision, lens, delegate }: BoxMetadata): BoxMetadata =>
-	({ id, label, summary, instructions, block, decision, lens, delegate: delegate && { tag: delegate.tag, summary: delegate.summary, description: delegate.description, off: delegate.off } });
+export const boxMetadataFrom = ({ id, label, summary, instructions, prompt, block, decision, lens, delegate }: BoxMetadata): BoxMetadata =>
+	({ id, label, summary, instructions, prompt, block, decision, lens, delegate: delegate && { tag: delegate.tag, summary: delegate.summary, description: delegate.description, off: delegate.off } });
 
 const installedBox = (id: BoxId): InstalledBox => {
 	const box = installed.get(id);
@@ -76,8 +76,15 @@ export const isBoxReference = (reference: string): reference is PromptBoxReferen
 	const id = boxIdOf(reference);
 	return id !== undefined && installed.has(id);
 };
-/** @approved Whether `reference` has the `box:<id>` form but names no registered Box, which a preset refuses. */
-export const isUnknownBoxReference = (reference: string): boolean => boxIdOf(reference) !== undefined && !isBoxReference(reference);
+/** @approved Why a preset refuses a Box block, if the reference names an unavailable block. */
+export const boxBlockRefusal = (reference: string, descriptor?: BoxMetadata): string | undefined => {
+	const id = boxIdOf(reference);
+	if (id === undefined) return undefined;
+	const box = descriptor ?? installed.get(id)?.metadata;
+	if (box === undefined) return `There is no Box for ${reference}.`;
+	if (box.prompt === false) return `The ${box.label} Box has no Prompt Preset block.`;
+	return undefined;
+};
 /** @approved Whether `id` is a registered digesting Box, the only kind with a Decision Model selection and a passage timeline. */
 export const isDigestBox = (id: BoxId): boolean => installed.get(id)?.metadata.decision !== undefined;
 /** @approved Every tag a loaded Box's markup takes in prose but `tag`: each lens's and each delegate's, which a delegate request may not nest in or hold. */

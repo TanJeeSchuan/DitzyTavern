@@ -31,6 +31,10 @@ _Avoid_: avatar, profile picture
 The part of a Definition's Prompt that says and shows how its owner looks: description text with Image References placed in it. A Brief depicting that owner draws on it. The writer types the description or has a model describe a picture on request. The Definition says whether models receive its Images or only their Image Anchors.
 _Avoid_: reference images, character images, gallery
 
+**Definition Draft**:
+A Definition an agent proposes for someone in one Chat's story. Nothing keeps it until the writer adds it to the Cast, saves it as a Character, or replaces a Participant's Definition with it.
+_Avoid_: generated character, character card
+
 ## Generation
 
 **Generation**:
@@ -336,8 +340,19 @@ _Avoid_: semantic exclusion
 ## Boxes
 
 **Box**:
-A self-contained story feature that keeps its own state, contributes to Generations through its block in a Prompt Preset, and may offer its own controls. The block holds the Box's instructions, which the preset owns and authors edit, followed by what the Box returns for the Generation. The Author Note, Memory and a Race are Boxes.
+A self-contained story feature that keeps its own state, may contribute to Generations through its block in a Prompt Preset, and may offer its own controls. The block holds the Box's instructions, which the preset owns and authors edit, followed by what the Box returns for the Generation. The Author Note, Memory and a Race are Boxes.
 _Avoid_: plugin, extension, module
+
+**Box Export**:
+A read-only question a Box answers about its own state in one Chat, which another Box may ask. Exports are the only way one Box reads another; neither Box sees the other's records or storage.
+_Avoid_: Box API, cross-Box call, shared state
+
+**Character Drafter**:
+The Box that writes a Definition Draft for someone in a Chat's story, using its prose and any Claims Memory holds about that person. It has no Prompt Preset block or Generation contribution.
+_Avoid_: character generator, card maker
+
+**Thought markup**:
+The `<thought>` and `</thought>` tags that mark a character's unspoken thoughts in story prose.
 
 **Move**:
 A Box-defined action the human attaches to a Human-authored Message for that Box to resolve in the following Generation. A Human-authored Message may consist of Moves alone, which distinguishes it from a Continuation Generation.

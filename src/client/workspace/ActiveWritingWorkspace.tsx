@@ -11,6 +11,7 @@ import {
 	SaveNavigationContext,
 	UnsavedChangesDialog,
 	useSaveNavigation,
+	type SaveGuard,
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
@@ -53,6 +54,7 @@ import { runConversationCommand } from "../conversation-command-runner";
 import type { ForkConversationBody } from "../../shared/contract/conversation-schema";
 import { hasMoves } from "../../shared/contract/box-generation";
 import { VariantStreamsContext } from "../story/variant-streams";
+import { openedDefinitionDraft, requestedDefinitionDraft } from "../characters/definition-draft";
 
 const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
 
@@ -90,11 +92,19 @@ export function ActiveWritingWorkspace({
 	const [forkAt, setForkAt] = useState<ForkConversationBody["at"] | null>(null);
 	const [forkNotice, setForkNotice] = useState<string | null>(null);
 	const saveNavigation = useSaveNavigation();
+	const inspectionNavigation = useSaveNavigation();
 	const paintNavigation = useSaveNavigation();
-	const registerPaintGuard = useCallback((guard: Parameters<typeof saveNavigation.registerSaveGuard>[0]) => {
-		const unregister = [saveNavigation.registerSaveGuard(guard), paintNavigation.registerSaveGuard(guard)];
+	const registerInspectionGuard = useCallback((guard: SaveGuard) => {
+		const unregister = [saveNavigation.registerSaveGuard(guard), inspectionNavigation.registerSaveGuard(guard)];
 		return () => unregister.forEach((remove) => remove());
-	}, [saveNavigation.registerSaveGuard, paintNavigation.registerSaveGuard]);
+	}, [saveNavigation.registerSaveGuard, inspectionNavigation.registerSaveGuard]);
+	const registerPaintGuard = useCallback((guard: SaveGuard) => {
+		const unregister = [registerInspectionGuard(guard), paintNavigation.registerSaveGuard(guard)];
+		return () => unregister.forEach((remove) => remove());
+	}, [registerInspectionGuard, paintNavigation.registerSaveGuard]);
+	const registerWorkspaceGuard = useCallback((guard: SaveGuard) =>
+		guard.save === undefined ? registerInspectionGuard(guard) : saveNavigation.registerSaveGuard(guard),
+	[registerInspectionGuard, saveNavigation.registerSaveGuard]);
 	const [theme, setPersistedTheme] = useThemePreference();
 	const [swipeBrowsing, setSwipeBrowsing] = useSwipeBrowsing();
 
@@ -113,7 +123,7 @@ export function ActiveWritingWorkspace({
 		refreshStory: session.refreshStory,
 		ensureLatest: session.ensureLatest,
 		inspectPromptPlanBeforeGenerating,
-		beforeInspect: paintNavigation.requestNavigation,
+		beforeInspect: inspectionNavigation.requestNavigation,
 	});
 	const assembly = generation.assembly;
 	const assemblyActive = assembly !== null;
@@ -149,11 +159,36 @@ export function ActiveWritingWorkspace({
 
 	// @approved
 	// Settings stays reachable during Prompt Plan inspection; it cannot change the captured plan.
-	const togglePanel = (panel: PrimaryPanelName) => {
-		if (assemblyActive && panel !== "settings") return;
+	const { inspectionLocked } = generation;
+	const panelAccess = useRef({ inspecting: inspectionLocked, swiping: story.preview !== null });
+	panelAccess.current = { inspecting: inspectionLocked, swiping: story.preview !== null };
+	const requestPrimaryPanel = useCallback((panel: PrimaryPanelName, action: () => void) => {
+		const canOpen = () => !panelAccess.current.inspecting || panel === "settings";
+		if (canOpen()) saveNavigation.requestNavigation(() => { if (canOpen()) action(); });
+	}, [saveNavigation.requestNavigation]);
+	const togglePanel = (panel: PrimaryPanelName) => requestPrimaryPanel(panel, () => {
 		setDelegateTarget(undefined);
 		dispatchPanel({ type: "primary-toggled", panel });
-	};
+	});
+
+	// @approved
+	//  A Box's draft for this Chat opens in the Characters panel once unsaved
+	// edits are dealt with; a draft for another Chat has nowhere to open.
+	useEffect(() => requestedDefinitionDraft.subscribe(() => {
+		const request = requestedDefinitionDraft.get();
+		if (request === null) return;
+		requestedDefinitionDraft.set(null);
+		const canOpen = () => !panelAccess.current.swiping && String(request.conversationId) === session.activeChatIdRef.current;
+		if (!canOpen()) return;
+		requestPrimaryPanel("characters", () => {
+			if (!canOpen()) return;
+			const { onOpened, ...draft } = request;
+			openedDefinitionDraft.set(draft);
+			setDelegateTarget(undefined);
+			dispatchPanel({ type: "primary-opened", panel: "characters" });
+			onOpened();
+		});
+	}), [session.activeChatIdRef, requestPrimaryPanel]);
 
 	const openConnections = (box?: BoxId) => saveNavigation.requestNavigation(() => {
 		if (box !== undefined) connectionSettings.closeEditor();
@@ -276,16 +311,16 @@ export function ActiveWritingWorkspace({
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
-			<NavigationRail activePanel={panelState.primaryPanel} inspecting={assemblyActive} onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))} />
+			<NavigationRail activePanel={panelState.primaryPanel} inspecting={inspectionLocked} onOpenPanel={togglePanel} />
 			<NavigationDrawer
 				open={navigationOpen}
 				onOpenChange={setNavigationOpen}
 				activePanel={panelState.primaryPanel}
-				inspecting={assemblyActive}
-				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
+				inspecting={inspectionLocked}
+				onOpenPanel={togglePanel}
 			/>
 
-			<SaveGuardContext.Provider value={saveNavigation.registerSaveGuard}>
+			<SaveGuardContext.Provider value={registerWorkspaceGuard}>
 			<SaveNavigationContext.Provider value={saveNavigation.requestNavigation}>
 			<CoveredLayer inert={narrow && (newChatOpen || panelState.inspector !== null)}>
 			<PrimaryPanelView
@@ -310,8 +345,8 @@ export function ActiveWritingWorkspace({
 				onOpenInspector={(inspector: SplitInspector) => {
 					if (!assemblyActive) dispatchPanel({ type: "inspector-opened", inspector });
 				}}
-				mutationsDisabled={story.preview !== null}
-				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
+				mutationsDisabled={story.preview !== null || inspectionLocked}
+				onOpenPanel={togglePanel}
 				onOpenWindow={boxWindows.open}
 			/>
 			</CoveredLayer>
@@ -332,15 +367,15 @@ export function ActiveWritingWorkspace({
 					setForkAt(at);
 				})}
 				swipeBrowsing={swipeBrowsing}
-				onEnterPreview={(enter) => paintNavigation.requestNavigation(() => {
+				onEnterPreview={(enter) => inspectionNavigation.requestNavigation(() => {
 					dispatchPanel({ type: "preview-entered" });
 					onNewChatClose();
 					enter();
 				})}
 				onOpenNavigation={() => setNavigationOpen(true)}
-				onOpenCast={() => saveNavigation.requestNavigation(() => togglePanel("characters"))}
+				onOpenCast={() => togglePanel("characters")}
 				onOpenConnections={openConnections}
-				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
+				onOpenPanel={togglePanel}
 				onOpenInfo={() => {
 					if (assemblyActive) return;
 					saveNavigation.requestNavigation(() => dispatchPanel({ type: "chat-info-opened" }));
@@ -369,7 +404,7 @@ export function ActiveWritingWorkspace({
 					onSend={generation.sendPromptPlanPreview}
 					onNavigateSource={onNavigateSource}
 					onClose={generation.cancelPromptPlanPreview}
-					onOpenSettings={() => saveNavigation.requestNavigation(() => togglePanel("settings"))}
+					onOpenSettings={() => togglePanel("settings")}
 				/>
 			)}
 			</CoveredLayer>
@@ -459,6 +494,7 @@ export function ActiveWritingWorkspace({
 		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generationRunning} onClose={() => setForkAt(null)} onFork={fork} />}
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
+		<UnsavedChangesDialog {...inspectionNavigation.dialogProps} />
 		<UnsavedChangesDialog {...paintNavigation.dialogProps} />
 		</Toast.Provider>
 		</VariantStreamsContext>

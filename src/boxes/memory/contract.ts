@@ -187,8 +187,23 @@ export type MemoryRecallCandidateRecord = Static<typeof memoryRecallCandidate>;
 // view links only to those. Each list is comma-separated ids.
 const idList = Type.String({ pattern: "^(\\d+(,\\d+)*)?$" });
 export const memorySourcesQuery = Type.Object({ messageIds: idList, variantIds: idList });
+const publicClaim = Type.Pick(memoryCandidate, ["claim", "attribution", "people", "evidence"]);
 export const memorySources = Type.Object({
 	messageIds: Type.Array(Type.Integer()), variantIds: Type.Array(Type.Integer()),
-	records: Type.Array(Type.Object({ variantId: VariantId, fingerprint: Type.String(), claims: Type.Array(Type.Pick(memoryCandidate, ["claim", "attribution", "people", "evidence"])) })),
+	records: Type.Array(Type.Object({ variantId: VariantId, fingerprint: Type.String(), claims: Type.Array(publicClaim) })),
 });
 export type MemorySources = Static<typeof memorySources>;
+
+// @approved
+//  Memory's Exports, which another Box's route handler reads through the
+// `exportsOf` its routes receive. Both answer from the effective Claims on the Selected
+// narrative path, resolved under the Chat's Cast labels exactly as the
+// Memories panel resolves them: identities and label merges apply to the
+// answer, never to stored records. `people` takes no input, so its input
+// schema is `undefined` itself, as is the input for `selectedClaims`.
+export const memoryExportInput = Type.Undefined();
+/** @approved The output contract for Memory's `people()` Export. */
+export const memoryPeople = Type.Array(Type.String());
+export type MemoryPeople = Static<typeof memoryPeople>;
+export const memorySelectedClaims = Type.Array(Type.Object({ messageId: MessageId, ...publicClaim.properties }));
+export type MemorySelectedClaims = Static<typeof memorySelectedClaims>;

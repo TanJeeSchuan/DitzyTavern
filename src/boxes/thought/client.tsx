@@ -1,7 +1,8 @@
 import "./client.css";
 import { MessageCircleDashed } from "lucide-react";
 import { createBoxLens, useBoxRead, type BoxClientDefinition, type ConversationSummary } from "@/box-sdk/client";
-import { stripThoughts, thoughtRead } from "./shared";
+import { stripThoughts } from "@/box-sdk/shared";
+import { thoughtRead } from "./shared";
 import descriptor from "./shared-descriptor";
 
 const useThoughts = (conversation: ConversationSummary) => useBoxRead(conversation, "thought", thoughtRead);

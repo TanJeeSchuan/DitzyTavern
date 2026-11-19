@@ -16,6 +16,7 @@ import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
 import { useRevisionedDraft, type DraftSaveResult } from "../lib/revisioned-draft";
 import { ConflictBanner } from "../ConflictBanner";
+import { SaveFooter } from "../SaveFooter";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
 
@@ -108,12 +109,8 @@ export function CharacterEditor({
 				draft={draft}
 				onDraftChange={editor.edit}
 				subtitle={`Library Character · ${usedCountLabel(snapshot.deletionImpact.provenanceReferenceCount)}`}
-				dirty={editor.dirty}
-				saving={editor.saving}
-				error={notice}
-				valid={!editor.conflict}
+				footer={(named) => <SaveFooter dirty={editor.dirty} saving={editor.saving} valid={named && !editor.conflict} error={notice} onSave={() => void editor.save()} />}
 				autoSelectName={autoSelectName}
-				onSave={() => void editor.save()}
 				onBack={() => onClosed(null)}
 				actions={<>
 					<Button

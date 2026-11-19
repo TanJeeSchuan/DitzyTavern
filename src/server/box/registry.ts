@@ -5,16 +5,17 @@ import { readdir } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import type { BoxLifecycles } from "./setup";
 import { boxSeed } from "./seed";
-import type { GenerationJsonValue } from "../../shared/contract/json-value";
+import { assertJson, type GenerationJsonValue } from "../../shared/contract/json-value";
 import { boxMetadataFrom, boxReference, installBoxes, type BoxDescriptor, type BoxId, type BoxSetups, type PromptBoxReference } from "../../shared/contract/box";
 import { assertBoxDescriptor, assertBoxServer, assertChecked, boxHookOutputs, type BoxServerModule } from "../../shared/contract/box-descriptor";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { BoxFolds } from "./records";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, CaptureMessage, CaptureRead, DigestContext, DigestWindow, HostBox } from "./contract";
+import type { AdvanceInput, AdvanceResult, BlockItem, BoxContext, BoxExportContext, CaptureMessage, CaptureRead, DigestContext, DigestWindow, HostBox } from "./contract";
 import { decisionIdentity, resolveDecisionOf, type BoxDecision } from "./services";
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";
+import { boxExports } from "./exports";
 import { sandboxedBox } from "./sandboxed";
 import { BOX_HOOK_MS, BOX_IMPORT_MS, settledWithin } from "./settled";
 import { sandboxedSources } from "./sandboxed-build";
@@ -34,18 +35,26 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 // no `read`; only that read calls `status`, so no other Box declares one. A
 // delegating Box keeps records its delegate writes, shows them in its own
 // window, and always renders the block whose instructions teach its tag, and
-// it does not also digest. Ids are known only at runtime, so
+// it does not also digest. Its server module and its descriptor must name the
+// same Exports, and a sandboxed Box declares none, so its `descriptor.json`
+// refuses the key. Ids are known only at runtime, so
 // the registry checks this when it is built. The Box the host holds checks
 // each hook's output against `boxHookOutputs` where the hook returns it, and
 // names the Box, the hook and the failing path when it does not pass.
 const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule): HostBox => {
 	const outputs = boxHookOutputs(descriptor, box.advance?.trace);
 	assertChecked(outputs["records.initial"], box.records?.initial, `The ${id} Box's records.initial`);
+	// @approved
+	// SAFETY: assertBoxServer checked each hook the host calls is a function; each Box types its own with `satisfies Box<…>`.
+	const host = box as HostBox;
+	const declaredExports = new Map(Object.entries(descriptor.exports ?? {}));
+	const servedExports = new Set(Object.keys(host.exports ?? {}));
 	const broken = ([
 		[(descriptor.record === undefined) === (box.records === undefined), "records exactly when it declares a record"],
 		[box.records === undefined || ("initial" in box.records) === (box.records.fold !== undefined), "a fold exactly when it declares an initial state"],
 		[(descriptor.decision === undefined) === (box.records?.digest === undefined), "a digest exactly when it declares a decision"],
 		[(descriptor.moves === undefined) === (box.moves === undefined), "a Move render exactly when it declares Moves"],
+		[descriptor.prompt !== false || descriptor.moves === undefined, "no Moves, since it declares prompt: false"],
 		[descriptor.decision === undefined || box.read === undefined, "no read, since it digests"],
 		[descriptor.decision !== undefined || box.status === undefined, "no status, since it does not digest"],
 		[(descriptor.delegate === undefined) === (box.delegate === undefined), "delegate.apply exactly when it declares a delegate"],
@@ -53,14 +62,13 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		[descriptor.delegate === undefined || box.read !== undefined, "a read, since it delegates"],
 		[descriptor.delegate === undefined || descriptor.alwaysRender === true, "alwaysRender, since it delegates"],
 		[descriptor.delegate === undefined || descriptor.decision === undefined, "no decision, since it delegates"],
+		[[...declaredExports.keys()].every((name) => servedExports.has(name)) && [...servedExports].every((name) => declaredExports.has(name)), "the same Exports its descriptor declares"],
 	] as const).flatMap(([holds, rule]) => holds ? [] : [rule]);
 	if (broken.length > 0) throw new Error(`The ${id} Box must declare ${broken.join("; ")}.`);
 	// @approved
-	// SAFETY: assertBoxServer checked each hook the host calls is a function; each Box types its own with `satisfies Box<…>`.
-	const host = box as HostBox;
-	// @approved
 	//  Every hook runs on the object that declares it: a top-level hook on the
-	// module, a nested one on its `moves`, `records`, digest or `advance`.
+	// module, a nested one on its `moves`, `records`, digest or `advance`, and
+	// an Export on the `exports` map that holds it.
 	const setupError = host.setupError?.bind(host);
 	const dependencies = host.dependencies?.bind(host);
 	const status = host.status?.bind(host);
@@ -72,6 +80,30 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 	};
 	const digest = records?.digest;
 	const checkedDigest = digest && { window: digest.window, run: async (window: DigestWindow, ctx: DigestContext) => checked("records.digest.run", await digest.run(window, ctx)) };
+	// @approved
+	//  Each Export the descriptor declares is wrapped, so the host checks both
+	// crossings: the caller's input against the Export's input schema, and the
+	// Box's answer against its output schema, failing naming the Box, the
+	// Export and the path as a hook's failure does. The answer must be plain
+	// JSON first, since an Export answers synchronously and a loose output
+	// schema would let a Promise or a class instance through.
+	const exports = declaredExports.size === 0 ? undefined : Object.fromEntries([...declaredExports].flatMap(([name, { input, output }]) => {
+		return [[name, (value: BoxValue | undefined, context: BoxExportContext): BoxValue => {
+			assertChecked(input, value, `The ${id} Box's ${name} Export input`);
+			// @approved
+			//  Checked just before: the loader refused a Box whose two sides name
+			// different Exports, so `host.exports` holds this one, and the call
+			// runs on the object that declares it, as every hook does.
+			const answered: unknown = host.exports![name]!(value, context);
+			if (answered instanceof Promise) {
+				void answered.catch(() => undefined);
+				throw new Error(`The ${id} Box's ${name} Export answered with a Promise; an Export answers synchronously.`);
+			}
+			assertJson(answered, `The ${id} Box's ${name} Export output`);
+			assertChecked(output, answered, `The ${id} Box's ${name} Export output`);
+			return answered;
+		}]];
+	}));
 	return {
 		setupError: setupError && ((setup, previous) => checked("setupError", setupError(setup, previous))),
 		moves: moves && { render: (move, author) => checked("moves.render", moves.render(move, author)) },
@@ -91,6 +123,7 @@ const checkedHooks = (id: BoxId, descriptor: BoxDescriptor, box: BoxServerModule
 		importSillyTavernNote: importSillyTavernNote && ((note) => checked("importSillyTavernNote", importSillyTavernNote(note))),
 		read: host.read?.bind(host),
 		routes: host.routes?.bind(host),
+		exports,
 		upgrade: host.upgrade?.bind(host),
 		delegate: delegate && { apply: async (input) => checked("delegate.apply", await delegate.apply(input)) },
 	};
@@ -126,10 +159,13 @@ export const assertFreeTags = (descriptor: BoxDescriptor, others: Iterable<BoxDe
 // @approved
 //  A Box's routes, built for the server's database and mounted under
 // `/api/boxes/<id>`, so a factory that throws, returns anything but the
-// promised Elysia app, or fails to mount refuses its Box.
+// promised Elysia app, or fails to mount refuses its Box. The factory also
+// receives `exportsOf`, which answers every Box's declared Exports in one
+// Chat of that database, so a Box's routes are its only reach into another
+// Box's state.
 const mountedRoutes = (id: BoxId, box: HostBox, database: Database): AnyElysia | undefined => {
 	if (box.routes === undefined) return undefined;
-	const routes: unknown = box.routes(database);
+	const routes: unknown = box.routes(database, (conversationId) => boxExports(database, conversationId));
 	if (!(routes instanceof Elysia)) throw new Error(`The ${id} Box's routes must return an Elysia app.`);
 	return new Elysia({ prefix: `/api/boxes/${id}` }).use(routes);
 };
@@ -259,8 +295,9 @@ const loadFolder = async (folder: string, name: string, seen: ReadonlySet<BoxId>
 // folder holds no Boxes, as before any plugin is installed. A Box that fails
 // to load is refused with its reason; the rest still load. The server passes
 // the database it serves, and each Box's routes are built and mounted for it
-// once, here, so a Box whose routes fail is refused instead of stopping the
-// server, and the contract serves the routes mounted.
+// once, here, handed the `exportsOf` that answers the Chat's Exports, so a
+// Box whose routes fail is refused instead of stopping the server, and the
+// contract serves the routes mounted.
 export const discoverBoxes = async (folders: readonly string[], database?: Database) => {
 	const boxes = new Map<BoxId, LoadedBox & { readonly home: string | undefined }>();
 	const refused: { readonly folder: string; readonly reason: string }[] = [];
@@ -461,6 +498,7 @@ export type ParticipatingBox = LoadedBox & { readonly instance: string };
 /** @approved The Boxes enabled in both the Chat and its preset, as the Chat runs them, selected once for record folding and capture. */
 export const participatingBoxes = (boxes: ChatBoxes, slots: readonly PromptPresetSlot[], lifecycles: BoxLifecycles): ReadonlyMap<BoxId, ParticipatingBox> =>
 	new Map([...boxes].flatMap(([id, loaded]) => {
+		if (loaded.descriptor.prompt === false) return [];
 		const lifecycle = lifecycles[id];
 		return lifecycle?.state === "enabled" && slots.some((slot) => slot.enabled && slot.reference === boxReference(id)) ? [[id, { ...loaded, instance: lifecycle.instance }]] : [];
 	}));
