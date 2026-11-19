@@ -120,7 +120,8 @@ describe("reduceConnectionSettingsController", () => {
 			revision: 2,
 		});
 
-		expect(next.session).not.toBeNull();
+		expect(next.selectedProfileId).toBeNull();
+		expect(editIn(next).draft.displayName).toBe("");
 	});
 
 	test("a late deletion result leaves another profile's deletion confirmation open", () => {

@@ -1,5 +1,5 @@
 import { historyMessage, historyPage, conversationSummary, installFetch } from "../test-fixtures/conversation";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
 import { NetworkError } from "../lib/request-outcome";
@@ -8,11 +8,6 @@ import type { ChatHistoryPage } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const { useConversationSession } = await import("./useConversationSession");
 
 afterEach(() => {
@@ -77,11 +72,11 @@ describe("history refresh error classification", () => {
 		});
 	});
 
-	test("a missing history page keeps the existing not-found behavior", async () => {
-		const { conversation, dispatched } = await historyRefresh(async () => Response.json({ outcome: "not-found" }, { status: 404 }));
-		expect(conversation?.id).toBe(1);
-		// The existing not-found behavior: a missing page is skipped, not
-		// treated as a failure — neither page application nor failure dispatch.
+	test("a missing history page still returns the refreshed Conversation without applying a page", async () => {
+		const missing = mock(async () => Response.json({ outcome: "not-found" }, { status: 404 }));
+		const { conversation, dispatched } = await historyRefresh(missing);
+		expect(missing).toHaveBeenCalledTimes(1);
+		expect(conversation).toMatchObject({ id: 1, name: "Chat", revision: 1 });
 		expect(dispatched.some(({ type }) => type === "window-received")).toBe(false);
 	});
 

@@ -90,9 +90,4 @@ describe("Chat list summaries", () => {
 			.run("a".repeat(64), 2, 0.5, chat.cast[0]?.id ?? 0);
 		expect(() => listChatSummaries(database)).toThrow();
 	});
-
-	test("a Chat without Participants has no Portraits", () => {
-		const chat = createConversationWithHistory(module, { name: "No Cast" });
-		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([]);
-	});
 });

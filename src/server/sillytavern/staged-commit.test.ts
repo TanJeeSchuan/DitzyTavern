@@ -571,7 +571,7 @@ describe("staged SillyTavern chat import commit", () => {
 					},
 				],
 			}),
-		).toThrow();
+		).toThrow(/no such table: (?:main\.)?participant/);
 
 		// The transaction rolled the Profile branch back: no new Profile row
 		// exists and the pre-existing library is untouched. No Chat, Message,

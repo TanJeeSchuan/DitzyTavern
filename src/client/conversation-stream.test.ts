@@ -3,11 +3,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import type { GenerationStreamDelta, GenerationStreamState } from "./conversation-stream";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const {
 	startConversationGeneration,
 	stopConversationGeneration,

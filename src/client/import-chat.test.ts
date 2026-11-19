@@ -24,11 +24,6 @@ import type { WirePayload } from "./lib/wire-decode";
 // the SillyTavern module seam tests, so no ground-truth payloads are
 // re-asserted here.
 
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const originalFetch = globalThis.fetch;
 const { commitImport, discardImport, previewImport, stageImport } = await import("./import-chat");
 

@@ -1,6 +1,5 @@
 import { historyMessage, historyPage, installFetch } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
-import type { WirePayload } from "./lib/wire-decode";
 
 // The history wire boundary validates every page against the canonical
 // shared contract before the view may trust it. The server-derived
@@ -9,21 +8,9 @@ import type { WirePayload } from "./lib/wire-decode";
 // history: the server always emits them and the client never reconstructs
 // them from optional hints.
 
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const originalFetch = globalThis.fetch;
 const { loadHistoryPage } = await import("./chat-history");
 const { SERVER_UNUSABLE_RESPONSE_NOTICE } = await import("./lib/request-outcome");
-
-
-const json = (payload: WirePayload, status: number): Response =>
-	new Response(JSON.stringify(payload), {
-		status,
-		headers: { "content-type": "application/json" },
-	});
 
 const messagePayload = historyMessage({ modelParticipantIdAtCreation: 20, author: { participantId: 20, capturedName: "Model", inCast: true } });
 

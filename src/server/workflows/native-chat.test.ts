@@ -66,7 +66,7 @@ describe("Native New Chat workflow", () => {
 		definition: participantDefinition(name, { prompt: prompt(), openings }),
 	});
 
-	test("creates a playable Conversation from two ad-hoc Participants atomically", () => {
+	test("creates a playable Conversation with two ad-hoc Participants and the model's opening", () => {
 		const snapshot = createNativeConversation(database, {
 			name: "Ad-hoc Chat",
 			humanSeat: adHoc("Writer"),
@@ -86,7 +86,6 @@ describe("Native New Chat workflow", () => {
 			"The workshop bell rings twice.",
 		);
 
-		// The whole Conversation commits at revision zero with no other rows.
 		expect(snapshot.revision).toBe(0);
 		expect(countRows(conversationTable)).toBe(1);
 		expect(countRows(participantTable)).toBe(2);

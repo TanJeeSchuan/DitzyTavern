@@ -1,10 +1,12 @@
 import { profile as chatProfile } from "./prompt-preset-test-fixtures";
+import { Value } from "@sinclair/typebox/value";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsRoutes } from "./connection-settings";
 import type { ModelFetch } from "../model-client";
 import type { ConnectionProfileDraft } from "../connection-settings";
+import { connectionPresetsResponse } from "../../shared/contract/connection-settings";
 
 const key = new Uint8Array(32).fill(11);
 
@@ -60,6 +62,8 @@ describe("Connection Settings transport adapter", () => {
 
 		const presets = await get("/api/connection-settings/presets");
 		expect(presets.status).toBe(200);
+		const body = Value.Parse(connectionPresetsResponse[200], await presets.json());
+		expect(body.presets.map(({ profile }) => profile.apiFormat)).toContain("system-one");
 	});
 
 	test("creates the first Profile with a redacted credential through the contract", async () => {

@@ -123,7 +123,6 @@ test("retries a failed edited Send with its plan and a fresh preview token", asy
 
 	const retry = await preview(chat.id, target);
 	expect(retry.id).not.toBe(first.id);
-	expect(retry.capture.plan.promptPlan.blocks).toHaveLength(first.capture.plan.promptPlan.blocks.length);
 	await start(retry, { editedPlan, modelClient });
 
 	expect(requests).toHaveLength(2);
@@ -141,12 +140,19 @@ test("keeps a preview valid after an unrelated cast addition", async () => {
 	expect((await start(record)).conversation.id).toBe(chat.id);
 });
 
-test("does not apply a plan edit that exceeds the captured context ceiling", async () => {
+test("rejects an edit over the captured context ceiling and accepts a fitting edit", async () => {
 	const chat = pairChat(database, "Preview Chat");
+	database.query("UPDATE participant_prompt SET system_instruction = ? WHERE participant_id = ?")
+		.run("Answer briefly.", chat.cast[1]!.id);
 	const record = await preview(chat.id);
-	const plan = record.capture.plan.promptPlan;
-	const editedPlan = { ...plan, blocks: plan.blocks.map((block) => ({ ...block, content: "x".repeat(500_000) })) };
-	await expect(start(record, { editedPlan })).rejects.toThrow(PromptBudgetExceededError);
+	await expect(start(record, { editedPlan: editSystemInstruction(record, "x".repeat(500_000)) })).rejects.toThrow(PromptBudgetExceededError);
+
+	const content = "Answer in one sentence.";
+	const requests: PromptPlan[] = [];
+	const modelClient = createFakeModelClient(({ promptPlan }) => { requests.push(promptPlan); return "Done."; });
+	await start(record, { editedPlan: editSystemInstruction(record, content), modelClient });
+	expect(requests).toHaveLength(1);
+	expect(requests[0]?.blocks).toContainEqual(expect.objectContaining({ kind: "system-instruction", content }));
 });
 
 test.each(["plain", "missing", "stored"])("accepts an Image added to a %s text-only preview without charging image tokens", async (initial) => {

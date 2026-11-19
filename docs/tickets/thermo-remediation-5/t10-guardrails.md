@@ -10,6 +10,8 @@ T2, T4 and T5 deleted dead exports, barrels, rename-only aliases, unreachable CS
 
 New lint rules go in `tools/oxlint/ditzy/rules/` with a `.test.ts` beside each, run by `bun run lint:rules`. Every rule ships with the codebase passing it: fix or allowlist each existing hit in the same slice, with the reason next to the allowlist entry.
 
+Slice a ships alone, since its triage deletes code and raises surface to the owner. Slices b, c and d ship as one PR: each adds a check, fixes or allowlists its hits, and wires it into `check`.
+
 ## Slice a: dead code
 
 - **knip.** Add `knip` and a `knip.json`. Entry points: the server and client entries, `scripts/`, `e2e/`, `tools/`, and `src/box-sdk/*.ts`, so the Box SDK's exports count as used (README "Kept surface"). Run `knip --production` in `check`, so code only tests use is reported too. Triage the first report: delete internal code; raise anything that is surface (CODING_STANDARDS "Removing code") to the owner instead of deleting it.
@@ -42,9 +44,7 @@ One script step in `check`:
 ## TODO
 
 - [ ] Slice a, PR (knip triage findings that are surface raised to the owner)
-- [ ] Slice b, PR
-- [ ] Slice c, PR
-- [ ] Slice d, PR
+- [ ] Slices b, c and d, one PR
 
 ## Acceptance
 

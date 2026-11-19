@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { InvalidConversationCommandError } from ".";
-import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { createConnectionSettingsModule } from "../connection-settings";
 
@@ -96,6 +95,9 @@ const createConnection = (database: Database): number => {
 		const connectionProfileId = createConnection(database);
 		const conversation = createTestConversation(database, "Unconfigured model command");
 		const module = database;
+		const before = readConversationGenerationSettings(module, conversation.id);
+		if (before === undefined) throw new Error("Stored settings missing.");
+		expect(before.responseBudget).toBe(1024);
 
 		executeConversationCommand(module, {
 			conversationId: conversation.id,
@@ -104,7 +106,7 @@ const createConnection = (database: Database): number => {
 		});
 
 		const stored = readConversationGenerationSettings(module, conversation.id);
-		expect(stored).toEqual({ ...DEFAULT_CONVERSATION_GENERATION_SETTINGS, connectionProfileId, modelId: "qwen3-max" });
+		expect(stored).toEqual({ ...before, connectionProfileId, modelId: "qwen3-max" });
 	});
 
 	test("clears the Conversation selection when its Connection Profile is deleted", () => {

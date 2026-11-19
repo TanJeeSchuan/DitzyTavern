@@ -3,10 +3,6 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { NetworkError } from "./lib/request-outcome";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	value: { location: { origin: "http://localhost" } },
-});
 const { loadConversation } = await import("./conversation");
 afterEach(() => { globalThis.fetch = originalFetch; });
 

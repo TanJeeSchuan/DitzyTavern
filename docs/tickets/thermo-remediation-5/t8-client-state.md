@@ -6,6 +6,8 @@ Blocked By: T7
 
 Model: Sol 6.2 high writes and fixes slices a, b and c. Astra 6 high writes d; Sol 6.2 high fixes it. Reviewer: Sonnet 5.5 high.
 
+Slices a and b ship as one PR: both move server data into the query cache, in different files.
+
 **Slice c stops after the first write. The owner reads the new state model before fixes begin.**
 
 The rule, from `CODING_STANDARDS.md`: server data lives in the query cache. A reducer or `useState` holds only what the user has done that the server does not know yet. Each slice removes a second copy of server data and the code that kept it in step.
@@ -62,8 +64,7 @@ Report 06, finding 1; report 05, findings 3 and 5.
 
 ## TODO
 
-- [ ] Slice a (Sol), PR
-- [ ] Slice b, ADR 0036 amended, PR
+- [ ] Slices a and b, one PR, ADR 0036 amended
 - [ ] Slice c, report to the owner, then fixes, PR
 - [ ] Slice d (Astra), fixes (Sol), PR
 
