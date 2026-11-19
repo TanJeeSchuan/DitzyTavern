@@ -1,4 +1,5 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -24,7 +25,7 @@ import {
 	selectPreset,
 	startGeneration,
 	toggleBlock,
-	withProfile,
+	withProfile, profile as chatProfile, sseReply,
 } from "./prompt-preset-test-fixtures";
 
 type ImportError = { outcome: "invalid"; reason: string };
@@ -394,26 +395,15 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Imported preset chat",
 			participants: [
-				{ definition: { name: "Writer", prompt: { systemInstruction: "Human", identity: "Human", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt: { systemInstruction: "Model", identity: "Model", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Writer", { prompt: { ...emptyPromptChannels(), systemInstruction: "Human", identity: "Human" } }),
+				participantSeed("Maren", { prompt: { ...emptyPromptChannels(), systemInstruction: "Model", identity: "Model" } }),
 			],
 			control: { human: 0, model: 1 },
 		});
 		const key = new Uint8Array(32).fill(19);
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
-			profile: {
-				displayName: "Test provider",
-				apiFormat: "chat-completions",
-				requestUrl: "http://127.0.0.1:43131/v1/",
-				modelsUrl: "",
-				modelBackend: "automatic",
-				adapter: "deepseek",
-				outputTokenRepresentation: "automatic",
-				systemPlacement: "strict",
-				timeoutMs: 120_000,
-				pinnedModels: [],
-			},
+			profile: { ...chatProfile, displayName: "Test provider", systemPlacement: "strict" },
 			credential: "test-secret",
 		});
 		const conversations = createConversationRoutes(database, {
@@ -423,7 +413,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 				//  SAFETY: the conversation route sends this exact JSON request body
 				// to the configured ModelFetch implementation.
 				captured = JSON.parse(String(init?.body)) as CapturedGenerationRequest;
-				return new Response("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Done.\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+				return sseReply([{ content: "Done." }], { singleChunk: true });
 			}) satisfies ModelFetch,
 		});
 		let captured: CapturedGenerationRequest = { messages: [] };

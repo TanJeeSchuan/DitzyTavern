@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import type { ModelFetch } from "../model-client/types";
-import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { insertBox, openObservedDatabase, setBoxState, pairChat } from "../test-fixtures/conversation";
 import { cancelBoxCatchUp, queueBoxDigest, prepareBoxDigests, readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { settledWithin } from "./settled";
 import { readRecordSlots } from "./records";
@@ -19,7 +19,6 @@ import { writeVersionedBox } from "../test-fixtures/versioned-box";
 import { builtInBoxes, loadBoxes, loadBoxVersion } from "./registry";
 import { pinBoxVersion } from "./version-pin";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const masterKey = new Uint8Array(32).fill(3);
 
 interface StubQuestion { readonly criteria?: Readonly<Record<string, string>> }
@@ -71,14 +70,7 @@ afterEach(async () => {
 // @approved
 //  A Clock Chat without Memory, so only the World Clock digests its passages.
 const createChat = () => {
-	const chat = createConversationWithHistory(database, {
-		name: "Clock Chat",
-		participants: [
-			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-		],
-		control: { human: 0, model: 1 },
-	});
+	const chat = pairChat(database, "Clock Chat");
 	setBoxState(database, chat.id, "memory", "absent");
 	return chat;
 };

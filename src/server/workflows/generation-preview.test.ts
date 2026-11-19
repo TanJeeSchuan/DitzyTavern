@@ -1,13 +1,11 @@
 import { expect, test } from "bun:test";
-import { createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
-import { emptyPromptChannels } from "../../shared/definition";
+import { createConversationWithHistory, openObservedDatabase, participantDefinition as definition } from "../test-fixtures/conversation";
 import { consumeGenerationPreview, createGenerationPreviewAsync, previewRecordFor } from "./generation-preview";
 
 test("consuming an accepted preview leaves a replacement preview available", async () => {
 	const database = openObservedDatabase();
 	try {
-		const definition = (name: string) => ({ name, prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] });
-		const chat = createConversationWithHistory(database, {
+				const chat = createConversationWithHistory(database, {
 			name: "Preview replacement", participants: [{ definition: definition("Writer") }, { definition: definition("Model") }], control: { human: 0, model: 1 },
 		});
 		const input = { connection: null, conversationId: chat.id, target: { kind: "send", content: "Hello" } } as const;

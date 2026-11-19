@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { describe, expect, test } from "bun:test";
 import { compileGenerationPlan } from ".";
 import type { CompilePromptDefinition, PromptContextEntry } from "../prompt-compiler";
@@ -19,7 +20,7 @@ const COST_B = 1640;
 const lookup = (hash: string) => dimensions.get(hash);
 
 const ref = (name: string, hash: string) => formatImageReference(name, hash);
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = emptyPromptChannels();
 const human: CompilePromptDefinition = { name: "Writer", prompt, sendAppearanceImages: true };
 const model: CompilePromptDefinition = { name: "Maren", prompt, sendAppearanceImages: true };
 const entry = (content: string, role: PromptContextEntry["role"]): PromptContextEntry => ({ kind: "message", speakerName: role === "human" ? "Writer" : "Maren", content, role });

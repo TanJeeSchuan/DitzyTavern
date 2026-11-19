@@ -1,18 +1,11 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, shortReplyPrompt, participantSeed } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { ConversationWriteObserverMissingError, deleteConversation, observeConversationWrites } from ".";
 import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
 // The composition contract of the Conversation write seam: a composition
 // owning a database registers its consumer with observeConversationWrites
@@ -37,8 +30,8 @@ describe("Conversation write observer composition contract", () => {
 		const created = createConversationWithHistory(module, {
 			name: "Observer Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original answer."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original answer."] }),
 			],
 			control: { human: 0, model: 1 },
 		});

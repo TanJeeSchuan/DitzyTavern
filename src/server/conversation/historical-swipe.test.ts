@@ -1,4 +1,5 @@
-import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import { executeConversationCommand, acceptGeneration, resolveConversationGeneration } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -23,12 +24,8 @@ import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversa
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
 ): ParticipantDefinition["prompt"] => ({
-	systemInstruction: "",
+	...emptyPromptChannels(),
 	identity: "I am {{self}}, speaking to {{other}}.",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
 	...overrides,
 });
 
@@ -36,12 +33,7 @@ const adHoc = (
 	name: string,
 	openings: string[] = [],
 	promptOverrides: Partial<ParticipantDefinition["prompt"]> = {},
-): ParticipantDefinition => ({
-	name,
-	prompt: prompt(promptOverrides),
-	sendAppearanceImages: true,
-	openings,
-});
+): ParticipantDefinition => participantDefinition(name, { prompt: prompt(promptOverrides), openings });
 
 const setup = (database: Database) => {
 	const module = database;

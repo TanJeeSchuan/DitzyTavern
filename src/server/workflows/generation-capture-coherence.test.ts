@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, openObservedDatabase, participantSeed } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -20,14 +20,6 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { createGenerationCoordinator } from "../application/generation-coordinator";
 import { gracefullyShutdownGenerations } from "./generation-recovery";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
 
 const setup = () => {
 	const database = openObservedDatabase();
@@ -36,8 +28,8 @@ const setup = () => {
 	const conversation = createConversationWithHistory(database, {
 		name: "Capture Coherence",
 		participants: [
-			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["The lamp turns above you."] } },
+			participantSeed("Writer"),
+			participantSeed("Maren", { openings: ["The lamp turns above you."] }),
 		],
 		control: { human: 0, model: 1 },
 	});

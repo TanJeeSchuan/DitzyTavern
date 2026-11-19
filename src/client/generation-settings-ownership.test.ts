@@ -1,4 +1,4 @@
-import { boxSetups, boxes } from "./test-fixtures/box-setups";
+import { conversationSummary, installFetch, type FetchHandler } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ConversationGenerationSettings, ConversationSummary } from "../shared/contract/conversation-schema";
 import type { BudgetValues, SamplingValues } from "./generation-settings-draft";
@@ -23,33 +23,12 @@ Object.defineProperty(globalThis, "window", {
 const { commitConversationModel } = await import("./model-selection-command");
 const { saveGenerationSettingsDraft } = await import("./workspace/useGenerationSettingsDraft");
 
-type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-
-const installFetch = (handler: FetchHandler): void => {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-};
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
-const summary = (revision: number): ConversationSummary => ({
-	boxSetups, boxes, boxVersions: {}, forkedFrom: null,
-	background: null,
-	id: 1,
-	name: "Seaside Letters",
-	revision,
-	cast: [],
-	control: { humanParticipantId: null, modelParticipantId: null },
-	controlValidity: { valid: false, reason: "missing-seat" },
-	playable: false,
-	capabilities: {
-		compose: { available: false, reason: "conversation-not-playable" },
-		generate: { available: false, reason: "conversation-not-playable" },
-		swipe: { available: false, reason: "conversation-not-playable" },
-	},
-	activeGenerations: [],
-});
+const summary = (revision: number): ConversationSummary => conversationSummary({ revision });
 
 const baseSettings = (): ConversationGenerationSettings => ({
 	connectionProfileId: 7,

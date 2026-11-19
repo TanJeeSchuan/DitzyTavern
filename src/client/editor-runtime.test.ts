@@ -1,3 +1,4 @@
+import { installFetch } from "./test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { renderHook, flushHook } from "./test-fixtures/render-hook";
@@ -20,9 +21,9 @@ const client = () => new QueryClient({ defaultOptions: { queries: { retry: false
 type Request = { url: string; init?: RequestInit };
 function install(handler: (request: Request) => Promise<Response>) {
 	const requests: Request[] = [];
-	globalThis.fetch = Object.assign((input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch((input: RequestInfo | URL, init?: RequestInit) => {
 		const request = { url: String(input), init }; requests.push(request); return handler(request);
-	 }, { preconnect() {} });
+	 });
 	return requests;
 }
 

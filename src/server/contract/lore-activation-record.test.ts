@@ -1,18 +1,11 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
-import { acceptGeneration, resolveConversationGeneration, readVariantDetails, executeConversationCommand, stopConversationGeneration } from "../conversation";
+import { readTestConversationSnapshot, checkpointFromStart, shortReplyPrompt, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
+import { resolveConversationGeneration, readVariantDetails, executeConversationCommand, stopConversationGeneration } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationRoutes } from "./conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "A quiet room.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt({ scenario: "A quiet room." });
 
 const evidence = {
 	version: 1 as const,
@@ -36,28 +29,12 @@ describe("permanent Lore Activation Records", () => {
 	afterEach(() => database.close());
 
 	test("are copied to Variant data and remain readable after replay expiry", async () => {
-		const created = createConversationWithHistory(database, {
-			name: "Lore details",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const created = pairChat(database, "Lore details", { prompt });
 		const module = database;
-		const accepted = acceptGeneration(module, {
-			seed: "test-generation-seed",
-			conversationId: created.id,
+		const accepted = acceptTestGeneration(module, created, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." }, {
 			timestamp: "2026-09-17T10:00:00Z",
-			humanParticipantId: created.cast[0]!.id,
-			modelParticipantId: created.cast[1]!.id,
-			capturedHumanName: "Writer",
-			capturedModelName: "Maren",
-			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model",
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
-		}, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." });
+		});
 		resolveConversationGeneration(module, {
 			conversationId: created.id,
 			generationId: accepted.generationId,
@@ -76,14 +53,7 @@ describe("permanent Lore Activation Records", () => {
 	});
 
 	test("rejects generic writes to the server-owned namespace", () => {
-		const created = createConversationWithHistory(database, {
-			name: "Lore namespace",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const created = pairChat(database, "Lore namespace", { prompt });
 		const module = database;
 		expect(() => executeConversationCommand(module, {
 			conversationId: created.id,
@@ -99,28 +69,12 @@ describe("permanent Lore Activation Records", () => {
 	});
 
 	test("reports corrupt persisted records through detail contracts", async () => {
-		const created = createConversationWithHistory(database, {
-			name: "Corrupt lore details",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const created = pairChat(database, "Corrupt lore details", { prompt });
 		const module = database;
-		const accepted = acceptGeneration(module, {
-			seed: "test-generation-seed",
-			conversationId: created.id,
+		const accepted = acceptTestGeneration(module, created, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." }, {
 			timestamp: "2026-09-17T10:00:00Z",
-			humanParticipantId: created.cast[0]!.id,
-			modelParticipantId: created.cast[1]!.id,
-			capturedHumanName: "Writer",
-			capturedModelName: "Maren",
-			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model",
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
-		}, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." });
+		});
 		database.run("UPDATE active_generation SET lore_activation_json = ? WHERE id = ?", ["{", accepted.generationId]);
 		const app = createConversationRoutes(database);
 		const inspection = await app.handle(new Request(
@@ -156,31 +110,12 @@ describe("permanent Lore Activation Records", () => {
 	});
 
 	test("retains evidence on interrupted output but cleans it up with zero-output targets", () => {
-		const created = createConversationWithHistory(database, {
-			name: "Interrupted lore",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const created = pairChat(database, "Interrupted lore", { prompt });
 		const module = database;
-		const human = created.cast[0];
-		const model = created.cast[1];
-		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-		const accepted = acceptGeneration(module, {
-			seed: "test-generation-seed",
-			conversationId: created.id,
+		const accepted = acceptTestGeneration(module, created, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." }, {
 			timestamp: "2026-09-17T10:00:00Z",
-			humanParticipantId: human.id,
-			modelParticipantId: model.id,
-			capturedHumanName: human.name,
-			capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model",
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
-		}, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." });
+		});
 		checkpointFromStart(module, {
 			conversationId: created.id,
 			generationId: accepted.generationId,
@@ -192,19 +127,10 @@ describe("permanent Lore Activation Records", () => {
 		expect(readVariantDetails(module, created.id, interrupted.id, interruptedVariant.id)?.loreActivation).toEqual(evidence);
 
 		const fresh = readTestConversationSnapshot(module, created.id)!;
-		const zeroOutput = acceptGeneration(module, {
-			seed: "test-generation-seed",
-			conversationId: created.id,
+		const zeroOutput = acceptTestGeneration(module, created, { kind: "send", expectedRevision: fresh.revision, content: "Try again." }, {
 			timestamp: "2026-09-17T10:00:02Z",
-			humanParticipantId: human.id,
-			modelParticipantId: model.id,
-			capturedHumanName: human.name,
-			capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model",
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			loreActivation: evidence,
-		}, { kind: "send", expectedRevision: fresh.revision, content: "Try again." });
+		});
 		stopConversationGeneration(module, { cause: "user-stop", conversationId: created.id, generationId: zeroOutput.generationId });
 		const afterCleanup = readTestConversationSnapshot(module, created.id)!;
 		expect(afterCleanup.messages.at(-1)?.variants.at(-1)?.data).not.toContainEqual({

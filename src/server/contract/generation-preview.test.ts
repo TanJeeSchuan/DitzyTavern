@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, participantSeed, pairChat } from "../test-fixtures/conversation";
 import {
 	readConversationRevision,
 	executeConversationCommand,
@@ -9,7 +10,7 @@ import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConversationRoutes } from "./conversation";
-import { captureModelFetch, key, profile, withProfile } from "./prompt-preset-test-fixtures";
+import { captureModelFetch, key, profile, withProfile, sseReply } from "./prompt-preset-test-fixtures";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { pngFixture } from "../image/image-fixtures";
@@ -22,25 +23,11 @@ import type {
 import { processStateFor } from "../application/process-state";
 import { GENERATION_PREVIEW_SESSION_TTL_MS } from "../workflows/generation-preview";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
+const prompt = emptyPromptChannels();
 
 const siblingPrompt = { ...prompt, systemInstruction: "Answer briefly." };
 
-const createChat = (database: Database) => createConversationWithHistory(database, {
-	name: "Preview Chat",
-	participants: [
-		{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-		{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-	],
-	control: { human: 0, model: 1 },
-});
+const createChat = (database: Database) => pairChat(database, "Preview Chat");
 
 const preview = async (
 	app: ReturnType<typeof createConversationRoutes>,
@@ -129,13 +116,7 @@ describe("Prompt Plan inspection", () => {
 			}],
 		});
 		const playable = createChat(database);
-		const siblingUnavailable = createConversationWithHistory(module, {
-			name: "Imported Preview Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
+		const siblingUnavailable = pairChat(module, "Imported Preview Chat", {
 			messages: [{
 				timestamp: "2026-09-13T00:00:00.000Z",
 				variants: [{
@@ -247,11 +228,7 @@ describe("Prompt Plan inspection", () => {
 				if (requests.length === 1) {
 					return new Response(JSON.stringify({ error: { message: "unsupported image input" } }), { status: 400 });
 				}
-				return new Response([
-					`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Recovered." }, finish_reason: null }] })}\n\n`,
-					`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
-					"data: [DONE]\n\n",
-				].join(""), { headers: { "content-type": "text/event-stream" } });
+				return sseReply([{ content: "Recovered." }], { singleChunk: true });
 			},
 		});
 		const body: GenerationTarget = { kind: "send", content: "The next scene begins." };
@@ -540,8 +517,8 @@ describe("Prompt Plan inspection", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Sibling Preview Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt: siblingPrompt, sendAppearanceImages: true, openings: ["Opening."] } },
+				participantSeed("Writer"),
+				participantSeed("Maren", { prompt: siblingPrompt, openings: ["Opening."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -583,8 +560,8 @@ describe("Prompt Plan inspection", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Retryable Sibling Preview Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt: siblingPrompt, sendAppearanceImages: true, openings: ["Opening."] } },
+				participantSeed("Writer"),
+				participantSeed("Maren", { prompt: siblingPrompt, openings: ["Opening."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -654,8 +631,8 @@ describe("Prompt Plan inspection", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Continuation Preview Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Opening."] } },
+				participantSeed("Writer"),
+				participantSeed("Maren", { openings: ["Opening."] }),
 			],
 			control: { human: 0, model: 1 },
 		});

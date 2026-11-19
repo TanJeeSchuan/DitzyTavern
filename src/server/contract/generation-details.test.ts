@@ -1,19 +1,12 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import { acceptGeneration, resolveConversationGeneration, readActiveGenerationDetails, readVariantDetails } from "../conversation";
+import { readTestConversationSnapshot, shortReplyPrompt, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
+import { resolveConversationGeneration, readActiveGenerationDetails, readVariantDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { cleanupRetainedGenerationInspections, GENERATION_REPLAY_RETENTION_MS } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "A quiet room.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt({ scenario: "A quiet room." });
 
 describe("Generation detail transport", () => {
 	let database: Database;
@@ -24,23 +17,10 @@ describe("Generation detail transport", () => {
 	afterEach(() => database.close());
 
 	test("exposes exact active inspection and only compact safe terminal provenance", () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Details Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Details Chat", { prompt });
 		const module = database;
-		const accepted = acceptGeneration(module, {
-			seed: "test-generation-seed",
-			conversationId: conversation.id,
+		const accepted = acceptTestGeneration(module, conversation, { kind: "send", expectedRevision: conversation.revision, content: "Guide the scene." }, {
 			timestamp: "2026-08-27T10:00:00Z",
-			humanParticipantId: conversation.cast[0]!.id,
-			modelParticipantId: conversation.cast[1]!.id,
-			capturedHumanName: "Writer",
-			capturedModelName: "Maren",
 			promptPlan: {
 				blocks: [{
 					kind: "history",
@@ -50,7 +30,6 @@ describe("Generation detail transport", () => {
 				}],
 				warnings: [], images: [],
 			},
-			modelId: "fixture-model",
 			promptInspection: {
 				tokenEstimate: 19,
 				responseBudget: 64,
@@ -89,7 +68,7 @@ describe("Generation detail transport", () => {
 					interruptionCause: null,
 				}),
 			},
-		}, { kind: "send", expectedRevision: conversation.revision, content: "Guide the scene." });
+		});
 		const app = createConversationRoutes(database);
 
 		return app.handle(new Request(

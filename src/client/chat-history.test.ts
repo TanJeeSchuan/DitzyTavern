@@ -1,3 +1,4 @@
+import { historyMessage, historyPage, installFetch } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { WirePayload } from "./lib/wire-decode";
 
@@ -17,9 +18,6 @@ const originalFetch = globalThis.fetch;
 const { loadHistoryPage } = await import("./chat-history");
 const { SERVER_UNUSABLE_RESPONSE_NOTICE } = await import("./lib/request-outcome");
 
-const installFetch = (handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void => {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-};
 
 const json = (payload: WirePayload, status: number): Response =>
 	new Response(JSON.stringify(payload), {
@@ -27,38 +25,11 @@ const json = (payload: WirePayload, status: number): Response =>
 		headers: { "content-type": "application/json" },
 	});
 
-const messagePayload = {
-	id: 10,
-	position: 1,
-	timestamp: "2026-01-01T00:00:00.000Z",
-	authorRole: "model",
-	modelParticipantIdAtCreation: 20,
-	continuable: true,
-	swipe: { eligible: true, reason: null },
-	author: { participantId: 20, capturedName: "Model", inCast: true },
-	moves: {},
-	variants: [
-		{ id: 100, position: 1, content: "Once", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
-	],
-};
+const messagePayload = historyMessage({ modelParticipantIdAtCreation: 20, author: { participantId: 20, capturedName: "Model", inCast: true } });
 
 const jsonPage = (messages: readonly object[]): Response =>
 	new Response(
-		JSON.stringify({
-			conversationId: 7,
-			name: "Lantern House",
-			revision: 3,
-			cast: [{ id: 1, position: 1, name: "Writer" }],
-			page: {
-				index: 1,
-				pageSize: 2,
-				totalMessages: 1,
-				totalPages: 1,
-				hasOlder: false,
-				hasNewer: false,
-			},
-			messages,
-		}),
+		JSON.stringify({ ...historyPage({ page: { totalMessages: 1, totalPages: 1, hasOlder: false } }), messages }),
 		{ status: 200, headers: { "content-type": "application/json" } },
 	);
 

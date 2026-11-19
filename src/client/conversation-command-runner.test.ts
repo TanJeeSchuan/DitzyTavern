@@ -1,4 +1,4 @@
-import { boxSetups, boxes } from "./test-fixtures/box-setups";
+import { conversationSummary as summary } from "./test-fixtures/conversation";
 import { describe, expect, test } from "bun:test";
 import {
 	CONVERSATION_REVISION_UNAVAILABLE_NOTICE,
@@ -9,28 +9,6 @@ import {
 	type ConversationCommandSurface,
 } from "./conversation-command-runner";
 import type { CommandOutcome } from "./conversation";
-import type { ConversationSummary } from "../shared/contract/conversation-schema";
-
-// A minimal authoritative snapshot: the runner only forwards snapshots, so
-// the fixture carries the contract shape without populating Cast details.
-const summary = (overrides: Partial<ConversationSummary> = {}): ConversationSummary => ({
-	boxSetups, boxes, boxVersions: {}, forkedFrom: null,
-	background: null,
-	id: 1,
-	name: "Seaside Letters",
-	revision: 7,
-	cast: [],
-	control: { humanParticipantId: null, modelParticipantId: null },
-	controlValidity: { valid: false, reason: "missing-seat" },
-	playable: false,
-	capabilities: {
-		compose: { available: false, reason: "conversation-not-playable" },
-		generate: { available: false, reason: "conversation-not-playable" },
-		swipe: { available: false, reason: "conversation-not-playable" },
-	},
-	activeGenerations: [],
-	...overrides,
-});
 
 // The fake surface records every side effect in order, so the tests observe
 // adoption, notices, and their sequencing without React or global state.

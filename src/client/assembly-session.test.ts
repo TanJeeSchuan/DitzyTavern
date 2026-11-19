@@ -1,3 +1,4 @@
+import { installFetch } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import { flushHook, renderHook } from "./test-fixtures/render-hook";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
@@ -30,11 +31,11 @@ const accepted = { outcome: "accepted", conversationId: 7, generationId: 10, mes
 type Request = { url: string; init?: RequestInit };
 async function assemblyHarness(handler: (request: Request) => Promise<Response>, strict = false) {
 	const requests: Request[] = [];
-	globalThis.fetch = Object.assign((input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch((input: RequestInfo | URL, init?: RequestInit) => {
 		const request = { url: String(input), init };
 		requests.push(request);
 		return handler(request);
-	}, { preconnect() {} });
+	});
 	const cache = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
 	const effects: string[] = [];
 	const targets: GenerationAttemptTarget[] = [];

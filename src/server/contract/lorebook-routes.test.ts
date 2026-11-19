@@ -1,4 +1,5 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -230,8 +231,8 @@ describe("Lorebook library transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
-				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Writer"),
+				participantSeed("Narrator"),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -260,8 +261,8 @@ describe("Lorebook library transport", () => {
 		createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
-				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Writer"),
+				participantSeed("Narrator"),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -282,7 +283,7 @@ describe("Lorebook library transport", () => {
 			type: "create",
 			definition: {
 				name: "Archivist",
-				prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: [],
 			},
@@ -290,8 +291,8 @@ describe("Lorebook library transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
-				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Writer"),
+				participantSeed("Narrator"),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -318,7 +319,7 @@ describe("Lorebook library transport", () => {
 			type: "create",
 			definition: {
 				name: "Archivist",
-				prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: [],
 			},
@@ -326,8 +327,8 @@ describe("Lorebook library transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
-				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Writer"),
+				participantSeed("Narrator"),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -347,7 +348,7 @@ describe("Lorebook library transport", () => {
 			type: "create",
 			definition: {
 				name: "Archivist",
-				prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: [],
 			},
@@ -355,8 +356,8 @@ describe("Lorebook library transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
-				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Writer"),
+				participantSeed("Narrator"),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -386,7 +387,7 @@ describe("Lorebook library transport", () => {
 			type: "create",
 			definition: {
 				name: "Archivist",
-				prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: [],
 			},
@@ -394,8 +395,8 @@ describe("Lorebook library transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
-				{ definition: { name: "Writer", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Narrator", prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Writer"),
+				participantSeed("Narrator"),
 			],
 			control: { human: 0, model: 1 },
 		});

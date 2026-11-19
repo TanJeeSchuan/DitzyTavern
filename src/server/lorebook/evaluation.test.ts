@@ -1,4 +1,6 @@
-import { createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
+import { loreEntryFixture } from "./fixtures";
+import { emptyPromptChannels } from "../../shared/definition";
+import { createConversationWithHistory, openObservedDatabase, participantSeed } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -7,14 +9,7 @@ import { importNativeLorebook } from "./library";
 import { readLorebookAttachmentEligibility } from "./attachments";
 import { evaluateScopedLore } from "./evaluation";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
+const prompt = emptyPromptChannels();
 
 describe("scoped Lore activation", () => {
 	let database: Database;
@@ -27,24 +22,14 @@ describe("scoped Lore activation", () => {
 		const book = importNativeLorebook(database, {
 			name: "World",
 			description: "",
-			entries: [{
-				title: "Keep",
-				content: "The silver keep.",
-				keywords: ["Silver Keep"],
-				semanticTriggers: [],
-				matchOperator: "or",
-				always: false,
-				requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
-				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "",
-				priority: 1, enabled: true,
-			}],
+			entries: [loreEntryFixture({ title: "Keep", content: "The silver keep.", keywords: ["Silver Keep"], priority: 1 })],
 		});
 		characters.execute({ type: "attach-lorebook", characterId: character.id, expectedRevision: character.revision, bookId: book.id, scope: "controlled-participant" });
 		const chat = createConversationWithHistory(database, {
 			name: "Story",
 			participants: [
-				{ sourceCharacterId: character.id, definition: { name: "Keeper", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Keeper", { sourceCharacterId: character.id }),
+				participantSeed("Writer"),
 			],
 			control: { human: 1, model: 0 },
 		});
@@ -80,17 +65,11 @@ describe("scoped Lore activation", () => {
 	test("stores the scan window once while retaining matched and unmatched entry evidence", () => {
 		const book = importNativeLorebook(database, {
 			name: "World", description: "",
-			entries: ["matched", "unmatched", "also unmatched"].map((title) => ({
-				title, content: "Lore.", keywords: [title === "matched" ? "signal" : "absent"],
-				semanticTriggers: [], matchOperator: "or", always: false,
-				requireAny: [], requireAll: [], excludeAny: [], excludeAll: [],
-				caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "",
-				priority: 1, enabled: true,
-			})),
+			entries: ["matched", "unmatched", "also unmatched"].map((title) => loreEntryFixture({ title, content: "Lore.", keywords: [title === "matched" ? "signal" : "absent"], priority: 1 })),
 		});
 		const chat = createConversationWithHistory(database, {
 			name: "Story",
-			participants: ["Keeper", "Writer"].map((name) => ({ definition: { name, prompt, sendAppearanceImages: true, openings: [] } })),
+			participants: ["Keeper", "Writer"].map((name) => (participantSeed(name))),
 			control: { human: 1, model: 0 },
 		});
 		executeConversationCommand(database, {

@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, checkpointFromStart, shortReplyPrompt, pairChat } from "../test-fixtures/conversation";
 import { executeConversationCommand, acceptGeneration, resolveConversationGeneration, readVariantDetails, stopConversationGeneration } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -7,14 +7,7 @@ import { createConversationRoutes } from "./conversation";
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import { generationJsonObject } from "../../shared/generation-provenance";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "A quiet room.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt({ scenario: "A quiet room." });
 
 // @approved
 //  A captured Box's trace as the host keeps it; the host never reads `trace`.
@@ -30,14 +23,7 @@ const traces = (messageId: number, variantId: number, finalText = "Maren still h
 
 const createChat = (database: Database) => {
 	const module = database;
-	const created = createConversationWithHistory(module, {
-		name: "Box traces",
-		participants: [
-			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-		],
-		control: { human: 0, model: 1 },
-	});
+	const created = pairChat(module, "Box traces", { prompt });
 	executeConversationCommand(module, {
 		conversationId: created.id,
 		expectedRevision: created.revision,

@@ -1,4 +1,4 @@
-import { requireSnapshot } from "../test-fixtures/conversation";
+import { requireSnapshot, participantSeed } from "../test-fixtures/conversation";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
 import { readChatHistory, executeConversationCommand} from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
@@ -207,12 +207,7 @@ describe("graduated Chat history and Import Details", () => {
 		// A Chat without import provenance has no Import Details.
 		const native = createConversationWithHistory(database, {
 			name: "Native Chat",
-			participants: [{ definition: {
-				name: "Writer",
-				prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
-				sendAppearanceImages: true,
-				openings: [],
-			} }],
+			participants: [participantSeed("Writer")],
 		});
 		expect(details.importDetails(native.id)).toBeUndefined();
 		expect(details.importDetails(999999)).toBeUndefined();
@@ -278,21 +273,7 @@ describe("graduated Chat history and Import Details", () => {
 		const conversations = database;
 		const corrupt = createConversationWithHistory(conversations, {
 			name: "Corrupt Import",
-			participants: [{
-				definition: {
-					name: "Writer",
-					prompt: {
-						systemInstruction: "",
-						identity: "",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
-					sendAppearanceImages: true,
-					openings: [],
-				},
-			}],
+			participants: [participantSeed("Writer")],
 			messages: [{
 				timestamp: "2026-08-08T12:53:02.008Z",
 				variants: [{

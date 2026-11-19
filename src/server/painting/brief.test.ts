@@ -3,7 +3,7 @@ import { formatImageReference } from "../../shared/image-reference";
 import { pngFixture } from "../image/image-fixtures";
 import { uploadImage } from "../image";
 import { expect, test, setSystemTime } from "bun:test";
-import { openObservedDatabase, requireSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { openObservedDatabase, requireSnapshot, createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { humanPrompt, modelPrompt, createChat, conversationApp, withProfile, captureModelFetch, key, type CapturedRequest } from "../contract/prompt-preset-test-fixtures";
 import { executeConversationCommand } from "../conversation";
 import { macroWritesToData } from "../prompt-macros";
@@ -63,8 +63,8 @@ test("an empty Ask names the scene, and Image References in an Ask reach the mod
 	const database = openObservedDatabase();
 	try {
 		const chat = createConversationWithHistory(database, { name: "Scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: modelPrompt, sendAppearanceImages: true, openings: ["First scene"] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: modelPrompt, openings: ["First scene"] }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const requests: CapturedRequest[] = [];
@@ -131,8 +131,8 @@ test("a provider rejection before streaming returns its Brief error", async () =
 	const database = openObservedDatabase();
 	try {
 		const chat = createConversationWithHistory(database, { name: "Scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: modelPrompt, sendAppearanceImages: true, openings: ["A scene"] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: modelPrompt, openings: ["A scene"] }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const routes = createPaintingRoutes(database, { masterKey: key, fetch: async () => Response.json({ error: { message: "Brief quota exceeded" } }, { status: 429 }) });
@@ -148,8 +148,8 @@ test("a Brief pins its target Variant after a swipe and reads only its own prese
 	const database = openObservedDatabase();
 	try {
 		const chat = createConversationWithHistory(database, { name: "Scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: modelPrompt, sendAppearanceImages: true, openings: ["Original lantern", "Swiped lake"] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: modelPrompt, openings: ["Original lantern", "Swiped lake"] }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const preset = importNativePromptPreset(database, { name: "Both", slots: [
@@ -196,8 +196,8 @@ test("a Brief preserves a provider failure after content has started streaming",
 	const database = openObservedDatabase();
 	try {
 		const chat = createConversationWithHistory(database, { name: "Scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: modelPrompt, sendAppearanceImages: true, openings: ["A scene"] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: modelPrompt, openings: ["A scene"] }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const chunks = [
@@ -223,11 +223,11 @@ test("a Brief reads unseated Cast Appearance by name or authorship and sends onl
 	try {
 		const image = await uploadImage(database, pngFixture());
 		const chat = createConversationWithHistory(database, { name: "Cast scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: { ...modelPrompt, appearance: "A red cloak beside {{other}}." }, sendAppearanceImages: true, openings: ["Iris waits on the bridge."] } },
-			{ definition: { name: "Iris", prompt: { ...modelPrompt, appearance: `{{self}} has silver hair. ${formatImageReference("Silver hair", image.hash)}` }, sendAppearanceImages: false, openings: [] } },
-			{ definition: { name: "Nora", prompt: { ...modelPrompt, appearance: "A blue scarf." }, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Absent", prompt: { ...modelPrompt, appearance: "Must not be sent." }, sendAppearanceImages: true, openings: [] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: { ...modelPrompt, appearance: "A red cloak beside {{other}}." }, openings: ["Iris waits on the bridge."] }),
+			participantSeed("Iris", { prompt: { ...modelPrompt, appearance: `{{self}} has silver hair. ${formatImageReference("Silver hair", image.hash)}` }, sendAppearanceImages: false }),
+			participantSeed("Nora", { prompt: { ...modelPrompt, appearance: "A blue scarf." } }),
+			participantSeed("Absent", { prompt: { ...modelPrompt, appearance: "Must not be sent." } }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const requests: CapturedRequest[] = [];

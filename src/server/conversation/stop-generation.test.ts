@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart, shortReplyPrompt, participantSeed } from "../test-fixtures/conversation";
 import { editMacroVariables, readMacroVariables, executeConversationCommand, readVariantDetails, acceptGeneration } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -12,14 +12,7 @@ import {
 } from "./commands/active-generation";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
 describe("explicit Conversation Generation Stop", () => {
 	let database: Database;
@@ -35,8 +28,8 @@ describe("explicit Conversation Generation Stop", () => {
 		const created = createConversationWithHistory(module, {
 			name: "Stop Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original answer."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original answer."] }),
 			],
 			control: { human: 0, model: 1 },
 		});

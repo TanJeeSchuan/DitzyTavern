@@ -1,4 +1,6 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { profile as chatProfile, sseReply } from "./prompt-preset-test-fixtures";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, pairChat } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -7,38 +9,13 @@ import { createConversationRoutes } from "./conversation";
 
 const key = new Uint8Array(32).fill(31);
 const prompt = {
+	...emptyPromptChannels(),
 	systemInstruction: "Continue carefully.",
 	identity: "I am {{self}}.",
-	appearance: "",
 	scenario: "A quiet room.",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
 };
-const profile = {
-	displayName: "DeepSeek",
-	apiFormat: "chat-completions" as const,
-	requestUrl: "http://127.0.0.1:43127/v1/",
-	modelsUrl: "",
-	modelBackend: "automatic" as const,
-	adapter: "deepseek" as const,
-	outputTokenRepresentation: "automatic" as const,
-	systemPlacement: "strict" as const,
-	timeoutMs: 120_000,
-	pinnedModels: [],
-};
+const profile = { ...chatProfile, requestUrl: "http://127.0.0.1:43127/v1/", systemPlacement: "strict" } satisfies typeof chatProfile;
 
-const streamResponse = () => new Response(
-	new ReadableStream({
-		start(controller) {
-			const encoder = new TextEncoder();
-			controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Continued." }, finish_reason: null }] })}\n\n`));
-			controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
-			controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-			controller.close();
-		},
-		}),
-	{ headers: { "content-type": "text/event-stream" } },
-);
 
 describe("Continuation transport contract", () => {
 	let database: Database;
@@ -49,13 +26,8 @@ describe("Continuation transport contract", () => {
 	afterEach(() => database.close());
 
 	test("accepts Continue without a human Message and uses the instruction strategy", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Continuation Contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
+		const conversation = pairChat(database, "Continuation Contract", {
+			prompt,
 			messages: [{
 				timestamp: "2026-08-27T00:00:00Z",
 				variants: [{ content: "Previous model writing.", timestamp: "2026-08-27T00:00:00Z", selected: true }],
@@ -69,7 +41,7 @@ describe("Continuation transport contract", () => {
 		});
 		const app = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: async () => streamResponse(),
+			fetch: async () => sseReply([{ content: "Continued." }]),
 		});
 		const acceptedResponse = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,

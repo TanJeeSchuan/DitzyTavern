@@ -1,5 +1,7 @@
+import { emptyPromptChannels } from "../../shared/definition";
+import { blankConnectionProfileDraft, type ConnectionProfileDraftPayload } from "../../shared/contract/connection-settings";
 import { createConversation } from "../conversation";
-import { insertBox } from "../test-fixtures/conversation";
+import { insertBox, participantSeed } from "../test-fixtures/conversation";
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
@@ -27,34 +29,60 @@ import type { ConversationSummary } from "../../shared/contract/conversation-sch
 export const key = new Uint8Array(32).fill(11);
 
 export const humanPrompt = {
+	...emptyPromptChannels(),
 	systemInstruction: "Human system text never reaches the plan.",
 	identity: "I write as {{self}} opposite {{other}}.",
-	appearance: "",
 	scenario: "Human scenario never reaches the plan.",
 	exampleDialogue: "Human examples never reach the plan.",
 	postHistoryInstruction: "Human post-history never reaches the plan.",
 };
 
 export const modelPrompt = {
+	...emptyPromptChannels(),
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
-	appearance: "",
 	scenario: "A quiet room.",
 	exampleDialogue: "Writer: Hello\nMaren: Hello back",
 	postHistoryInstruction: "Continue.",
 };
 
-export const profile = {
+export const profile: ConnectionProfileDraftPayload = {
+	...blankConnectionProfileDraft,
 	displayName: "DeepSeek",
-	apiFormat: "chat-completions" as const,
 	requestUrl: "http://127.0.0.1:43131/v1/",
-	modelsUrl: "",
-	modelBackend: "automatic" as const,
-	adapter: "deepseek" as const,
-	outputTokenRepresentation: "automatic" as const,
-	systemPlacement: "none" as const,
-	timeoutMs: 120_000,
-	pinnedModels: [],
+	adapter: "deepseek",
+	systemPlacement: "none",
+};
+
+type SseReplyOptions = {
+	finish?: { reason: string } | { error: { message: string; type: string; code: string } };
+	beforeDeltas?: Promise<void>;
+} & ({ singleChunk: true; beforeFinish?: never } | { singleChunk?: false; beforeFinish?: Promise<void> });
+
+export const sseReply = (
+	deltas: readonly ({ content: string } | { reasoning_content: string })[],
+	{ finish = { reason: "stop" }, beforeDeltas, beforeFinish, singleChunk }: SseReplyOptions = {},
+): Response => {
+	const encoder = new TextEncoder();
+	const frame = (data: string) => `data: ${data}\n\n`;
+	const deltaFrames = deltas.map((delta) => frame(JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })));
+	const finishFrames = "error" in finish
+		? [frame(JSON.stringify(finish))]
+		: [frame(JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish.reason }] })), frame("[DONE]")];
+	return new Response(new ReadableStream({
+		async start(controller) {
+			const emit = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+			if (beforeDeltas !== undefined) await beforeDeltas;
+			if (singleChunk) {
+				emit(deltaFrames.join("") + finishFrames.join(""));
+			} else {
+				deltaFrames.forEach(emit);
+				if (beforeFinish !== undefined) await beforeFinish;
+				finishFrames.forEach(emit);
+			}
+			controller.close();
+		},
+	}), { headers: { "content-type": "text/event-stream" } });
 };
 
 export interface CapturedRequest {
@@ -68,22 +96,8 @@ export const createChat = (
 	const conversation = createConversation(database, {
 		name: names.name ?? "Preset Chat",
 		participants: [
-			{
-				definition: {
-					name: names.human ?? "Writer",
-					prompt: humanPrompt,
-					sendAppearanceImages: true,
-					openings: [],
-				},
-			},
-			{
-				definition: {
-					name: names.model ?? "Maren",
-					prompt: modelPrompt,
-					sendAppearanceImages: true,
-					openings: [],
-				},
-			},
+			participantSeed(names.human ?? "Writer", { prompt: humanPrompt }),
+			participantSeed(names.model ?? "Maren", { prompt: modelPrompt }),
 		],
 		control: { human: 0, model: 1 },
 	});
@@ -260,15 +274,6 @@ export const gatedProvider = () => {
 	const requests: CapturedRequest[] = [];
 	const waiters: (() => void)[] = [];
 	let open = false;
-	const encoder = new TextEncoder();
-	const stream = () => new Response(new ReadableStream({
-		start(controller) {
-			controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Done." }, finish_reason: null }] })}\n\n`));
-			controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
-			controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-			controller.close();
-		},
-	}), { headers: { "content-type": "text/event-stream" } });
 	return {
 		requests,
 		release: () => {
@@ -280,7 +285,7 @@ export const gatedProvider = () => {
 			//  SAFETY: the controlled fake receives the AI SDK Chat Completions body.
 			requests.push(JSON.parse(String(init?.body)) as CapturedRequest);
 			if (!open) await new Promise<void>((resolve) => { waiters.push(resolve); });
-			return stream();
+			return sseReply([{ content: "Done." }]);
 		}) satisfies ModelFetch,
 	};
 };
@@ -291,26 +296,11 @@ export const gatedProvider = () => {
 export const captureModelFetch = (
 	onCapture: (captured: CapturedRequest) => void,
 	waitFor?: Promise<void>,
-): ModelFetch => {
-	const encoder = new TextEncoder();
-	const payload = [
-		{ choices: [{ index: 0, delta: { content: "Done." }, finish_reason: null }] },
-		{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-	]
-		.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
-		.join("") + "data: [DONE]\n\n";
-	return async (_input, init) => {
-		// @approved
-		//  SAFETY: this test's fake owns the request body shape.
-		onCapture(JSON.parse(String(init?.body)) as CapturedRequest);
-		return new Response(new ReadableStream({
-			async start(controller) {
-				if (waitFor !== undefined) await waitFor;
-				controller.enqueue(encoder.encode(payload));
-				controller.close();
-			},
-		}), { headers: { "content-type": "text/event-stream" } });
-	};
+): ModelFetch => async (_input, init) => {
+	// @approved
+	//  SAFETY: this test's fake owns the request body shape.
+	onCapture(JSON.parse(String(init?.body)) as CapturedRequest);
+	return sseReply([{ content: "Done." }], { beforeDeltas: waitFor, singleChunk: true });
 };
 
 export const startGeneration = async (

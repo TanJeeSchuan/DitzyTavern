@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -24,9 +25,9 @@ import { applyCommand } from "../test-fixtures/conversation";
 const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",
 	prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "You are the keeper of the Lantern House.",
 		identity: "Maren is a lighthouse archivist.",
-		appearance: "",
 		scenario: "A storm season begins on the northern coast.",
 		exampleDialogue: "<START>\n{{user}}: Who tends the light?\n{{char}}: I do.",
 		postHistoryInstruction: "Keep the fog dense and the prose patient.",
@@ -36,14 +37,7 @@ const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefi
 	...overrides,
 });
 
-const emptyPrompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
+const emptyPrompt = emptyPromptChannels();
 
 describe("Character Library", () => {
 	let database: Database;
@@ -71,12 +65,10 @@ describe("Character Library", () => {
 	test("creates a Character atomically from a complete Definition and persists every field exactly", () => {
 		const exact = definition({
 			prompt: {
+				...emptyPromptChannels(),
 				systemInstruction: "  leading and trailing   ",
-				identity: "",
-				appearance: "",
 				scenario: "Unicode stays: café, 灯台, 🜃.",
 				exampleDialogue: "Raw\nmulti-line\n\ttext",
-				postHistoryInstruction: "",
 			},
 			openings: [
 				"First opening with trailing spaces   ",
@@ -240,11 +232,9 @@ describe("Character Library", () => {
 	test("whole-Prompt replacement swaps every field in one atomic command", () => {
 		const created = library.execute({ type: "create", definition: definition() });
 		const replacement = {
+			...emptyPromptChannels(),
 			systemInstruction: "New system instruction.",
-			identity: "",
-			appearance: "",
 			scenario: "New scenario.",
-			exampleDialogue: "",
 			postHistoryInstruction: "New post-history.",
 		};
 
@@ -417,15 +407,7 @@ describe("Character deletion", () => {
 						openings: [],
 					} satisfies ParticipantDefinition,
 				},
-				{
-					definition: {
-						name: source.name,
-						prompt: source.prompt,
-						sendAppearanceImages: true,
-						openings: [...source.openings],
-					},
-					sourceCharacterId: characterId,
-				},
+				participantSeed(source.name, { prompt: source.prompt, openings: [...source.openings], sourceCharacterId: characterId }),
 			],
 			control: { human: 0, model: 1 },
 		});

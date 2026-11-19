@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, shortReplyPrompt, participantSeed, pairChat } from "../test-fixtures/conversation";
 import { acceptGeneration, resolveConversationGeneration } from "../conversation";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -19,14 +19,7 @@ import {
 } from "./generation-coordinator";
 
 const key = new Uint8Array(32).fill(31);
-const prompt = {
-	systemInstruction: "Write briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "A quiet room.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt({ systemInstruction: "Write briefly.", scenario: "A quiet room." });
 const profile = {
 	displayName: "Coordinator Test",
 	apiFormat: "chat-completions" as const,
@@ -60,14 +53,7 @@ describe("GenerationCoordinator", () => {
 		requireSnapshot(database, conversationId);
 
 	test("shares runtime and transport setup across tail, continuation, and sibling starts", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Coordinator Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Coordinator Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -119,14 +105,7 @@ describe("GenerationCoordinator", () => {
 	});
 
 	test("shutdown joins a provider that settles after cancellation before closing the database", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Shutdown Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Shutdown Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0, profile, credential: "shutdown-test-secret",
 		});
@@ -160,14 +139,7 @@ describe("GenerationCoordinator", () => {
 	}, 10_000);
 
 	test("stops a running attempt through one application entrance", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Coordinator Stop Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Coordinator Stop Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -261,8 +233,8 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Stop lifecycle",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -527,8 +499,8 @@ describe("Generation Coordinator terminal races", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Terminal race",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original."] }),
 			],
 			control: { human: 0, model: 1 },
 		});

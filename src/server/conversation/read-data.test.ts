@@ -1,4 +1,4 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { executeConversationCommand, readConversationData } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -19,22 +19,8 @@ describe("readConversationData", () => {
 		const created = createConversationWithHistory(module(), {
 			name: "Read Data Conversation",
 			participants: [
-				{
-					definition: {
-						name: "Writer",
-						prompt: emptyPrompt(),
-						sendAppearanceImages: true,
-						openings: [],
-					},
-				},
-				{
-					definition: {
-						name: "Maren",
-						prompt: emptyPrompt(),
-						sendAppearanceImages: true,
-						openings: ["Greeting"],
-					},
-				},
+				participantSeed("Writer"),
+				participantSeed("Maren", { openings: ["Greeting"] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -57,16 +43,7 @@ describe("readConversationData", () => {
 		revision = snapshot.revision;
 	};
 
-	const emptyPrompt = () => ({
-		systemInstruction: "",
-		identity: "",
-		appearance: "",
-		scenario: "",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
-	});
-
-	afterEach(() => {
+		afterEach(() => {
 		database.close();
 	});
 

@@ -1,4 +1,4 @@
-import { boxSetups, boxes } from "../test-fixtures/box-setups";
+import { historyMessage, historyPage, conversationSummary, installFetch } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
@@ -22,23 +22,10 @@ afterEach(() => {
 interface HistoryRefreshResult { conversation: ConversationSummary | null; failure?: unknown }
 
 async function historyRefresh(historyResponse: () => Promise<Response>) {
-	const conversation: ConversationSummary = {
-		id: 1, name: "Chat", revision: 1, boxSetups, boxes, boxVersions: {}, forkedFrom: null,
-	background: null, cast: [],
-		control: { humanParticipantId: null, modelParticipantId: null },
-		controlValidity: { valid: false, reason: "missing-seat" },
-		playable: false,
-		capabilities: {
-			compose: { available: false, reason: "conversation-not-playable" },
-			generate: { available: false, reason: "conversation-not-playable" },
-			swipe: { available: false, reason: "conversation-not-playable" },
-		},
-		activeGenerations: [],
-	};
+	const conversation: ConversationSummary = conversationSummary({ name: "Chat", revision: 1 });
 	let refreshing = false;
-	globalThis.fetch = Object.assign(async (input: RequestInfo | URL) =>
-		String(input).includes("/history") ? refreshing ? historyResponse() : Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(conversation),
-	{ preconnect: () => {} });
+	installFetch(async (input: RequestInfo | URL) =>
+		String(input).includes("/history") ? refreshing ? historyResponse() : Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(conversation));
 	const dispatched: StoryAction[] = [];
 	const activeChat = { id: "1", title: "Chat", revision: 1, updatedAt: "", cast: [], excerpt: "" };
 	const dispatchStory = (action: StoryAction) => { dispatched.push(action); };
@@ -65,16 +52,21 @@ async function historyRefresh(historyResponse: () => Promise<Response>) {
 
 describe("history refresh error classification", () => {
 	test("a valid history page refreshes the Conversation", async () => {
-		const page: ChatHistoryPage = {
-			conversationId: 1, name: "Chat", revision: 1, cast: [],
-			messages: [{
-				id: 11, position: 1, timestamp: "2026-01-01T00:00:00.000Z",
-				authorRole: null, modelParticipantIdAtCreation: null, continuable: false,
+		const page: ChatHistoryPage = historyPage({
+			conversationId: 1,
+			name: "Chat",
+			revision: 1,
+			cast: [],
+			messages: [historyMessage({
+				id: 11,
+				authorRole: null,
+				continuable: false,
 				swipe: { eligible: false, reason: "conversation-not-playable" },
-				author: null, variants: [], moves: {},
-			}],
-			page: { index: 1, pageSize: 10, totalMessages: 1, totalPages: 1, hasOlder: false, hasNewer: false },
-		};
+				author: null,
+				variants: [],
+			})],
+			page: { pageSize: 10, totalMessages: 1, totalPages: 1, hasOlder: false },
+		});
 		const { conversation, dispatched } = await historyRefresh(async () => Response.json(page));
 		expect(conversation?.id).toBe(1);
 		// The refresh must APPLY the returned history, not merely resolve.

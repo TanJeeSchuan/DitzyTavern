@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { emptyPromptChannels } from "../../shared/definition";
 import { createCharacterLibraryModule } from "../character-library";
 import {
 	characterTable, characterPromptTable, characterDataTable, characterLorebookAttachmentTable,
@@ -11,7 +10,7 @@ import {
 } from "../database/schema";
 import { readLorebookAttachmentImpact } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
-import { applyCommand, createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
+import { applyCommand, createConversationWithHistory, openObservedDatabase, participantDefinition } from "../test-fixtures/conversation";
 import { deleteConversation } from "./delete";
 import { forkConversation } from ".";
 
@@ -19,7 +18,7 @@ let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 
-const definition = (name: string, openings: string[] = []) => ({ name, prompt: emptyPromptChannels(), sendAppearanceImages: true, openings });
+const definition = (name: string, openings: string[] = []) => participantDefinition(name, { openings });
 const setup = () => {
 	const library = createCharacterLibraryModule(database);
 	const source = library.execute({ type: "create", definition: definition("Source", ["Opening"]) });

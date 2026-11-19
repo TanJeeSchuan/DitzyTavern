@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import {
 	readActiveGenerationDetails,
 	stopConversationGeneration,
@@ -15,19 +16,12 @@ import { generateTerminalTailFixture } from "./test-fixtures";
 import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 import { createGenerationPreviewAsync } from "./generation-preview";
 
-const definition = (name: string): ParticipantDefinition => ({
-	name,
-	prompt: {
+const definition = (name: string): ParticipantDefinition => participantDefinition(name, { prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "Write well.",
 		identity: "I am {{self}}.",
-		appearance: "",
 		scenario: "A quiet room.",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
-	},
-	sendAppearanceImages: true,
-	openings: [],
-});
+	} });
 
 describe("Continuation Generation", () => {
 	let database: Database;

@@ -1,9 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
-import { acceptGeneration, checkpointConversationGeneration, cleanupRetainedGenerationInspections, executeConversationCommand, listChatSummaries, readActiveGenerationDetails, readConversationRevision, readSelectedHistory, resolveConversationGeneration, stopConversationGeneration } from ".";
+import { openObservedDatabase, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
+import { checkpointConversationGeneration, cleanupRetainedGenerationInspections, executeConversationCommand, listChatSummaries, readActiveGenerationDetails, readConversationRevision, readSelectedHistory, resolveConversationGeneration, stopConversationGeneration } from ".";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 
 describe("Generation checkpoints", () => {
 	let database: Database;
@@ -11,23 +10,13 @@ describe("Generation checkpoints", () => {
 	afterEach(() => database.close());
 
 	const accept = () => {
-		const created = createConversationWithHistory(database, {
-			name: "Checkpoint Chat",
-			participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }],
-			control: { human: 0, model: 1 },
-		});
-		const accepted = acceptGeneration(database, {
+		const created = pairChat(database, "Checkpoint Chat");
+		const accepted = acceptTestGeneration(database, created, { kind: "send", expectedRevision: created.revision, content: "Go on." }, {
 			seed: "seed",
-			conversationId: created.id,
 			timestamp: "2026-10-25T00:00:00.000Z",
-			humanParticipantId: created.cast[0]!.id,
-			modelParticipantId: created.cast[1]!.id,
-			capturedHumanName: created.cast[0]!.name,
-			capturedModelName: "Maren",
 			promptPlan: { blocks: [{ kind: "instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
-			modelId: "fixture-model",
 			promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
-		}, { kind: "send", expectedRevision: created.revision, content: "Go on." });
+		});
 		const { humanMessageId } = accepted;
 		if (humanMessageId === null) throw new Error("Send did not retain its Human Message.");
 		const checkpoint = (contentOffset: number, contentDelta: string, reasoningOffset: number, reasoningDelta: string, latestEventId: number) =>

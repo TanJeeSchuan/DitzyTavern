@@ -1,17 +1,11 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation";
 import type { PreparationSnapshot } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import type { SemanticSettingsSnapshot } from "../lorebook/semantic";
 
-const emptyPrompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
+const emptyPrompt = emptyPromptChannels();
 
 const participant = (id: number, name: string) => ({
 	id,

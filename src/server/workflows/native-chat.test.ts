@@ -1,4 +1,5 @@
-import { requireSnapshot } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { requireSnapshot, participantDefinition } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -20,12 +21,11 @@ import type { CharacterDefinition } from "../character-library";
 import { createNativeConversation } from ".";
 
 const prompt = () => ({
+	...emptyPromptChannels(),
 	systemInstruction: "Keep the scene grounded.",
 	identity: "Lighthouse archivist on the northern coast.",
-	appearance: "",
 	scenario: "A storm season begins.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?",
-	postHistoryInstruction: "",
 });
 
 const sourceDefinition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
@@ -63,7 +63,7 @@ describe("Native New Chat workflow", () => {
 	});
 	const adHoc = (name: string, openings: string[] = []) => ({
 		type: "adhoc" as const,
-		definition: { name, prompt: prompt(), sendAppearanceImages: true, openings },
+		definition: participantDefinition(name, { prompt: prompt(), openings }),
 	});
 
 	test("creates a playable Conversation from two ad-hoc Participants atomically", () => {

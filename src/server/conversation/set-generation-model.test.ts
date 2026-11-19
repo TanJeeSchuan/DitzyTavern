@@ -1,5 +1,5 @@
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { pairChat } from "../test-fixtures/conversation";
 import { executeConversationCommand, readConversationGenerationSettings } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -9,24 +9,9 @@ import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings"
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { createConnectionSettingsModule } from "../connection-settings";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
 
 const createTestConversation = (database: Database, name: string) =>
-	createConversationWithHistory(database, {
-		name,
-		participants: [
-			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-		],
-		control: { human: 0, model: 1 },
-	});
+	pairChat(database, name);
 
 // One editor's complete Generation Settings write: distinctive values in
 // every canonical field so a stale-field restore anywhere in the aggregate

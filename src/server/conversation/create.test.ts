@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, participantSeed, participantDefinition } from "../test-fixtures/conversation";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -20,12 +21,8 @@ import { InvalidConversationCreationError } from ".";
 import type { ConversationCreationInput, ParticipantDefinition } from ".";
 
 const prompt = (overrides: Partial<ParticipantDefinition["prompt"]> = {}) => ({
+	...emptyPromptChannels(),
 	systemInstruction: "Keep the scene grounded.",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
 	...overrides,
 });
 
@@ -33,12 +30,7 @@ const adHoc = (
 	name: string,
 	openings: string[] = [],
 	promptOverrides: Partial<ParticipantDefinition["prompt"]> = {},
-): ParticipantDefinition => ({
-	name,
-	prompt: prompt(promptOverrides),
-	sendAppearanceImages: true,
-	openings,
-});
+): ParticipantDefinition => participantDefinition(name, { prompt: prompt(promptOverrides), openings });
 
 const inputWith = (
 	overrides: Partial<ConversationCreationInput> = {},
@@ -215,15 +207,7 @@ describe("Conversation creation", () => {
 		const snapshot = createConversationWithHistory(conversation,
 			inputWith({
 				participants: [
-					{
-						definition: {
-							name: source.name,
-							prompt: source.prompt,
-							sendAppearanceImages: true,
-							openings: source.openings,
-						},
-						sourceCharacterId: source.id,
-					},
+					participantSeed(source.name, { prompt: source.prompt, openings: source.openings, sourceCharacterId: source.id }),
 					{ definition: adHoc("Writer") },
 				],
 				control: { human: 1, model: 0 },

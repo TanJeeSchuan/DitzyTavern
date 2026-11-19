@@ -1,21 +1,15 @@
-import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory, participantSeed, acceptTestGeneration } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { messageTable, participantTable } from "../database/schema";
 import { createConversationRoutes } from "../contract/conversation";
-import { acceptGeneration, deleteConversation, InvalidConversationCommandError } from ".";
+import { deleteConversation, InvalidConversationCommandError } from ".";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
+const prompt = emptyPromptChannels();
 
 describe("Chat rename and deletion", () => {
 	let database: Database;
@@ -31,8 +25,8 @@ describe("Chat rename and deletion", () => {
 		createConversationWithHistory(module, {
 			name,
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["The lamp turns."] } },
+				participantSeed("Writer"),
+				participantSeed("Maren", { openings: ["The lamp turns."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -96,20 +90,7 @@ describe("Chat rename and deletion", () => {
 		const app = createConversationRoutes(database);
 		const idle = createChat("Idle");
 		const busy = createChat("Busy");
-		const [human, model] = busy.cast;
-		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-		acceptGeneration(database, {
-			seed: "test-generation-seed",
-			conversationId: busy.id,
-			timestamp: "2026-09-26T10:00:00.000Z",
-			humanParticipantId: human.id,
-			modelParticipantId: model.id,
-			capturedHumanName: human.name,
-			capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model",
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		}, { kind: "send", expectedRevision: busy.revision, content: "Keep going." });
+		acceptTestGeneration(database, busy, { kind: "send", expectedRevision: busy.revision, content: "Keep going." }, { timestamp: "2026-09-26T10:00:00.000Z" });
 		const remove = (id: number) => app.handle(new Request(`http://localhost/api/conversations/${id}`, { method: "DELETE" }));
 
 		const deleted = await remove(idle.id);

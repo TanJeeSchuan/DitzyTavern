@@ -2,15 +2,9 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { openInitializedDatabase } from "../database/database";
-import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
+import { createConversationWithHistory, insertBox, participantDefinition as definition } from "../test-fixtures/conversation";
 import { readBoxStates } from "./setup";
 
-const definition = (name: string) => ({
-	name,
-	prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
-	sendAppearanceImages: true,
-	openings: [],
-});
 
 describe("readBoxStates", () => {
 	let database: Database;

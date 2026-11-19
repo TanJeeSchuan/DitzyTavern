@@ -1,4 +1,5 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -17,12 +18,9 @@ import { createNativeConversationRoutes } from "./native-conversation";
 const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",
 	prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "System text.",
 		identity: "Identity text.",
-		appearance: "",
-		scenario: "",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
 	},
 	sendAppearanceImages: true,
 	openings: [],
@@ -221,14 +219,7 @@ describe("Native Conversation transport adapter", () => {
 		type: "adhoc",
 		definition: {
 			name,
-			prompt: {
-				systemInstruction: "",
-				identity: "",
-				appearance: "",
-				scenario: "",
-				exampleDialogue: "",
-				postHistoryInstruction: "",
-			},
+			prompt: emptyPromptChannels(),
 			sendAppearanceImages: true,
 			openings: [],
 		},
@@ -348,19 +339,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 			),
 		);
 
-	const adHocDefinition = (name: string, openings: string[] = []) => ({
-		name,
-		prompt: {
-			systemInstruction: "",
-			identity: "",
-			appearance: "",
-			scenario: "",
-			exampleDialogue: "",
-			postHistoryInstruction: "",
-		},
-		sendAppearanceImages: true,
-		openings,
-	});
+	const adHocDefinition = (name: string, openings: string[] = []) => participantDefinition(name, { openings });
 
 	const setupConversation = () => {
 		const created = createNativeConversation(database, {
@@ -702,19 +681,11 @@ describe("Save Participant as Character transport adapter", () => {
 			),
 		);
 
-	const adHocDefinition = (name: string, openings: string[] = []) => ({
-		name,
-		prompt: {
+	const adHocDefinition = (name: string, openings: string[] = []) => participantDefinition(name, { prompt: {
+			...emptyPromptChannels(),
 			systemInstruction: "System text.",
 			identity: "Identity text.",
-			appearance: "",
-			scenario: "",
-			exampleDialogue: "",
-			postHistoryInstruction: "",
-		},
-		sendAppearanceImages: true,
-		openings,
-	});
+		}, openings });
 
 	const setupConversation = () => {
 		const created = createNativeConversation(database, {

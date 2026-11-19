@@ -1,3 +1,4 @@
+import { installFetch } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import { macroVariablesReadResponse } from "../../shared/contract/macro-variables";
 import type { WirePayload } from "./wire-decode";
@@ -154,7 +155,3 @@ describe("requestData", () => {
 		}
 	});
 });
-
-function installFetch(handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-}

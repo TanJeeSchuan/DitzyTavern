@@ -1,4 +1,4 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory, pairChat } from "../test-fixtures/conversation";
 import { readConversationGenerationSettings, executeConversationCommand } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -6,14 +6,6 @@ import { openInitializedDatabase } from "../database/database";
 import { InvalidConversationCommandError } from ".";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
 
 // An update command carries the complete canonical declaration: the server
 // accepts no omitted client fields. Overrides state only what one test's
@@ -81,14 +73,7 @@ describe("Conversation Generation Settings", () => {
 	});
 
 	test("rejects invalid Safety allowance values through the typed settings error", () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Invalid budget settings",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Invalid budget settings");
 		const module = database;
 		const settings = completeSettings({ contextLimit: 4096, responseBudget: 128 });
 
@@ -112,15 +97,7 @@ describe("Conversation Generation Settings", () => {
 	});
 
 	test("round-trips every canonical field through the settings write and read", () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Round-trip settings",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Round-trip settings");
 		const module = database;
 		const submitted: CanonicalGenerationSettings = {
 			modelId: "  round-trip-model  ",
