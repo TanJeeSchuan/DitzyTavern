@@ -8,7 +8,7 @@ Model: Sol 6.2 high writes and fixes slices a, b and c. Astra 6 high writes d; S
 
 Slices a and b ship as one PR: both move server data into the query cache, in different files.
 
-**Slice c: the owner approved the overlay model. Current phase: enforce the transcript invariants below, add regression coverage, and complete CI fix rounds.**
+**Slice c: the owner approved the overlay model. Invariant fixes and regression verification are complete; the PR remains under review.**
 
 The rule, from `CODING_STANDARDS.md`: server data lives in the query cache. A reducer or `useState` holds only what the user has done that the server does not know yet. Each slice removes a second copy of server data and the code that kept it in step.
 
@@ -64,7 +64,7 @@ Report 06, finding 1; report 05, findings 3 and 5.
 
 - [x] Slices a and b, one PR, ADR 0036 amended
 - [x] Slice c overlay model approved
-- [ ] Slice c invariant fixes and CI verification
+- [x] Slice c invariant fixes and CI verification
 - [ ] Slice d (Astra), fixes (Sol), PR
 
 ## Acceptance
@@ -83,7 +83,7 @@ Report 06, finding 1; report 05, findings 3 and 5.
 - `a response from a Prompt Preset editor that was left cannot publish a Conversation` holds a selection response until the editor unmounts.
 - `a late recipe read leaves the newly opened preset intact` and `Back to Paint asks before discarding Paint Preset edits` cover the preset read and Paint navigation.
 - `a Prompt Preset save blocks another operation until its refresh settles` tries to select a preset in the same turn as starting a save.
-- Six pure draft and patch tests remain. Changed-file lint and `git diff --check` passed. The seeded browser check exercised the Chat and Character lists, source download and cleanup, Prompt Preset save-and-leave, and Paint Preset discard. The draft PR runs the Check workflow. Slices c and d are pending.
+- Six pure draft and patch tests remain. Changed-file lint and `git diff --check` passed. The seeded browser check exercised the Chat and Character lists, source download and cleanup, Prompt Preset save-and-leave, and Paint Preset discard. The slices a and b PR ran the Check workflow.
 - `Save and leave keeps a draft overwritten by another Prompt Preset editor` verifies that an overwrite during the save leaves the draft unsaved and blocks navigation.
 - `a failed recipe read after switching presets hides the old editor` verifies that the panel shows the error when the selected preset's recipe fails to load.
 - `a Prompt Preset draft survives a failed recipe read for the same Chat` verifies that editing and saving are disabled during the failure, SaveGuard still prompts, and the draft returns when the recipe reloads.
@@ -98,7 +98,6 @@ Invariants for the current fix round (recorded before implementation):
 4. Every optimistic selection or Moves request either settles with its accepted revision, is refused, or is displaced before dispatch. Displacement retires the unsent request; a later refusal preserves the earlier accepted value until authoritative history replaces it. Ending a visit discards its overlays and prevents queued commands from sending.
 5. Paging has one observable owner for deduplication, cancellation and the loading indicator. A stale completion cannot clear a newer operation's activity.
 6. Navigation failures are reported in the transcript and consumed at the event boundary; Inspector and trace clicks cannot create unhandled rejections.
-
 
 - One committed window per Chat visit lives in the query cache. The story reducer holds Preview, requested selections, requested Moves and an unplaced Generation. Successful selection and Moves overlays stay visible until history reaches their applied Revision.
 - Removed the Chat-open, history adoption and revision-refetch effects and the navigation `flushSync`. Initial opens, explicit refreshes, write-triggered refreshes, paging and jumps all commit through the same function. It rejects mixed or older revisions and reconciles the Conversation Summary before publishing a newer window.
@@ -118,3 +117,6 @@ Invariants for the current fix round (recorded before implementation):
 - Changed-file lint passed (two pre-existing comment warnings in the command runner). Unit tests, typecheck and browser tests are delegated to PR CI; no such checks ran on this host in this round.
 
 - [BuildBuddy regression verification](https://app.buildbuddy.io/invocation/de3938eb-3c5e-4ed3-b4a4-f4fc14bbb93c): 82 focused tests passed. Restoring the five production modules from `9e7b4959` (adapting only the renamed revision-reader input in the test harnesses) made 11 new behavioral checks fail: edit, save-as-new, Moves, retained callback, failed-jump reconciliation, missing initial source, both recovery controls, warm-cache remount, displaced Swipe and abandoned queued command. The extra reconciliation cancellation case passed on the baseline too; it is invariant coverage, not a claimed new repro.
+
+- [Source-click regression verification](https://app.buildbuddy.io/invocation/d24fa0aa-fd49-4d33-bfba-36e706255e24): the browser flow passed; restoring the original uncaught Inspector/trace/preview callbacks made the same flow fail on the unhandled `The Chat history could not be loaded.` rejection.
+- [CI check](https://github.com/TanJeeSchuan/DitzyTavern/actions/runs/44539051007) passed for implementation head `4930028e`, including typecheck and the full unit suite. This final documentation update runs the same checks again.
