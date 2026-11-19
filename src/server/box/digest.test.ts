@@ -453,7 +453,8 @@ test("a reducer starts only for a live job in a running queue, and its deadline 
 	const never = () => new Promise<never>(() => {});
 	const ran: string[] = [];
 	const live = () => new AbortController().signal;
-	await expect(settledWithin(() => ran.push("dropped"), { aborted: AbortSignal.abort(), stopping: live(), ms: 1_000 }, "late")).rejects.toThrow();
+	const dropped = AbortSignal.abort(new Error("Job dropped."));
+	await expect(settledWithin(() => ran.push("dropped"), { aborted: dropped, stopping: live(), ms: 1_000 }, "late")).rejects.toThrow("Job dropped.");
 	await expect(settledWithin(() => ran.push("stopping"), { aborted: live(), stopping: AbortSignal.abort(), ms: 1_000 }, "late")).rejects.toThrow("late");
 	expect(ran).toEqual([]);
 	const dropping = new AbortController();

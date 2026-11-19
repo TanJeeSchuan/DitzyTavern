@@ -311,6 +311,12 @@ describe("Lorebook library transport", () => {
 		const deleted = await postCommand(app, { type: "delete", bookId: 1, expectedRevision: 0 });
 		expect(deleted.status).toBe(200);
 		expect((await app.handle(request("/api/lorebooks/1/attachments"))).status).toBe(404);
+		const characterState = await app.handle(request(`/api/lorebooks/attachments/character?ownerId=${character.id}`));
+		const participantState = await app.handle(request(`/api/lorebooks/attachments/participant?ownerId=${participantId}`));
+		const chatState = await app.handle(request(`/api/lorebooks/attachments?conversationId=${conversation.id}`));
+		expect(await characterState.json()).toMatchObject({ owner: "character", ownerId: character.id, attachments: [] });
+		expect(await participantState.json()).toMatchObject({ owner: "participant", ownerId: participantId, attachments: [] });
+		expect(await chatState.json()).toMatchObject({ conversationId: conversation.id, attachments: [] });
 	});
 
 	test("reads Character and Participant attachment lists for management", async () => {

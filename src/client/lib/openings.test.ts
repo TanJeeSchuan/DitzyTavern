@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-Object.defineProperty(globalThis, "window", { configurable: true, value: { location: { origin: "http://localhost" } } });
 const { openingsFromText } = await import("../NewChatPanel");
 
 describe("openingsFromText", () => {

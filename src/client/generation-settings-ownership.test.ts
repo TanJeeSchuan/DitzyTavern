@@ -15,11 +15,6 @@ import type { BudgetValues, SamplingValues } from "./generation-settings-draft";
 // real database in src/server/conversation/set-generation-model.test.ts.
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const { commitConversationModel } = await import("./model-selection-command");
 const { saveGenerationSettingsDraft } = await import("./workspace/useGenerationSettingsDraft");
 

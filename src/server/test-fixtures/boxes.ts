@@ -4,9 +4,19 @@ import { builtInBoxes, installCatalog, loadBoxes } from "../box/registry";
 // @approved
 //  Every test reads Boxes through the registry, as the server does once
 // startup loads it, so the test preload loads the built-in Boxes first.
-// Tests share one process (`--no-isolate`), and a client test that installs
-// its own catalog replaces the shared registry the server tests read, so
-// after every test the shared registry is rebuilt from the server's catalog,
-// which it mirrors. A test that loads other Boxes into the server keeps them.
+// Tests share one process (`--no-isolate`). Republish the server catalog
+// after a client test replaces it, or reload the built-ins if a test
+// temporarily replaced the server catalog with loadTestBoxes.
 await loadBoxes([builtInBoxes]);
-afterEach(installCatalog);
+let restoreBuiltIns = false;
+afterEach(async () => {
+	if (restoreBuiltIns) {
+		restoreBuiltIns = false;
+		await loadBoxes([builtInBoxes]);
+	} else installCatalog();
+});
+
+export const loadTestBoxes = (folders: readonly string[]) => {
+	restoreBuiltIns = true;
+	return loadBoxes(folders);
+};

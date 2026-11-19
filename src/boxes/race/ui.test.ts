@@ -1,4 +1,4 @@
-import { expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { initialRaceSetup } from "./shared-data";
 import type { RaceView } from "./shared";
 
@@ -14,16 +14,25 @@ type Committed = { outcome: "applied" } | { outcome: "conflict"; reason: string;
 const answers: (() => Committed)[] = [];
 let onRead: (view: RaceView, frame: Frame) => void = () => undefined;
 let onEvent: (event: Event) => void = () => undefined;
-Object.assign(globalThis, {
-	host: {
-		onRead: (handler: typeof onRead) => { onRead = handler; },
-		onEvent: (handler: typeof onEvent) => { onEvent = handler; },
-		render: () => undefined, stageMoves: () => undefined, image: (hash: string) => hash, setDirty: () => undefined, onSave: () => undefined, onDiscard: () => undefined,
-		uploadImage: async () => ({ outcome: "uploaded", hash: "a".repeat(64) }),
-		commit: async (commit: Commit) => { commits.push(commit); return answers.shift()?.() ?? { outcome: "applied" }; },
-	},
+const raceHost = {
+	onRead: (handler: typeof onRead) => { onRead = handler; },
+	onEvent: (handler: typeof onEvent) => { onEvent = handler; },
+	render: () => undefined, stageMoves: () => undefined, image: (hash: string) => hash, setDirty: () => undefined, onSave: () => undefined, onDiscard: () => undefined,
+	uploadImage: async () => ({ outcome: "uploaded", hash: "a".repeat(64) }),
+	commit: async (commit: Commit) => { commits.push(commit); return answers.shift()?.() ?? { outcome: "applied" }; },
+};
+let originalHost: PropertyDescriptor | undefined;
+beforeEach(async () => {
+	originalHost = Object.getOwnPropertyDescriptor(globalThis, "host");
+	Object.defineProperty(globalThis, "host", { configurable: true, value: raceHost });
+	await import("./ui");
 });
-await import("./ui");
+afterEach(() => {
+	commits.length = 0;
+	answers.length = 0;
+	if (originalHost === undefined) Reflect.deleteProperty(globalThis, "host");
+	else Object.defineProperty(globalThis, "host", originalHost);
+});
 
 const settled = () => new Promise((resolve) => setTimeout(resolve, 0));
 const view = (surface: "turf" | "dirt", characterRevision: number): RaceView => ({
@@ -39,7 +48,6 @@ const click = (name: string, data: Record<string, string> = {}) => onEvent({ typ
 // refuses it as a conflict instead of undoing that change. Saving again
 // after the conflict names the revision the conflict showed.
 test("a setup draft saves against the revision it started from, and against the conflict's revision once refused", async () => {
-	commits.length = 0;
 	read(10, "turf");
 	onEvent({ type: "input", name: "distance", data: {}, value: "1600" });
 	read(11, "dirt");
@@ -56,7 +64,6 @@ test("a setup draft saves against the revision it started from, and against the 
 // when the sheet opened, not one a later read brought, and the commit's
 // snapshot is the revision the sheet opened at.
 test("a stat sheet's save names the revisions from when it opened", async () => {
-	commits.length = 0;
 	click("cancel");
 	read(20, "turf", 1);
 	click("cast", { id: "7" });
@@ -72,7 +79,6 @@ test("a stat sheet's save names the revisions from when it opened", async () => 
 // at 30 still saves against 30 after another window's change at 31 and an
 // avatar refused at 32, so that change is refused rather than overwritten.
 test("an avatar's conflict leaves the setup draft's revision alone", async () => {
-	commits.length = 0;
 	read(30, "turf");
 	onEvent({ type: "input", name: "distance", data: {}, value: "1800" });
 	read(31, "dirt");

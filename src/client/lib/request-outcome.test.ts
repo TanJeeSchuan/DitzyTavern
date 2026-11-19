@@ -4,11 +4,6 @@ import { macroVariablesReadResponse } from "../../shared/contract/macro-variable
 import type { WirePayload } from "./wire-decode";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const { api } = await import("./eden");
 const { NetworkError, SERVER_UNREACHABLE_NOTICE, SERVER_UNUSABLE_RESPONSE_NOTICE, requestData } = await import("./request-outcome");
 const { requestOutcome } = await import("./request-route-outcome");

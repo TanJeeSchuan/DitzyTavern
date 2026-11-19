@@ -1,6 +1,6 @@
 import { historyVariant, historyMessage, historyPage, conversationSummary, installFetch } from "../test-fixtures/conversation";
 import type { StoryState } from "../story";
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
 import { useCallback, useReducer } from "react";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
@@ -11,7 +11,14 @@ import type { ConversationSummary } from "../conversation";
 const { useConversationSession } = await import("./useConversationSession");
 const { useStoryMessageActions } = await import("./useStoryMessageActions");
 const originalFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true); });
+let originalDocument: PropertyDescriptor | undefined;
+beforeEach(() => { originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document"); });
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+	onlineManager.setOnline(true);
+	if (originalDocument === undefined) Reflect.deleteProperty(globalThis, "document");
+	else Object.defineProperty(globalThis, "document", originalDocument);
+});
 const summary = (id = 1, revision = 5): ConversationSummary => conversationSummary({ id, revision, name: `Chat ${id}` });
 const page = (id = 1, index = 1, revision = 5): ChatHistoryPage => historyPage({
 	conversationId: id,

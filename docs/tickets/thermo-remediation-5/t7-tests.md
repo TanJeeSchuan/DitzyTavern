@@ -1,6 +1,6 @@
 # T7: Tests
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: T6 (merged)
 
@@ -42,7 +42,7 @@ Report 24.
 
 - [x] Slice a, PR
 - [x] Slice b, PR
-- [ ] Slice c, PR
+- [x] Slice c, PR
 
 ## Acceptance
 
@@ -81,3 +81,18 @@ Deleted tests:
 | `contract.test.ts` | reads a Conversation summary with derived Cast and Control fields |
 | `contract.test.ts` | maps removal of a seated Participant to the typed not-removable outcome |
 | `contract.test.ts` | promotes a Participant with the applied outcome and the new Character payload |
+
+### Slice c
+
+- Tests now check the default Generation response budget, the loaded disabled Box, the Presets payload, attachment removal, and both sides of the edited Prompt Plan budget. Rejection assertions identify the failure they expect. The authoring example test compares libfx results against the actual source files.
+- Client tests use the preloaded window. The hook and Race UI tests restore the globals they install, and the Box preload reloads built-ins after the temporary catalogs used by creation and Fork tests. The scroll test polls for its final position.
+- The preview workflow test now checks the budget error type and observes the fitting edit reach the provider. The missing-history test checks that the refresh actually receives a 404 and still returns the Conversation. The current history observer separately reports a missing page to the story reducer.
+- The redundant import Cast existence checks were already removed in `5405a297`. Changed-file lint and `git diff --check` pass. FFF finds nine test files with `postHistoryInstruction:` and zero former capture polls. The previous green CI run passed 1,912 unit cases. With the three removals, this slice expects 1,909.
+
+Deleted tests:
+
+| File | Test |
+|---|---|
+| `src/server/contract/route-schemas.test.ts` | Elysia mirrors every route schema without falling back |
+| `src/server/conversation/chat-summaries.test.ts` | a Chat without Participants has no Portraits |
+| `src/shared/model-identifier.test.ts` | returns 0 for identical strings |

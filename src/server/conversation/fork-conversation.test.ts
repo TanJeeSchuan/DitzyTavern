@@ -4,9 +4,11 @@ import { openObservedDatabase, insertBox, readTestConversationSnapshot, particip
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS, executeConversationCommand, readConversationGenerationSettings, readConversationSummary, readChatHistory, deleteConversation, forkConversation, readMacroVariables } from ".";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { builtInBoxes, loadBoxes } from "../box/registry";
+import { builtInBoxes } from "../box/registry";
+import { loadTestBoxes } from "../test-fixtures/boxes";
+import { writeBoxFiles } from "../test-fixtures/versioned-box";
 import { memoryRecord, memoryActivationRecord } from "../../boxes/memory/contract";
 import { memoryRecordFingerprint, readMemorySources } from "../../boxes/memory/server-sources";
 import { advanceRace } from "../../boxes/race/logic-engine";
@@ -99,7 +101,7 @@ test("missing Box references reject the entire fork and unloaded Boxes are omitt
 test("revision and fork point validation leave the source and Chat list unchanged", () => {
 	const { source, message } = createSource();
 	const input = { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: false };
-	expect(() => forkConversation(database, { ...input, expectedRevision: 0 })).toThrow();
+	expect(() => forkConversation(database, { ...input, expectedRevision: 0 })).toThrow("Expected Conversation revision 0, but the current revision is 1.");
 	expect(() => forkConversation(database, { ...input, at: { through: 99999 } })).toThrow("not a Message");
 	expect(() => forkConversation(database, { ...input, at: { through: message.id, variantId: 99999 } })).toThrow("not on the fork point");
 	expect(database.query<{ count: number }, []>("SELECT count(*) AS count FROM conversation").get()!.count).toBe(1);
@@ -108,7 +110,7 @@ test("revision and fork point validation leave the source and Chat list unchange
 test("unlink removes a fork link under revision control", () => {
 	const { source, message } = createSource();
 	const fork = forkConversation(database, { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: false }).conversation;
-	expect(() => executeConversationCommand(database, { conversationId: fork.id, expectedRevision: 1, action: { type: "unlink-fork" } })).toThrow();
+	expect(() => executeConversationCommand(database, { conversationId: fork.id, expectedRevision: 1, action: { type: "unlink-fork" } })).toThrow("Expected Conversation revision 1, but the current revision is 0.");
 	const updated = executeConversationCommand(database, { conversationId: fork.id, expectedRevision: 0, action: { type: "unlink-fork" } });
 	expect(updated.forkedFrom).toBeNull();
 	expect(updated.revision).toBe(1);
@@ -244,19 +246,19 @@ test("a record citing a trimmed Variant fails with the Box and path", async () =
 	// @approved
 	//  A plugin whose record cites a Variant, loaded beside the built-ins: Fork reads each Box at the version its Chat runs, from the server's registry.
 	const plugins = join(".scratch", `fork-${crypto.randomUUID()}`);
-	mkdirSync(join(plugins, "citer"), { recursive: true });
-	writeFileSync(join(plugins, "citer", "descriptor.json"), JSON.stringify({ id: "citer", sdk: 2, label: "Citer", summary: "Cites.", role: "system", startsEnabled: false, instructions: "",
-		record: { type: "object", properties: { citation: { type: "integer", rowReference: "variant" } }, required: ["citation"], additionalProperties: false },
-		window: { icon: "box", size: { width: 10, height: 10 } } }));
-	writeFileSync(join(plugins, "citer", "logic.js"), "export default { records: { initial: null, fold: (_, record) => record } };");
-	writeFileSync(join(plugins, "citer", "ui.js"), "host.render('');");
-	await loadBoxes([builtInBoxes, plugins]);
 	try {
+		writeBoxFiles(join(plugins, "citer"), {
+			"descriptor.json": JSON.stringify({ id: "citer", sdk: 2, label: "Citer", summary: "Cites.", role: "system", startsEnabled: false, instructions: "",
+				record: { type: "object", properties: { citation: { type: "integer", rowReference: "variant" } }, required: ["citation"], additionalProperties: false },
+				window: { icon: "box", size: { width: 10, height: 10 } } }),
+			"logic.js": "export default { records: { initial: null, fold: (_, record) => record } };",
+			"ui.js": "host.render('');",
+		});
+		await loadTestBoxes([builtInBoxes, plugins]);
 		database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'box:citer', 'record:test', ?)").run(variant.id, JSON.stringify({ writer: { citation: trimmed.id } }));
 		expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: true })).toThrow(/citer.*\/writer\/citation/);
 		expect(database.query<{ count: number }, []>("SELECT count(*) AS count FROM conversation").get()!.count).toBe(1);
 	} finally {
-		await loadBoxes([builtInBoxes]);
 		rmSync(plugins, { recursive: true, force: true });
 	}
 });

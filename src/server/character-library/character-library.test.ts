@@ -58,7 +58,7 @@ describe("Character Library", () => {
 		const saved = library.execute({ type: "update-definition", characterId: created.id, expectedRevision: created.revision, definition: next });
 		expect(saved.revision).toBe(created.revision + 1);
 		expect(saved).toMatchObject(next);
-		expect(() => library.execute({ type: "update-definition", characterId: created.id, expectedRevision: saved.revision, definition: { ...next, name: "Invalid", openings: [""] } })).toThrow();
+		expect(() => library.execute({ type: "update-definition", characterId: created.id, expectedRevision: saved.revision, definition: { ...next, name: "Invalid", openings: [""] } })).toThrow("Opening at position 1 is blank");
 		expect(library.get(created.id)).toEqual(saved);
 	});
 

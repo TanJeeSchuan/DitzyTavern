@@ -1,8 +1,9 @@
 import { afterAll, expect, test } from "bun:test";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, readdirSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createFxAgent, memory } from "libfx/node";
+import { builtInBoxes } from "../box/registry";
 import { createCandidate } from "./candidate";
 import { authoringTools, fitted, TOOL_RESULT_BYTES } from "./tools";
 
@@ -17,7 +18,10 @@ const tools = async () => authoringTools(await createCandidate(join(root, "autho
 // it, so the agent once saw only that error. The example now comes one file
 // at a time, each read through real libfx against a fake model.
 test("every built-in example's listing and files reach the agent through libfx", async () => {
-	const calls = [{ example: "mood" }, { example: "race" }, ...["descriptor.json", "logic.ts", "logic-engine.ts", "shared.ts", "shared-data.ts", "ui.ts", "ui-markup.ts", "ui.css"].map((file) => ({ example: "race", file }))];
+	const listings = new Map(["mood", "race"].map((example) => [
+		example, readdirSync(join(builtInBoxes, example)).filter((file) => /\.(json|ts|css)$/.test(file) && !/\.(spec|test)\.ts$/.test(file)).sort(),
+	]));
+	const calls = [...listings].flatMap(([example, files]) => [{ example, file: undefined }, ...files.map((file) => ({ example, file }))]);
 	let request = 0;
 	const server = Bun.serve({
 		hostname: "127.0.0.1", port: 0,
@@ -35,10 +39,18 @@ test("every built-in example's listing and files reach the agent through libfx",
 		credentials: async () => ({ apiKey: "key" }),
 	});
 	try {
-		const ended: { readonly isError: boolean; readonly length: number }[] = [];
-		for await (const event of agent.session().prompt("Read every example.")) if (event.type === "tool_end") ended.push({ isError: event.isError, length: (event.content ?? "").length });
+		const ended: { readonly isError: boolean; readonly content?: string }[] = [];
+		for await (const event of agent.session().prompt("Read every example.")) if (event.type === "tool_end") ended.push(event);
 		expect(ended.map(({ isError }) => isError)).toEqual(calls.map(() => false));
-		expect(ended.every(({ length }) => length > 0)).toBe(true);
+		for (const [index, { example, file }] of calls.entries()) {
+			const content = ended[index]?.content;
+			if (file === undefined) {
+				expect(content?.match(/^Files: (.+)\. Call read_contract /)?.[1]?.split(", ").sort()).toEqual(listings.get(example));
+				expect(content).toContain(await Bun.file(join(builtInBoxes, example, "descriptor.json")).text());
+			} else {
+				expect(content).toBe(await Bun.file(join(builtInBoxes, example, file)).text());
+			}
+		}
 	} finally {
 		await agent.close();
 		await server.stop(true);
@@ -70,7 +82,7 @@ test("read_file returns a file the agent never wrote, in pieces past libfx's lim
 	}
 	expect(joined).toBe(logic);
 	expect(await call({ file: "ui.js" })).toBe("ui.js is not written yet.");
-	await expect(call({ file: "../server.ts" })).rejects.toThrow();
+	await expect(call({ file: "../server.ts" })).rejects.toThrow("The read_file arguments is invalid at /file");
 });
 
 test("a result past libfx's limit is cut to fit with a note, and one within it passes untouched", () => {

@@ -141,14 +141,17 @@ describe("Chat information state", () => {
 		});
 	});
 
-	test("transport failure keeps Chat information usable without import specifics", () => {
-		const failed = reduceChatInformation(createChatInformationState(), {
-			type: "details-failed",
-		});
+	test("a failed Import Details refresh hides the old download and a retry shows the new receipt", () => {
+		const available = reduceChatInformation(createChatInformationState(), { type: "details-loaded", details: details() });
+		const failed = reduceChatInformation(available, { type: "details-failed" });
 		expect(failed.status).toBe("error");
-		expect(sourceDownloadAvailable(failed)).toEqual({
-			available: false,
-			reason: null,
-		});
+		expect(sourceDownloadAvailable(failed).available).toBe(false);
+
+		const retry = reduceChatInformation(failed, { type: "chat-opened" });
+		expect(retry.status).toBe("loading");
+		const fresh = details({ title: "New Lantern House" });
+		const loaded = reduceChatInformation(retry, { type: "details-loaded", details: fresh });
+		expect(loaded).toMatchObject({ status: "available", details: { title: "New Lantern House" } });
+		expect(sourceDownloadAvailable(loaded).available).toBe(true);
 	});
 });

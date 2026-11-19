@@ -1,11 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { ChatSummary } from "./workspace";
 
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const { resolveWorkspaceActiveChat } = await import("./workspace");
 
 const chats: ChatSummary[] = [

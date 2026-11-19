@@ -6,11 +6,6 @@ import type { StoryAction, StoryState } from "../story";
 import type { ConversationSummary } from "../../shared/contract/conversation-schema";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const { useStoryMessageActions } = await import("./useStoryMessageActions");
 const { createStoryState, displayedVariantId, reduceStory } = await import("../story");
 
