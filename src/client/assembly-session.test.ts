@@ -80,6 +80,7 @@ describe("assembly session", () => {
 		const latest = Promise.withResolvers<ConversationSummary>();
 		const h = await assemblyHarness(async () => Response.json(preview()));
 		h.options.ensureLatest = () => latest.promise;
+		await h.hook.rerender();
 		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Keep reading" }));
 		expect(h.hook.current.assembly).toBeNull();
 		expect(h.hook.current.inspectionPreparing).toBe(true);
