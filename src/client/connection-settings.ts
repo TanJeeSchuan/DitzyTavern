@@ -37,8 +37,6 @@ export const CONNECTION_ADAPTER_LABELS = {
 
 export const isEmbeddingsProfile = (profile: ConnectionProfile): boolean => profile.apiFormat === "embeddings";
 
-export type ConnectionSettingsResult = Awaited<ReturnType<typeof saveConnectionCommand>>;
-export type DiscoveryResult = Awaited<ReturnType<typeof refreshDiscoveryCatalog>>;
 export type TestConnectionResult = Awaited<ReturnType<typeof testConnectionDraft>>;
 
 export type TestConnectionDraftInput = ConnectionTestDraftPayload;
