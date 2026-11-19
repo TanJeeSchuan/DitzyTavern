@@ -54,7 +54,7 @@ const policies = {
 	"detach-chat": { rule: "allowed" },
 	"attach-participant": { rule: "allowed" },
 	"detach-participant": { rule: "allowed" },
-	"save-settings": { rule: "allowed" },
+	"save-lore-settings": { rule: "allowed" },
 	"delete-conversation": { rule: "blocked", reason: "Stop the running Generation before deleting this Chat." },
 	"fork-conversation": { rule: "blocked", reason: "Cannot fork while an Active Generation exists." },
 	"accept-tail": { rule: "blocked", reason: "This Conversation already has an Active Generation." },

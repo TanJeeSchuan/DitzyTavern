@@ -1,25 +1,33 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { applyLorebookAttachmentCommand, getLorebookAttachmentState, type LoreAttachmentCommand } from "../lorebook-library";
-import { loadConversationPromptPreset } from "../conversation";
+import { getLorebookAttachmentState } from "../lorebook-library";
+import { loadConversationPromptPreset, type ConversationAction } from "../conversation";
+import { runConversationCommand } from "../conversation-command-runner";
 import { addPromptPresetReference, setPromptPresetBlockEnabled } from "../prompt-preset-library";
 import { hasEnabledLoreSlot } from "../../shared/contract/prompt-preset";
-import { conversationKey, publishConversation } from "../conversation-query";
+import { publishConversation } from "../conversation-query";
+
+type LoreAttachmentAction = Extract<ConversationAction, { type: "attach-chat" | "detach-chat" | "attach-participant" | "detach-participant" | "save-lore-settings" }>;
+const attachmentNotice = "Lorebook attachment settings changed elsewhere.";
 
 export function useLorebookAttachments(conversationId: number) {
 	const client = useQueryClient();
-	const attachments = useQuery({ queryKey: ["lorebook-attachments", conversationId], queryFn: ({ signal }) => getLorebookAttachmentState(conversationId, signal) });
+	const attachmentKey = ["lorebook-attachments", conversationId];
+	const attachments = useQuery({ queryKey: attachmentKey, queryFn: ({ signal }) => getLorebookAttachmentState(conversationId, signal) });
 	const preset = useQuery({ queryKey: ["conversation-preset", conversationId], queryFn: ({ signal }) => loadConversationPromptPreset(conversationId, signal) });
 	const selectedPreset = preset.data ?? null;
 	const write = useMutation({
-		mutationKey: ["lorebook-attachments", conversationId],
-		mutationFn: async (command: LoreAttachmentCommand) => {
-			const result = await applyLorebookAttachmentCommand(command);
-			await client.cancelQueries({ queryKey: ["lorebook-attachments", conversationId] });
-			await client.invalidateQueries({ queryKey: ["lorebook-attachments", conversationId] });
-			if (result.outcome === "conflict" && "cast" in result.current) publishConversation(client, result.current);
-			if (result.outcome === "available") void client.invalidateQueries({ queryKey: conversationKey(conversationId) });
-			if (result.outcome !== "available") throw new Error(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "Lorebook attachment settings changed elsewhere.");
-			return true;
+		mutationKey: attachmentKey,
+		networkMode: "always",
+		mutationFn: async ({ action, revision }: { action: LoreAttachmentAction; revision: number }) => {
+			let reason = attachmentNotice;
+			const applied = await runConversationCommand({
+				conversationId, revision: () => revision, exact: true,
+				onConversationChange: (conversation) => publishConversation(client, conversation),
+				setNotice: (notice) => { reason = notice; },
+			}, action, { notices: { conflict: attachmentNotice, notFound: attachmentNotice, unreachable: attachmentNotice } });
+			await client.cancelQueries({ queryKey: attachmentKey });
+			await client.invalidateQueries({ queryKey: ["lorebook-attachments"] });
+			if (!applied) throw new Error(reason);
 		},
 	});
 	const enable = useMutation({
@@ -38,7 +46,10 @@ export function useLorebookAttachments(conversationId: number) {
 		loreBlockMissing: selectedPreset !== null && !hasEnabledLoreSlot(selectedPreset.slots),
 		attachmentPending: write.isPending || enable.isPending,
 		notice: write.error?.message ?? enable.error?.message ?? enable.data ?? attachments.error?.message ?? preset.error?.message ?? null,
-		updateAttachment: async (command: LoreAttachmentCommand) => { try { return await write.mutateAsync(command); } catch { return false; } },
+		updateAttachment: (action: LoreAttachmentAction) => {
+			const revision = attachments.data?.revision;
+			return revision === undefined ? Promise.resolve(false) : write.mutateAsync({ action, revision }).then(() => true, () => false);
+		},
 		enableLoreSlot: () => enable.mutate(),
 	};
 }

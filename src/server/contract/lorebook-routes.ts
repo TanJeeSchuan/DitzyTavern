@@ -24,8 +24,6 @@ import {
 	loreMatchTestResponse,
 	nativeLorebook,
 	sillyTavernLorebookImportBody,
-	loreAttachmentCommandBody,
-	loreAttachmentCommandResponse,
 	loreAttachmentQuery,
 	loreAttachmentStateResponse,
 	lorebookAttachmentImpactResponse,
@@ -34,17 +32,11 @@ import {
 } from "../../shared/contract/lorebook";
 import type { LoreMatchTestResponse } from "../../shared/contract/lorebook";
 import {
-	executeLorebookAttachmentCommand,
 	readLorebookAttachmentState,
 	readLorebookAttachmentImpact,
 	readCharacterLorebookAttachments,
 	readParticipantLorebookAttachments,
-	readParticipantConversationId,
 } from "../lorebook/attachments";
-import {
-	executeConversationCommand,
-	type ConversationCommand,
-} from "../conversation";
 import { matchLoreEntry } from "../lorebook/matching";
 import { captureSemanticSettings, evaluateSemanticLore } from "../lorebook/semantic";
 import { invalidResponse, notFoundResponse } from "./responses";
@@ -121,22 +113,6 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 	}, { body: loreMatchTestBody, response: loreMatchTestResponse })
 	.use(createLorebookAttachmentRoutes(database));
 
-// @approved
-//  The Conversation-owned Lore attachment commands dispatch through the
-// canonical Conversation command seam, inheriting its revision guard,
-// post-write summary, and conflict shape. Chat-targeted commands carry the
-// conversation id on the wire; Participant commands derive it from the
-// Participant's own Chat reference, so the dispatch can never target a
-// foreign Chat.
-const executeConversationOwnedLoreAttachment = (database: Database, command: ConversationCommand) => {
-	try {
-		executeConversationCommand(database, command);
-		return { outcome: "applied" as const };
-	} catch (error) {
-		return presentDomainError(error, loreAttachmentCommandResponse);
-	}
-};
-
 const createLorebookAttachmentRoutes = (database: Database) => new Elysia()
 	.get("/api/lorebooks/attachments", ({ query }) => {
 		const state = readLorebookAttachmentState(database, query.conversationId);
@@ -153,48 +129,4 @@ const createLorebookAttachmentRoutes = (database: Database) => new Elysia()
 	.get("/api/lorebooks/attachments/participant", ({ query }) => {
 		const state = readParticipantLorebookAttachments(database, query.ownerId);
 		return state ?? notFoundResponse();
-	}, { query: lorebookOwnerAttachmentQuery, response: lorebookOwnerAttachmentResponse })
-	.post("/api/lorebooks/attachments/commands", ({ body }) => {
-		if (body.type === "attach-character" || body.type === "detach-character") {
-			try {
-				executeLorebookAttachmentCommand(database, body);
-				return { outcome: "applied" as const };
-			} catch (error) {
-				return presentDomainError(error, loreAttachmentCommandResponse);
-			}
-		}
-		if (body.type === "attach-participant" || body.type === "detach-participant") {
-			const conversationId = readParticipantConversationId(database, body.participantId);
-			if (conversationId === undefined) return notFoundResponse();
-			return body.type === "attach-participant"
-				? executeConversationOwnedLoreAttachment(database, {
-					conversationId,
-					expectedRevision: body.expectedRevision,
-					action: { type: "attach-participant", participantId: body.participantId, bookId: body.bookId, scope: body.scope, enabled: body.enabled },
-				})
-				: executeConversationOwnedLoreAttachment(database, {
-					conversationId,
-					expectedRevision: body.expectedRevision,
-					action: { type: "detach-participant", participantId: body.participantId, bookId: body.bookId, scope: body.scope },
-				});
-		}
-		if (body.type === "attach-chat") {
-			return executeConversationOwnedLoreAttachment(database, {
-				conversationId: body.conversationId,
-				expectedRevision: body.expectedRevision,
-				action: { type: "attach-chat", bookId: body.bookId, enabled: body.enabled },
-			});
-		}
-		if (body.type === "detach-chat") {
-			return executeConversationOwnedLoreAttachment(database, {
-				conversationId: body.conversationId,
-				expectedRevision: body.expectedRevision,
-				action: { type: "detach-chat", bookId: body.bookId },
-			});
-		}
-		return executeConversationOwnedLoreAttachment(database, {
-			conversationId: body.conversationId,
-			expectedRevision: body.expectedRevision,
-			action: { type: "save-settings", scanDepth: body.scanDepth, allowance: body.allowance },
-		});
-	}, { body: loreAttachmentCommandBody, response: loreAttachmentCommandResponse });
+	}, { query: lorebookOwnerAttachmentQuery, response: lorebookOwnerAttachmentResponse });

@@ -664,7 +664,7 @@ describe("Generation runtime behavior", () => {
 		const withLoreSettings = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: withLore.revision,
-			action: { type: "save-settings", scanDepth: 3, allowance: 2048 },
+			action: { type: "save-lore-settings", scanDepth: 3, allowance: 2048 },
 		});
 
 		const plans: PromptPlan[] = [];

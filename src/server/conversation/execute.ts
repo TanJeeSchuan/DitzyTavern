@@ -102,7 +102,7 @@ const handlers = {
 	"detach-chat": detachConversationLorebook,
 	"attach-participant": attachParticipantLorebook,
 	"detach-participant": detachParticipantLorebook,
-	"save-settings": saveConversationLoreSettings,
+	"save-lore-settings": saveConversationLoreSettings,
 } satisfies { [K in ConversationAction["type"]]: CommandHandler<K> };
 
 const playOnly = new Set<ConversationAction["type"]>(["create-message"]);
@@ -126,7 +126,7 @@ export function executeConversationCommand(
 			throw new ConversationNotPlayableError(command.conversationId);
 		}
 
-		const input = { conversationId: command.conversationId, ...command.action };
+		const input = { ...command.action, conversationId: command.conversationId };
 		// @approved
 		// SAFETY: satisfies checks each handler against its action; indexing loses that correlation.
 		const reportedChange = (handlers[input.type] as CommandHandler<typeof input.type>)(db, input);

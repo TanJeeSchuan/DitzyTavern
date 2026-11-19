@@ -10,7 +10,7 @@
 import type { ConnectionSettingsPayload } from "../shared/contract/connection-settings";
 import type { CharacterSnapshot } from "../shared/contract/character-library";
 import type { ConversationSummary } from "../shared/contract/conversation-schema";
-import type { Lorebook, LorebookOwnerAttachmentState } from "../shared/contract/lorebook";
+import type { Lorebook } from "../shared/contract/lorebook";
 import type { PromptPresetSummary } from "../shared/contract/prompt-preset";
 import type { SemanticTriggerSettingsPayload } from "../shared/contract/semantic-trigger-settings";
 import type { BoxDecisionSettings, BoxDelegateSettings } from "../shared/contract/box";
@@ -24,7 +24,6 @@ export type CurrentByAggregate = {
 	settings: ConnectionSettingsPayload | SemanticTriggerSettingsPayload | BoxDecisionSettings | BoxDelegateSettings;
 	preset: PromptPresetSummary;
 	lorebook: Lorebook;
-	"lore-attachment": LorebookOwnerAttachmentState;
 	character: CharacterSnapshot;
 	conversation: ConversationSummary;
 	generation: undefined;
@@ -46,7 +45,6 @@ const staleAggregateLabel = {
 	settings: "settings",
 	preset: "Prompt Preset",
 	lorebook: "Lorebook",
-	"lore-attachment": "Character",
 	character: "Character",
 	conversation: "Conversation",
 	generation: "Conversation",

@@ -10,11 +10,9 @@ import {
 	lorebookListResponse,
 	loreMatchTestResponse,
 	loreAttachmentStateResponse,
-	loreAttachmentCommandResponse,
 	lorebookAttachmentImpactResponse,
 	lorebookOwnerAttachmentResponse,
 	type LoreAttachmentState,
-	type LoreAttachmentCommand,
 	type LorebookAttachmentImpact,
 	type LorebookOwnerAttachmentState,
 	nativeLorebook,
@@ -26,7 +24,7 @@ import {
 } from "../shared/contract/lorebook";
 import type { SillyTavernJsonValue } from "../shared/contract/prompt-preset";
 
-export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse, LoreAttachmentState, LoreAttachmentCommand };
+export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse, LoreAttachmentState };
 export type { LorebookAttachmentImpact };
 export type { LorebookOwnerAttachmentState };
 export type LoreMatchTest = LoreMatchTestResponse;
@@ -38,27 +36,20 @@ export async function getLorebookAttachmentState(conversationId: number, signal?
 	));
 }
 
-export async function applyLorebookAttachmentCommand(command: LoreAttachmentCommand) {
-	return requestOutcome(
-		api.api.lorebooks.attachments.commands.post(command),
-		loreAttachmentCommandResponse,
-	);
-}
-
 export async function getLorebookAttachmentImpact(bookId: number): Promise<LorebookAttachmentImpact | null> {
 	return foundOrNull(await requestOutcome(api.api.lorebooks({ bookId }).attachments.get(), lorebookAttachmentImpactResponse));
 }
 
-export async function getCharacterLorebookAttachments(characterId: number): Promise<LorebookOwnerAttachmentState | null> {
+export async function getCharacterLorebookAttachments(characterId: number, signal: AbortSignal): Promise<LorebookOwnerAttachmentState | null> {
 	return foundOrNull(await requestOutcome(
-		api.api.lorebooks.attachments.character.get({ query: { ownerId: characterId } }),
+		api.api.lorebooks.attachments.character.get({ query: { ownerId: characterId }, fetch: { signal } }),
 		lorebookOwnerAttachmentResponse,
 	));
 }
 
-export async function getParticipantLorebookAttachments(participantId: number): Promise<LorebookOwnerAttachmentState | null> {
+export async function getParticipantLorebookAttachments(participantId: number, signal: AbortSignal): Promise<LorebookOwnerAttachmentState | null> {
 	return foundOrNull(await requestOutcome(
-		api.api.lorebooks.attachments.participant.get({ query: { ownerId: participantId } }),
+		api.api.lorebooks.attachments.participant.get({ query: { ownerId: participantId }, fetch: { signal } }),
 		lorebookOwnerAttachmentResponse,
 	));
 }

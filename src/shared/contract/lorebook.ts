@@ -1,27 +1,15 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { numericWire } from "./wire";
 import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
-import { conversationConflict } from "./conversation-schema";
 
 export const loreMatchOperator = Type.Union([Type.Literal("and"), Type.Literal("or")]);
 export const loreKeywordMode = Type.Union([Type.Literal("literal"), Type.Literal("regex")]);
-export const loreAttachmentScope = Type.Union([
-	Type.Literal("controlled-participant"),
-	Type.Literal("cast"),
-	Type.Literal("chat"),
-]);
+export const participantLoreAttachmentScope = Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]);
+export const loreAttachmentScope = Type.Union([...participantLoreAttachmentScope.anyOf, Type.Literal("chat")]);
 export type LoreAttachmentScope = Static<typeof loreAttachmentScope>;
 
-export const loreAttachmentCommandBody = Type.Union([
-	Type.Object({ type: Type.Literal("attach-character"), characterId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
-	Type.Object({ type: Type.Literal("attach-participant"), participantId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]), enabled: Type.Optional(Type.Boolean()) }),
-	Type.Object({ type: Type.Literal("attach-chat"), conversationId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), enabled: Type.Optional(Type.Boolean()) }),
-	Type.Object({ type: Type.Literal("detach-character"), characterId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]) }),
-	Type.Object({ type: Type.Literal("detach-participant"), participantId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer(), scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]) }),
-	Type.Object({ type: Type.Literal("detach-chat"), conversationId: Type.Integer(), bookId: Type.Integer(), expectedRevision: Type.Integer() }),
-	Type.Object({ type: Type.Literal("save-settings"), conversationId: Type.Integer(), expectedRevision: Type.Integer(), scanDepth: Type.Integer(), allowance: Type.Integer() }),
-]);
-export type LoreAttachmentCommand = Static<typeof loreAttachmentCommandBody>;
+export const scopedLorebookAttachment = { bookId: Type.Integer(), scope: participantLoreAttachmentScope };
+
 export const loreAttachmentQuery = Type.Object({ conversationId: numericWire });
 export const loreAttachmentState = Type.Object({
 	conversationId: Type.Integer(),
@@ -48,25 +36,11 @@ export const lorebookOwnerAttachmentState = Type.Object({
 	revision: Type.Integer(),
 	attachments: Type.Array(Type.Object({
 		id: Type.Integer(),
-		bookId: Type.Integer(),
-		scope: Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]),
+		...scopedLorebookAttachment,
 		enabled: Type.Boolean(),
 	})),
 });
 export type LorebookOwnerAttachmentState = Static<typeof lorebookOwnerAttachmentState>;
-// @approved
-//  Only the two Character-owned Lore attachment commands still
-// produce a Lorebook attachment conflict; the Conversation-owned commands
-// recover through the Conversation conflict shape (conversation-schema), so
-// the conversation state members left this union with their machinery.
-const loreAttachmentConflict = revisionConflict(lorebookOwnerAttachmentState);
-
-// @approved
-//  The Lorebook attachment command's conflict response: Character-owned
-// commands recover through the Lorebook attachment conflict above, while
-// the Conversation-owned commands recover through the canonical Conversation
-// conflict shape.
-const loreAttachmentCommandConflict = Type.Union([loreAttachmentConflict, conversationConflict]);
 
 export const lorebookAttachmentImpact = Type.Object({
 	bookId: Type.Integer(),
@@ -252,9 +226,3 @@ export const loreMatchTestResponse = { 200: loreMatchTestResult, 404: notFoundOu
 export const loreAttachmentStateResponse = { 200: loreAttachmentState, 404: notFoundOutcome };
 export const lorebookAttachmentImpactResponse = { 200: lorebookAttachmentImpact, 404: notFoundOutcome };
 export const lorebookOwnerAttachmentResponse = { 200: lorebookOwnerAttachmentState, 404: notFoundOutcome };
-export const loreAttachmentCommandResponse = {
-	200: Type.Object({ outcome: Type.Literal("applied") }),
-	404: notFoundOutcome,
-	409: loreAttachmentCommandConflict,
-	422: invalidOutcome,
-};

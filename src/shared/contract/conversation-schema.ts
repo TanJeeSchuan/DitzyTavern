@@ -26,6 +26,7 @@ import type { GenerationJsonObject } from "../generation-provenance";
 import { generationProvenance } from "./generation-provenance";
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
+import { scopedLorebookAttachment } from "./lorebook";
 export type { LoreActivationRecord } from "./lore-activation";
 
 export { effectiveGenerationSettings } from "./generation-settings";
@@ -599,6 +600,11 @@ export const briefMessageCount = Type.Union([Type.Integer({ minimum: 1 }), Type.
 const selectPaintPresetAction = Type.Object({ type: Type.Literal("select-paint-preset"), paintPresetId: Type.Integer() });
 const setBriefMessageCountAction = Type.Object({ type: Type.Literal("set-brief-message-count"), briefMessageCount });
 
+const participantLorebookAttachment = {
+	participantId: Type.Integer(),
+	...scopedLorebookAttachment,
+};
+
 const conversationCommandAction = Type.Union([
 	createMessageAction,
 	createVariantAction,
@@ -621,6 +627,11 @@ const conversationCommandAction = Type.Union([
 	selectPromptPresetAction,
 	selectPaintPresetAction,
 	setBriefMessageCountAction,
+	Type.Object({ type: Type.Literal("attach-chat"), bookId: Type.Integer(), enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("detach-chat"), bookId: Type.Integer() }),
+	Type.Object({ type: Type.Literal("attach-participant"), ...participantLorebookAttachment, enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("detach-participant"), ...participantLorebookAttachment }),
+	Type.Object({ type: Type.Literal("save-lore-settings"), scanDepth: Type.Integer(), allowance: Type.Integer() }),
 	renameConversationAction,
 	setBackgroundAction,
 	setBoxSetupAction,
