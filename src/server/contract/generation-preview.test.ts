@@ -107,8 +107,8 @@ describe("Prompt Plan inspection transport", () => {
 	test("rejects preview intents missing their required operand", async () => {
 		const conversation = pairChat(database, "Preview Chat");
 		const app = createConversationRoutes(database);
-		for (const kind of ["send", "sibling"] as const) {
-			const response = await previewResponse(app, conversation.id, { kind });
+		for (const target of [{ kind: "send" }, { kind: "sibling" }] as const) {
+			const response = await previewResponse(app, conversation.id, target);
 			expect(response.status).toBe(422);
 			expect(await response.json()).toMatchObject({ type: "validation", on: "body" });
 		}

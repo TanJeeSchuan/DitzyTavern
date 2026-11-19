@@ -96,7 +96,8 @@ const createConnection = (database: Database): number => {
 		const conversation = createTestConversation(database, "Unconfigured model command");
 		const module = database;
 		const before = readConversationGenerationSettings(module, conversation.id);
-		expect(before?.responseBudget).toBe(1024);
+		if (before === undefined) throw new Error("Stored settings missing.");
+		expect(before.responseBudget).toBe(1024);
 
 		executeConversationCommand(module, {
 			conversationId: conversation.id,
