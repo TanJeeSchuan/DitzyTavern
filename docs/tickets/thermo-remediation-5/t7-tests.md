@@ -89,6 +89,7 @@ Deleted tests:
 - The preview workflow test now checks the budget error type and observes the fitting edit reach the provider. The missing-history test checks that the refresh actually receives a 404 and still returns the Conversation. The current history observer separately reports a missing page to the story reducer.
 - The redundant import Cast existence checks were already removed in `5405a297`. Changed-file lint and `git diff --check` pass. FFF finds nine test files with `postHistoryInstruction:` and zero former capture polls. The previous green CI run passed 1,912 unit cases. With the three removals, this slice expects 1,909.
 - The first CI run caught two test types. Malformed preview cases now keep their literal target shapes, and the settings test checks that the original read exists before comparing it.
+- The next run showed that libfx's tool-end event previews only the first 200 characters. The authoring test now checks the full result in the model's next request.
 
 Deleted tests:
 

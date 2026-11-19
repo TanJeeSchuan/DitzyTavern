@@ -22,11 +22,13 @@ test("every built-in example's listing and files reach the agent through libfx",
 		example, readdirSync(join(builtInBoxes, example)).filter((file) => /\.(json|ts|css)$/.test(file) && !/\.(spec|test)\.ts$/.test(file)).sort(),
 	]));
 	const calls = [...listings].flatMap(([example, files]) => [{ example, file: undefined }, ...files.map((file) => ({ example, file }))]);
+	const received: (string | undefined)[] = [];
 	let request = 0;
 	const server = Bun.serve({
 		hostname: "127.0.0.1", port: 0,
 		async fetch(incoming) {
-			await incoming.json();
+			const { messages }: { messages: readonly { role: string; content?: string }[] } = await incoming.json();
+			received.push(messages.findLast(({ role }) => role === "tool")?.content);
 			const call = calls[request++];
 			const delta = call === undefined ? { role: "assistant", content: "Read." } : { role: "assistant", tool_calls: [{ index: 0, id: `call_${request}`, type: "function", function: { name: "read_contract", arguments: JSON.stringify(call) } }] };
 			const chunk = (body: typeof delta | Record<string, never>, finish: string | null) => `data: ${JSON.stringify({ id: "fake", object: "chat.completion.chunk", created: 1, model: "coder-1", choices: [{ index: 0, delta: body, finish_reason: finish }] })}\n\n`;
@@ -39,16 +41,16 @@ test("every built-in example's listing and files reach the agent through libfx",
 		credentials: async () => ({ apiKey: "key" }),
 	});
 	try {
-		const ended: { readonly isError: boolean; readonly content?: string }[] = [];
-		for await (const event of agent.session().prompt("Read every example.")) if (event.type === "tool_end") ended.push(event);
-		expect(ended.map(({ isError }) => isError)).toEqual(calls.map(() => false));
+		const ended: boolean[] = [];
+		for await (const event of agent.session().prompt("Read every example.")) if (event.type === "tool_end") ended.push(event.isError);
+		expect(ended).toEqual(calls.map(() => false));
 		for (const [index, { example, file }] of calls.entries()) {
-			const content = ended[index]?.content;
+			const content = received[index + 1];
 			if (file === undefined) {
-				expect(content?.match(/^Files: (.+)\. Call read_contract /)?.[1]?.split(", ").sort()).toEqual(listings.get(example));
+				expect(content?.match(/^Files: (.+)\. Call read_contract /m)?.[1]?.split(", ").sort()).toEqual(listings.get(example));
 				expect(content).toContain(await Bun.file(join(builtInBoxes, example, "descriptor.json")).text());
 			} else {
-				expect(content).toBe(await Bun.file(join(builtInBoxes, example, file)).text());
+				expect(content).toContain(await Bun.file(join(builtInBoxes, example, file)).text());
 			}
 		}
 	} finally {
