@@ -109,6 +109,7 @@ function Preview() {
 					<div className="story-content">
 						{messages.map((entry) => (
 							<StoryMessageView
+				historyRevision={1}
 								key={entry.id}
 								conversationId={1}
 								message={entry}

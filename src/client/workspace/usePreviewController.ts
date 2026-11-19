@@ -10,7 +10,6 @@ import {
 type PreviewControllerOptions = {
 	signal: AbortSignal;
 	story: StoryState;
-	commandRevision: () => number | null;
 	dispatchStory: Dispatch<StoryAction>;
 	setConversation: (conversation: ConversationSummary | null) => void;
 };
@@ -18,12 +17,12 @@ type PreviewControllerOptions = {
 export function usePreviewController({
 	signal,
 	story,
-	commandRevision,
 	dispatchStory,
 	setConversation,
 }: PreviewControllerOptions) {
 	const surface = {
-		revision: commandRevision,
+		revision: () => isStoryReady(story) ? story.revision : null,
+		exact: true,
 		onConversationChange: setConversation,
 		setNotice: () => undefined,
 		isCurrent: () => !signal.aborted,

@@ -93,3 +93,35 @@ test("conflict and focus refresh every loaded history page across two tabs", asy
 	expect(await stored()).toBe("Draft written in this tab.");
 	await other.close();
 });
+
+
+test.describe(() => {
+	test.use({ allowedBrowserErrors: /status of 500/ });
+	test("retrying the active Chat preserves the unsent composer draft and readable transcript", async ({ page, request }) => {
+		const { activeChatId } = await (await request.get("/api/workspace")).json();
+		const url = `/api/conversations/${activeChatId}`;
+		await page.goto("/");
+		const articles = story(page).locator("article[data-message-id]");
+		await expect(articles.first()).toBeVisible();
+		const count = await articles.count();
+		const draft = page.getByRole("textbox", { name: "Message draft" });
+		await draft.fill("Unsent guidance survives retry.");
+		await page.route(`**${url}/history*`, (route) => route.fulfill({ status: 500, json: { error: "Unavailable" } }));
+		const conversation = await (await request.get(url)).json();
+		expect((await request.post(`${url}/commands`, { data: { expectedRevision: conversation.revision, action: { type: "rename-conversation", name: "Retry this Chat" } } })).ok()).toBe(true);
+		await focus(page, "hidden");
+		await focus(page, "visible");
+		await expect(story(page).getByRole("alert").filter({ hasText: "The Chat history could not be loaded." })).toBeVisible();
+		await page.getByRole("button", { name: "Chats", exact: true }).click();
+		const retried = page.waitForResponse((response) => response.url().includes(`${url}/history`) && response.status() === 500);
+		await page.locator('button[aria-current="true"]').click();
+		await retried;
+		await expect(articles).toHaveCount(count);
+		await expect(draft).toHaveText("Unsent guidance survives retry.");
+		await page.unroute(`**${url}/history*`);
+		await page.getByRole("button", { name: "Chats", exact: true }).click();
+		await page.locator('button[aria-current="true"]').click();
+		await expect(story(page).getByRole("alert")).toHaveCount(0);
+		await expect(draft).toHaveText("Unsent guidance survives retry.");
+	});
+});

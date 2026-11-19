@@ -58,7 +58,8 @@ describe("Preview", () => {
 		const changed = { ...older, variants: [historyVariant({ selected: false }), historyVariant({ id: 101, position: 2 })] };
 		const refreshed = read(accepted, history([changed, later], 4));
 		expect(displayedVariantId(refreshed, refreshed.messages[0]!)).toBe(101);
-		expect(refreshed.requestedSelections.has(first.id)).toBe(false);
+		const laterRead = read(refreshed, history([older, later], 5));
+		expect(displayedVariantId(laterRead, laterRead.messages[0]!)).toBe(100);
 	});
 
 	test("the last loaded Message previews if newer history is off screen", () => {

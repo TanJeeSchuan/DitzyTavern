@@ -47,7 +47,7 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 	const hook = await renderHook(() => {
 		const session = useConversationSession({ initialChatId: "1" });
 		const commands = useStoryMessageActions({
-			signal: session.signal, story: session.story, commandRevision: session.commandRevision,
+			signal: session.signal, story: session.story,
 			dispatchStory: session.dispatchStory, setConversation: session.setConversation,
 			queueSwipeScroll() {}, canEnterPreview: true, onEnterPreview: (enter) => enter(),
 		});
@@ -353,7 +353,7 @@ test("a reload discards the local Preview even when React Query still has histor
 	expect(reopenedStory.preview).toBeNull();
 });
 
-test("source navigation cancels a refresh still reading the Conversation before it can fetch history", async () => {
+test("source navigation retires a refresh without cancelling its shared Summary read", async () => {
 	const late = Promise.withResolvers<Response>();
 	let summaries = 0;
 	const h = await harness(({ url }) => url.pathname.endsWith("history")
@@ -365,7 +365,7 @@ test("source navigation cancels a refresh still reading the Conversation before 
 	const refreshSignal = h.requests.at(-1)?.init?.signal;
 	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
-	expect(refreshSignal?.aborted).toBe(true);
+	expect(refreshSignal?.aborted).toBe(false);
 	const count = h.requests.length;
 	await h.hook.act(async () => { late.resolve(Response.json(summary())); await refresh; });
 	await flushHook();
@@ -745,27 +745,35 @@ function readyStory(state: StoryState) {
 }
 
 
-for (const operation of ["edit", "save as new", "Moves"] as const) test(`${operation} uses accepted writes while displayed history is held behind`, async () => {
+for (const operation of ["edit", "save as new", "Moves"] as const) test(`${operation} refuses to overwrite unseen authority with a stale transcript`, async () => {
 	let revision = 5;
+	let stored = "Other tab's work";
 	const history = Promise.withResolvers<Response>();
 	const h = await harness(async ({ url, init }) => {
-		if (init?.method === "POST") return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
+		if (init?.method === "POST") {
+			const { expectedRevision } = JSON.parse(String(init.body));
+			if (expectedRevision !== revision) return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: revision, current: summary(1, revision) }, { status: 409 });
+			stored = "Overwritten";
+			return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
+		}
 		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
 		return revision === 5 ? Response.json(page()) : history.promise.then((response) => response.clone());
 	});
-	const write = () => operation === "Moves" ? h.hook.current.setMessageMoves(105, {})
-		: h.hook.current.editStoryMessage(105, "Edited", operation === "save as new");
-	await h.hook.act(async () => { await write(); });
+	revision = 6;
+	await h.hook.act(async () => h.hook.current.setConversation(summary(1, revision)));
 	await flushHook();
-	expect(readyStory(h.hook.current.story).revision).toBe(5);
-	await h.hook.act(async () => { await write(); });
-	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).expectedRevision)).toEqual([5, 6]);
-	await h.hook.act(async () => history.resolve(Response.json(page(1, 1, 7))));
+	await h.hook.act(async () => {
+		if (operation === "Moves") await h.hook.current.setMessageMoves(105, {});
+		else expect(await h.hook.current.editStoryMessage(105, "Edited", operation === "save as new", 5)).toBe(false);
+	});
+	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).expectedRevision)).toEqual([5]);
+	expect(stored).toBe("Other tab's work");
+	await h.hook.act(async () => history.resolve(Response.json(page(1, 1, 6))));
 	await flushHook();
-	expect(readyStory(h.hook.current.story).revision).toBe(7);
+	expect(readyStory(h.hook.current.story).revision).toBe(6);
 });
 
-test("a retained command callback reads newly accepted authority before React renders", async () => {
+test("a retained transcript command keeps its displayed revision before React renders", async () => {
 	const h = await harness(async ({ url, init }) => init?.method === "POST"
 		? Response.json({ outcome: "invalid", reason: "Probe" }, { status: 422 })
 		: Response.json(url.pathname.endsWith("history") ? page() : summary()));
@@ -775,7 +783,7 @@ test("a retained command callback reads newly accepted authority before React re
 		await remove(105);
 	});
 	const command = h.requests.find(({ init }) => init?.method === "POST");
-	expect(JSON.parse(String(command?.init?.body)).expectedRevision).toBe(9);
+	expect(JSON.parse(String(command?.init?.body)).expectedRevision).toBe(5);
 });
 
 test("a failed jump that advances Summary refreshes the window the reader stays on", async () => {
@@ -903,4 +911,136 @@ test("batched reselection ends the visit before old queued work or overlays can 
 	expect(h.requests.filter(({ init }) => init?.method === "POST")).toEqual([]);
 	expect(h.hook.current.story.requestedGeneration).toBeNull();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+});
+
+for (const secureContext of [false, true]) test(`visits reopen latest history with crypto.randomUUID ${secureContext ? "available" : "unavailable"}`, async () => {
+	const descriptor = Object.getOwnPropertyDescriptor(crypto, "randomUUID");
+	if (!secureContext) Object.defineProperty(crypto, "randomUUID", { configurable: true, value: undefined });
+	try {
+		const h = await harness(async ({ url }) => Response.json(url.pathname.endsWith("history") ? page(1, url.searchParams.has("aroundMessageId") ? 3 : 1) : summary()));
+		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+		await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+		await h.hook.unmount();
+		const reopened = await renderHook(() => useConversationSession({ initialChatId: "1" }), h.client);
+		await flushHook();
+		expect(reopened.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	} finally {
+		if (descriptor === undefined) Reflect.deleteProperty(crypto, "randomUUID");
+		else Object.defineProperty(crypto, "randomUUID", descriptor);
+	}
+});
+
+test("retrying an active Chat keeps readable rows and its pending generation through another failure", async () => {
+	let fail = false;
+	const h = await harness(async ({ url }) => url.pathname.endsWith("history") && fail
+		? Response.json({ error: "Unavailable" }, { status: 500 }) : Response.json(url.pathname.endsWith("history") ? page() : summary()));
+	const owner = h.hook.current.signal;
+	await h.hook.act(async () => h.hook.current.dispatchStory({ type: "generation-requested", request: { kind: "send", content: "Pending guidance" } }));
+	fail = true;
+	await h.hook.act(async () => { await expect(h.hook.current.refreshStory(1)).rejects.toBeInstanceOf(Error); });
+	await flushHook();
+	await h.hook.act(async () => h.hook.current.selectChat("1"));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	expect(owner.aborted).toBe(false);
+	expect(h.hook.current.story.requestedGeneration?.request).toEqual({ kind: "send", content: "Pending guidance" });
+	fail = false;
+	await h.hook.act(async () => h.hook.current.selectChat("1"));
+	await flushHook();
+	await h.hook.act(async () => h.hook.current.dispatchStory({ type: "generation-request-failed" }));
+	expect(h.hook.current.story.requestedGeneration).toBeNull();
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+});
+
+test("a successful newer source jump reads its destination once without a spurious error", async () => {
+	const oldRefresh = Promise.withResolvers<Response>();
+	let revision = 5;
+	let sources = 0;
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+		if (url.searchParams.has("aroundMessageId")) {
+			revision = 6;
+			return ++sources === 1 ? Response.json(page(1, 3, revision)) : Response.json({ outcome: "not-found" }, { status: 404 });
+		}
+		return revision === 5 ? Response.json(page()) : oldRefresh.promise.then((response) => response.clone());
+	});
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+	await flushHook();
+	await h.hook.act(async () => oldRefresh.resolve(Response.json(page(1, 1, 6))));
+	await flushHook();
+	expect(sources).toBe(1);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+});
+
+test("Jump to latest survives cancellation of an unrelated refresh sharing its Summary", async () => {
+	const shared = Promise.withResolvers<Response>();
+	let summaries = 0;
+	const h = await harness(async ({ url }) => url.pathname.endsWith("history")
+		? Response.json(page(1, url.searchParams.has("aroundMessageId") ? 3 : 1))
+		: ++summaries === 1 ? Response.json(summary()) : shared.promise.then((response) => response.clone()));
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+	const owner = new AbortController();
+	let refresh: Promise<unknown> = Promise.resolve();
+	let jump: Promise<unknown> = Promise.resolve();
+	await h.hook.act(async () => { refresh = h.hook.current.refreshStory(1, owner.signal).catch(() => null); });
+	await flushHook();
+	await h.hook.act(async () => { jump = h.hook.current.jumpToLatest().catch(() => null); });
+	await flushHook();
+	await h.hook.act(async () => { owner.abort(); shared.resolve(Response.json(summary())); await Promise.all([refresh, jump]); });
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
+	expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+});
+
+test("a missing initial source on the final consistency attempt still opens latest", async () => {
+	let sources = 0;
+	const h = await harness(async ({ url }) => {
+		const id = Number(url.pathname.split("/")[3]);
+		if (url.searchParams.has("aroundMessageId")) return ++sources < 3 ? Response.json(page(id, 3, 4)) : Response.json({ outcome: "not-found" }, { status: 404 });
+		return Response.json(url.pathname.endsWith("history") ? page(id) : summary(id));
+	});
+	await h.hook.act(async () => h.hook.current.selectChat("2", 999));
+	await flushHook();
+	expect(sources).toBe(3);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([205, 206]);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
+});
+
+test("paging survives a same-revision refresh that changes the live checkpoint", async () => {
+	const pending = Promise.withResolvers<Response>();
+	let refreshed = false;
+	let pages = 0;
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return Response.json(summary());
+		if (url.searchParams.get("page") === "2") return ++pages === 1 ? pending.promise : Response.json(page(1, 2));
+		const current = page();
+		if (refreshed) current.messages[0]!.variants[0]!.content = "Live checkpoint";
+		return Response.json(current);
+	});
+	let paging = Promise.resolve();
+	await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(); });
+	refreshed = true;
+	await h.hook.act(async () => { await h.hook.current.refreshStory(1); });
+	await h.hook.act(async () => { pending.resolve(Response.json(page(1, 2))); await paging; });
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
+	expect(h.hook.current.story.messages.find(({ id }) => id === 105)?.swipes[0]?.content).toBe("Live checkpoint");
+});
+
+test("selectChat retires a queued command before dispatch and leaves the replacement visit usable", async () => {
+	const { queueConversationCommand } = await import("../conversation-command-runner");
+	const h = await harness(async ({ url, init }) => init?.method === "POST"
+		? Response.json({ outcome: "invalid", reason: "No change" }, { status: 422 })
+		: Response.json(url.pathname.endsWith("history") ? page(Number(url.pathname.split("/")[3])) : summary(Number(url.pathname.split("/")[3]))));
+	const gate = Promise.withResolvers<void>();
+	const blocker = queueConversationCommand(1, async () => { await gate.promise; return false; });
+	let abandoned = Promise.resolve();
+	await h.hook.act(async () => { abandoned = h.hook.current.deleteStoryMessage(105); h.hook.current.selectChat("2"); });
+	await h.switchTo(1);
+	await h.hook.act(async () => { gate.resolve(); await Promise.all([blocker, abandoned]); await h.hook.current.deleteStoryMessage(106); });
+	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).action.messageId)).toEqual([106]);
 });

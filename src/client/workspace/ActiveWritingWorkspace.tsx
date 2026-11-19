@@ -21,7 +21,7 @@ import { PanelHeader } from "../PanelHeader";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
 import { GenerationDetailsPanel } from "../GenerationDetailsPanel";
-import { previewNavigationNeedsConfirmation } from "../story";
+import { isStoryReady, previewNavigationNeedsConfirmation } from "../story";
 import { invalidateChatLists, type ThemePreference } from "../workspace";
 import type { PrimaryPanelName } from "./types";
 import { NavigationDrawer, NavigationRail } from "./NavigationRail";
@@ -128,7 +128,6 @@ export function ActiveWritingWorkspace({
 	const preview = usePreviewController({
 		signal: session.signal,
 		story,
-		commandRevision: session.commandRevision,
 		dispatchStory,
 		setConversation: session.setConversation,
 	});
@@ -189,7 +188,7 @@ export function ActiveWritingWorkspace({
 		if (conversation === null || forkAt === null) return "The Chat is not available.";
 		let error: string | null = null;
 		const applied = await runConversationCommand({
-			conversationId: conversation.id, revision: session.commandRevision,
+			conversationId: conversation.id, revision: () => isStoryReady(story) ? story.revision : null, exact: true,
 			onConversationChange: session.setConversation, setNotice: (notice) => { error = notice; },
 			isCurrent: () => !session.signal.aborted,
 		}, async (revision) => {
@@ -206,7 +205,7 @@ export function ActiveWritingWorkspace({
 	};
 	const unlinkFork = () => {
 		if (conversation === null) return;
-		void runConversationCommand({ conversationId: conversation.id, revision: session.commandRevision, onConversationChange: session.setConversation, setNotice: setForkNotice, isCurrent: () => !session.signal.aborted }, { type: "unlink-fork" });
+		void runConversationCommand({ conversationId: conversation.id, revision: () => isStoryReady(story) ? story.revision : null, exact: true, onConversationChange: session.setConversation, setNotice: setForkNotice, isCurrent: () => !session.signal.aborted }, { type: "unlink-fork" });
 	};
 	const openForkSource = () => {
 		const source = conversation?.forkedFrom;

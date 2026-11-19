@@ -102,7 +102,7 @@ async function executeConversationCommand<TOperation>(
 		if (surface.isCurrent?.() !== false) apply();
 	};
 	const known = surface.revision();
-	const expectedRevision = known === null ? previous : previous === null || surface.exact === true ? known : Math.max(known, previous);
+	const expectedRevision = surface.exact === true || previous === null ? known : known === null ? previous : Math.max(known, previous);
 	if (expectedRevision === null) {
 		effect(() => surface.setNotice(CONVERSATION_REVISION_UNAVAILABLE_NOTICE));
 		return false;

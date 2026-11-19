@@ -32,13 +32,12 @@ const STORY_COMMAND_NOTICES = {
 // outcomes, made explicit so the runner never flattens them for this surface.
 const noPresentation = () => undefined;
 
-type RequestedSelection = { messageId: number; request: RequestedWrite<number> };
+type RequestedSelection = { baseRevision: number; messageId: number; request: RequestedWrite<number> };
 const selections = new WeakMap<AbortSignal, { queued: boolean; requested: RequestedSelection | null }>();
 
 type StoryMessageActionsOptions = {
 	signal: AbortSignal;
 	story: StoryState;
-	commandRevision: () => number | null;
 	dispatchStory: Dispatch<StoryAction>;
 	setConversation: (conversation: ConversationSummary | null) => void;
 	queueSwipeScroll: (messageId: number) => void;
@@ -49,7 +48,6 @@ type StoryMessageActionsOptions = {
 export function useStoryMessageActions({
 	signal,
 	story,
-	commandRevision,
 	dispatchStory,
 	setConversation,
 	queueSwipeScroll,
@@ -57,13 +55,14 @@ export function useStoryMessageActions({
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
 	const surface = {
-		revision: commandRevision,
+		revision: () => isStoryReady(story) ? story.revision : null,
+		exact: true,
 		onConversationChange: setConversation,
 		setNotice: noPresentation,
 		isCurrent: () => !signal.aborted,
 	};
-	const requestSelection = async (conversationId: number, messageId: number, variantId: number) => {
-		const requested = { messageId, request: { value: variantId } };
+	const requestSelection = async (conversationId: number, messageId: number, variantId: number, baseRevision: number) => {
+		const requested = { baseRevision, messageId, request: { value: variantId } };
 		const current = selections.get(signal) ?? { queued: false, requested: null };
 		selections.set(signal, current);
 		if (current.requested !== null) dispatchStory({ type: "selection-settled", ...current.requested, revision: null });
@@ -72,7 +71,7 @@ export function useStoryMessageActions({
 		if (current.queued) return;
 		current.queued = true;
 		let sent: RequestedSelection | undefined;
-		const applied = await runConversationCommand({ ...surface, conversationId }, (expectedRevision) => {
+		const applied = await runConversationCommand({ ...surface, conversationId, revision: () => current.requested?.baseRevision ?? null }, (expectedRevision) => {
 			current.queued = false;
 			sent = current.requested ?? requested;
 			current.requested = null;
@@ -115,7 +114,7 @@ export function useStoryMessageActions({
 			return;
 		}
 		if (!canEnterPreview) return;
-		if (commandRevision() === null) return;
+		if (!isStoryReady(story)) return;
 
 		const selection = classifyVariantSelection(story, messageId, variantId);
 		if (selection.kind === "noop" || selection.kind === "blocked") return;
@@ -127,15 +126,14 @@ export function useStoryMessageActions({
 			return;
 		}
 
-		if (!isStoryReady(story)) return;
 		queueSwipeScroll(selection.messageId);
-		await requestSelection(story.conversationId, selection.messageId, selection.variantId);
+		await requestSelection(story.conversationId, selection.messageId, selection.variantId, story.revision);
 	};
 
 	// @approved
 	//  Saving as new copies the shown Variant, with its edited text, to a new
 	// selected Swipe at the end and leaves the source untouched.
-	const editStoryMessage = async (messageId: number, content: string, asNew: boolean) => {
+	const editStoryMessage = async (messageId: number, content: string, asNew: boolean, baseRevision: number) => {
 		if (!isStoryReady(story) || story.preview !== null) return false;
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return false;
@@ -144,7 +142,7 @@ export function useStoryMessageActions({
 		if (variantId === undefined) return false;
 
 		let applied = false;
-		await runConversationCommand({ ...surface, conversationId }, asNew
+		await runConversationCommand({ ...surface, conversationId, revision: () => baseRevision }, asNew
 			? { type: "create-variant", messageId, sourceVariantId: variantId, content }
 			: { type: "edit-variant", messageId, variantId, content }, {
 			notices: STORY_COMMAND_NOTICES,

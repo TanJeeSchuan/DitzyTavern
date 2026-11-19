@@ -46,6 +46,7 @@ import { useStreamedVariant, useStreamedVariants } from "./variant-streams";
 //  Memoized: while a reply streams, only the row whose text changed renders.
 export const StoryMessageView = memo(function StoryMessageView({
 	conversationId,
+	historyRevision,
 	paintDisabledReason,
 	onPaint,
 	message,
@@ -76,6 +77,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	lens,
 }: {
 	conversationId: number;
+	historyRevision: number;
 	paintDisabledReason?: string;
 	onPaint?: (variantId: number) => void;
 	message: StoryMessage;
@@ -100,7 +102,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onSelectVariant: (messageId: number, variantId: number) => void;
 	swipeBrowsing: SwipeBrowsing;
-	onEdit: (messageId: number, content: string, asNew: boolean) => Promise<boolean>;
+	onEdit: (messageId: number, content: string, asNew: boolean, baseRevision: number) => Promise<boolean>;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
 	onRegenerate?: (messageId: number) => void;
@@ -134,31 +136,32 @@ export const StoryMessageView = memo(function StoryMessageView({
 
 	useEffect(() => setIsEditing(false), [active?.id]);
 
-	const [editBase, setEditBase] = useState("");
+	const [editBase, setEditBase] = useState({ content: "", revision: historyRevision });
 	const [changedElsewhere, setChangedElsewhere] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const openEditor = () => {
 		if (!isEditing) setEditText(active?.content ?? "");
-		setEditBase(active?.content ?? "");
+		setEditBase({ content: active?.content ?? "", revision: historyRevision });
 		setChangedElsewhere(false);
 		setIsEditing(true);
 	};
 	const saveEdit = async (asNew: boolean) => {
-		const duplicate = asNew && editText === editBase;
-		const value = duplicate ? editBase : editText.trim();
+		const duplicate = asNew && editText === editBase.content;
+		const value = duplicate ? editBase.content : editText.trim();
+		if (mutationsDisabled || saving) return false;
 		if ((!value && !duplicate && !hasMoves(message.moves)) || active === undefined || active.content === null) return false;
-		if (!asNew && active.content !== editBase) {
-			setEditBase(active.content);
+		if ((!asNew && active.content !== editBase.content) || historyRevision !== editBase.revision) {
+			setEditBase({ content: active.content, revision: historyRevision });
 			setChangedElsewhere(true);
 			return false;
 		}
 		setSaving(true);
-		const applied = await onEdit(message.id, value, asNew);
+		const applied = await onEdit(message.id, value, asNew, editBase.revision);
 		setSaving(false);
 		if (applied) setIsEditing(false);
 		return applied;
 	};
-	useSaveGuard({ dirty: isEditing && editText !== editBase, saving, save: () => saveEdit(false), discard: () => setIsEditing(false) });
+	useSaveGuard({ dirty: isEditing && editText !== editBase.content, saving, save: () => saveEdit(false), discard: () => setIsEditing(false) });
 	const movePrevious = () => {
 		setSwipeDirection("previous");
 		onMoveSwipe(message.id, -1);
@@ -285,7 +288,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 						<button
 							className="secondary-button"
 							type="button"
-							disabled={mutationsDisabled || saving}
+							disabled={saving}
 							onClick={() => setIsEditing(false)}
 						>
 							Cancel
@@ -389,7 +392,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 					<button ref={swipeCount} className="swipe-count" type="button" disabled={browsingDisabled} aria-haspopup="dialog" onClick={() => browse(true)} aria-label={`${activeIndex + 1} of ${message.swipes.length}, browse Swipes`}>
 						{activeIndex + 1} of {message.swipes.length}
 					</button>
-					{browsing && <SwipeBrowser mode={swipeBrowsing} variants={browsed} shownIndex={activeIndex} returnFocus={swipeCount} onClose={() => browse(false)} onSelect={selectVariant} />}
+					{browsing && <SwipeBrowser disabled={browsingDisabled} mode={swipeBrowsing} variants={browsed} shownIndex={activeIndex} returnFocus={swipeCount} onClose={() => browse(false)} onSelect={selectVariant} />}
 					<button
 						className="icon-button"
 						type="button"

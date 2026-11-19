@@ -1,9 +1,9 @@
 import { createStoryOverlays, isStoryReady, readStory, reduceStoryOverlays, retireStoryOverlays, toStoryMessage, type StoryAction, type StoryWindow } from "../story";
 import { isCancelledError, skipToken, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { loadHistoryPage, type ChatHistoryPage, type ChatHistoryPageRequest } from "../chat-history";
+import { loadHistoryPage, type ChatHistoryPageRequest, type HistorySnapshot } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
-import { cancellableFetch, conversationHistoryKey, conversationKey, conversationQuery, publishConversation, useConversationQuery } from "../conversation-query";
+import { cancellableFetch, historyWindowKey, conversationHistoryKey, conversationKey, conversationQuery, publishConversation, useConversationQuery } from "../conversation-query";
 import { workspaceQuery } from "../workspace";
 import { NetworkError, SERVER_UNREACHABLE_NOTICE } from "../lib/request-outcome";
 import { useVisitSignal } from "../lib/visit";
@@ -13,7 +13,6 @@ type HistoryRead =
 	| { kind: "jump"; start: ChatHistoryPageRequest; refreshSummary: boolean }
 	| { kind: "page"; direction: "older" | "newer" };
 
-type HistorySnapshot = { start: ChatHistoryPageRequest; pages: [ChatHistoryPage, ...ChatHistoryPage[]] };
 function createNavigation() {
 	let paging: AbortController | null = null;
 	const listeners = new Set<() => void>();
@@ -25,11 +24,12 @@ function createNavigation() {
 	};
 }
 class SupersededHistory extends Error {}
+class ChangedHistoryWindow extends SupersededHistory {}
 class MissingHistory extends Error {}
 const HISTORY_ATTEMPTS = 3;
 
-const historyWindowKey = (id: number, visit: string) => ["history-window", id, visit] as const;
-const historyRefreshKey = (id: number, visit: string) => [...conversationHistoryKey(id), visit] as const;
+let nextVisit = 0;
+const historyRefreshKey = (id: number, visit: number) => [...conversationHistoryKey(id), visit] as const;
 
 function selectHistoryWindow({ pages }: HistorySnapshot) {
 	const [first] = pages;
@@ -88,9 +88,9 @@ async function readHistoryWindow(
 async function readAndCommitHistory({
 	client, id, visit, request, signal, onCommit,
 }: {
-	client: QueryClient; id: number; visit: string; request: HistoryRead; signal: AbortSignal; onCommit: () => void;
+	client: QueryClient; id: number; visit: number; request: HistoryRead; signal: AbortSignal; onCommit: () => void;
 }) {
-	const key = historyWindowKey(id, visit);
+	const key = historyWindowKey(historyRefreshKey(id, visit));
 	let read = request;
 	for (let attempt = 1; ; attempt++) {
 		const base = client.getQueryData<HistorySnapshot>(key);
@@ -109,20 +109,21 @@ async function readAndCommitHistory({
 			const latest = client.getQueryData<HistorySnapshot>(key);
 			const authority = client.getQueryData<ConversationSummary | null>(summaryKey);
 			if (authority === null) throw new Error("The Conversation no longer exists.");
+			if (read.kind === "page" && base !== latest && latest?.pages[0].revision === revision) throw new ChangedHistoryWindow();
 			if (authority?.revision !== revision || (latest !== undefined && revision < latest.pages[0].revision) ||
 				(read.kind !== "jump" && base !== latest)) throw new SupersededHistory();
 			client.setQueryData(key, next);
 			onCommit();
-			return revision;
+			return;
 		} catch (error) {
 			signal.throwIfAborted();
-			if (attempt === HISTORY_ATTEMPTS) throw error;
 			if (error instanceof MissingHistory && base === undefined && read.kind === "refresh" && "aroundMessageId" in read.initial) {
 				read = { kind: "refresh", initial: { page: 1 } };
+				attempt = 0;
 				continue;
 			}
-			if (!(error instanceof SupersededHistory) && !isCancelledError(error)) throw error;
-			if (read.kind === "page" && base !== undefined) read = { kind: "refresh", initial: base.start };
+			if (attempt === HISTORY_ATTEMPTS || (!(error instanceof SupersededHistory) && !isCancelledError(error))) throw error;
+			if (read.kind === "page" && base !== undefined && !(error instanceof ChangedHistoryWindow)) read = { kind: "refresh", initial: base.start };
 		}
 	}
 }
@@ -135,9 +136,9 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	// @approved
 	//  Each selection is a new visit, even when a batch returns to the same Chat.
 	const [{ activeChatId, visit, initialHistory }, setSelection] = useState<{
-		activeChatId: string; visit: string; initialHistory: ChatHistoryPageRequest;
+		activeChatId: string; visit: number; initialHistory: ChatHistoryPageRequest;
 	}>(() => ({
-		activeChatId: initialChatId, visit: crypto.randomUUID(), initialHistory: { page: 1 },
+		activeChatId: initialChatId, visit: ++nextVisit, initialHistory: { page: 1 },
 	}));
 	const mounted = useVisitSignal(visit);
 	const navigation = useRef(createNavigation());
@@ -151,7 +152,7 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	const conversationId = Number.isInteger(id) && id > 0 ? id : null;
 	const currentSession = useEffectEvent(() => ({ signal, story, visit, conversationId }));
 	const conversationRead = useConversationQuery(conversationId);
-	const windowKey = historyWindowKey(id, visit);
+	const windowKey = historyWindowKey(historyRefreshKey(id, visit));
 	const history = useQuery({ queryKey: windowKey, queryFn: skipToken, select: selectHistoryWindow });
 	const runHistory = async (request: HistoryRead, owner: AbortSignal, onCommit?: () => void) => {
 		try {
@@ -170,7 +171,8 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	useQuery({
 		queryKey: refreshKey, enabled: conversationId !== null, staleTime: Infinity, retry: false, refetchOnReconnect: false,
 		queryFn: async ({ signal: querySignal }) => {
-			return await runHistory({ kind: "refresh", initial: initialHistory }, AbortSignal.any([signal, querySignal, navigation.current.window.signal])) ?? null;
+			await runHistory({ kind: "refresh", initial: initialHistory }, AbortSignal.any([signal, querySignal, navigation.current.window.signal]));
+			return null;
 		},
 	});
 	const [overlays, setOverlays] = useState(createStoryOverlays);
@@ -178,7 +180,6 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		if (!signal.aborted) setOverlays((current) => reduceStoryOverlays(current, action));
 	}, [signal]);
 	const conversation = conversationRead.data ?? null;
-	const commandRevision = () => client.getQueryData<ConversationSummary | null>(conversationKey(conversationId))?.revision ?? null;
 	const setConversation = useCallback((next: ConversationSummary | null) => {
 		if (signal.aborted || Number(activeChatIdRef.current) !== conversationId) return;
 		if (next !== null && next.id === conversationId) publishConversation(client, next);
@@ -200,7 +201,11 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		navigation.current.setPaging(null);
 	};
 	const selectChat = (chatId: string, messageId: number | null = null) => {
-		if (chatId === activeChatIdRef.current && !historyFailed && messageId === null) return;
+		if (chatId === activeChatIdRef.current) {
+			if (messageId !== null) void navigateToSourceMessage(messageId).catch(() => undefined);
+			else if (historyFailed) void refreshStory(id).catch(() => undefined);
+			return;
+		}
 		navigation.current.selection.abort();
 		for (const jump of navigation.current.jumps) jump.abort();
 		navigation.current.window.abort();
@@ -213,7 +218,7 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		setHistoryFailed(false);
 		setOverlays(createStoryOverlays());
 		setSelection({
-			activeChatId: chatId, visit: crypto.randomUUID(), initialHistory: messageId === null ? { page: 1 } : { aroundMessageId: messageId },
+			activeChatId: chatId, visit: ++nextVisit, initialHistory: messageId === null ? { page: 1 } : { aroundMessageId: messageId },
 		});
 	};
 
@@ -283,7 +288,7 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		const refresh = AbortSignal.any([current.signal, ...(external ? [external] : []), navigation.current.window.signal]);
 		try {
 			refresh.throwIfAborted();
-			await client.fetchQuery({ ...conversationQuery(client, id, { owner: refresh }), staleTime: 0 });
+			await client.fetchQuery({ ...conversationQuery(client, id), staleTime: 0 });
 			refresh.throwIfAborted();
 			await client.refetchQueries({ queryKey: historyRefreshKey(id, current.visit), type: "active" }, { cancelRefetch: false, throwOnError: true });
 			refresh.throwIfAborted();
@@ -314,7 +319,7 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	};
 
 	return {
-		signal, activeChatId, activeChatTitle, conversation, commandRevision, setConversation, activeChatIdRef, story, dispatchStory,
+		signal, activeChatId, activeChatTitle, conversation, setConversation, activeChatIdRef, story, dispatchStory,
 		selectChat, loadMoreHistory, jumpToLatest, ensureLatest, navigateToSourceMessage, refreshStory,
 	};
 }

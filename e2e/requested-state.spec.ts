@@ -111,7 +111,7 @@ test.describe(() => {
 	});
 });
 
-test("a second Move removal builds on the first while the first is still unanswered", async ({ page, llm }) => {
+test("accepted writes disable transcript controls until displayed history catches up", async ({ page, llm, request }) => {
 	await llm.chat({ chunks: ["Theodora reads them."] });
 	await page.goto("/");
 	await insertBox(page, "Phone");
@@ -126,16 +126,54 @@ test("a second Move removal builds on the first while the first is still unanswe
 	await expect(story(page).getByText("Theodora reads them.")).toBeVisible();
 	const moves = story(page).locator("article[data-message-id]").nth(-2).getByRole("list", { name: "Phone Moves" });
 	await expect(moves.getByRole("listitem")).toHaveText(["To Theodora Kline: A", "To Theodora Kline: B", "To Theodora Kline: C"]);
-	let applied = 0;
-	page.on("response", (response) => { if (response.url().endsWith("/commands") && response.ok()) applied += 1; });
+	const { activeChatId } = await (await request.get("/api/workspace")).json();
+	const url = `/api/conversations/${activeChatId}`;
+	const conversation = await (await request.get(url)).json();
+	const history = await (await request.get(`${url}/history`)).json();
+	const last = history.messages.at(-1);
+	const extra = await request.post(`${url}/commands`, { data: {
+		expectedRevision: conversation.revision,
+		action: { type: "create-variant", messageId: last.id, sourceVariantId: last.variants[0].id, content: "Another take." },
+	} });
+	expect(extra.ok()).toBe(true);
+	await page.reload();
+	const reply = story(page).locator("article[data-message-id]").last();
+	await reply.hover();
+	await reply.getByRole("button", { name: "Edit", exact: true }).click();
+	await reply.getByRole("textbox", { name: "Edit Message" }).fill("Draft kept while history loads.");
+	const held = Promise.withResolvers<void>();
+	const historyRequested = Promise.withResolvers<void>();
+	await page.route(`**${url}/history*`, async (route) => { historyRequested.resolve(); await held.promise; await route.continue(); });
 	const applying = holdPost(page, "**/api/conversations/*/commands");
+	const applied = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok());
 	await moves.getByRole("button", { name: "Remove To Theodora Kline: A" }).click();
-	const route = await applying;
-	await expect(moves.getByRole("listitem")).toHaveText(["To Theodora Kline: B", "To Theodora Kline: C"]);
+	const command = await applying;
+	await reply.hover();
+	await reply.getByRole("button", { name: /browse Swipes/ }).click();
+	const browser = page.getByRole("dialog", { name: "Swipes", exact: true });
+	await expect(browser).toBeVisible();
+	await command.continue();
+	await applied;
+	await historyRequested.promise;
+	await expect(browser.getByRole("button", { name: "Swipe 1 of 2", exact: true })).toBeDisabled();
+	await expect(browser.getByRole("button", { name: "Swipe 2 of 2", exact: true })).toBeDisabled();
+	await browser.press("Escape");
+	await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: B" })).toBeDisabled();
+	await expect(reply.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+	await reply.hover();
+	await expect(reply.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+	await expect(reply.getByRole("button", { name: "Previous Swipe", exact: true })).toBeDisabled();
+	await expect(reply.getByRole("textbox", { name: "Edit Message" })).toHaveText("Draft kept while history loads.");
+	held.resolve();
+	await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: B" })).toBeEnabled();
+	await expect(reply.getByRole("button", { name: "Save", exact: true })).toBeEnabled();
+	await expect(reply.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
+	await expect(reply.getByRole("button", { name: "Previous Swipe", exact: true })).toBeEnabled();
+	await reply.getByRole("button", { name: "Cancel", exact: true }).click();
+	const secondApplied = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok());
 	await moves.getByRole("button", { name: "Remove To Theodora Kline: B" }).click();
-	await expect(moves.getByRole("listitem")).toHaveText(["To Theodora Kline: C"]);
-	await route.continue();
-	await expect.poll(() => applied).toBe(2);
+	await secondApplied;
+	await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: C" })).toBeEnabled();
 	await page.reload();
 	await expect(story(page).locator("article[data-message-id]").nth(-2).getByRole("list", { name: "Phone Moves" }).getByRole("listitem"))
 		.toHaveText(["To Theodora Kline: C"]);

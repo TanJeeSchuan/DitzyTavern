@@ -110,7 +110,6 @@ export function StoryStage({
 	const storyActions = useStoryMessageActions({
 		signal: session.signal,
 		story,
-		commandRevision: session.commandRevision,
 		dispatchStory,
 		setConversation: session.setConversation,
 		queueSwipeScroll: viewport.queueSwipeScroll,
@@ -139,7 +138,7 @@ export function StoryStage({
 		openInspector: (box: string, focus: { messageId: number }) => latest.current.onOpenInspector(box, focus),
 		moveSwipe: (messageId: number, direction: -1 | 1) => void latest.current.storyActions.changeSwipe(messageId, direction),
 		selectVariant: (messageId: number, variantId: number) => void latest.current.storyActions.selectSwipe(messageId, variantId),
-		edit: (messageId: number, content: string, asNew: boolean) => latest.current.storyActions.editStoryMessage(messageId, content, asNew),
+		edit: (messageId: number, content: string, asNew: boolean, baseRevision: number) => latest.current.storyActions.editStoryMessage(messageId, content, asNew, baseRevision),
 		fork: (messageId: number) => latest.current.onFork({ through: messageId }),
 		rewind: (messageId: number) => latest.current.onFork({ rewind: messageId }),
 		setMoves: (messageId: number, moves: BoxMoves) => void latest.current.storyActions.setMessageMoves(messageId, moves),
@@ -148,6 +147,7 @@ export function StoryStage({
 	const onLayerFocus = useLayerFocus(inert);
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
+	const historyPending = readyStory !== null && conversation !== null && readyStory.revision < conversation.revision;
 	const composerPaintDisabledReason = generationRunning ? "Wait for the Generation to finish before painting." : paintDisabledReason;
 	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(story, latestStoryMessage);
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
@@ -179,8 +179,8 @@ export function StoryStage({
 					<span>Message {story.preview.targetPosition} · Later Messages dimmed</span>
 				</div>
 				<div className="preview-dock-actions">
-					<button className="primary-button" type="button" onClick={() => void preview.confirmPreview()}>Confirm</button>
-					<button className="secondary-button" type="button" onClick={() => onFork({ through: story.preview!.messageId, variantId: story.preview!.variantId })}>Fork with this Variant</button>
+					<button className="primary-button" type="button" disabled={historyPending} onClick={() => void preview.confirmPreview()}>Confirm</button>
+					<button className="secondary-button" type="button" disabled={historyPending} onClick={() => onFork({ through: story.preview!.messageId, variantId: story.preview!.variantId })}>Fork with this Variant</button>
 					<button className="secondary-button" type="button" onClick={preview.cancelPreview}>Cancel</button>
 				</div>
 			</div>
@@ -209,6 +209,7 @@ export function StoryStage({
 						<StoryMessageView
 							key={message.id}
 							conversationId={storyConversationId}
+							historyRevision={readyStory!.revision}
 							message={message}
 							onPaint={rows.paint}
 							paintDisabledReason={paintDisabledReason}
@@ -221,7 +222,7 @@ export function StoryStage({
 								target.variantId === displayedVariantId(story, message)
 							)}
 							displayedVariantId={displayedVariantId(story, message)}
-							mutationsDisabled={story.preview !== null || swiping}
+							mutationsDisabled={story.preview !== null || swiping || historyPending}
 							saveAsNewDisabled={generation.isGenerating}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}

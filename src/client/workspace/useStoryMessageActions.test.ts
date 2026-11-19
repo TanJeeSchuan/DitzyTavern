@@ -134,7 +134,6 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	const surface = () => ({
 		signal: visit.signal,
 		story: story(),
-		commandRevision: () => conversation?.revision ?? null,
 		dispatchStory,
 		setConversation,
 	});
@@ -148,7 +147,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		},
 	});
 	const swipe = (messageId: number, direction: -1 | 1) => actions().changeSwipe(messageId, direction);
-	const edit = (messageId: number, content: string) => actions().editStoryMessage(messageId, content, false);
+	const edit = (messageId: number, content: string) => actions().editStoryMessage(messageId, content, false, window.revision);
 
 	const activeVariantId = (): number | null => {
 		const message = window.messages.find((entry) => entry.id === 10);
@@ -206,10 +205,11 @@ describe("Requested selection", () => {
 		expect(harness.shownVariantId()).toBe(101);
 		harness.publishHistory(101);
 		expect(harness.shownVariantId()).toBe(101);
-		expect(harness.story().requestedSelections.size).toBe(0);
+		harness.publishHistory(102);
+		expect(harness.shownVariantId()).toBe(102);
 	});
 
-	test("rapid Swipes send only the latest Variant, on the revision the first one produced", async () => {
+	test("rapid Swipes coalesce without borrowing the preceding write revision", async () => {
 		const harness = createHarness({ kind: "applied" });
 		const release = harness.hold();
 
@@ -223,9 +223,9 @@ describe("Requested selection", () => {
 		await Promise.all(swipes);
 		expect(harness.commands).toEqual([
 			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } },
-			{ expectedRevision: 6, action: { type: "select-variant", messageId: 10, variantId: 103 } },
+			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 103 } },
 		]);
-		expect(harness.shownVariantId()).toBe(103);
+		expect(harness.shownVariantId()).toBe(101);
 		harness.publishHistory(102);
 		expect(harness.shownVariantId()).toBe(102);
 	});
@@ -252,7 +252,8 @@ describe("Requested selection", () => {
 
 		expect(harness.conversation()?.revision).toBe(6);
 		expect(harness.shownVariantId()).toBe(100);
-		expect(harness.story().requestedSelections.size).toBe(0);
+		harness.publishHistory(102);
+		expect(harness.shownVariantId()).toBe(102);
 	});
 
 	test("every other refused or unreachable Swipe returns to the server's Variant", async () => {
@@ -320,5 +321,6 @@ test("coalescing Swipes across Messages retires the displaced unsent selection",
 	]);
 	harness.publishHistory(100);
 	expect(harness.shownVariantId()).toBe(100);
-	expect(harness.story().requestedSelections.size).toBe(0);
+	harness.publishHistory(102);
+	expect(harness.shownVariantId()).toBe(102);
 });

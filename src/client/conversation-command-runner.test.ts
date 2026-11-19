@@ -242,15 +242,10 @@ test("a refusal between two commands preserves the revision the first command pr
 });
 
 
-test("leaving a visit cancels its queued command before dispatch without blocking the next visit", async () => {
-	const gate = Promise.withResolvers<CommandOutcome>();
+test("an exact command without a displayed base cannot borrow a queued revision", async () => {
 	const events: string[] = [];
-	const visit = new AbortController();
-	const first = run(events, () => gate.promise);
-	const abandoned = run(events, applied(events), {}, { isCurrent: () => !visit.signal.aborted });
-	const nextVisit = run(events, applied(events));
-	visit.abort();
-	gate.resolve({ outcome: "available", value: { outcome: "applied", conversation: summary({ revision: 8 }) } });
-	expect(await Promise.all([first, abandoned, nextVisit])).toEqual([true, false, true]);
-	expect(events).toEqual(["adopt:8", "send:8", "adopt:7"]);
+	const first = run(events, applied(events));
+	const unbased = run(events, applied(events), {}, { exact: true, revision: () => null });
+	expect(await Promise.all([first, unbased])).toEqual([true, false]);
+	expect(events).toEqual(["send:7", "adopt:7", `notice:${CONVERSATION_REVISION_UNAVAILABLE_NOTICE}`]);
 });

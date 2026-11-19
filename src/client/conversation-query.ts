@@ -1,9 +1,11 @@
-import { skipToken, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import type { HistorySnapshot } from "./chat-history";
+import { skipToken, useQuery, useQueryClient, type QueryClient, type QueryKey } from "@tanstack/react-query";
 import { loadConversation, type ConversationSummary } from "./conversation";
 import { variantTextKey } from "./story/variant-text";
 import { boxVersionsBuilt, loadBoxVersions } from "./box-windows/registry";
 
 export const conversationKey = (id: number | null) => ["conversation", id] as const;
+export const historyWindowKey = (refreshKey: QueryKey) => ["history-window", ...refreshKey] as const;
 export const conversationHistoryKey = (id: number) => ["conversation-history", id] as const;
 
 // @approved
@@ -31,8 +33,8 @@ async function invalidateConversationHistory(client: QueryClient, id: number, re
 	await client.refetchQueries({
 		queryKey, type: "active",
 		predicate: (query) => {
-			const refreshedRevision = client.getQueryData<number | null>(query.queryKey);
-			return query.state.status === "success" && refreshedRevision != null && refreshedRevision < revision;
+			const window = client.getQueryData<HistorySnapshot>(historyWindowKey(query.queryKey));
+			return query.state.status === "success" && window !== undefined && window.pages[0].revision < revision;
 		},
 	}, { cancelRefetch: false });
 }
@@ -65,13 +67,13 @@ export const publishConversation = (client: QueryClient, conversation: Conversat
 	else void loadBoxVersions(conversation).then(publish);
 };
 
-export const conversationQuery = (client: QueryClient, id: number, { owner }: { owner?: AbortSignal } = {}) => ({
+export const conversationQuery = (client: QueryClient, id: number) => ({
 	queryKey: conversationKey(id),
 	staleTime: Infinity,
 	refetchOnReconnect: false,
 	refetchOnWindowFocus: "always" as const,
 	queryFn: async ({ signal }: { signal: AbortSignal }) => {
-		const incoming = await cancellableFetch(signal, owner, (cancellation) => loadConversation(id, cancellation));
+		const incoming = await cancellableFetch(signal, undefined, (cancellation) => loadConversation(id, cancellation));
 		if (incoming !== null) await loadBoxVersions(incoming);
 		return adoptConversation(client, incoming, id);
 	},
