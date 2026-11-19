@@ -846,39 +846,78 @@ export const castCharacterConflict = Type.Union([
 	conversationConflict,
 ]);
 
+export const saveParticipantAsCharacterResponse = {
+	200: characterAppliedResponse,
+	409: conversationConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+export const addCharacterToCastResponse = {
+	200: conversationAppliedResponse,
+	409: castCharacterConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+export const conversationForkResponse = {
+	200: forkConversationResponse,
+	409: conversationCommandConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+export const conversationCommandResponse = {
+	200: conversationAppliedResponse,
+	409: conversationCommandConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+export const siblingGenerationResponse = {
+	200: generationAccepted,
+	404: notFoundOutcome,
+	409: notPlayableOutcome,
+	422: invalidOutcome,
+};
+
+export const variantDetailsResponse = { 200: variantDetails, 404: notFoundOutcome, 422: invalidOutcome };
+
+export const generationInspectionResponse = { 200: activeGenerationDetails, 404: notFoundOutcome, 422: invalidOutcome };
+
+export const generationPreviewResponse = {
+	200: generationPreview,
+	404: notFoundOutcome,
+	409: notPlayableOutcome,
+	422: invalidOutcome,
+};
+
+export const conversationDeleteResponse = {
+	200: conversationDeleted,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
 // @approved
-//  The Conversation route families' modeled error unions: the composed
-// 409/404/422 envelopes each family declares, so the client decodes an error
-// body against exactly the union its route models.
-export const conversationConflictErrors = Type.Union([
-	conversationConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+//  Send and Continue share one acceptance response contract.
+export const generationStartResponse = {
+	200: generationAccepted,
+	404: notFoundOutcome,
+	409: generationConflictResponse,
+	422: invalidOutcome,
+};
 
-export const conversationCommandErrors = Type.Union([
-	conversationCommandConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const generationStopResponse = { 200: generationStopped, 404: notFoundOutcome };
 
-export const castCharacterErrors = Type.Union([
-	castCharacterConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const generationsStopResponse = { 200: generationsStopped, 404: notFoundOutcome };
 
-export const generationPreviewErrors = Type.Union([
-	notFoundOutcome,
-	notPlayableOutcome,
-	invalidOutcome,
-]);
+export const variantTextResponse = { 200: variantText, 404: notFoundOutcome };
 
-export const generationStartErrors = Type.Union([
-	generationConflictResponse,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const conversationReadResponse = { 200: conversationSummary, 404: notFoundOutcome };
+
+export const chatHistoryResponse = { 200: chatHistoryPage, 404: notFoundOutcome };
+
+export const conversationGenerationSettingsResponse = { 200: conversationGenerationSettings, 404: notFoundOutcome };
 
 export const addCharacterToCastBody = Type.Object({
 	expectedConversationRevision: Type.Integer(),

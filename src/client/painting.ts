@@ -1,8 +1,9 @@
 import { createContext, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./lib/eden";
-import { requestData, requestOutcome } from "./lib/request-outcome";
-import { illustrationsRead, galleryRead, paintingAccepted, paintingErrors, type PaintingCommand, type IllustrationsRead } from "../shared/contract/painting";
+import { requestData } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
+import { illustrationsResponse, galleryResponse, paintingCommandResponse, type PaintingCommand, type IllustrationsRead } from "../shared/contract/painting";
 import { followsChanges } from "./server-changes";
 
 export const illustrationsKey = (conversationId: number | null) => ["illustrations", conversationId] as const;
@@ -11,15 +12,15 @@ export const useIllustrations = (conversationId: number | null, variantId?: numb
 	select: (read: IllustrationsRead) => variantId === undefined ? read : { ...read, paintings: read.paintings.filter((painting) => painting.variantId === variantId) },
 	queryFn: () => {
 		if (conversationId === null) throw new Error("No Chat selected.");
-		return requestData(api.api.conversations({ id: conversationId }).illustrations.get(), illustrationsRead);
+		return requestData(api.api.conversations({ id: conversationId }).illustrations.get(), illustrationsResponse[200]);
 	},
 });
 export const useGallery = (conversationId: number) => useQuery({
 	queryKey: ["gallery", conversationId], meta: followsChanges,
-	queryFn: () => requestData(api.api.conversations({ id: conversationId }).gallery.get(), galleryRead),
+	queryFn: () => requestData(api.api.conversations({ id: conversationId }).gallery.get(), galleryResponse[200]),
 });
 
-const commandPainting = (conversationId: number, command: PaintingCommand) => requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingAccepted, paintingErrors);
+const commandPainting = (conversationId: number, command: PaintingCommand) => requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingCommandResponse);
 
 export function usePaintingCommand(conversationId: number) {
 	const client = useQueryClient();

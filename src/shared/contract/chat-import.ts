@@ -1,6 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { conversationSummary } from "./conversation-schema";
-import { invalidOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome } from "./outcomes";
 
 const importSuggestion = Type.Object({
 	characterId: Type.Integer(),
@@ -78,7 +78,7 @@ const chatImportPreview = Type.Object({
 
 export type ChatImportPreview = Static<typeof chatImportPreview>;
 
-export const importStagedResponse = Type.Object({
+const importStagedResponse = Type.Object({
 	outcome: Type.Literal("staged"),
 	token: Type.String(),
 	preview: chatImportPreview,
@@ -159,7 +159,7 @@ const chatImportReceipt = Type.Object({
 
 export type ChatImportReceipt = Static<typeof chatImportReceipt>;
 
-export const importCommittedResponse = Type.Object({
+const importCommittedResponse = Type.Object({
 	outcome: Type.Literal("committed"),
 	conversation: conversationSummary,
 	receipt: chatImportReceipt,
@@ -263,13 +263,13 @@ export const importTokenParams = Type.Object({ token: Type.String() });
 
 export const importPreviewBody = Type.Object({ sha256: Type.String() });
 
-export const importPreviewResponse = Type.Object({
+const importPreviewResponse = Type.Object({
 	outcome: Type.Literal("available"),
 	preview: chatImportPreview,
 });
 
 // Expired and unavailable staged handles are both gone-state 410 outcomes.
-export const importGoneResponse = Type.Union([
+const importGoneResponse = Type.Union([
 	Type.Object({ outcome: Type.Literal("expired") }),
 	Type.Object({
 		outcome: Type.Literal("unavailable"),
@@ -277,20 +277,18 @@ export const importGoneResponse = Type.Union([
 	}),
 ]);
 
-export const importDiscardedResponse = Type.Object({
+const importDiscardedResponse = Type.Object({
 	outcome: Type.Literal("discarded"),
 });
 
-export const importCleanedUpResponse = Type.Object({
+const importCleanedUpResponse = Type.Object({
 	outcome: Type.Literal("cleaned-up"),
 	reason: cleanupReason,
 });
 
-// @approved
-//  The Chat Import command family's modeled error union: the composed
-// 410/422 envelopes every staged route declares, so the client decodes an
-// error body against exactly that union.
-export const chatImportCommandErrors = Type.Union([
-	importGoneResponse,
-	invalidOutcome,
-]);
+export const chatImportStageResponse = { 200: importStagedResponse, 422: invalidOutcome };
+export const chatImportPreviewResponse = { 200: importPreviewResponse, 410: importGoneResponse, 422: invalidOutcome };
+export const chatImportCommitResponse = { 200: importCommittedResponse, 410: importGoneResponse, 422: invalidOutcome };
+export const chatImportDiscardResponse = { 200: importDiscardedResponse };
+export const chatImportDetailsResponse = { 200: chatImportDetails, 404: notFoundOutcome };
+export const chatImportSourceResponse = { 404: notFoundOutcome, 410: importCleanedUpResponse };
