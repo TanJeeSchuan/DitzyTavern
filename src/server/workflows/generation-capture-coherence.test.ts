@@ -201,9 +201,9 @@ describe("generation capture coherence", () => {
 			return Response.json({ answers: { trigger_0: { type: "noul", noul: 0.9 } } });
 		};
 		const input = { database: state.database, conversationId: state.conversationId, preparationFetch };
-		const older = createGenerationPreviewAsync(state.database, {connection: null, ...input, kind: "send", content: "older" });
+		const older = createGenerationPreviewAsync(state.database, {connection: null, ...input, target: { kind: "send", content: "older" } });
 		await firstReady;
-		const newer = await createGenerationPreviewAsync(state.database, {connection: null, ...input, kind: "send", content: "newer" });
+		const newer = await createGenerationPreviewAsync(state.database, {connection: null, ...input, target: { kind: "send", content: "newer" } });
 		releaseFirst();
 		await older;
 		expect(previewRecordFor(state.database, newer.id, state.conversationId).id).toBe(newer.id);
@@ -213,8 +213,8 @@ describe("generation capture coherence", () => {
 		const second = setup();
 		databases.push(first.database, second.database);
 		expect(first.conversationId).toBe(second.conversationId);
-		const left = await createGenerationPreviewAsync(first.database, {connection: null, conversationId: first.conversationId, kind: "send", content: "First application." });
-		const right = await createGenerationPreviewAsync(second.database, {connection: null, conversationId: second.conversationId, kind: "send", content: "Second application." });
+		const left = await createGenerationPreviewAsync(first.database, {connection: null, conversationId: first.conversationId, target: { kind: "send", content: "First application." } });
+		const right = await createGenerationPreviewAsync(second.database, {connection: null, conversationId: second.conversationId, target: { kind: "send", content: "Second application." } });
 		expect(previewRecordFor(first.database, left.id, first.conversationId).id).toBe(left.id);
 		expect(previewRecordFor(second.database, right.id, second.conversationId).id).toBe(right.id);
 	});

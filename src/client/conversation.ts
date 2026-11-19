@@ -1,13 +1,11 @@
 import { api } from "./lib/eden";
-import type { BoxMoves } from "../shared/contract/box-generation";
 import type {
 	ConversationAction,
 	ConversationGenerationSettings,
 	ConversationSummary,
 	ForkConversationBody,
 	GenerationPreviewBody,
-	GenerationFormattingContext,
-	PromptPlan,
+	GenerationBody,
 } from "../shared/contract/conversation-schema";
 import {
 	addCharacterToCastResponse,
@@ -21,7 +19,6 @@ import {
 	generationStopResponse,
 	generationsStopResponse,
 	saveParticipantAsCharacterResponse,
-	siblingGenerationResponse,
 	variantDetailsResponse,
 } from "../shared/contract/conversation-schema";
 import { macroVariablesEditResponse, macroVariablesReadResponse, type MacroValue } from "../shared/contract/macro-variables";
@@ -217,49 +214,9 @@ export async function previewConversationGeneration(
 //  stream. Call subscribeConversationGeneration separately for each observing
 // client, including clients that reconnect after a reload.
 
-export async function startConversationGeneration(
-	conversationId: number,
-	expectedRevision: number,
-	content: string,
-	moves: BoxMoves | undefined,
-	formatting?: GenerationFormattingContext,
-	preview?: { previewId: string; promptPlan: PromptPlan },
-	signal?: AbortSignal,
-) {
+export async function startConversationGeneration(conversationId: number, input: GenerationBody, signal?: AbortSignal) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).generations.post({ kind: "send", expectedRevision, content, moves, ...formatting, ...preview }, { fetch: { signal } }),
-		generationStartResponse,
-	);
-}
-
-export async function startConversationSiblingGeneration(
-	conversationId: number,
-	messageId: number,
-	formatting?: GenerationFormattingContext,
-	preview?: { previewId: string; promptPlan: PromptPlan },
-	signal?: AbortSignal,
-	reroll?: boolean,
-) {
-	return requestOutcome(
-		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
-			kind: "sibling",
-			reroll,
-			...formatting,
-			...preview,
-		}, { fetch: { signal } }),
-		siblingGenerationResponse,
-	);
-}
-
-export async function startConversationContinuationGeneration(
-	conversationId: number,
-	expectedRevision: number,
-	formatting?: GenerationFormattingContext,
-	preview?: { previewId: string; promptPlan: PromptPlan },
-	signal?: AbortSignal,
-) {
-	return requestOutcome(
-		api.api.conversations({ id: conversationId }).continue.generations.post({ kind: "continuation", expectedRevision, ...formatting, ...preview }, { fetch: { signal } }),
+		api.api.conversations({ id: conversationId }).generations.post(input, { fetch: { signal } }),
 		generationStartResponse,
 	);
 }

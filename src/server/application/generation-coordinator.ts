@@ -162,6 +162,7 @@ export class GenerationCoordinator {
 			start: ({ database, modelClient, connection, onBeforeTerminal, callbacks }) =>
 				startServerOwnedGeneration(database, {
 					...input,
+					expectedRevision: input.preview === undefined && input.target.kind !== "sibling" ? input.expectedRevision : undefined,
 					modelClient,
 					connection,
 					preparationFetch: this.options.fetch,

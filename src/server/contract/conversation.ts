@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { forkConversation } from "../conversation";
 import { chatBox, loadBoxVersion, withBoxOperations } from "../box/registry";
-import { presentDomainError, type ResponseSchemas } from "./domain-error";
+import { presentDomainError } from "./domain-error";
 import {
 	readConversationSummary,
 	readConversationGenerationSettings,
@@ -51,22 +51,18 @@ import {
 	generationStopResponse,
 	generationsStopResponse,
 	saveParticipantAsCharacterResponse,
-	siblingGenerationResponse,
 	variantDetailsResponse,
 	variantTextResponse,
 	addCharacterToCastBody,
 	conversationCommandBody,
 	forkConversationBody,
 	conversationIdParams,
-	continuationBody,
-	siblingGenerationBody,
 	type PromptPlan,
 	generationBody,
 	generationPreviewBody,
 	generationEventsQuery,
 	generationIdParams,
 	historyPageQuery,
-	messageIdParams,
 	participantIdParams,
 	saveParticipantAsCharacterBody,
 	variantIdParams,
@@ -83,29 +79,6 @@ import {
 	macroVariablesQuery,
 } from "../../shared/contract/macro-variables";
 import { generationSubscriptionEvents } from "./generation-sse";
-
-async function acceptanceResponse<S extends ResponseSchemas>(
-	conversationId: number,
-	start: () => Promise<{ readonly accepted: {
-		readonly generationId: number;
-		readonly messageId: number;
-		readonly provisionalVariantId: number;
-	} }>,
-	responses: S,
-) {
-	try {
-		const { accepted } = await start();
-		return {
-			outcome: "accepted" as const,
-			generationId: accepted.generationId,
-			conversationId,
-			messageId: accepted.messageId,
-			variantId: accepted.provisionalVariantId,
-		};
-	} catch (error) {
-		return presentDomainError(error, responses);
-	}
-}
 
 const previewUseFor = (
 	database: Database,
@@ -194,43 +167,19 @@ export const createConversationRoutes = (
 			},
 		)
 		.post(
-			"/api/conversations/:id/continue/generations",
-			async ({ params, body }) => acceptanceResponse(
-				params.id,
-				() => generationCoordinator.startGeneration({
-					conversationId: params.id,
-					expectedRevision: body.previewId === undefined ? body.expectedRevision : undefined,
-					formatting: { timeZone: body.timeZone, locale: body.locale },
-					target: { kind: body.kind },
-					preview: previewUseFor(database, params.id, body.previewId, body.promptPlan),
-				}),
-				generationStartResponse,
-			),
-			{
-				params: conversationIdParams,
-				body: continuationBody,
-				response: generationStartResponse,
-			},
-		)
-		.post(
 			"/api/conversations/:id/generations/preview",
 			async ({ params, body }) => {
 				try {
 					const settings = readConversationGenerationSettings(database, params.id);
 					if (settings === undefined) throw new ConversationNotFoundError(params.id);
-					const common = {
+					const preview = await createGenerationPreviewAsync(database, {
 						connection: generationCoordinator.resolveTransport(database, settings.connectionProfileId, true)?.connection ?? null,
 						conversationId: params.id,
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
 						preparationFetch: options.fetch,
-					};
-					const input = body.kind === "send"
-						? { ...common, kind: body.kind, content: body.content, moves: body.moves }
-						: body.kind === "sibling"
-							? { ...common, kind: body.kind, messageId: body.messageId, reroll: body.reroll }
-							: { ...common, kind: body.kind };
-					const preview = await createGenerationPreviewAsync(database, input);
+						target: body.target,
+					});
 					const capture = preview.capture;
 					const { human, model } = capture.preparation.derivation;
 					const { breakdown, fits } = capture.plan.budget;
@@ -401,17 +350,27 @@ export const createConversationRoutes = (
 		)
 		.post(
 			"/api/conversations/:id/generations",
-			async ({ params, body }) => acceptanceResponse(
-				params.id,
-				() => generationCoordinator.startGeneration({
-					conversationId: params.id,
-					expectedRevision: body.previewId === undefined ? body.expectedRevision : undefined,
-					target: { kind: body.kind, content: body.content, moves: body.moves },
-					formatting: { timeZone: body.timeZone, locale: body.locale },
-					preview: previewUseFor(database, params.id, body.previewId, body.promptPlan),
-				}),
-				generationStartResponse,
-			),
+			async ({ params, body }) => {
+				try {
+					const { expectedRevision, timeZone, locale, previewId, promptPlan, ...target } = { expectedRevision: undefined, ...body };
+					const { accepted } = await generationCoordinator.startGeneration({
+						conversationId: params.id,
+						expectedRevision,
+						target,
+						formatting: { timeZone, locale },
+						preview: previewUseFor(database, params.id, previewId, promptPlan),
+					});
+					return {
+						outcome: "accepted" as const,
+						generationId: accepted.generationId,
+						conversationId: params.id,
+						messageId: accepted.messageId,
+						variantId: accepted.provisionalVariantId,
+					};
+				} catch (error) {
+					return presentDomainError(error, generationStartResponse);
+				}
+			},
 			{
 				params: conversationIdParams,
 				body: generationBody,
@@ -433,31 +392,6 @@ export const createConversationRoutes = (
 				query: generationEventsQuery,
 				response: t.Any(),
 			},
-		)
-		// @approved
-		//  A targeted Swipe creates one server-owned Provisional Variant
-		// on an existing Message. The request is only an observer;
-		// closing it never aborts the sibling provider attempt.
-		.post(
-			"/api/conversations/:id/messages/:messageId/sibling/generations",
-			async ({ params, body }) =>
-				acceptanceResponse(
-					params.id,
-					() => generationCoordinator.startGeneration({
-						conversationId: params.id,
-						target: { kind: body.kind, messageId: params.messageId, reroll: body.reroll },
-						formatting: { timeZone: body.timeZone, locale: body.locale },
-						preview: body.previewId === undefined
-							? undefined
-							: previewUseFor(database, params.id, body.previewId, body.promptPlan),
-					}),
-					siblingGenerationResponse,
-				),
-				{
-					params: messageIdParams,
-					body: siblingGenerationBody,
-					response: siblingGenerationResponse,
-				},
 		)
 		// @approved
 		//  Revisioned Conversation commands remain separate from the

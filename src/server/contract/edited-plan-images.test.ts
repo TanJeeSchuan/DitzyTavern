@@ -22,7 +22,7 @@ const addImage = (plan: PromptPlan, content: string): PromptPlan => ({
 });
 
 const inspect = async (app: ReturnType<typeof createContract>, id: number): Promise<GenerationPreview> => {
-	const response = await post(app, `/conversations/${id}/generations/preview`, { kind: "send", content: "Look" });
+	const response = await post(app, `/conversations/${id}/generations/preview`, { target: { kind: "send", content: "Look" } });
 	expect(response.status).toBe(200);
 	return Value.Decode(generationPreview, await response.json());
 };

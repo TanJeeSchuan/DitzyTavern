@@ -30,10 +30,9 @@ test("a Brief uses its Paint Preset, the last N selected Messages ending at the 
 			{ reference: "brief-instruction", enabled: true, role: "assistant", content: "Paint {{self}} in charcoal on {{date}}. {{setvar::temporary::changed}}" },
 			{ reference: "instruction", enabled: true, role: "system", name: "End", content: "Last preset block." },
 		] });
-		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "author-note", setup: "This nonempty Box note must not reach the Brief." } });
-		const paintings = createPaintingModule(database);
-		paintings.command(chat.id, { type: "select-paint-preset", paintPresetId: preset.id });
-		paintings.command(chat.id, { type: "set-brief-message-count", briefMessageCount: 2 });
+		const configured = executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "author-note", setup: "This nonempty Box note must not reach the Brief." } });
+		const paint = executeConversationCommand(database, { conversationId: chat.id, expectedRevision: configured.revision, action: { type: "select-paint-preset", paintPresetId: preset.id } });
+		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: paint.revision, action: { type: "set-brief-message-count", briefMessageCount: 2 } });
 		database.exec(`INSERT INTO lorebook (id, name) VALUES (1, 'River');
 			INSERT INTO lorebook_entry (lorebook_id, position, title, content, keywords_json) VALUES (1, 1, 'Lantern', 'The lantern is green.', '["lantern"]'), (1, 2, 'Future', 'Wrong future Lore.', '["Later"]');`);
 		database.query("INSERT INTO conversation_lorebook_attachment (conversation_id, lorebook_id) VALUES (?, 1)").run(chat.id);
@@ -166,9 +165,8 @@ test("a Brief pins its target Variant after a swipe and reads only its own prese
 			if (!entry) throw new Error("Macro fixture missing");
 			database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, ?, ?, ?)").run(variantId, entry.namespace, entry.key, entry.value);
 		}
-		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: selected.revision, action: { type: "select-variant", messageId: message.id, variantId: swiped.id } });
-		const paintings = createPaintingModule(database);
-		paintings.command(chat.id, { type: "select-paint-preset", paintPresetId: preset.id });
+		const selection = executeConversationCommand(database, { conversationId: chat.id, expectedRevision: selected.revision, action: { type: "select-variant", messageId: message.id, variantId: swiped.id } });
+		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: selection.revision, action: { type: "select-paint-preset", paintPresetId: preset.id } });
 		const before = requireSnapshot(database, chat.id);
 		const rows = database.query("SELECT * FROM message_variant_data").all();
 		const requests: CapturedRequest[] = [];
@@ -180,13 +178,15 @@ test("a Brief pins its target Variant after a swipe and reads only its own prese
 			{ role: "user", content: "Tone: warm." },
 			{ role: "user", content: "Paint this." },
 		]);
+		expect(requireSnapshot(database, chat.id)).toEqual(before);
 		const paintOnly = importNativePromptPreset(database, { name: "Paint only", slots: [
 			{ reference: "brief-instruction", enabled: true, role: "user", content: "Before: {{getvar::tone}}; local: {{setvar::local::ink}}{{getvar::local}}." },
 		] });
-		paintings.command(chat.id, { type: "select-paint-preset", paintPresetId: paintOnly.id });
+		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: before.revision, action: { type: "select-paint-preset", paintPresetId: paintOnly.id } });
+		const beforePaintOnly = requireSnapshot(database, chat.id);
 		await write();
 		expect(requests[1]!.messages[0]).toEqual({ role: "user", content: "Before: ; local: ink." });
-		expect(requireSnapshot(database, chat.id)).toEqual(before);
+		expect(requireSnapshot(database, chat.id)).toEqual(beforePaintOnly);
 		expect(database.query("SELECT * FROM message_variant_data").all()).toEqual(rows);
 	} finally { database.close(); }
 });

@@ -38,7 +38,7 @@ const swipePastLast = async (page: Page, llm: E2eServer) => {
 	const reply = story(page).locator("article[data-message-id]").last();
 	await expect(reply.getByText("First take.")).toBeVisible();
 	await expect(page.getByRole("button", { name: "Generate Variant" })).toBeVisible();
-	const accepting = holdPost(page, "**/sibling/generations");
+	const accepting = holdPost(page, "**/api/conversations/*/generations");
 	await reply.getByRole("button", { name: "New Swipe" }).click();
 	const route = await accepting;
 	await expect(reply.getByText("2 of 2")).toBeVisible();

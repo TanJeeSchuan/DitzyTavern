@@ -10,7 +10,7 @@ import {
 import { genericDataNamespacePattern } from "../import-data";
 import { boxSetups, boxStates, promptBoxReference } from "./box";
 import { commitBoxAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction, upgradeBoxAction } from "./box-actions";
-import { boxMoves, boxTraces, type BoxMoves } from "./box-generation";
+import { boxMoves, boxTraces } from "./box-generation";
 import { imageHash, portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
@@ -595,6 +595,10 @@ const selectPromptPresetAction = Type.Object({
 	promptPresetId: Type.Integer(),
 });
 
+export const briefMessageCount = Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]);
+const selectPaintPresetAction = Type.Object({ type: Type.Literal("select-paint-preset"), paintPresetId: Type.Integer() });
+const setBriefMessageCountAction = Type.Object({ type: Type.Literal("set-brief-message-count"), briefMessageCount });
+
 const conversationCommandAction = Type.Union([
 	createMessageAction,
 	createVariantAction,
@@ -615,6 +619,8 @@ const conversationCommandAction = Type.Union([
 	assignControlAction,
 	removeParticipantAction,
 	selectPromptPresetAction,
+	selectPaintPresetAction,
+	setBriefMessageCountAction,
 	renameConversationAction,
 	setBackgroundAction,
 	setBoxSetupAction,
@@ -658,77 +664,35 @@ export const generationFormattingContext = Type.Object({
 
 export type GenerationFormattingContext = Static<typeof generationFormattingContext>;
 
-const inspectedPlanFields = {
+const sendTarget = Type.Object({
+	kind: Type.Literal("send"),
+	content: Type.String(),
+	moves: Type.Optional(boxMoves),
+});
+const continuationTarget = Type.Object({ kind: Type.Literal("continuation") });
+const siblingTarget = Type.Object({
+	kind: Type.Literal("sibling"),
+	messageId: Type.Integer(),
+	reroll: Type.Optional(Type.Boolean()),
+});
+const generationTarget = Type.Union([sendTarget, continuationTarget, siblingTarget]);
+export type GenerationTarget = Static<typeof generationTarget>;
+
+const generationStartOptions = {
 	previewId: Type.Optional(Type.String()),
 	promptPlan: Type.Optional(promptPlan),
 	...generationFormattingContext.properties,
 };
+const revisionedStartOptions = { ...generationStartOptions, expectedRevision: Type.Integer() };
 
-// Send carries the client draft and the Conversation revision it was based
-// on. Generation acceptance is deliberately a complete typed operation: an
-// omitted revision or draft must never fall through to an older request shape.
-export const generationBody = Type.Object({
-	kind: Type.Literal("send"),
-	expectedRevision: Type.Integer(),
-	content: Type.String(),
-	moves: Type.Optional(boxMoves),
-	// A preview token carries the server-captured macro clock, random draws,
-	// and pending writes. The optional plan is the user's direct edit of that
-	// capture; it is never treated as provider JSON.
-	...inspectedPlanFields,
-});
-
-// @approved
-//  Continue carries only the Conversation revision. The server derives the
-// selected terminal Message and current Control pair from its snapshot.
-export const continuationBody = Type.Object({
-	kind: Type.Literal("continuation"),
-	expectedRevision: Type.Integer(),
-	...inspectedPlanFields,
-});
-
+export const generationBody = Type.Union([
+	Type.Object({ ...sendTarget.properties, ...revisionedStartOptions }),
+	Type.Object({ ...continuationTarget.properties, ...revisionedStartOptions }),
+	Type.Object({ ...siblingTarget.properties, ...generationStartOptions }),
+]);
 export type GenerationBody = Static<typeof generationBody>;
 
-export const siblingGenerationBody = Type.Object({
-	reroll: Type.Optional(Type.Boolean()),
-	kind: Type.Literal("sibling"),
-	...inspectedPlanFields,
-});
-
-const generationPreviewKind = Type.Union([
-	Type.Literal("send"),
-	Type.Literal("continuation"),
-	Type.Literal("sibling"),
-]);
-
-export const generationPreviewBody = Type.Union([
-	Type.Object({
-		kind: Type.Literal("send"),
-		content: Type.String(),
-		moves: Type.Optional(boxMoves),
-		...generationFormattingContext.properties,
-	}),
-	Type.Object({
-		kind: Type.Literal("continuation"),
-		...generationFormattingContext.properties,
-	}),
-	Type.Object({
-		kind: Type.Literal("sibling"),
-		messageId: Type.Integer(),
-		reroll: Type.Optional(Type.Boolean()),
-		...generationFormattingContext.properties,
-	}),
-]);
-
-// @approved
-//  The one Generation attempt vocabulary: the kind discriminant of the
-// Preview body above. Every capture, preview record, lifecycle policy, and
-// server-owned wrapper dispatches on this union instead of restating the
-// kinds, so the wire vocabulary and the server vocabulary cannot drift.
-export type GenerationTarget =
-	| { readonly kind: "send"; readonly content: string; readonly moves?: BoxMoves | undefined }
-	| { readonly kind: "continuation" }
-	| { readonly kind: "sibling"; readonly messageId: number; readonly reroll?: boolean | undefined };
+export const generationPreviewBody = Type.Object({ target: generationTarget, ...generationFormattingContext.properties });
 
 const generationPreviewBudget = Type.Object({
 	tokenEstimate: Type.Integer(),
@@ -743,7 +707,7 @@ export const generationPreview = Type.Object({
 	outcome: Type.Literal("available"),
 	previewId: Type.String(),
 	conversationId: Type.Integer(),
-	kind: generationPreviewKind,
+	kind: Type.Union(generationTarget.anyOf.map(({ properties }) => properties.kind)),
 	promptPlan,
 	participants: Type.Object({
 		human: Type.Union([Type.Null(), Type.Object({ id: Type.Integer(), name: Type.String() })]),
@@ -792,11 +756,6 @@ export const conversationDeleted = Type.Object({ outcome: Type.Literal("deleted"
 export const generationIdParams = Type.Object({
 	id: numericWire,
 	generationId: numericWire,
-});
-
-export const messageIdParams = Type.Object({
-	id: numericWire,
-	messageId: numericWire,
 });
 
 export const variantIdParams = Type.Object({
@@ -874,13 +833,6 @@ export const conversationCommandResponse = {
 	422: invalidOutcome,
 };
 
-export const siblingGenerationResponse = {
-	200: generationAccepted,
-	404: notFoundOutcome,
-	409: notPlayableOutcome,
-	422: invalidOutcome,
-};
-
 export const variantDetailsResponse = { 200: variantDetails, 404: notFoundOutcome, 422: invalidOutcome };
 
 export const generationInspectionResponse = { 200: activeGenerationDetails, 404: notFoundOutcome, 422: invalidOutcome };
@@ -898,8 +850,6 @@ export const conversationDeleteResponse = {
 	422: invalidOutcome,
 };
 
-// @approved
-//  Send and Continue share one acceptance response contract.
 export const generationStartResponse = {
 	200: generationAccepted,
 	404: notFoundOutcome,

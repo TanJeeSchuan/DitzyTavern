@@ -476,8 +476,8 @@ describe("Generation transport contract", () => {
 			fetch: async () => streamResponse(),
 		});
 		const response = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
-			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling" }) },
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling", messageId: target.id }) },
 		));
 		// SAFETY: this contract test controls the typed acceptance response.
 		const accepted = await response.json() as { generationId: number };
@@ -522,8 +522,8 @@ describe("Generation transport contract", () => {
 			},
 		});
 		const startSibling = () => app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/messages/${target.id}/sibling/generations`,
-			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling" }) },
+			`http://localhost/api/conversations/${conversation.id}/generations`,
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "sibling", messageId: target.id }) },
 		));
 		const firstResponse = await startSibling();
 		const secondResponse = await startSibling();
