@@ -299,7 +299,7 @@ test("sending an unchanged preview uses the same fold and dependency context as 
 		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'A record.', '2026-01-01', 1) RETURNING id").get(message.id)!;
 		writeAutomaticRecord(drizzle(database), boxDescriptor("probe"), instance, variant.id, { n: 1 }, sha256("A record."));
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 		const post = (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));

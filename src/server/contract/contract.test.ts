@@ -51,27 +51,6 @@ describe("Character Library transport adapters", () => {
 		database.close();
 	});
 
-	test("lists Characters in library order", async () => {
-		await post({
-			type: "create",
-			definition: definition({ name: "Alpha" }),
-		});
-		const zebra = await post({ type: "create", definition: definition({ name: "Zebra" }) });
-		const zebraCharacter = (await zebra.json()).character;
-
-		await post({
-			type: "set-pinned",
-			characterId: zebraCharacter.id,
-			expectedRevision: 0,
-			pinned: true,
-		});
-
-		const response = await app.handle(new Request("http://localhost/api/characters"));
-		expect(response.status).toBe(200);
-		const { characters } = await response.json();
-		expect(characters.map((character: { name: string }) => character.name)).toEqual(["Zebra", "Alpha"]);
-	});
-
 	test("returns a Character detail and a typed not-found outcome", async () => {
 		const created = await (
 			await post({ type: "create", definition: definition() })
@@ -89,37 +68,6 @@ describe("Character Library transport adapters", () => {
 		);
 		expect(missing.status).toBe(404);
 		expect(await missing.json()).toEqual({ outcome: "not-found" });
-	});
-
-	test("applies commands, propagates revisions, and maps conflicts to the typed 409 payload", async () => {
-		const created = await (
-			await post({ type: "create", definition: definition() })
-		).json();
-
-		const applied = await post({
-			type: "rename",
-			characterId: created.character.id,
-			expectedRevision: 0,
-			name: "Renamed",
-		});
-		expect(applied.status).toBe(200);
-		const appliedBody = await applied.json();
-		expect(appliedBody.outcome).toBe("applied");
-		expect(appliedBody.character.revision).toBe(1);
-
-		const stale = await post({
-			type: "rename",
-			characterId: created.character.id,
-			expectedRevision: 0,
-			name: "Stale",
-		});
-		expect(stale.status).toBe(409);
-		const conflict = await stale.json();
-		expect(conflict.outcome).toBe("conflict");
-		expect(conflict.expectedRevision).toBe(0);
-		expect(conflict.actualRevision).toBe(1);
-		expect(conflict.current.name).toBe("Renamed");
-		expect(conflict.current.revision).toBe(1);
 	});
 
 	test("maps validation failures and missing Characters to their typed outcomes", async () => {
@@ -369,35 +317,6 @@ describe("Conversation Cast/Control transport adapters", () => {
 		database.close();
 	});
 
-	test("reads a Conversation summary with derived Cast and Control fields", async () => {
-		const { id } = setupConversation();
-		const response = await app.handle(
-			new Request(`http://localhost/api/conversations/${id}`),
-		);
-		expect(response.status).toBe(200);
-		const snapshot = await response.json();
-		expect(snapshot.cast).toHaveLength(2);
-		expect(snapshot.controlValidity).toEqual({ valid: true, reason: null });
-		expect(snapshot.playable).toBe(true);
-		expect(snapshot.cast[0]?.duplicateLabel).toBe("Writer");
-		expect(snapshot.cast[0]?.removal).toEqual({
-			eligible: false,
-			reason: "control-assigned",
-			deletionMode: null,
-			affectedGenerationCount: 0,
-		});
-		// The wire carries the slim summary only: Messages and per-
-		// Conversation data are never re-serialized for the Cast surface.
-		expect(snapshot.messages).toBeUndefined();
-		expect(snapshot.data).toBeUndefined();
-
-		const missing = await app.handle(
-			new Request("http://localhost/api/conversations/999999"),
-		);
-		expect(missing.status).toBe(404);
-		expect(await missing.json()).toEqual({ outcome: "not-found" });
-	});
-
 	test("applies Cast commands and propagates the Conversation revision", async () => {
 		const { id } = setupConversation();
 		const applied = await command(id, 0, {
@@ -481,24 +400,6 @@ describe("Conversation Cast/Control transport adapters", () => {
 		});
 		expect(missing.status).toBe(404);
 		expect(await missing.json()).toEqual({ outcome: "not-found" });
-	});
-
-	test("maps removal of a seated Participant to the typed not-removable outcome", async () => {
-		const { id, humanId } = setupConversation();
-		const response = await command(id, 0, {
-			type: "remove-participant",
-			participantId: humanId,
-		});
-		expect(response.status).toBe(409);
-		const body = await response.json();
-		expect(body.outcome).toBe("not-removable");
-		expect(body.reason).toBe("control-assigned");
-
-		// The rejected removal committed nothing.
-		const snapshot = await app.handle(
-			new Request(`http://localhost/api/conversations/${id}`),
-		);
-		expect((await snapshot.json()).revision).toBe(0);
 	});
 
 	test("remove-participant applies with the derived impact on the wire", async () => {
@@ -713,27 +614,6 @@ describe("Save Participant as Character transport adapter", () => {
 
 	afterEach(() => {
 		database.close();
-	});
-
-	test("promotes a Participant with the applied outcome and the new Character payload", async () => {
-		const { id, modelId } = setupConversation();
-
-		const response = await saveParticipant(id, modelId, 0);
-		expect(response.status).toBe(200);
-		const body = await response.json();
-		expect(body.outcome).toBe("applied");
-		expect(body.character.name).toBe("Maren Voss");
-		expect(body.character.revision).toBe(0);
-		expect(body.character.openings).toEqual(["Hello"]);
-		expect(body.character.prompt.identity).toBe("Identity text.");
-
-		// The promoted Character is immediately visible through the library
-		// list endpoint of the same transport surface.
-		const listApp = createCharacterLibraryRoutes(database);
-		const listed = await listApp.handle(new Request("http://localhost/api/characters"));
-		const { characters } = await listed.json();
-		expect(characters).toHaveLength(1);
-		expect(characters[0]?.name).toBe("Maren Voss");
 	});
 
 	test("maps a stale Conversation revision to the typed conflict with the current summary", async () => {

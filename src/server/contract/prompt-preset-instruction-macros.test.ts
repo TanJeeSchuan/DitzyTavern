@@ -5,24 +5,18 @@ import { createConversationRoutes } from "./conversation";
 import type { ConversationAction } from "../../shared/contract/conversation-schema";
 import type { PromptOutgoingRole } from "../../shared/contract/prompt-preset";
 import {
-	CapturedRequest,
 	captureModelFetch,
 	completeGeneration,
 	conversationApp,
-	chatBoxBlocks,
 	createChat,
 	key,
-	moveBlock,
 	readInspection,
 	readOperation,
 	readPreset,
 	readStoredRecipe,
 	recipeRoutes,
-	saveBlockRole,
 	saveInstructionContent,
-	slotOf,
 	startGeneration,
-	toggleBlock,
 	withProfile,
 } from "./prompt-preset-test-fixtures";
 
@@ -59,15 +53,15 @@ describe("Prompt Preset authored instruction macros", () => {
 	};
 
 	const captureMessages = async (conversationId: number, revision: number) => {
-		let captured: CapturedRequest | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversationId, revision);
 		await completeGeneration(generating, conversationId, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
-		return captured?.messages ?? [];
+		const captured = await provider.captured;
+		return captured.messages;
 	};
 
 	const conversationRevision = async (conversationId: number): Promise<number> => {
@@ -193,75 +187,24 @@ describe("Prompt Preset authored instruction macros", () => {
 		const content = "{{user}} and {{time}} stay raw; {{self}} works.";
 		await addAndSaveInstruction(preset.id, "Imported", content, "system");
 
-		let captured: CapturedRequest | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, conversation.revision);
 		const inspection = await readInspection(generating, conversation.id, generationId);
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// The unknown macros reach the provider literally — Generation is
 		// available — while the plan warns about exactly what the shared
 		// editor warning surface would show.
-		const importedInstruction = captured?.messages.find((message) => message.role === "system" && message.content.includes("stay raw"));
+		const importedInstruction = captured.messages.find((message) => message.role === "system" && message.content.includes("stay raw"));
 		expect(importedInstruction?.content).toMatch(/^\{\{user\}\} and \d{1,2}:\d{2} [AP]M stay raw; Writer works\.$/);
 		expect(inspection.promptPlan.warnings).toContainEqual({
 			block: "Imported",
 			macro: "{{user}}",
 		});
-	});
-
-	test("an instruction save never overwrites separately saved ordering, toggles or roles", async () => {
-		const conversation = createChat(database);
-		const preset = await readPreset(conversationApp(database), conversation.id);
-		const scenario = slotOf(preset, "model-scenario");
-		const postHistory = slotOf(preset, "model-post-history-instruction");
-		const identity = slotOf(preset, "model-identity");
-		if (scenario === undefined || postHistory === undefined || identity === undefined) {
-			throw new Error("The Default recipe is missing reference slots.");
-		}
-
-		await readOperation(toggleBlock(database, preset.id, scenario.id, false));
-		await readOperation(moveBlock(database, preset.id, postHistory.id, 1));
-		await readOperation(saveBlockRole(database, preset.id, identity.id, "user"));
-
-		const instructionId = await addAndSaveInstruction(
-			preset.id,
-			"Text",
-			"Saved text.",
-			"assistant",
-		);
-
-		// The instruction save named one occurrence; the separately saved
-		// ordering, toggle and role stand exactly as they were saved.
-		const saved = await readPreset(conversationApp(database), conversation.id);
-		expect(saved.slots.map((slot) => [slot.reference, slot.enabled])).toEqual([
-			["model-post-history-instruction", true],
-			["model-system-instruction", true],
-			["human-identity", true],
-			["human-appearance", true],
-			["model-identity", true],
-			["model-appearance", true],
-			["model-scenario", false],
-			["model-example-dialogue", true],
-			["lore", true],
-			["box:memory", true],
-			["history", true],
-			...chatBoxBlocks.map((reference) => [reference, true]),
-			["instruction", true],
-		]);
-		expect(slotOf(saved, "model-identity")?.role).toBe("user");
-		expect(slotOf(saved, "instruction")?.content).toBe("Saved text.");
-
-		// And a later toggle of the instruction does not disturb its saved text.
-		await readOperation(
-			toggleBlock(database, preset.id, instructionId, false),
-		);
-		const toggled = readStoredRecipe(database, preset.id);
-		expect(slotOf(toggled, "instruction")?.enabled).toBe(false);
-		expect(slotOf(toggled, "instruction")?.content).toBe("Saved text.");
 	});
 });

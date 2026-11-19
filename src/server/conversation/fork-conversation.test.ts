@@ -1,8 +1,7 @@
 import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { openObservedDatabase, insertBox, readTestConversationSnapshot, participantSeed, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
-import { DEFAULT_CONVERSATION_GENERATION_SETTINGS, executeConversationCommand, readConversationGenerationSettings, readConversationSummary, readChatHistory, deleteConversation } from "../conversation";
-import { forkConversation } from "../conversation";
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS, executeConversationCommand, readConversationGenerationSettings, readConversationSummary, readChatHistory, deleteConversation, forkConversation, readMacroVariables } from ".";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
@@ -12,14 +11,13 @@ import { memoryRecord, memoryActivationRecord } from "../../boxes/memory/contrac
 import { memoryRecordFingerprint, readMemorySources } from "../../boxes/memory/server-sources";
 import { advanceRace } from "../../boxes/race/logic-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
-import { createBoxWindowRoutes } from "./box-window";
-import { createConversationRoutes } from "./conversation";
+import { createBoxWindowRoutes } from "../contract/box-window";
 
 let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 
-test("forks through a selected alternative and leaves later Messages behind", async () => {
+test("forks through a selected alternative and leaves later Messages behind", () => {
 	const prompt = emptyPromptChannels();
 	const source = pairChat(database, "Source", { participants: [participantSeed("Writer", { prompt }), participantSeed("Model", { prompt, openings: ["first", "alternative"] })] });
 	const withLaterMessage = executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["later"], authorParticipantId: source.cast[0]!.id } });
@@ -28,19 +26,16 @@ test("forks through a selected alternative and leaves later Messages behind", as
 	const configured = executeConversationCommand(database, { conversationId: source.id, expectedRevision: withLaterMessage.revision,
 		action: { type: "update-generation-settings", settings },
 	});
-	const app = createConversationRoutes(database);
-	const response = await app.handle(new Request(`http://localhost/api/conversations/${source.id}/fork`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: configured.revision, at: { through: source.messages[0]!.id, variantId: source.messages[0]!.variants[1]!.id }, trimVariants: true, name: "Fork" }),
-	}));
-	if (response.status !== 200) throw new Error(await response.text());
-	const result = await response.json();
+	const result = forkConversation(database, {
+		conversationId: source.id,
+		expectedRevision: configured.revision,
+		at: { through: source.messages[0]!.id, variantId: source.messages[0]!.variants[1]!.id },
+		trimVariants: true,
+		name: "Fork",
+	});
 	expect(result.conversation.name).toBe("Fork");
 	expect(result.conversation.forkedFrom).toEqual({ conversationId: source.id, messageId: source.messages[0]!.id, name: "Source" });
 	expect(readConversationGenerationSettings(database, result.conversation.id)).toEqual({ ...settings, connectionProfileId });
-	const history = await app.handle(new Request(`http://localhost/api/conversations/${result.conversation.id}/history`));
-	const body = JSON.stringify(await history.json());
-	expect(body).toContain("alternative");
-	expect(body).not.toContain("later");
 	const copied = readTestConversationSnapshot(database, result.conversation.id)!;
 	expect(copied.messages).toHaveLength(1);
 	expect(copied.messages[0]!.variants.map(({ content, selected }) => ({ content, selected }))).toEqual([{ content: "alternative", selected: true }]);
@@ -195,10 +190,8 @@ test("World Clock and Macro State stop at the fork point", async () => {
 	const readClock = async (id: number) => (await (await boxes.handle(new Request(`http://localhost/api/conversations/${id}/boxes/world-clock`))).json()).status;
 	expect(await readClock(source.id)).toMatch(/^11:00 AM/);
 	expect(await readClock(fork.conversation.id)).toMatch(/^9:00 AM/);
-	const app = createConversationRoutes(database);
-	const readVariables = async (id: number) => (await (await app.handle(new Request(`http://localhost/api/conversations/${id}/macro-variables`))).json()).variables;
-	expect(JSON.stringify(await readVariables(fork.conversation.id))).toContain('"value":3');
-	expect(JSON.stringify(await readVariables(source.id))).toContain('"value":5');
+	expect(readMacroVariables(database, fork.conversation.id)?.variables).toContainEqual(expect.objectContaining({ name: "turn", value: 3 }));
+	expect(readMacroVariables(database, source.id)?.variables).toContainEqual(expect.objectContaining({ name: "turn", value: 5 }));
 });
 
 

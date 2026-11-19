@@ -90,7 +90,7 @@ test("Author Note is omitted when blank after expansion or disabled, and follows
 test("Author Note variable writes persist in Macro State after sending", async () => {
 	const chat = createChat(database);
 	withProfile(database);
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 	await saveNote(app, chat.id, chat.revision, "{{setvar::weather::rain}}{{getvar::weather}} for {{other}}");
 	const planned = await preview(app, chat.id);
 	expect(planned.pendingWrites).toContainEqual({ operation: "set", name: "weather", value: "rain" });
@@ -132,7 +132,7 @@ test("oversized Author Note refuses sending instead of dropping the note", async
 	const chat = createChat(database);
 	withProfile(database);
 	const requests: unknown[] = [];
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch });
 	const note = "Keep this standing guidance. ".repeat(30_000);
 	await saveNote(app, chat.id, chat.revision, note);
 	const planned = await preview(app, chat.id);
@@ -151,7 +151,7 @@ test("Author Note Image References send their anchor and pixels, or only the anc
 	const bytes = pngFixture({ width: 100, height: 100 });
 	const image = await uploadImage(database, bytes);
 	let captured: unknown;
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 	await saveNote(app, chat.id, chat.revision, `Study ${formatImageReference("map", image.hash)}`);
 	const planned = await preview(app, chat.id);
 	expect(planned.promptPlan.images).toMatchObject([{ name: "map", disposition: "send" }]);

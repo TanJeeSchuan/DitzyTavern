@@ -2,7 +2,6 @@ import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import {
-	CapturedRequest,
 	completeGeneration,
 	conversationApp,
 	captureModelFetch,
@@ -216,14 +215,14 @@ describe("Prompt Preset authored instructions, shared and copied", () => {
 	};
 
 	const captureMessages = async (conversationId: number, revision: number) => {
-		let captured: CapturedRequest | undefined;
+		const provider = captureModelFetch();
 		const generating = conversationApp(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversationId, revision);
 		await completeGeneration(generating, conversationId, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 		return captured;
 	};
 

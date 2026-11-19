@@ -269,7 +269,7 @@ for (const upgraded of [false, true]) {
 		const chat = createChat();
 		setBoxState(database, chat.id, "tally", "enabled");
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));

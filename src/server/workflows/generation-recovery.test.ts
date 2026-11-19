@@ -1,11 +1,11 @@
-import { createConversationWithHistory, shortReplyPrompt, participantSeed } from "../test-fixtures/conversation";
+import { createConversationWithHistory, shortReplyPrompt, participantSeed, checkpointFromStart } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { activeGenerationTable } from "../database/schema";
-import { acceptGeneration } from "../conversation";
+import { acceptGeneration, readVariantDetails } from "../conversation";
 import { recoverActiveGenerations } from "./generation-recovery";
 
 const prompt = shortReplyPrompt();
@@ -49,8 +49,19 @@ describe("generation recovery diagnostics", () => {
 		}, { kind: "sibling", messageId: target.id });
 		const corrupt = accepted("2026-08-27T00:00:00.000Z");
 		accepted("2026-08-27T00:00:01.000Z");
-		drizzle(database)
-			.update(activeGenerationTable)
+		const checkpointed = accepted("2026-08-27T00:00:02.000Z");
+		checkpointFromStart(database, {
+			conversationId: created.id,
+			generationId: checkpointed.generationId,
+			content: "Recovered checkpoint.",
+			reasoning: "Recovered reasoning.",
+			latestEventId: 2,
+		});
+		const db = drizzle(database);
+		const intent = db.select({ json: activeGenerationTable.generation_intent_json })
+			.from(activeGenerationTable).where(eq(activeGenerationTable.id, corrupt.generationId)).get();
+		if (intent === undefined) throw new Error("Recovery fixture is missing the original intent.");
+		db.update(activeGenerationTable)
 			.set({ generation_intent_json: "{}" })
 			.where(eq(activeGenerationTable.id, corrupt.generationId))
 			.run();
@@ -65,7 +76,7 @@ describe("generation recovery diagnostics", () => {
 			console.error = originalError;
 		}
 
-		expect(summary).toEqual({ inspected: 2, interrupted: 0, removed: 1, failed: 1 });
+		expect(summary).toEqual({ inspected: 3, interrupted: 1, removed: 1, failed: 1 });
 		expect(drizzle(database)
 			.select({ id: activeGenerationTable.id })
 			.from(activeGenerationTable)
@@ -75,5 +86,16 @@ describe("generation recovery diagnostics", () => {
 		expect(errors[0]).toContain(`generation ${corrupt.generationId}`);
 		expect(errors[0]).toContain(`conversation ${created.id}`);
 		expect(errors[0]).toContain("invalid persisted Generation intent");
+		const details = readVariantDetails(database, created.id, target.id, checkpointed.provisionalVariantId);
+		expect(details).toMatchObject({
+			content: "Recovered checkpoint.",
+			provenance: { status: "interrupted", interruptionCause: "server-restart" },
+		});
+		expect(JSON.stringify(details)).not.toContain("Recovered reasoning.");
+
+		db.update(activeGenerationTable).set({ generation_intent_json: intent.json })
+			.where(eq(activeGenerationTable.id, corrupt.generationId)).run();
+		expect(recoverActiveGenerations(database)).toEqual({ inspected: 1, interrupted: 0, removed: 1, failed: 0 });
+		expect(recoverActiveGenerations(database)).toEqual({ inspected: 0, interrupted: 0, removed: 0, failed: 0 });
 	});
 });

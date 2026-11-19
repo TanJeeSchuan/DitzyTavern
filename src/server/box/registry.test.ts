@@ -161,7 +161,7 @@ for (const disabledBy of ["chat", "preset"] as const) test(`a Box disabled by it
 		const conversation = createChat(database);
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 		const send = async () => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 			method: "POST", headers: { "content-type": "application/json" },
 			body: JSON.stringify({ kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it." }),
@@ -194,7 +194,7 @@ test("an unchanged preview of a Box block whose pinned items exceed its allowanc
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
 		let sent = "";
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { sent = JSON.stringify(request.messages); }) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { sent = JSON.stringify(request.messages); } }).fetch });
 		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
@@ -244,7 +244,7 @@ test("a Chat keeps its preset and its Generations once a Box in it is no longer 
 		insertBox(database, conversation.id, "lantern");
 		await loadBoxes([builtInBoxes]);
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 		const preset = await readPreset(app, conversation.id);
 		const block = preset.slots.find(({ reference }) => reference === "box:lantern");
 		if (block === undefined) throw new Error("The preset lost the Lantern's block.");
@@ -290,7 +290,7 @@ test("reinserting a participating Box makes its inspected Prompt Plan stale", as
 		const conversation = createChat(database);
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));

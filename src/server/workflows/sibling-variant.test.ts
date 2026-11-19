@@ -611,6 +611,10 @@ describe("Historical sibling Variant generation", () => {
 			messageId: greeting.id,
 			provisionalVariantId: secondAccepted.provisionalVariantId,
 		}));
-		expect(readTestConversationSnapshot(database, conversation.id)?.activeGenerations).toEqual([]);
+		const settled = requireSnapshot(database, conversation.id);
+		const variants = settled.messages.find(({ id }) => id === greeting.id)?.variants ?? [];
+		expect(variants.map(({ content }) => content)).toEqual(["The lamp turns above you.", "First sibling", "Second sibling"]);
+		expect(variants.filter(({ selected }) => selected)).toHaveLength(1);
+		expect(settled.activeGenerations).toEqual([]);
 	});
 });
