@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { requireSnapshot } from "../test-fixtures/conversation";
 import { readTestConversationSnapshot } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
@@ -20,9 +21,9 @@ import { StaleRevisionError } from "../revision";
 import { createNativeConversation, saveParticipantAsCharacter } from ".";
 
 const prompt = () => ({
+	...emptyPromptChannels(),
 	systemInstruction: "Keep responses literary and patient.",
 	identity: "A lighthouse archivist who catalogues shipwrecks.",
-	appearance: "",
 	scenario: "A storm season cuts the lantern house off from town.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?\n{{char}}: I do.",
 	postHistoryInstruction: "End with a weather detail.",

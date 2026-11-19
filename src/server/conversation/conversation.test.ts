@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, participantSeed, pairChat } from "../test-fixtures/conversation";
 import { executeConversationCommand, readChatHistory, readVariantDetails, readConversationData, acceptGeneration, resolveConversationGeneration, readConversationRevision, readConversationSummary } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -41,15 +42,8 @@ describe("Conversation module", () => {
 		const snapshot = createConversationWithHistory(module, {
 			name: "Test Conversation",
 			participants: [
-				{ definition: { name: "Writer", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
-				{
-					definition: {
-						name: "Maren",
-						prompt: emptyPrompt(),
-						sendAppearanceImages: true,
-						openings: ["Greeting"],
-					},
-				},
+				participantSeed("Writer"),
+				participantSeed("Maren", { openings: ["Greeting"] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -58,16 +52,7 @@ describe("Conversation module", () => {
 		modelId = snapshot.cast[1]?.id ?? 0;
 	});
 
-	const emptyPrompt = () => ({
-		systemInstruction: "",
-		identity: "",
-		appearance: "",
-		scenario: "",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
-	});
-
-	afterEach(() => {
+		afterEach(() => {
 		database.close();
 	});
 
@@ -177,7 +162,7 @@ describe("Conversation module", () => {
 			expectedRevision: initial.revision,
 			action: {
 				type: "add-participant",
-				definition: { name: "Spare", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] },
+				definition: { name: "Spare", prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] },
 			},
 		});
 		const spareId = withThird.cast.at(-1)?.id;
@@ -270,14 +255,7 @@ describe("Conversation module", () => {
 
 	test("does not fabricate historical Control from a partial persisted pair", () => {
 		const module = database;
-		const conversation = createConversationWithHistory(module, {
-			name: "Partial Context",
-			participants: [
-				{ definition: { name: "Writer", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(module, "Partial Context");
 		const humanId = conversation.cast[0]?.id;
 		if (humanId === undefined) throw new Error("Human Participant missing.");
 		const db = drizzle(database);
@@ -344,8 +322,8 @@ describe("Conversation module", () => {
 		const other = createConversationWithHistory(database, {
 			name: "Other Conversation",
 			participants: [
-				{ definition: { name: "A", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "B", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
+				participantSeed("A"),
+				participantSeed("B"),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -626,15 +604,8 @@ describe("Conversation module", () => {
 		const imported = createConversationWithHistory(conversation, {
 			name: "Imported Conversation",
 			participants: [
-				{ definition: { name: "Writer", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
-				{
-					definition: {
-						name: "Maren",
-						prompt: emptyPrompt(),
-						sendAppearanceImages: true,
-						openings: ["Greeting"],
-					},
-				},
+				participantSeed("Writer"),
+				participantSeed("Maren", { openings: ["Greeting"] }),
 			],
 			control: { human: 0, model: 1 },
 			data: [
@@ -985,8 +956,8 @@ describe("Conversation module", () => {
 			const other = createConversationWithHistory(database, {
 				name: "Other Conversation",
 				participants: [
-					{ definition: { name: "A", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
-					{ definition: { name: "B", prompt: emptyPrompt(), sendAppearanceImages: true, openings: [] } },
+					participantSeed("A"),
+					participantSeed("B"),
 				],
 				control: { human: 0, model: 1 },
 			});

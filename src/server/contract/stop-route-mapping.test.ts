@@ -1,4 +1,4 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory, shortReplyPrompt, participantSeed } from "../test-fixtures/conversation";
 import { acceptGeneration } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -6,14 +6,7 @@ import type { Database } from "bun:sqlite";
 import { generationRuntimeFor } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
 // Route tests own one responsibility only: mapping typed Generation lifecycle
 // outcomes onto transport responses. Ordering, races, and settlement belong to
@@ -35,8 +28,8 @@ describe("Generation Stop route mapping", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Stop mapping",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original."] }),
 			],
 			control: { human: 0, model: 1 },
 		});

@@ -7,7 +7,7 @@ import { writeAutomaticRecord } from "./records";
 import { sha256 } from "../hash";
 import { createConversationRoutes } from "../contract/conversation";
 import { captureModelFetch, completeGeneration, createChat, key, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { insertBox, openObservedDatabase } from "../test-fixtures/conversation";
+import { insertBox, openObservedDatabase, participantDefinition as definition } from "../test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
@@ -81,8 +81,7 @@ test("logic.js may declare only the hooks a sandboxed Box supports", async () =>
 // `snapshot` in a global has nothing for a later call.
 test("a read's snapshot reads only the Box's own values, takes no other query, and no later call can keep it", async () => {
 	const database = openInitializedDatabase({ path: ":memory:" });
-	const definition = (name: string) => ({ name, prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] });
-	const chat = createConversationWithHistory(database, { name: "Snapshot", participants: [{ definition: definition("Ann") }] });
+		const chat = createConversationWithHistory(database, { name: "Snapshot", participants: [{ definition: definition("Ann") }] });
 	for (const namespace of ["box:probe", "box:other"]) database.query("INSERT INTO library_data (namespace, key, value, revision) VALUES (?, 'avatar:Ann', ?, 3)").run(namespace, namespace);
 	const box = await load(`export default {
 		read: (_, { snapshot }) => { globalThis.kept = snapshot; return { view: snapshot({ scope: "library", prefix: "" }), status: "ok" }; },

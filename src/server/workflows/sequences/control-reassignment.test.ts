@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../../test-fixtures/conversation";
 import { executeConversationCommand} from "../../conversation";
 import { openObservedDatabase } from "../../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -15,19 +16,12 @@ import {
 // there, so these tests drive the workflow entry points rather than any
 // internal derivation.
 
-const definition = (name: string): ParticipantDefinition => ({
-	name,
-	prompt: {
+const definition = (name: string): ParticipantDefinition => participantDefinition(name, { prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "Write well.",
 		identity: "I am {{self}}.",
-		appearance: "",
 		scenario: "A quiet room.",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
-	},
-	sendAppearanceImages: true,
-	openings: [],
-});
+	} });
 
 interface HistoryRole {
 	speakerName: string | null;

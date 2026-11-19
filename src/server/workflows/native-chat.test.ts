@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { requireSnapshot } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -20,12 +21,11 @@ import type { CharacterDefinition } from "../character-library";
 import { createNativeConversation } from ".";
 
 const prompt = () => ({
+	...emptyPromptChannels(),
 	systemInstruction: "Keep the scene grounded.",
 	identity: "Lighthouse archivist on the northern coast.",
-	appearance: "",
 	scenario: "A storm season begins.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?",
-	postHistoryInstruction: "",
 });
 
 const sourceDefinition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({

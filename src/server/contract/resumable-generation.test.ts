@@ -1,37 +1,20 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
+import { profile as chatProfile, sseReply } from "./prompt-preset-test-fixtures";
+import { readTestConversationSnapshot, checkpointFromStart, shortReplyPrompt, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
 import { readActiveGenerationDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
 import { createConnectionSettingsModule } from "../connection-settings";
-import { acceptGeneration, checkpointConversationGeneration } from "../conversation";
+import { checkpointConversationGeneration } from "../conversation";
 import { recoverActiveGenerations } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 import { GenerationRuntime } from "../workflows/generation-runtime";
 import { generationSubscriptionEvents } from "./generation-sse";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
-const profile = {
-	displayName: "Resumable test profile",
-	apiFormat: "chat-completions" as const,
-	requestUrl: "http://127.0.0.1:43127/v1/",
-	modelsUrl: "",
-	modelBackend: "automatic" as const,
-	adapter: "deepseek" as const,
-	outputTokenRepresentation: "automatic" as const,
-	systemPlacement: "strict" as const,
-	timeoutMs: 120_000,
-	pinnedModels: [],
-};
+const profile = { ...chatProfile, displayName: "Resumable test profile", requestUrl: "http://127.0.0.1:43127/v1/", systemPlacement: "strict" } satisfies typeof chatProfile;
 
 describe("Resumable generation transport", () => {
 	let database: Database;
@@ -65,14 +48,7 @@ describe("Resumable generation transport", () => {
 	}, 1_000);
 
 	test("separates acceptance from subscription and replays buffered events", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Resumable Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Resumable Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(4) }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -80,19 +56,9 @@ describe("Resumable generation transport", () => {
 		});
 		let release!: () => void;
 		const paused = new Promise<void>((resolve) => { release = resolve; });
-		const encoder = new TextEncoder();
 		const app = createConversationRoutes(database, {
 			masterKey: new Uint8Array(32).fill(4),
-			fetch: async () => new Response(new ReadableStream({
-				async start(controller) {
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { reasoning_content: "Consider." }, finish_reason: null }] })}\n\n`));
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Buffered." }, finish_reason: null }] })}\n\n`));
-					await paused;
-					controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
-					controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-					controller.close();
-				},
-			}), { headers: { "content-type": "text/event-stream" } }),
+			fetch: async () => sseReply([{ reasoning_content: "Consider." }, { content: "Buffered." }], { beforeFinish: paused }),
 		});
 
 		const acceptedResponse = await app.handle(new Request(
@@ -165,14 +131,7 @@ describe("Resumable generation transport", () => {
 	});
 
 	test("keeps other HTTP routes responsive while provider events are buffered", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Responsive Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Responsive Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(7) }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -255,14 +214,7 @@ describe("Resumable generation transport", () => {
 	});
 
 	test("stops a server-owned Generation without treating provider cancellation as an error", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Stop Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Stop Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(6) }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -324,14 +276,7 @@ describe("Resumable generation transport", () => {
 	});
 
 	test("disconnecting the initiating stream leaves the controlled provider running", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Disconnect Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Disconnect Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: new Uint8Array(32).fill(5) }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -340,20 +285,11 @@ describe("Resumable generation transport", () => {
 		let providerSignal: AbortSignal | undefined;
 		let release!: () => void;
 		const paused = new Promise<void>((resolve) => { release = resolve; });
-		const encoder = new TextEncoder();
 		const app = createConversationRoutes(database, {
 			masterKey: new Uint8Array(32).fill(5),
 			fetch: async (_input, init) => {
 				providerSignal = init?.signal ?? undefined;
-				return new Response(new ReadableStream({
-					async start(controller) {
-						controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Survives." }, finish_reason: null }] })}\n\n`));
-						await paused;
-						controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
-						controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-						controller.close();
-					},
-				}), { headers: { "content-type": "text/event-stream" } });
+				return sseReply([{ content: "Survives." }], { beforeFinish: paused });
 			},
 		});
 
@@ -397,29 +333,11 @@ describe("Resumable generation transport", () => {
 
 	test("restart recovery exposes checkpointed output as a terminal interrupted Variant", async () => {
 		const conversationModule = database;
-		const conversation = createConversationWithHistory(conversationModule, {
-			name: "Restart Recovery Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(conversationModule, "Restart Recovery Chat", { prompt });
 		const human = conversation.cast[0];
 		const model = conversation.cast[1];
 		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-		const accepted = acceptGeneration(database, {
-			seed: "test-generation-seed",
-			conversationId: conversation.id,
-			timestamp: "2026-08-27T00:00:00.000Z",
-			humanParticipantId: human.id,
-			modelParticipantId: model.id,
-			capturedHumanName: human.name,
-			capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model",
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		}, { kind: "send", expectedRevision: conversation.revision, content: "Keep the recovered scene." });
+		const accepted = acceptTestGeneration(database, conversation, { kind: "send", expectedRevision: conversation.revision, content: "Keep the recovered scene." }, { timestamp: "2026-08-27T00:00:00.000Z" });
 		checkpointFromStart(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,

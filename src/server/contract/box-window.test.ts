@@ -1,5 +1,5 @@
 import { boxDescriptor } from "../../shared/contract/box";
-import { openObservedDatabase, createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
+import { openObservedDatabase, insertBox, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
@@ -10,25 +10,16 @@ import { generationPreview, type ConversationAction } from "../../shared/contrac
 import { readRecordSlots, writeAutomaticRecord, writeDigestError } from "../box/records";
 import { sha256 } from "../hash";
 import { createContract } from ".";
-import { acceptGeneration } from "../conversation";
 import { advanceRace } from "../../boxes/race/logic-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const initial = initialWorldClockSetup;
 
 let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 
-const createClockChat = () => createConversationWithHistory(database, {
-	name: "Clock Chat",
-	participants: [
-		{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-		{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-	],
-	control: { human: 0, model: 1 },
-});
+const createClockChat = () => pairChat(database, "Clock Chat");
 
 const command = (app: ReturnType<typeof createContract>, id: number, revision: number, action: ConversationAction) =>
 	app.handle(new Request(`http://localhost/api/conversations/${id}/commands`, {
@@ -167,18 +158,10 @@ test("a Variant still generating takes no Writer override, so its own record can
 	insertBox(database, chat.id, "race");
 	const [human, model] = chat.cast;
 	if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-	const accepted = acceptGeneration(database, {
+	const accepted = acceptTestGeneration(database, chat, { kind: "send", expectedRevision: chat.revision, content: "Go." }, {
 		seed: "override-seed",
-		conversationId: chat.id,
 		timestamp: "2026-08-27T00:00:00.000Z",
-		humanParticipantId: human.id,
-		modelParticipantId: model.id,
-		capturedHumanName: human.name,
-		capturedModelName: model.name,
-		promptPlan: { blocks: [], warnings: [], images: [] },
-		modelId: "fixture-model",
-		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-	}, { kind: "send", expectedRevision: chat.revision, content: "Go." });
+	});
 	const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
 	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] })?.record;
 	if (record === undefined) throw new Error("The Stretch produced no record.");

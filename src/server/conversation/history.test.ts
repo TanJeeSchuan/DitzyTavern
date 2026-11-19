@@ -1,10 +1,10 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory, participantSeed, participantDefinition as adHoc } from "../test-fixtures/conversation";
 import { readChatHistory, readVariantText } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { DEFAULT_HISTORY_PAGE_SIZE, MAX_HISTORY_PAGE_SIZE } from ".";
-import type { ConversationCreationInput, ParticipantDefinition } from ".";
+import type { ConversationCreationInput } from ".";
 
 // Paginated history read model tests: stable chronological pages, lightweight
 // payloads (heavy provenance excluded), resolved Author Stamps, preserved
@@ -12,21 +12,7 @@ import type { ConversationCreationInput, ParticipantDefinition } from ".";
 // straight against the public Conversation read seam on a real migrated
 // temporary SQLite database.
 
-const prompt = (): ParticipantDefinition["prompt"] => ({
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-});
 
-const adHoc = (name: string): ParticipantDefinition => ({
-	name,
-	prompt: prompt(),
-	sendAppearanceImages: true,
-	openings: [],
-});
 
 const messageInput = (timestamp: string, variantContents: string[]) => ({
 	timestamp,
@@ -326,14 +312,7 @@ describe("Conversation paginated history", () => {
 			name: "Capability History",
 			participants: [
 				{ definition: adHoc("Writer") },
-				{
-					definition: {
-						name: "Maren Voss",
-						prompt: prompt(),
-						sendAppearanceImages: true,
-						openings: ["Greetings from the model."],
-					},
-				},
+				participantSeed("Maren Voss", { openings: ["Greetings from the model."] }),
 			],
 			control: { human: 0, model: 1 },
 		});

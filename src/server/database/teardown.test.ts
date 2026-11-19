@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdirSync, rmSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
@@ -43,12 +44,10 @@ describe("Database seed and teardown", () => {
 				definition: {
 					name: "User Custom Character",
 					prompt: {
+						...emptyPromptChannels(),
 						systemInstruction: "Custom system instruction",
 						identity: "A unique wanderer.",
-						appearance: "",
 						scenario: "Traveling through uncharted lands.",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
 					},
 					sendAppearanceImages: true,
 					openings: ["Hello, traveler."],

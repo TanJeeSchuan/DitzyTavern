@@ -1,4 +1,5 @@
-import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory, participantSeed, participantDefinition } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -21,19 +22,10 @@ import { openObservedDatabase, applyCommand } from "../test-fixtures/conversatio
 import { runGenerationLifecycle } from "../workflows/generate";
 import { createFakeModelClient } from "../model-client";
 
-const emptyPrompt = () => ({
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-});
-
 const adHoc = (
 	name: string,
 	openings: string[] = [],
-): ParticipantDefinition => ({ name, prompt: emptyPrompt(), sendAppearanceImages: true, openings });
+): ParticipantDefinition => participantDefinition(name, { openings });
 
 const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);
@@ -261,12 +253,9 @@ describe("Participant removal", () => {
 			definition: {
 				name: "Maren Voss",
 				prompt: {
+					...emptyPromptChannels(),
 					systemInstruction: "Keep responses literary.",
 					identity: "Lighthouse archivist.",
-					appearance: "",
-					scenario: "",
-					exampleDialogue: "",
-					postHistoryInstruction: "",
 				},
 				sendAppearanceImages: true,
 				openings: ["The lamp turns."],
@@ -278,15 +267,7 @@ describe("Participant removal", () => {
 			name: "Forked Removal",
 			participants: [
 				{ definition: adHoc("Writer") },
-				{
-					definition: {
-						name: source.name,
-						prompt: source.prompt,
-						sendAppearanceImages: true,
-						openings: [...source.openings],
-					},
-					sourceCharacterId: source.id,
-				},
+				participantSeed(source.name, { prompt: source.prompt, openings: [...source.openings], sourceCharacterId: source.id }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -519,7 +500,7 @@ describe("Participant removal", () => {
 			type: "create",
 			definition: {
 				name: "Maren Voss",
-				prompt: emptyPrompt(),
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: ["Forked opening."],
 			},
@@ -530,7 +511,7 @@ describe("Participant removal", () => {
 			type: "add-participant",
 			definition: {
 				name: character?.name ?? "Maren Voss",
-				prompt: character?.prompt ?? emptyPrompt(),
+				prompt: character?.prompt ?? emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: character?.openings ?? [],
 			},
@@ -606,7 +587,7 @@ describe("Participant removal", () => {
 			type: "create",
 			definition: {
 				name: "Maren Voss",
-				prompt: emptyPrompt(),
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: ["The lamp turns."],
 			},
@@ -616,15 +597,7 @@ describe("Participant removal", () => {
 			name: "Source Deleted",
 			participants: [
 				{ definition: adHoc("Writer") },
-				{
-					definition: {
-						name: source.name,
-						prompt: source.prompt,
-						sendAppearanceImages: true,
-						openings: [...source.openings],
-					},
-					sourceCharacterId: source.id,
-				},
+				participantSeed(source.name, { prompt: source.prompt, openings: [...source.openings], sourceCharacterId: source.id }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -669,7 +642,7 @@ describe("Participant removal", () => {
 			type: "create",
 			definition: {
 				name: "Maren Voss",
-				prompt: emptyPrompt(),
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: [],
 			},
@@ -680,15 +653,7 @@ describe("Participant removal", () => {
 			participants: [
 				{ definition: adHoc("Writer") },
 				{ definition: adHoc("Juno Ashfeld") },
-				{
-					definition: {
-						name: source.name,
-						prompt: source.prompt,
-						sendAppearanceImages: true,
-						openings: [],
-					},
-					sourceCharacterId: source.id,
-				},
+				participantSeed(source.name, { prompt: source.prompt, sourceCharacterId: source.id }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -723,7 +688,7 @@ describe("Participant removal", () => {
 			type: "create",
 			definition: {
 				name: "Maren Voss",
-				prompt: emptyPrompt(),
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: ["The lamp turns."],
 			},
@@ -733,15 +698,7 @@ describe("Participant removal", () => {
 			name: "Collected Source",
 			participants: [
 				{ definition: adHoc("Writer") },
-				{
-					definition: {
-						name: source.name,
-						prompt: source.prompt,
-						sendAppearanceImages: true,
-						openings: [...source.openings],
-					},
-					sourceCharacterId: source.id,
-				},
+				participantSeed(source.name, { prompt: source.prompt, openings: [...source.openings], sourceCharacterId: source.id }),
 			],
 			control: { human: 0, model: 1 },
 		});

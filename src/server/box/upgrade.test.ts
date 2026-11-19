@@ -1,9 +1,10 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { acceptGeneration, executeConversationCommand, forkConversation, readConversationSummary, resolveConversationGeneration, readVariantDetails } from "../conversation";
+import { executeConversationCommand, forkConversation, readConversationSummary, resolveConversationGeneration, readVariantDetails } from "../conversation";
 import type { ConversationAction } from "../conversation";
-import { createConversationWithHistory, checkpointFromStart, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { createConversationWithHistory, checkpointFromStart, openObservedDatabase, setBoxState, participantSeed, acceptTestGeneration } from "../test-fixtures/conversation";
 import { writeVersionedBox, type BoxFiles } from "../test-fixtures/versioned-box";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { boxAt, builtInBoxes, chatBox, checkSandboxedFolder, installVersion, loadBoxes, loadBoxVersion, unversionedBoxIds } from "./registry";
@@ -16,7 +17,7 @@ import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createCharacterLibraryModule } from "../character-library";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = emptyPromptChannels();
 const integer = { type: "integer" };
 const object = (properties: Readonly<Record<string, BoxValue>>) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 const v1 = {
@@ -60,7 +61,7 @@ const versioned = async (other: BoxFiles) => {
 	return { ...box, v1: box.versions[0]!, v2: box.versions[1]! }; // @approved Two versions were written.
 };
 const createChat = () => createConversationWithHistory(database, {
-	name: "Tip Chat", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["The jar waits."] } }], control: { human: 0, model: 1 },
+	name: "Tip Chat", participants: [participantSeed("Writer"), participantSeed("Maren", { openings: ["The jar waits."] })], control: { human: 0, model: 1 },
 });
 const command = (conversationId: number, action: ConversationAction) =>
 	executeConversationCommand(database, { conversationId, expectedRevision: readConversationSummary(database, conversationId)!.revision, action }); // @approved Every Chat here exists.
@@ -244,20 +245,11 @@ for (const upgraded of [false, true]) {
 		const box = await versioned(same);
 		const chat = createChat();
 		setBoxState(database, chat.id, "tally", "enabled");
-		const [human, model] = readConversationSummary(database, chat.id)!.cast; // @approved Created above.
-		const accepted = acceptGeneration(database, {
+		const accepted = acceptTestGeneration(database, chat, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip it." }, {
 			seed: "seed",
-			conversationId: chat.id,
 			timestamp: "2026-11-05T00:00:00.000Z",
-			humanParticipantId: human!.id,
-			modelParticipantId: model!.id,
-			capturedHumanName: human!.name,
-			capturedModelName: model!.name,
-			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model",
-			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 			boxRecords: { tally: { instance: instanceOf(chat.id), version: box.v1, record: { coins: 4 } } },
-		}, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip it." });
+		});
 		if (upgraded) upgrade(chat.id, box.v2);
 		checkpointFromStart(database, { conversationId: chat.id, generationId: accepted.generationId, content: "Coins clink." });
 		recoverActiveGenerations(database);
@@ -340,20 +332,12 @@ for (const deleteHistory of [false, true]) test(`a Generation resolving after re
 	const { chat } = tippedChat();
 	const oldInstance = instanceOf(chat.id);
 	const traces = { "box:tally": { trace: { kept: true }, items: [], automaticText: "", finalText: "" } };
-	const accepted = acceptGeneration(database, {
+	const accepted = acceptTestGeneration(database, chat, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip." }, {
 		seed: "remove-history",
-		conversationId: chat.id,
 		timestamp: "2026-11-10T00:00:00Z",
-		humanParticipantId: chat.cast[0]!.id,
-		modelParticipantId: chat.cast[1]!.id,
-		capturedHumanName: "Writer",
-		capturedModelName: "Maren",
-		modelId: "fixture-model",
-		promptPlan: { blocks: [], warnings: [], images: [] },
-		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
 		boxTraces: traces,
 		boxRecords: { tally: { instance: oldInstance, version: box.v1, record: { coins: 4 } }, memory: { instance: "other", record: { kept: true } } },
-	}, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip." });
+	});
 	command(chat.id, { type: "set-box-state", box: "tally", state: "absent", deleteHistory });
 	command(chat.id, { type: "set-box-state", box: "tally", state: "enabled" });
 	resolveConversationGeneration(database, { conversationId: chat.id, generationId: accepted.generationId, content: "The tip lands.", timestamp: "2026-11-10T00:01:00Z" });

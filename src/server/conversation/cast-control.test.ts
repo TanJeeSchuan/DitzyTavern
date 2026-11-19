@@ -1,4 +1,5 @@
-import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels as emptyPrompt } from "../../shared/definition";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import { executeConversationCommand } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -16,19 +17,10 @@ import { InvalidConversationCommandError } from ".";
 import type { ConversationAction, ParticipantDefinition } from ".";
 import { applyCommand } from "../test-fixtures/conversation";
 
-const emptyPrompt = () => ({
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-});
-
 const adHoc = (
 	name: string,
 	openings: string[] = [],
-): ParticipantDefinition => ({ name, prompt: emptyPrompt(), sendAppearanceImages: true, openings });
+): ParticipantDefinition => participantDefinition(name, { openings });
 
 const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);
@@ -176,9 +168,9 @@ describe("Cast and Control management", () => {
 			type: "replace-participant-prompt",
 			participantId: modelId,
 			prompt: {
+				...emptyPrompt(),
 				systemInstruction: "Keep responses literary.",
 				identity: "Lighthouse archivist.",
-				appearance: "",
 				scenario: "A storm season.",
 				exampleDialogue: "<START>\n{{user}}: Who tends the light?",
 				postHistoryInstruction: "Favor tactile detail.",

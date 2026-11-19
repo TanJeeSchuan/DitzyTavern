@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -10,7 +11,7 @@ import { writeMessageMoves } from "../box/moves";
 import { uploadImage } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
-import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState, participantSeed } from "../test-fixtures/conversation";
 import { toMessages } from "../model-client/chat-messages";
 import { captureGeneration, withGenerationBoxOperations } from "./generate-capture";
 import { captureGenerationPreview, createGenerationPreviewAsync } from "./generation-preview";
@@ -40,11 +41,11 @@ const fixture = async (literal = false, instructions: (hash: string) => string =
 	};`);
 	await loadBoxes([builtInBoxes, folder]);
 	cleanup.push(async () => { await loadBoxes([builtInBoxes]); rmSync(folder, { recursive: true, force: true }); });
-	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const prompt = emptyPromptChannels();
 	const chat = createConversationWithHistory(database, {
 		name: "Images", participants: [
-			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [], portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } } },
+			participantSeed("Writer", { prompt }),
+			participantSeed("Maren", { prompt, portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } }),
 		], control: { human: 0, model: 1 },
 		messages: [0, 1].map((authorParticipantIndex) => ({
 			timestamp: "2026-11-10T00:00:00Z", authorParticipantIndex,

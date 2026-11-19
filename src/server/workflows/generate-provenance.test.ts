@@ -1,4 +1,5 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import { executeConversationCommand, readConversationGenerationSettings } from "../conversation";
 import { createGenerationCoordinator } from "../application/generation-coordinator";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -21,9 +22,9 @@ import { createGenerationPreviewAsync } from "./generation-preview";
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
 ): ParticipantDefinition["prompt"] => ({
+	...emptyPromptChannels(),
 	systemInstruction: "Keep the reply literary.",
 	identity: "I am {{self}}, speaking to {{other}}.",
-	appearance: "",
 	scenario: "The fog closes in on the lantern house.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?",
 	postHistoryInstruction: "End with a question.",
@@ -34,12 +35,7 @@ const adHoc = (
 	name: string,
 	openings: string[] = [],
 	promptOverrides: Partial<ParticipantDefinition["prompt"]> = {},
-): ParticipantDefinition => ({
-	name,
-	prompt: prompt(promptOverrides),
-	sendAppearanceImages: true,
-	openings,
-});
+): ParticipantDefinition => participantDefinition(name, { prompt: prompt(promptOverrides), openings });
 
 const fakeModelClient = (
     response: (plan: PromptPlan) => string | Promise<string>,

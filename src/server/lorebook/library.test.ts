@@ -1,3 +1,4 @@
+import { loreEntry } from "./fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -42,24 +43,7 @@ describe("Lorebook entry resequencing", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
-	const fields = (title: string): LoreEntryFields => ({
-		title,
-		content: `${title} content`,
-		keywords: [],
-		semanticTriggers: [],
-		matchOperator: "or",
-		always: false,
-		requireAny: [],
-		requireAll: [],
-		excludeAny: [],
-		excludeAll: [],
-		caseSensitive: false,
-		wholeWord: true,
-		keywordMode: "literal",
-		regexFlags: "",
-		priority: 0,
-		enabled: true,
-	});
+	const fields = (title: string): LoreEntryFields => loreEntry({ title, content: `${title} content` });
 
 	const asBook = (applied: Lorebook | { deleted: number }): Lorebook => {
 		if (!("entries" in applied)) throw new Error("The Lorebook entry command deleted the book.");

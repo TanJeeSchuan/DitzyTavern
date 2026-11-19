@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { profile as chatProfile, sseReply } from "./prompt-preset-test-fixtures";
+import { readTestConversationSnapshot, createConversationWithHistory, shortReplyPrompt, participantSeed, pairChat } from "../test-fixtures/conversation";
 import { readVariantDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -7,66 +8,16 @@ import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationRoutes } from "./conversation";
 
 const key = new Uint8Array(32).fill(23);
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
-const profile = {
-	displayName: "DeepSeek",
-	apiFormat: "chat-completions" as const,
-	requestUrl: "http://127.0.0.1:43127/v1/",
-	modelsUrl: "",
-	modelBackend: "automatic" as const,
-	adapter: "deepseek" as const,
-	outputTokenRepresentation: "automatic" as const,
-	systemPlacement: "strict" as const,
-	timeoutMs: 120_000,
-	pinnedModels: [],
-};
+const profile = { ...chatProfile, requestUrl: "http://127.0.0.1:43127/v1/", systemPlacement: "strict" } satisfies typeof chatProfile;
 
 interface CapturedGenerationBody {
 	model?: string;
 	max_tokens?: number;
 }
 
-const streamResponse = () => {
-	const encoder = new TextEncoder();
-	const chunks = [
-		`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Contract " }, finish_reason: null }] })}\n\n`,
-		`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "reply." }, finish_reason: null }] })}\n\n`,
-		`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
-		"data: [DONE]\n\n",
-	];
-	return new Response(
-		new ReadableStream({
-			start(controller) {
-				for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
-				controller.close();
-			},
-		}),
-		{ headers: { "content-type": "text/event-stream" } },
-	);
-};
 
-const streamResponseWith = (content: string) => {
-	const encoder = new TextEncoder();
-	return new Response(
-		new ReadableStream({
-			start(controller) {
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`));
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
-				controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-				controller.close();
-			},
-		}),
-		{ headers: { "content-type": "text/event-stream" } },
-	);
-};
 
 describe("Generation transport contract", () => {
 	let database: Database;
@@ -80,14 +31,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("persists Conversation settings and returns one streamed generated Variant with safe provenance", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Generation Contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Generation Contract", { prompt });
 		const connection = createConnectionSettingsModule(database, { masterKey: key });
 		connection.createProfile({
 			expectedRevision: 0,
@@ -101,7 +45,7 @@ describe("Generation transport contract", () => {
 				// SAFETY: the controlled fake receives the AI SDK Chat Completions
 				// body and this test reads only the model and token fields.
 				requestBody = JSON.parse(String(init?.body)) as CapturedGenerationBody;
-				return streamResponse();
+				return sseReply([{ content: "Contract " }, { content: "reply." }]);
 			},
 		});
 
@@ -197,14 +141,7 @@ describe("Generation transport contract", () => {
 		// complete settings object the settings panel submits — including the
 		// Sibling Generation limit — persists field for field instead of
 		// being silently dropped by the transport boundary.
-		const conversation = createConversationWithHistory(database, {
-			name: "Canonical Settings Update",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Canonical Settings Update", { prompt });
 		const app = createConversationRoutes(database, { masterKey: key });
 		const updated = await app.handle(
 			new Request(`http://localhost/api/conversations/${conversation.id}/commands`, {
@@ -260,14 +197,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("does not contact a provider when the Conversation has no selected Profile", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Unconfigured Generation",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Unconfigured Generation", { prompt });
 		let contacted = false;
 		const app = createConversationRoutes(database, {
 			masterKey: key,
@@ -289,14 +219,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("maps a known prompt budget failure to the invalid contract", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Budget-bound Generation",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Budget-bound Generation", { prompt });
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -308,7 +231,7 @@ describe("Generation transport contract", () => {
 		);
 		const app = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: async () => streamResponse(),
+			fetch: async () => sseReply([{ content: "Contract " }, { content: "reply." }]),
 		});
 
 		const response = await app.handle(
@@ -327,14 +250,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("does not hide malformed persisted generation settings as invalid input", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Malformed Generation Settings",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Malformed Generation Settings", { prompt });
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -346,7 +262,7 @@ describe("Generation transport contract", () => {
 		);
 		const app = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: async () => streamResponse(),
+			fetch: async () => sseReply([{ content: "Contract " }, { content: "reply." }]),
 		});
 
 		const response = await app.handle(
@@ -362,14 +278,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("streams normalized generation events and completion over the live SSE route", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Live Generation Contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Live Generation Contract", { prompt });
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -377,7 +286,7 @@ describe("Generation transport contract", () => {
 		});
 		const app = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: async () => streamResponse(),
+			fetch: async () => sseReply([{ content: "Contract " }, { content: "reply." }]),
 		});
 
 		const response = await app.handle(
@@ -404,14 +313,7 @@ describe("Generation transport contract", () => {
 	});
 
 	test("generates through a generic exact endpoint with custom authentication", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Generic Generation Contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Generic Generation Contract", { prompt });
 		const connection = createConnectionSettingsModule(database, { masterKey: key });
 		connection.createProfile({
 			expectedRevision: 0,
@@ -431,7 +333,7 @@ describe("Generation transport contract", () => {
 			masterKey: key,
 			fetch: async (input, init) => {
 				request = { url: String(input), headers: new Headers(init?.headers) };
-				return streamResponse();
+				return sseReply([{ content: "Contract " }, { content: "reply." }]);
 			},
 		});
 		const generated = await app.handle(
@@ -459,8 +361,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Sibling Generation Contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Opening."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Opening."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -473,7 +375,7 @@ describe("Generation transport contract", () => {
 		});
 		const app = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: async () => streamResponse(),
+			fetch: async () => sseReply([{ content: "Contract " }, { content: "reply." }]),
 		});
 		const response = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
@@ -497,8 +399,8 @@ describe("Generation transport contract", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Parallel Sibling Contract",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Opening."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Opening."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -518,7 +420,7 @@ describe("Generation transport contract", () => {
 				providerRequest += 1;
 				const content = `Alternative ${providerRequest}.`;
 				await paused;
-				return streamResponseWith(content);
+				return sseReply([{ content: content }]);
 			},
 		});
 		const startSibling = () => app.handle(new Request(

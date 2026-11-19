@@ -1,4 +1,4 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory, shortReplyPrompt, participantSeed } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -8,14 +8,7 @@ import { activeGenerationTable } from "../database/schema";
 import { acceptGeneration } from "../conversation";
 import { recoverActiveGenerations } from "./generation-recovery";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
 describe("generation recovery diagnostics", () => {
 	let database: Database;
@@ -31,8 +24,8 @@ describe("generation recovery diagnostics", () => {
 		const created = createConversationWithHistory(conversation, {
 			name: "Recovery Diagnostics Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original answer."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original answer."] }),
 			],
 			control: { human: 0, model: 1 },
 		});

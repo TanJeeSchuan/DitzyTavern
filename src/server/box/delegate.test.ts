@@ -7,7 +7,7 @@ import { DEFAULT_BOX_DELEGATE, boxDescriptor, boxRecordSchema } from "../../shar
 import { createConnectionSettingsModule } from "../connection-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { key, profile } from "../contract/prompt-preset-test-fixtures";
-import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { insertBox, openObservedDatabase, setBoxState, pairChat } from "../test-fixtures/conversation";
 import { DELEGATE_PROMPT_BYTES, DELEGATE_STEPS, runDelegateAgent } from "./delegate";
 import { applyBoxDelegateSettings, readBoxDelegateSettings, resolveBoxDelegate } from "./delegate-settings";
 import { prepareBoxDigests, queueBoxDigest, readBoxCatchUp, readDelegate, startBoxCatchUp, startBoxDigests } from "./digest";
@@ -88,12 +88,9 @@ afterEach(async () => {
 	database.close();
 });
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 /** @approved A Chat holding the Scene, with the delegate set to the fake model at `requestUrl`, and the queue running. */
 const sceneChat = (requestUrl = `http://127.0.0.1:${server.port}/v1/`, box = "scene", applyMs?: number) => {
-	const chat = createConversationWithHistory(database, {
-		name: "Stage", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }], control: { human: 0, model: 1 },
-	});
+	const chat = pairChat(database, "Stage");
 	setBoxState(database, chat.id, "memory", "absent");
 	const instance = insertBox(database, chat.id, box);
 	const connections = createConnectionSettingsModule(database, { masterKey: key });

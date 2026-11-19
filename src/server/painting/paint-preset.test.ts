@@ -1,17 +1,16 @@
 import { expect, test } from "bun:test";
-import { openObservedDatabase, createConversationWithHistory } from "../test-fixtures/conversation";
+import { openObservedDatabase, createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { createPaintingModule } from ".";
 import { executePromptPresetCommand, importNativePromptPreset, listPromptPresets } from "../prompt-preset";
 import { executeConversationCommand, forkConversation } from "../conversation";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 
 test("Paint Preset selection starts on Default (Paint), copies on Fork, and deletion reassigns both Chats", () => {
 	const database = openObservedDatabase();
 	try {
 		const chat = createConversationWithHistory(database, { name: "Paint", participants: [
-			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["A scene"] } },
+			participantSeed("Writer"),
+			participantSeed("Maren", { openings: ["A scene"] }),
 		], control: { human: 0, model: 1 } });
 		const paintings = createPaintingModule(database);
 		const initial = paintings.read(chat.id);

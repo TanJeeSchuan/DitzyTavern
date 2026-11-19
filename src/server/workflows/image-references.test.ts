@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart, participantSeed } from "../test-fixtures/conversation";
 import type { ConversationAction } from "../conversation";
 import {
 	executeConversationCommand,
@@ -33,7 +34,7 @@ import { createNativeConversation } from ".";
 import { captureGeneration } from "./generate-capture";
 import { capturedAcceptanceFields } from "./generate-capture-projections";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = emptyPromptChannels();
 const writer = { name: "Writer", prompt, sendAppearanceImages: true, openings: [] };
 const timestamp = "2026-10-04T00:00:00.000Z";
 
@@ -122,7 +123,7 @@ describe("Image Reference lifetime", () => {
 			const definition = {
 				name: "Maren",
 				portrait: { hash: portrait!.hash, focalX: 0.5, focalY: 0.5 },
-				prompt: { systemInstruction: system!.token, identity: identity!.token, appearance: "", scenario: scenario!.token, exampleDialogue: dialogue!.token, postHistoryInstruction: postHistory!.token },
+				prompt: { ...emptyPromptChannels(), systemInstruction: system!.token, identity: identity!.token, scenario: scenario!.token, exampleDialogue: dialogue!.token, postHistoryInstruction: postHistory!.token },
 				sendAppearanceImages: true,
 				openings: [opening!.token],
 			};
@@ -364,7 +365,7 @@ describe("Image Reference lifetime", () => {
 			name: "Chat",
 			participants: [
 				{ definition: writer },
-				{ definition: { name: "Maren", prompt: { ...prompt, systemInstruction: `{{setvar::outfit::${art.token}}}` }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Maren", { prompt: { ...prompt, systemInstruction: `{{setvar::outfit::${art.token}}}` } }),
 			],
 			control: { human: 0, model: 1 },
 		});

@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { describe, expect, test } from "bun:test";
 import {
 	compileOpening,
@@ -28,26 +29,12 @@ const source = (overrides: Partial<CompilePromptInput> = {}): CompilePromptInput
 	images: { lookup: () => undefined, placement: "last", sendImages: true },
 	human: {
 		name: "Writer",
-		prompt: {
-			systemInstruction: "",
-			identity: "",
-			appearance: "",
-			scenario: "",
-			exampleDialogue: "",
-			postHistoryInstruction: "",
-		},
+		prompt: emptyPromptChannels(),
 		sendAppearanceImages: true,
 	},
 	model: {
 		name: "Maren Voss",
-		prompt: {
-			systemInstruction: "",
-			identity: "",
-			appearance: "",
-			scenario: "",
-			exampleDialogue: "",
-			postHistoryInstruction: "",
-		},
+		prompt: emptyPromptChannels(),
 		sendAppearanceImages: true,
 	},
 	...overrides,
@@ -57,22 +44,15 @@ const filled = (): CompilePromptInput =>
 	source({
 		human: {
 			name: "Writer",
-			prompt: {
-				systemInstruction: "",
-				identity: "Human identity line.",
-				appearance: "",
-				scenario: "",
-				exampleDialogue: "",
-				postHistoryInstruction: "",
-			},
+			prompt: { ...emptyPromptChannels(), identity: "Human identity line." },
 			sendAppearanceImages: true,
 		},
 		model: {
 			name: "Maren Voss",
 			prompt: {
+				...emptyPromptChannels(),
 				systemInstruction: "System line.",
 				identity: "Model identity line.",
-				appearance: "",
 				scenario: "Scenario line.",
 				exampleDialogue: "Example line.",
 				postHistoryInstruction: "Post line.",
@@ -150,14 +130,7 @@ describe("Prompt compiler", () => {
 			source({
 				human: {
 					name: "Writer",
-					prompt: {
-						systemInstruction: "",
-						identity: "Only the human identity is filled.",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "Only the human identity is filled." },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -173,10 +146,7 @@ describe("Prompt compiler", () => {
 				model: {
 					name: "Maren Voss",
 					prompt: {
-						systemInstruction: "",
-						identity: "",
-						appearance: "",
-						scenario: "",
+						...emptyPromptChannels(),
 						exampleDialogue: "<START>\n{{user}}: Who tends the light?\n  indented line with trailing spaces  ",
 						postHistoryInstruction: "\nPost with leading newline.",
 					},
@@ -234,9 +204,8 @@ describe("Prompt compiler", () => {
 				human: {
 					name: "Writer",
 					prompt: {
+						...emptyPromptChannels(),
 						systemInstruction: "Human system must not render.",
-						identity: "",
-						appearance: "",
 						scenario: "Human scenario must not render.",
 						exampleDialogue: "Human example must not render.",
 						postHistoryInstruction: "Human post must not render.",
@@ -246,9 +215,8 @@ describe("Prompt compiler", () => {
 				model: {
 					name: "Maren Voss",
 					prompt: {
+						...emptyPromptChannels(),
 						systemInstruction: "Model system.",
-						identity: "",
-						appearance: "",
 						scenario: "Model scenario.",
 						exampleDialogue: "Model example.",
 						postHistoryInstruction: "Model post.",
@@ -277,12 +245,9 @@ describe("Outgoing roles and repeated occurrences", () => {
 				model: {
 					name: "Maren Voss",
 					prompt: {
-						systemInstruction: "",
+						...emptyPromptChannels(),
 						identity: "I am Maren Voss.",
-						appearance: "",
 						scenario: "A quiet room.",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
 					},
 					sendAppearanceImages: true,
 				},
@@ -305,14 +270,7 @@ describe("Outgoing roles and repeated occurrences", () => {
 				],
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "",
-						appearance: "",
-						scenario: "A quiet room.",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), scenario: "A quiet room." },
 					sendAppearanceImages: true,
 				},
 				context: [
@@ -336,26 +294,12 @@ describe("Macro expansion", () => {
 			source({
 				human: {
 					name: "Writer",
-					prompt: {
-						systemInstruction: "",
-						identity: "I am {{self}}, you are {{other}}.",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "I am {{self}}, you are {{other}}." },
 					sendAppearanceImages: true,
 				},
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "I am {{self}}, you are {{other}}.",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "I am {{self}}, you are {{other}}." },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -372,14 +316,7 @@ describe("Macro expansion", () => {
 			source({
 				human: {
 					name: "X{{self}}Y",
-					prompt: {
-						systemInstruction: "",
-						identity: "Name: {{self}}",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "Name: {{self}}" },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -393,14 +330,7 @@ describe("Macro expansion", () => {
 			source({
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "Use \\{{self}} and \\{{other}} literally.",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "Use \\{{self}} and \\{{other}} literally." },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -414,14 +344,7 @@ describe("Macro expansion", () => {
 			source({
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "\\\\{{self}}",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "\\\\{{self}}" },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -435,14 +358,7 @@ describe("Macro expansion", () => {
 			source({
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "Syntax: \\{{// draft: mention {{unfinished}} }} end.",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "Syntax: \\{{// draft: mention {{unfinished}} }} end." },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -456,14 +372,7 @@ describe("Macro expansion", () => {
 			source({
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "Syntax: \\{{//}} mention {{unfinished}} {{///}} end.",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "Syntax: \\{{//}} mention {{unfinished}} {{///}} end." },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -477,14 +386,7 @@ describe("Macro expansion", () => {
 			source({
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "\\\\{{// note }} and {{self}}",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "\\\\{{// note }} and {{self}}" },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -497,14 +399,7 @@ describe("Macro expansion", () => {
 			source({
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "Before {{//}} hidden {{self}} {{unknown}} {{///}} after {{other}}",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "Before {{//}} hidden {{self}} {{unknown}} {{///}} after {{other}}" },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -518,14 +413,7 @@ describe("Macro expansion", () => {
 			source({
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "{{// oops, never closed",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "{{// oops, never closed" },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -541,26 +429,12 @@ describe("Macro expansion", () => {
 			source({
 				human: {
 					name: "Writer",
-					prompt: {
-						systemInstruction: "",
-						identity: "{{random}} stays.",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "{{random}} stays." },
 					sendAppearanceImages: true,
 				},
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "{{char}}: {{random}}",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), exampleDialogue: "{{char}}: {{random}}" },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -576,7 +450,9 @@ describe("Macro expansion", () => {
 
 	test("warns about a macro that changes between requests only when its block comes before history", () => {
 		const prompt = (scenario: string, postHistoryInstruction: string) => ({
-			systemInstruction: "", identity: "", appearance: "", scenario, exampleDialogue: "", postHistoryInstruction,
+			...emptyPromptChannels(),
+			scenario,
+			postHistoryInstruction,
 		});
 		const plan = compilePrompt(source({
 			model: { name: "Maren Voss", prompt: prompt("It is {{time}}. {{random}} stays.", "Roll {{roll::1d6}}."), sendAppearanceImages: true },
@@ -606,14 +482,7 @@ describe("Macro expansion", () => {
 			source({
 				model: {
 					name: "Maren Voss",
-					prompt: {
-						systemInstruction: "",
-						identity: "{{self and {also",
-						appearance: "",
-						scenario: "",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
-					},
+					prompt: { ...emptyPromptChannels(), identity: "{{self and {also" },
 					sendAppearanceImages: true,
 				},
 			}),
@@ -759,14 +628,7 @@ describe("Authored instruction blocks", () => {
 	});
 });
 
-const emptyChannels = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
+const emptyChannels = emptyPromptChannels();
 
 describe("Box blocks", () => {
 	const recipe: CompilePromptInput["recipe"] = [

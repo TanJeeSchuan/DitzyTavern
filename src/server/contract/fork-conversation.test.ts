@@ -1,6 +1,7 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { createConversationWithHistory, openObservedDatabase, insertBox, readTestConversationSnapshot } from "../test-fixtures/conversation";
-import { DEFAULT_CONVERSATION_GENERATION_SETTINGS, executeConversationCommand, readConversationGenerationSettings, readConversationSummary, readChatHistory, deleteConversation, acceptGeneration } from "../conversation";
+import { openObservedDatabase, insertBox, readTestConversationSnapshot, participantSeed, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS, executeConversationCommand, readConversationGenerationSettings, readConversationSummary, readChatHistory, deleteConversation } from "../conversation";
 import { forkConversation } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
@@ -19,10 +20,8 @@ beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 
 test("forks through a selected alternative and leaves later Messages behind", async () => {
-	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-	const source = createConversationWithHistory(database, {
-		name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: ["first", "alternative"] } }], control: { human: 0, model: 1 },
-	});
+	const prompt = emptyPromptChannels();
+	const source = pairChat(database, "Source", { participants: [participantSeed("Writer", { prompt }), participantSeed("Model", { prompt, openings: ["first", "alternative"] })] });
 	const withLaterMessage = executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["later"], authorParticipantId: source.cast[0]!.id } });
 	const { connectionProfileId, ...settings } = DEFAULT_CONVERSATION_GENERATION_SETTINGS;
 	settings.modelId = "forked-story-model";
@@ -48,8 +47,8 @@ test("forks through a selected alternative and leaves later Messages behind", as
 });
 
 const createSource = () => {
-	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-	const source = createConversationWithHistory(database, { name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: [] } }], control: { human: 0, model: 1 } });
+	const prompt = emptyPromptChannels();
+	const source = pairChat(database, "Source", { participants: [participantSeed("Writer", { prompt }), participantSeed("Model", { prompt })] });
 	executeConversationCommand(database, { conversationId: source.id, expectedRevision: 0, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["Rewrite me"], authorParticipantId: source.cast[0]!.id } });
 	const message = database.query<{ id: number }, [number]>("SELECT id FROM messages WHERE conversation_id = ?").get(source.id)!;
 	return { source, message };
@@ -131,18 +130,11 @@ test("a Rewind returns the Human Message's Moves without storing the Message", (
 
 test("fork is refused during an Active Generation", () => {
 	const { source, message } = createSource();
-	acceptGeneration(database, {
+	acceptTestGeneration(database, source, { kind: "send", expectedRevision: 1, content: "Go on" }, {
 		seed: "seed",
-		conversationId: source.id,
 		timestamp: "2026-01-01T00:01:00Z",
-		humanParticipantId: source.cast[0]!.id,
-		modelParticipantId: source.cast[1]!.id,
-		capturedHumanName: source.cast[0]!.name,
-		capturedModelName: "Model",
-		promptPlan: { blocks: [], warnings: [], images: [] },
-		modelId: "fixture-model",
 		promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
-	}, { kind: "send", expectedRevision: 1, content: "Go on" });
+	});
 	const revision = readConversationSummary(database, source.id)!.revision;
 	expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: revision, at: { through: message.id }, name: "Fork", trimVariants: false })).toThrow("Active Generation");
 	expect(database.query<{ count: number }, []>("SELECT count(*) AS count FROM conversation").get()!.count).toBe(1);
@@ -277,8 +269,8 @@ test("a record citing a trimmed Variant fails with the Box and path", async () =
 });
 
 test("a non-trimmed fork keeps every Variant while selecting the requested one", () => {
-	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-	const source = createConversationWithHistory(database, { name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: ["First", "Second"] } }], control: { human: 0, model: 1 } });
+	const prompt = emptyPromptChannels();
+	const source = pairChat(database, "Source", { participants: [participantSeed("Writer", { prompt }), participantSeed("Model", { prompt, openings: ["First", "Second"] })] });
 	const point = source.messages[0]!;
 	const fork = forkConversation(database, { conversationId: source.id, expectedRevision: 0, at: { through: point.id, variantId: point.variants[1]!.id }, name: "Fork", trimVariants: false });
 	const variants = readTestConversationSnapshot(database, fork.conversation.id)!.messages[0]!.variants;

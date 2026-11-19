@@ -1,4 +1,4 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart, shortReplyPrompt, participantSeed } from "../test-fixtures/conversation";
 import {
 	stopConversationGeneration,
 	readActiveGenerationDetails,
@@ -35,8 +35,8 @@ describe("Stop with no checkpointed output", () => {
 		const created = createConversationWithHistory(module, {
 			name: "Removal Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original answer."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original answer."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -333,11 +333,4 @@ test("stopping an empty Continuation Generation removes only its provisional Mes
 	});
 });
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();

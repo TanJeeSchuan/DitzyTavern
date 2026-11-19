@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { uploadImage } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { requireSnapshot } from "../test-fixtures/conversation";
@@ -61,12 +62,9 @@ import {
 // through public domain seams.
 
 const prompt = (): CharacterDefinition["prompt"] => ({
+	...emptyPromptChannels(),
 	systemInstruction: "System text.",
 	identity: "Identity text.",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
 });
 
 const definition = (name: string, overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({

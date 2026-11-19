@@ -2,6 +2,7 @@ import { asc, eq, getTableColumns } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	checkpointConversationGeneration,
+	acceptGeneration,
 	executeConversationCommand,
 	createConversation,
 	readConversationSummary,
@@ -10,6 +11,7 @@ import {
 	deriveMessageSwipeEligibility,
 } from "../conversation";
 import type { Database } from "bun:sqlite";
+import { emptyPromptChannels } from "../../shared/definition";
 import { openInitializedDatabase } from "../database/database";
 // oxlint-disable-next-line ditzy/no-conversation-internal-imports -- The test snapshot needs raw Message and Variant rows.
 import { messageDataTable, messageTable, messageVariantTable } from "../database/schema";
@@ -26,11 +28,65 @@ import type {
 	ConversationCommand,
 	ConversationSummary,
 	ConversationCreationInput,
+	ConversationParticipantSeed,
+	GenerationAcceptanceCapture,
+	ParticipantDefinition,
 	ConversationDataEntry,
 	AuthorStampSnapshot,
 	HistoricalControlSnapshot,
 	MessageSwipeEligibility,
 } from "../conversation";
+
+export const participantDefinition = (name: string, { prompt = emptyPromptChannels(), ...overrides }: Partial<Omit<ParticipantDefinition, "name">> = {}): ParticipantDefinition => ({
+	name, prompt, sendAppearanceImages: true, openings: [], ...overrides,
+});
+
+export const participantSeed = (name: string, { sourceCharacterId, ...definition }: Partial<Omit<ParticipantDefinition, "name">> & Pick<ConversationParticipantSeed, "sourceCharacterId"> = {}): ConversationParticipantSeed => {
+	const seed: ConversationParticipantSeed = { definition: participantDefinition(name, definition) };
+	if (sourceCharacterId !== undefined) seed.sourceCharacterId = sourceCharacterId;
+	return seed;
+};
+
+export const pairChat = (
+	database: Database,
+	name: string,
+	{ prompt, participants = [participantSeed("Writer", { prompt }), participantSeed("Maren", { prompt })], ...overrides }: Omit<ConversationCreationInput, "name"> & { prompt?: ParticipantDefinition["prompt"] } = {},
+): TestConversationSnapshot =>
+	createConversationWithHistory(database, { name, participants, control: { human: 0, model: 1 }, ...overrides });
+
+export const shortReplyPrompt = (overrides: Partial<ParticipantDefinition["prompt"]> = {}): ParticipantDefinition["prompt"] => ({
+	...emptyPromptChannels(),
+	systemInstruction: "Answer briefly.",
+	identity: "I am {{self}}.",
+	scenario: "The room is quiet.",
+	postHistoryInstruction: "Continue.",
+	...overrides,
+});
+
+export const acceptTestGeneration = (
+	database: Database,
+	chat: ConversationSummary,
+	target: Parameters<typeof acceptGeneration>[2],
+	{ timestamp, seed = "test-generation-seed", ...capture }: Pick<GenerationAcceptanceCapture, "timestamp"> &
+		Partial<Pick<GenerationAcceptanceCapture, "seed" | "boxRecords" | "boxTraces" | "promptPlan" | "promptInspection" | "loreActivation" | "provenance">>,
+): ReturnType<typeof acceptGeneration> => {
+	const human = chat.cast.find(({ id }) => id === chat.control.humanParticipantId);
+	const model = chat.cast.find(({ id }) => id === chat.control.modelParticipantId);
+	if (!human || !model) throw new Error("Control Participants missing.");
+	return acceptGeneration(database, {
+		conversationId: chat.id,
+		timestamp,
+		seed,
+		humanParticipantId: human.id,
+		modelParticipantId: model.id,
+		capturedHumanName: human.name,
+		capturedModelName: model.name,
+		promptPlan: { blocks: [], warnings: [], images: [] },
+		modelId: "fixture-model",
+		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		...capture,
+	}, target);
+};
 
 export function openObservedDatabase(): Database {
 	const database = openInitializedDatabase({ path: ":memory:" });

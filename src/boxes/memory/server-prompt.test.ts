@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import type { RecallCandidate } from "./server-recall";
 import { describe, expect, test } from "bun:test";
 import { compileGenerationPlan } from "../../server/generation-plan";
@@ -6,7 +7,7 @@ import { testMacroAttempt } from "../../shared/test-fixtures/prompt-macros";
 import type { RecallActivation } from "./server-recall";
 import { memoryItems } from "./server-prompt";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = emptyPromptChannels();
 const compile = (overrides: Partial<Parameters<typeof compileGenerationPlan>[0]>) => compileGenerationPlan({
 	boxes: {}, human: { name: "Writer", prompt, sendAppearanceImages: true }, model: { name: "Maren", prompt, sendAppearanceImages: true }, recipe: [], context: [],
 	lore: [], loreAllowance: 2_048, attempt: testMacroAttempt(),

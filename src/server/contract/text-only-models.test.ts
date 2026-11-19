@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { profile as chatProfile, sseReply } from "./prompt-preset-test-fixtures";
+import { readTestConversationSnapshot, pairChat } from "../test-fixtures/conversation";
 import {
 	executeConversationCommand,
 	readConversationGenerationSettings,
@@ -16,25 +17,8 @@ import { uploadImage } from "../image";
 import { formatImageReference } from "../../shared/image-reference";
 
 const key = new Uint8Array(32).fill(29);
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-const profile = {
-	displayName: "Vision",
-	apiFormat: "chat-completions" as const,
-	requestUrl: "http://127.0.0.1:43127/v1/",
-	modelsUrl: "",
-	modelBackend: "automatic" as const,
-	adapter: "openai-compatible" as const,
-	outputTokenRepresentation: "automatic" as const,
-	systemPlacement: "strict" as const,
-	timeoutMs: 120_000,
-	pinnedModels: [],
-};
+const profile = { ...chatProfile, displayName: "Vision", requestUrl: "http://127.0.0.1:43127/v1/", adapter: "openai-compatible", systemPlacement: "strict" } satisfies typeof chatProfile;
 
-const stream = () => new Response([
-	`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Seen." }, finish_reason: null }] })}\n\n`,
-	`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`,
-	"data: [DONE]\n\n",
-].join(""), { headers: { "content-type": "text/event-stream" } });
 
 type Wire = { model: string; messages: Array<{ role: string; content: string | Array<{ type: string; text?: string }> }> };
 
@@ -60,11 +44,7 @@ describe("Text-only Models", () => {
 		}));
 
 	const chat = (modelId: string) => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Chat",
-			participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Chat");
 		const conversations = database;
 		executeConversationCommand(conversations, {
 			conversationId: conversation.id,
@@ -84,7 +64,7 @@ describe("Text-only Models", () => {
 			fetch: async (_url, init) => {
 				// SAFETY: the controlled fake receives the adapter's JSON request body.
 				requests.push(JSON.parse(String(init?.body)) as Wire);
-				return stream();
+				return sseReply([{ content: "Seen." }]);
 			},
 		});
 		const revision = readConversationRevision(database, conversationId) ?? 0;
@@ -181,7 +161,7 @@ describe("Text-only Models", () => {
 		await requested.promise;
 		started.runtime.dispatch({ type: "request-stop" });
 		started.runtime.dispatch({ type: "release-stop" });
-		response.resolve(stream());
+		response.resolve(sseReply([{ content: "Seen." }]));
 		await expect(started.result).rejects.toMatchObject({ kind: "cancelled" });
 		const state = started.runtime.state;
 		if (state.status !== "failed") throw new Error(`Expected a failed Generation, got ${state.status}.`);
@@ -215,7 +195,7 @@ describe("Text-only Models", () => {
 		let requests = 0;
 		const started = await createGenerationCoordinator(database, {
 			masterKey: key,
-			fetch: async () => { requests += 1; return stream(); },
+			fetch: async () => { requests += 1; return sseReply([{ content: "Seen." }]); },
 		}).startGeneration({target: { kind: "continuation" }, conversationId, expectedRevision: configured.revision });
 		await expect(started.result).rejects.toMatchObject({ kind: "protocol" });
 		expect(requests).toBe(0);

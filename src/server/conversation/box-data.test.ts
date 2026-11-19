@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -5,21 +6,14 @@ import { characterDataTable, libraryDataTable, participantDataTable } from "../d
 import { openInitializedDatabase } from "../database/database";
 import { createCharacterLibraryModule } from "../character-library";
 import { executeConversationCommand, InvalidConversationCommandError } from "../conversation";
-import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
+import { createConversationWithHistory, insertBox, participantDefinition } from "../test-fixtures/conversation";
 import { boxStateEntry, readBoxSetups } from "../box/setup";
 import { initialRaceSetup } from "../../boxes/race/shared-data";
 import type { BoxDataExpectation, BoxDataWrite } from "../../shared/contract/box-actions";
 
-const prompt = () => ({
-	systemInstruction: "",
-	identity: "Lighthouse archivist on the northern coast.",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-});
+const prompt = () => ({ ...emptyPromptChannels(), identity: "Lighthouse archivist on the northern coast." });
 
-const definition = (name: string) => ({ name, prompt: prompt(), sendAppearanceImages: true, openings: [] });
+const definition = (name: string) => participantDefinition(name, { prompt: prompt() });
 const stats = (speed: number) => JSON.stringify({ style: "Pace Chaser", speed, stamina: 600, power: 600, guts: 600, wit: 600 });
 type Commit = { box: "race" | "author-note" | "phone"; setup?: typeof initialRaceSetup; writes?: BoxDataWrite[]; expected?: BoxDataExpectation[] };
 

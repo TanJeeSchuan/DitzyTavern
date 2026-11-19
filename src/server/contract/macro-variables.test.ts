@@ -1,4 +1,4 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { pairChat } from "../test-fixtures/conversation";
 import { executeConversationCommand, readConversationSummary } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -18,23 +18,8 @@ import {
 } from "../../shared/contract/macro-variables";
 import type { GenerationJsonObject } from "../../shared/contract/json-value";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
 
-const createChat = (database: Database) => createConversationWithHistory(database, {
-	name: "Variables Chat",
-	participants: [
-		{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-		{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-	],
-	control: { human: 0, model: 1 },
-});
+const createChat = (database: Database) => pairChat(database, "Variables Chat");
 
 describe("Macro Variables transport", () => {
 	let database: Database;

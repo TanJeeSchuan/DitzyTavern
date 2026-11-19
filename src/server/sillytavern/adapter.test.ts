@@ -1,3 +1,4 @@
+import { participantSeed } from "../test-fixtures/conversation";
 import { describe, expect, test } from "bun:test";
 import {
 	ARCHIVE_KEY,
@@ -38,21 +39,7 @@ const project = (sourceText: string, ...participantNamePerMessage: string[]) => 
 
 // Imported Participants start with an empty typed Prompt and no openings:
 // the resolved identity carries only a native nonblank name.
-const importedSeed = (name: string) => ({
-	definition: {
-		name,
-		prompt: {
-			systemInstruction: "",
-			identity: "",
-			appearance: "",
-			scenario: "",
-			exampleDialogue: "",
-			postHistoryInstruction: "",
-		},
-		sendAppearanceImages: true,
-		openings: [],
-	},
-});
+const importedSeed = (name: string) => (participantSeed(name));
 
 describe("SillyTavern JSONL adapter", () => {
 	test("decodes a valid persisted report without trusting JSON prototypes", () => {

@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { describe, expect, test } from "bun:test";
 import {
 	assertGenerationPlan,
@@ -21,26 +22,16 @@ import { toMessages } from "../model-client/chat-messages";
 
 const human: CompilePromptDefinition = {
 	name: "Writer",
-	prompt: {
-		systemInstruction: "",
-		identity: "I am Writer.",
-		appearance: "",
-		scenario: "",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
-	},
+	prompt: { ...emptyPromptChannels(), identity: "I am Writer." },
 	sendAppearanceImages: true,
 };
 
 const model: CompilePromptDefinition = {
 	name: "Maren",
 	prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "Keep the reply literary.",
 		identity: "I am Maren.",
-		appearance: "",
-		scenario: "",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
 	},
 	sendAppearanceImages: true,
 };

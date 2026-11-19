@@ -1,4 +1,4 @@
-import { createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
+import { checkpointFromStart, shortReplyPrompt, pairChat } from "../test-fixtures/conversation";
 import {
 	readVariantDetails,
 	executeConversationCommand,
@@ -14,14 +14,7 @@ import { runGenerationLifecycle } from ".";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import { observeConversationWrites } from "../conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
 describe("Send through provisional Tail Generation", () => {
 	let database: Database;
@@ -30,14 +23,7 @@ describe("Send through provisional Tail Generation", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const created = createConversationWithHistory(database, {
-			name: "Send Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const created = pairChat(database, "Send Chat", { prompt });
 		conversationId = created.id;
 		humanId = created.cast[0]?.id ?? -1;
 	});

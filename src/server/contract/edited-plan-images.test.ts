@@ -1,4 +1,4 @@
-import { createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
+import { insertBox, pairChat } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -12,7 +12,6 @@ import { generationPreview, generationAccepted } from "../../shared/contract/con
 import type { GenerationPreview, GenerationPreviewBody, GenerationBody, PromptPlan } from "../../shared/contract/conversation-schema";
 import { captureModelFetch, key, withProfile } from "./prompt-preset-test-fixtures";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const post = (app: ReturnType<typeof createContract>, path: string, body: GenerationPreviewBody | GenerationBody) => app.handle(new Request(`http://localhost/api${path}`, {
 	method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 }));
@@ -28,12 +27,7 @@ const inspect = async (app: ReturnType<typeof createContract>, id: number): Prom
 };
 
 const createChat = (database: Database) => {
-	const chat = createConversationWithHistory(database, {
-		name: "Images", participants: [
-			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-		], control: { human: 0, model: 1 },
-	});
+	const chat = pairChat(database, "Images");
 	// @approved The suite asserts the World Clock line in captured plans.
 	insertBox(database, chat.id, "world-clock");
 	insertBox(database, chat.id, "phone");
