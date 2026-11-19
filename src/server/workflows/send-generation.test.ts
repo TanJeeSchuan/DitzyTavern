@@ -1,4 +1,4 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { checkpointFromStart, shortReplyPrompt, pairChat } from "../test-fixtures/conversation";
 import {
 	readVariantDetails,
 	executeConversationCommand,
@@ -14,14 +14,7 @@ import { runGenerationLifecycle } from ".";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import { observeConversationWrites } from "../conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
 describe("Send through provisional Tail Generation", () => {
 	let database: Database;
@@ -30,14 +23,7 @@ describe("Send through provisional Tail Generation", () => {
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const created = createConversationWithHistory(database, {
-			name: "Send Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const created = pairChat(database, "Send Chat", { prompt });
 		conversationId = created.id;
 		humanId = created.cast[0]?.id ?? -1;
 	});
@@ -179,6 +165,32 @@ describe("Send through provisional Tail Generation", () => {
 			});
 		}
 	});
+
+	for (const failure of ["inactivity", "empty"] as const) {
+		test(`retains the final checkpoint when ${failure} cleanup sees no provider output`, async () => {
+			let generationId = 0;
+			const content = failure === "empty" ? "" : "Keep the checkpoint.";
+			await expect(runGenerationLifecycle(database, {
+				connection: null, conversationId, expectedRevision: 0,
+				target: { kind: "send", content: "Keep my input." },
+				modelClient: createFakeModelClient(() => failure === "empty" ? "" : [
+					{ type: "failed", kind: "inactivity", message: "Provider timed out." },
+				]),
+				onAccepted: (accepted) => { generationId = accepted.generationId; },
+				onBeforeTerminal: () => checkpointFromStart(database, {
+					conversationId, generationId, content, reasoning: "Keep the thought.",
+				}),
+			})).rejects.toThrow(failure === "empty" ? "Generation produced no usable output." : "Provider timed out.");
+			const snapshot = currentSnapshot();
+			expect(snapshot.activeGenerations).toEqual([]);
+			expect(snapshot.messages.map((message) => message.variants[0]?.content)).toEqual(["Keep my input.", content]);
+			expect(snapshot.messages.at(-1)?.variants[0]?.data).toEqual(expect.arrayContaining([
+				{ namespace: "generation", key: "reasoning", value: "Keep the thought." },
+				{ namespace: "generation", key: "outcome", value: "interrupted" },
+				{ namespace: "generation", key: "interruption-cause", value: failure === "empty" ? "provider" : failure },
+			]));
+		});
+	}
 
 	test("reports the newly inserted and the reused accepted Human source to the digest queue", async () => {
 		const touched: number[] = [];

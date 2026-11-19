@@ -32,26 +32,11 @@ export function getConnectionSecretKey(): Uint8Array {
 export {
 	bootstrapConnectionSecretKey,
 	ConnectionSecretBootstrapError,
-	decodeConnectionSecretKey,
-	CONNECTION_SECRET_KEY_BYTES,
 	CONNECTION_SECRET_KEY_ENV,
 } from "./bootstrap";
 export {
 	decryptConnectionSecretSync,
 	encryptConnectionSecretSync,
 	ConnectionSecretDecryptionError,
-	ConnectionSecretEncryptionError,
 	CONNECTION_SECRET_FORMAT_VERSION,
-	CONNECTION_SECRET_NONCE_BYTES,
-	CONNECTION_SECRET_TAG_BYTES,
-} from "./encryption";
-export type {
-	ConnectionSecretKeyBootstrapOptions,
-	ConnectionSecretKeyBootstrapResult,
-	ConnectionSecretKeySource,
-} from "./bootstrap";
-export type {
-	ConnectionSecretPayload,
-	EncryptedConnectionSecret,
-	EncryptConnectionSecretOptions,
 } from "./encryption";

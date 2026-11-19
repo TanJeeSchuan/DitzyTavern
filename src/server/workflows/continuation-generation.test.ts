@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import {
 	readActiveGenerationDetails,
 	stopConversationGeneration,
@@ -15,19 +16,12 @@ import { generateTerminalTailFixture } from "./test-fixtures";
 import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fixtures/conversation";
 import { createGenerationPreviewAsync } from "./generation-preview";
 
-const definition = (name: string): ParticipantDefinition => ({
-	name,
-	prompt: {
+const definition = (name: string): ParticipantDefinition => participantDefinition(name, { prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "Write well.",
 		identity: "I am {{self}}.",
-		appearance: "",
 		scenario: "A quiet room.",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
-	},
-	sendAppearanceImages: true,
-	openings: [],
-});
+	} });
 
 describe("Continuation Generation", () => {
 	let database: Database;
@@ -80,7 +74,7 @@ describe("Continuation Generation", () => {
 		const generationId = after?.activeGenerations[0]?.generationId;
 		if (generationId === undefined) throw new Error("Missing Generation.");
 		expect(readActiveGenerationDetails(module, conversationId, generationId)?.checkpoint.content).toBe("Keep the generated output.");
-		stopConversationGeneration(module, { conversationId, generationId });
+		stopConversationGeneration(module, { cause: "user-stop", conversationId, generationId });
 		expect(readTestConversationSnapshot(module, conversationId)?.activeGenerations).toHaveLength(0);
 		expect(readTestConversationSnapshot(module, conversationId)?.messages.at(-1)?.variants[0]?.content).toBe("Keep the generated output.");
 	});
@@ -251,8 +245,8 @@ describe("Continuation Generation", () => {
 			},
 		});
 		let received: ModelClientGenerationInput | undefined;
-		const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, kind: "continuation" });
-		if (preview.capture.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
+		const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, target: { kind: "continuation" } });
+		if (preview.capture.preparation.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
 		const promptPlan = preview.capture.plan.promptPlan;
 		expect(promptPlan.intent).toEqual({
 			type: "continuation",

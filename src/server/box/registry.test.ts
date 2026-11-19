@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxDescriptor, boxDescriptors } from "../../shared/contract/box";
+import type { GenerationBody, GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { sha256 } from "../hash";
 import { readBoxFolds, writeAutomaticRecord } from "./records";
@@ -13,9 +14,9 @@ import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { acceptConversationTailGeneration, observeConversationWrites } from "../conversation";
+import { InvalidConversationCommandError, observeConversationWrites } from "../conversation";
 import { openInitializedDatabase } from "../database/database";
-import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState, checkpointFromStart } from "../test-fixtures/conversation";
+import { applyCommand, createConversationWithHistory, insertBox, openObservedDatabase, setBoxState, checkpointFromStart, acceptTestGeneration } from "../test-fixtures/conversation";
 import { addPromptPresetBlock, setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
 import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
@@ -299,7 +300,7 @@ for (const disabledBy of ["chat", "preset"] as const) test(`a Box disabled by it
 		const conversation = createChat(database);
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 		const send = async () => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 			method: "POST", headers: { "content-type": "application/json" },
 			body: JSON.stringify({ kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it." }),
@@ -332,11 +333,13 @@ test("an unchanged preview of a Box block whose pinned items exceed its allowanc
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
 		let sent = "";
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { sent = JSON.stringify(request.messages); }) });
-		const post = async (path: string, body: { readonly kind: "send"; readonly content: string; readonly expectedRevision?: number; readonly previewId?: string; readonly promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { sent = JSON.stringify(request.messages); } }).fetch });
+		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const { previewId, promptPlan } = await (await post("/preview", { kind: "send", content: "Light it." })).json();
+		const preview = await post("/preview", { target: { kind: "send", content: "Light it." } });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
 		const accepted = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });
 		expect(accepted.status).toBe(200);
 		await completeGeneration(app, conversation.id, (await accepted.json()).generationId);
@@ -356,12 +359,9 @@ test("a Generation holding a record of a Box no longer loaded still settles on r
 		} })]);
 		const conversation = createChat(database);
 		const instance = insertBox(database, conversation.id, "lantern");
-		const [human, model] = conversation.cast;
-		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-		const accepted = acceptConversationTailGeneration(database, {
-			seed: "lantern-seed", conversationId: conversation.id, expectedRevision: conversation.revision, timestamp: "2026-10-14T00:00:00.000Z",
-			humanContent: "Light it.", humanParticipantId: human.id, modelParticipantId: model.id, capturedHumanName: human.name, capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		const accepted = acceptTestGeneration(database, conversation, { kind: "send", expectedRevision: conversation.revision, content: "Light it." }, {
+			seed: "lantern-seed",
+			timestamp: "2026-10-14T00:00:00.000Z",
 			boxRecords: { lantern: { instance, record: { lit: true } } },
 		});
 		checkpointFromStart(database, { conversationId: conversation.id, generationId: accepted.generationId, content: "The wick catches." });
@@ -383,7 +383,7 @@ test("a Chat keeps its preset and its Generations once a Box in it is no longer 
 		insertBox(database, conversation.id, "lantern");
 		await loadBoxes([builtInBoxes]);
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 		const preset = await readPreset(app, conversation.id);
 		const block = preset.slots.find(({ reference }) => reference === "box:lantern");
 		if (block === undefined) throw new Error("The preset lost the Lantern's block.");
@@ -429,11 +429,13 @@ test("reinserting a participating Box makes its inspected Prompt Plan stale", as
 		const conversation = createChat(database);
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
-		const post = async (path: string, body: { readonly kind: "send"; readonly content: string; readonly expectedRevision?: number; readonly previewId?: string; readonly promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
+		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const { previewId, promptPlan } = await (await post("/preview", { kind: "send", content: "Light it." })).json();
+		const preview = await post("/preview", { target: { kind: "send", content: "Light it." } });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
 		setBoxState(database, conversation.id, "lantern", "absent");
 		insertBox(database, conversation.id, "lantern");
 		const response = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });
@@ -613,3 +615,32 @@ test("the host stops waiting for a trusted Box's async hook that ignores its sig
 	}
 });
 
+test("set-box-setup reports a throwing plugin hook as an invalid command without writing", async () => {
+	const plugins = installPlugins({ "throwing-setup": {
+		fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, initial: "initial" }',
+		server: 'export default { setupError: () => { throw new Error("The setup hook broke."); } };',
+	} });
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins], database);
+		const chat = createConversationWithHistory(database, { name: "Throwing setup", participants: [] });
+		insertBox(database, chat.id, "throwing-setup");
+		let thrown: unknown;
+		try {
+			applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "throwing-setup", setup: "changed" } });
+		} catch (error) { thrown = error; }
+		expect(thrown).toBeInstanceOf(InvalidConversationCommandError);
+		expect(thrown).toMatchObject({ message: "The setup hook broke." });
+		expect(database.query("SELECT value FROM conversation_data WHERE conversation_id = ? AND namespace = 'box:throwing-setup' AND key = 'setup'").get(chat.id)).toBeNull();
+		database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:throwing-setup', 'setup', 'malformed')").run(chat.id);
+		thrown = undefined;
+		try {
+			applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "throwing-setup", setup: "changed" } });
+		} catch (error) { thrown = error; }
+		expect(thrown).not.toBeInstanceOf(InvalidConversationCommandError);
+		expect(thrown).toMatchObject({ message: `Stored Box JSON at Chat ${chat.id} box:throwing-setup setup is malformed.` });
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});

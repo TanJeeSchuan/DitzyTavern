@@ -18,7 +18,6 @@
 		"db:teardown": "bun src/server/database/teardown.ts",
 		"db:seed:race-avatars": "bun scripts/seed-race-avatars.ts",
 		"db:teardown:race-avatars": "bun scripts/teardown-race-avatars.ts",
-		"db:import": "bun src/server/database/import-chat.ts",
 		"lint": "oxlint",
 		"lint:fix": "oxlint --fix",
 		"lint:rules": "node --test --test-reporter=dot --test-isolation=none --experimental-strip-types \"tools/oxlint/*/rules/*.test.ts\"",

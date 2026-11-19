@@ -1,49 +1,51 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { createConversationWithHistory, openObservedDatabase, insertBox, readTestConversationSnapshot } from "../test-fixtures/conversation";
-import { executeConversationCommand, readConversationSummary, readChatHistory, deleteConversation, acceptConversationTailGeneration } from "../conversation";
-import { forkConversation } from "../conversation";
+import { openObservedDatabase, insertBox, readTestConversationSnapshot, participantSeed, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS, executeConversationCommand, readConversationGenerationSettings, readConversationSummary, readChatHistory, deleteConversation, forkConversation, readMacroVariables } from ".";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
-import { builtInBoxes, loadBoxes } from "../box/registry";
+import { builtInBoxes } from "../box/registry";
+import { loadTestBoxes } from "../test-fixtures/boxes";
+import { writeBoxFiles } from "../test-fixtures/versioned-box";
 import { memoryRecord, memoryActivationRecord } from "../../boxes/memory/contract";
 import { memoryRecordFingerprint, readMemorySources } from "../../boxes/memory/server-sources";
 import { advanceRace } from "../../boxes/race/logic-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
-import { createBoxWindowRoutes } from "./box-window";
-import { createConversationRoutes } from "./conversation";
+import { createBoxWindowRoutes } from "../contract/box-window";
 
 let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 
-test("forks through a selected alternative and leaves later Messages behind", async () => {
-	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-	const source = createConversationWithHistory(database, {
-		name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: ["first", "alternative"] } }], control: { human: 0, model: 1 },
+test("forks through a selected alternative and leaves later Messages behind", () => {
+	const prompt = emptyPromptChannels();
+	const source = pairChat(database, "Source", { participants: [participantSeed("Writer", { prompt }), participantSeed("Model", { prompt, openings: ["first", "alternative"] })] });
+	const withLaterMessage = executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["later"], authorParticipantId: source.cast[0]!.id } });
+	const { connectionProfileId, ...settings } = DEFAULT_CONVERSATION_GENERATION_SETTINGS;
+	settings.modelId = "forked-story-model";
+	const configured = executeConversationCommand(database, { conversationId: source.id, expectedRevision: withLaterMessage.revision,
+		action: { type: "update-generation-settings", settings },
 	});
-	executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["later"], authorParticipantId: source.cast[0]!.id } });
-	const app = createConversationRoutes(database);
-	const response = await app.handle(new Request(`http://localhost/api/conversations/${source.id}/fork`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: 1, at: { through: source.messages[0]!.id, variantId: source.messages[0]!.variants[1]!.id }, trimVariants: true, name: "Fork" }),
-	}));
-	if (response.status !== 200) throw new Error(await response.text());
-	const result = await response.json();
+	const result = forkConversation(database, {
+		conversationId: source.id,
+		expectedRevision: configured.revision,
+		at: { through: source.messages[0]!.id, variantId: source.messages[0]!.variants[1]!.id },
+		trimVariants: true,
+		name: "Fork",
+	});
 	expect(result.conversation.name).toBe("Fork");
 	expect(result.conversation.forkedFrom).toEqual({ conversationId: source.id, messageId: source.messages[0]!.id, name: "Source" });
-	const history = await app.handle(new Request(`http://localhost/api/conversations/${result.conversation.id}/history`));
-	const body = JSON.stringify(await history.json());
-	expect(body).toContain("alternative");
-	expect(body).not.toContain("later");
+	expect(readConversationGenerationSettings(database, result.conversation.id)).toEqual({ ...settings, connectionProfileId });
 	const copied = readTestConversationSnapshot(database, result.conversation.id)!;
 	expect(copied.messages).toHaveLength(1);
 	expect(copied.messages[0]!.variants.map(({ content, selected }) => ({ content, selected }))).toEqual([{ content: "alternative", selected: true }]);
 });
 
 const createSource = () => {
-	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-	const source = createConversationWithHistory(database, { name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: [] } }], control: { human: 0, model: 1 } });
+	const prompt = emptyPromptChannels();
+	const source = pairChat(database, "Source", { participants: [participantSeed("Writer", { prompt }), participantSeed("Model", { prompt })] });
 	executeConversationCommand(database, { conversationId: source.id, expectedRevision: 0, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["Rewrite me"], authorParticipantId: source.cast[0]!.id } });
 	const message = database.query<{ id: number }, [number]>("SELECT id FROM messages WHERE conversation_id = ?").get(source.id)!;
 	return { source, message };
@@ -99,7 +101,7 @@ test("missing Box references reject the entire fork and unloaded Boxes are omitt
 test("revision and fork point validation leave the source and Chat list unchanged", () => {
 	const { source, message } = createSource();
 	const input = { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: false };
-	expect(() => forkConversation(database, { ...input, expectedRevision: 0 })).toThrow();
+	expect(() => forkConversation(database, { ...input, expectedRevision: 0 })).toThrow("Expected Conversation revision 0, but the current revision is 1.");
 	expect(() => forkConversation(database, { ...input, at: { through: 99999 } })).toThrow("not a Message");
 	expect(() => forkConversation(database, { ...input, at: { through: message.id, variantId: 99999 } })).toThrow("not on the fork point");
 	expect(database.query<{ count: number }, []>("SELECT count(*) AS count FROM conversation").get()!.count).toBe(1);
@@ -108,7 +110,7 @@ test("revision and fork point validation leave the source and Chat list unchange
 test("unlink removes a fork link under revision control", () => {
 	const { source, message } = createSource();
 	const fork = forkConversation(database, { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: false }).conversation;
-	expect(() => executeConversationCommand(database, { conversationId: fork.id, expectedRevision: 1, action: { type: "unlink-fork" } })).toThrow();
+	expect(() => executeConversationCommand(database, { conversationId: fork.id, expectedRevision: 1, action: { type: "unlink-fork" } })).toThrow("Expected Conversation revision 1, but the current revision is 0.");
 	const updated = executeConversationCommand(database, { conversationId: fork.id, expectedRevision: 0, action: { type: "unlink-fork" } });
 	expect(updated.forkedFrom).toBeNull();
 	expect(updated.revision).toBe(1);
@@ -125,11 +127,10 @@ test("a Rewind returns the Human Message's Moves without storing the Message", (
 
 test("fork is refused during an Active Generation", () => {
 	const { source, message } = createSource();
-	acceptConversationTailGeneration(database, {
-		seed: "seed", conversationId: source.id, expectedRevision: 1, timestamp: "2026-01-01T00:01:00Z",
-		humanContent: "Go on", humanParticipantId: source.cast[0]!.id, modelParticipantId: source.cast[1]!.id, capturedHumanName: source.cast[0]!.name, capturedModelName: "Model",
-		promptPlan: { blocks: [], warnings: [], images: [] },
-		modelId: "fixture-model", promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
+	acceptTestGeneration(database, source, { kind: "send", expectedRevision: 1, content: "Go on" }, {
+		seed: "seed",
+		timestamp: "2026-01-01T00:01:00Z",
+		promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
 	});
 	const revision = readConversationSummary(database, source.id)!.revision;
 	expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: revision, at: { through: message.id }, name: "Fork", trimVariants: false })).toThrow("Active Generation");
@@ -191,10 +192,8 @@ test("World Clock and Macro State stop at the fork point", async () => {
 	const readClock = async (id: number) => (await (await boxes.handle(new Request(`http://localhost/api/conversations/${id}/boxes/world-clock`))).json()).status;
 	expect(await readClock(source.id)).toMatch(/^11:00 AM/);
 	expect(await readClock(fork.conversation.id)).toMatch(/^9:00 AM/);
-	const app = createConversationRoutes(database);
-	const readVariables = async (id: number) => (await (await app.handle(new Request(`http://localhost/api/conversations/${id}/macro-variables`))).json()).variables;
-	expect(JSON.stringify(await readVariables(fork.conversation.id))).toContain('"value":3');
-	expect(JSON.stringify(await readVariables(source.id))).toContain('"value":5');
+	expect(readMacroVariables(database, fork.conversation.id)?.variables).toContainEqual(expect.objectContaining({ name: "turn", value: 3 }));
+	expect(readMacroVariables(database, source.id)?.variables).toContainEqual(expect.objectContaining({ name: "turn", value: 5 }));
 });
 
 
@@ -247,26 +246,26 @@ test("a record citing a trimmed Variant fails with the Box and path", async () =
 	// @approved
 	//  A plugin whose record cites a Variant, loaded beside the built-ins: Fork reads each Box at the version its Chat runs, from the server's registry.
 	const plugins = join(".scratch", `fork-${crypto.randomUUID()}`);
-	mkdirSync(join(plugins, "citer"), { recursive: true });
-	writeFileSync(join(plugins, "citer", "descriptor.json"), JSON.stringify({ id: "citer", sdk: 2, label: "Citer", summary: "Cites.", role: "system", startsEnabled: false, instructions: "",
-		record: { type: "object", properties: { citation: { type: "integer", rowReference: "variant" } }, required: ["citation"], additionalProperties: false },
-		window: { icon: "box", size: { width: 10, height: 10 } } }));
-	writeFileSync(join(plugins, "citer", "logic.js"), "export default { records: { initial: null, fold: (_, record) => record } };");
-	writeFileSync(join(plugins, "citer", "ui.js"), "host.render('');");
-	await loadBoxes([builtInBoxes, plugins]);
 	try {
+		writeBoxFiles(join(plugins, "citer"), {
+			"descriptor.json": JSON.stringify({ id: "citer", sdk: 2, label: "Citer", summary: "Cites.", role: "system", startsEnabled: false, instructions: "",
+				record: { type: "object", properties: { citation: { type: "integer", rowReference: "variant" } }, required: ["citation"], additionalProperties: false },
+				window: { icon: "box", size: { width: 10, height: 10 } } }),
+			"logic.js": "export default { records: { initial: null, fold: (_, record) => record } };",
+			"ui.js": "host.render('');",
+		});
+		await loadTestBoxes([builtInBoxes, plugins]);
 		database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'box:citer', 'record:test', ?)").run(variant.id, JSON.stringify({ writer: { citation: trimmed.id } }));
 		expect(() => forkConversation(database, { conversationId: source.id, expectedRevision: 1, at: { through: message.id }, name: "Fork", trimVariants: true })).toThrow(/citer.*\/writer\/citation/);
 		expect(database.query<{ count: number }, []>("SELECT count(*) AS count FROM conversation").get()!.count).toBe(1);
 	} finally {
-		await loadBoxes([builtInBoxes]);
 		rmSync(plugins, { recursive: true, force: true });
 	}
 });
 
 test("a non-trimmed fork keeps every Variant while selecting the requested one", () => {
-	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-	const source = createConversationWithHistory(database, { name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: ["First", "Second"] } }], control: { human: 0, model: 1 } });
+	const prompt = emptyPromptChannels();
+	const source = pairChat(database, "Source", { participants: [participantSeed("Writer", { prompt }), participantSeed("Model", { prompt, openings: ["First", "Second"] })] });
 	const point = source.messages[0]!;
 	const fork = forkConversation(database, { conversationId: source.id, expectedRevision: 0, at: { through: point.id, variantId: point.variants[1]!.id }, name: "Fork", trimVariants: false });
 	const variants = readTestConversationSnapshot(database, fork.conversation.id)!.messages[0]!.variants;

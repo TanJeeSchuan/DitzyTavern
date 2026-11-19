@@ -1,16 +1,12 @@
+import { installFetch } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
-import { macroVariables } from "../../shared/contract/macro-variables";
-import { readOutcomeErrors } from "../../shared/contract/outcomes";
+import { macroVariablesReadResponse } from "../../shared/contract/macro-variables";
 import type { WirePayload } from "./wire-decode";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const { api } = await import("./eden");
-const { NetworkError, SERVER_UNREACHABLE_NOTICE, SERVER_UNUSABLE_RESPONSE_NOTICE, requestOutcome, requestData } = await import("./request-outcome");
+const { NetworkError, SERVER_UNREACHABLE_NOTICE, SERVER_UNUSABLE_RESPONSE_NOTICE, requestData } = await import("./request-outcome");
+const { requestOutcome } = await import("./request-route-outcome");
 
 // The macro-variables read is a stand-in route: its 200 payload is an object
 // schema and its modeled errors are the shared not-found/invalid envelopes.
@@ -34,7 +30,7 @@ describe("requestOutcome", () => {
 			target: { type: "initial" },
 			variables: [],
 		}, 200));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({
 			outcome: "available",
 			value: {
 				conversationId: 3,
@@ -49,12 +45,12 @@ describe("requestOutcome", () => {
 
 	test("a modeled error body passes through verbatim", async () => {
 		installFetch(async () => json({ outcome: "not-found" }, 404));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({ outcome: "not-found" });
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({ outcome: "not-found" });
 	});
 
 	test("an error body with an unmodeled outcome tag is the shared unusable fallback, never network", async () => {
 		installFetch(async () => json({ outcome: "conflict" }, 409));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({
 			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
@@ -62,7 +58,7 @@ describe("requestOutcome", () => {
 
 	test("a modeled tag with missing required fields is the shared unusable fallback", async () => {
 		installFetch(async () => json({ outcome: "invalid" }, 422));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({
 			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
@@ -70,7 +66,7 @@ describe("requestOutcome", () => {
 
 	test("an error body without the wire outcome tag is the shared unusable fallback", async () => {
 		installFetch(async () => json({ type: "validation", on: "body" }, 422));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({
 			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
@@ -78,7 +74,7 @@ describe("requestOutcome", () => {
 
 	test("a 200 body that fails the contract is the shared unusable fallback", async () => {
 		installFetch(async () => json({ unexpected: true }, 200));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({
 			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
@@ -86,7 +82,7 @@ describe("requestOutcome", () => {
 
 	test("a body Eden cannot parse is the shared unusable fallback, not a transport failure", async () => {
 		installFetch(async () => new Response("{", { headers: { "content-type": "application/json" } }));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({
 			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
@@ -96,12 +92,12 @@ describe("requestOutcome", () => {
 		installFetch(async () => {
 			throw new TypeError("fetch failed");
 		});
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({ outcome: "network" });
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({ outcome: "network" });
 	});
 
 	test("a modeled invalid envelope passes through with its reason", async () => {
 		installFetch(async () => json({ outcome: "invalid", reason: "Nope" }, 422));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({
 			outcome: "invalid",
 			reason: "Nope",
 		});
@@ -109,7 +105,7 @@ describe("requestOutcome", () => {
 
 	test("an HTTP failure on a route with a modeled invalid envelope is unusable, never the modeled envelope", async () => {
 		installFetch(async () => json({ name: "Error", message: "boom" }, 500));
-		expect(await requestOutcome(macroVariablesRequest(), macroVariables, readOutcomeErrors)).toEqual({
+		expect(await requestOutcome(macroVariablesRequest(), macroVariablesReadResponse)).toEqual({
 			outcome: "unusable",
 			reason: SERVER_UNUSABLE_RESPONSE_NOTICE,
 		});
@@ -126,7 +122,7 @@ describe("requestData", () => {
 			target: { type: "initial" },
 			variables: [],
 		}, 200));
-		expect(await requestData(macroVariablesRequest(), macroVariables)).toEqual({
+		expect(await requestData(macroVariablesRequest(), macroVariablesReadResponse[200])).toEqual({
 			conversationId: 3,
 			promptPresetId: 5,
 			promptPresetName: "Default",
@@ -138,8 +134,8 @@ describe("requestData", () => {
 
 	test("a rejected request is the retryable NetworkError with the unreachable notice", async () => {
 		installFetch(async () => { throw new TypeError("fetch failed"); });
-		await expect(requestData(macroVariablesRequest(), macroVariables)).rejects.toThrow(SERVER_UNREACHABLE_NOTICE);
-		await expect(requestData(macroVariablesRequest(), macroVariables)).rejects.toBeInstanceOf(NetworkError);
+		await expect(requestData(macroVariablesRequest(), macroVariablesReadResponse[200])).rejects.toThrow(SERVER_UNREACHABLE_NOTICE);
+		await expect(requestData(macroVariablesRequest(), macroVariablesReadResponse[200])).rejects.toBeInstanceOf(NetworkError);
 	});
 
 	test("an error status and an unreadable body are a plain Error, never the retryable NetworkError", async () => {
@@ -149,12 +145,8 @@ describe("requestData", () => {
 			async () => new Response("{", { headers: { "content-type": "application/json" } }),
 		]) {
 			installFetch(response);
-			await expect(requestData(macroVariablesRequest(), macroVariables)).rejects.toThrow(SERVER_UNUSABLE_RESPONSE_NOTICE);
-			await expect(requestData(macroVariablesRequest(), macroVariables)).rejects.not.toBeInstanceOf(NetworkError);
+			await expect(requestData(macroVariablesRequest(), macroVariablesReadResponse[200])).rejects.toThrow(SERVER_UNUSABLE_RESPONSE_NOTICE);
+			await expect(requestData(macroVariablesRequest(), macroVariablesReadResponse[200])).rejects.not.toBeInstanceOf(NetworkError);
 		}
 	});
 });
-
-function installFetch(handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-}

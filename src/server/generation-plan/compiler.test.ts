@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { describe, expect, test } from "bun:test";
 import {
 	assertGenerationPlan,
@@ -11,7 +12,7 @@ import {
 	type PromptContextEntry,
 } from "../prompt-compiler";
 import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
-import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
+import { testMacroAttempt } from "../../shared/test-fixtures/prompt-macros";
 import { toMessages } from "../model-client/chat-messages";
 
 // Deterministic Generation Plan Compiler tests (ADR-0032). Every Generation
@@ -21,26 +22,16 @@ import { toMessages } from "../model-client/chat-messages";
 
 const human: CompilePromptDefinition = {
 	name: "Writer",
-	prompt: {
-		systemInstruction: "",
-		identity: "I am Writer.",
-		appearance: "",
-		scenario: "",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
-	},
+	prompt: { ...emptyPromptChannels(), identity: "I am Writer." },
 	sendAppearanceImages: true,
 };
 
 const model: CompilePromptDefinition = {
 	name: "Maren",
 	prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "Keep the reply literary.",
 		identity: "I am Maren.",
-		appearance: "",
-		scenario: "",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
 	},
 	sendAppearanceImages: true,
 };
@@ -95,6 +86,9 @@ const compile = (
 	overrides: Partial<Parameters<typeof compileGenerationPlan>[0]> = {},
 ): GenerationPlan => compileGenerationPlan({
 	boxes: {},
+	lore: [],
+	loreAllowance: 2_048,
+	attempt: testMacroAttempt(),
 	human,
 	model,
 	recipe: defaultRecipe,
@@ -219,7 +213,7 @@ describe("Generation Plan Compiler", () => {
 	});
 
 	test("expands identical Box item occurrences independently and only once while budgeting", () => {
-		const state = createMacroAttemptState(new Map([["count", 0]]));
+		const attempt = testMacroAttempt({ variables: new Map([["count", 0]]) });
 		const plan = compile({
 			recipe: [
 				{ reference: "box:author-note", enabled: true, role: "system", content: "" },
@@ -231,11 +225,11 @@ describe("Generation Plan Compiler", () => {
 				{ text: "{{incvar::count}}", priority: 0 },
 				{ text: "{{incvar::count}}", priority: 0 },
 			] } },
-			attempt: { environment: { self: "Writer", other: "Maren" }, state },
+			attempt,
 		});
 		expect(plan.promptPlan.blocks[0]?.content).toBe("11\n\n12");
 		expect(plan.promptPlan.blocks[1]?.content).toBe("12");
-		expect(state.writes).toHaveLength(3);
+		expect(attempt.state.writes).toHaveLength(3);
 	});
 
 	test("lets Prompt Preset order decide which dynamic block wins shared context space", () => {
@@ -290,7 +284,7 @@ describe("Generation Plan Compiler", () => {
 		});
 
 		expect(plan.budget.fits).toBe(true);
-		expect(plan.budget.omittedContext).toEqual([entry("Maren", "old", "model")]);
+		expect(plan.omittedContext).toEqual([entry("Maren", "old", "model")]);
 		expect(plan.promptPlan.blocks).toEqual([
 			{ kind: "lore", role: "system", content: "fact" },
 			{ kind: "history", speakerName: "Writer", content: "latest", role: "human" },
@@ -326,9 +320,9 @@ describe("Generation Plan Compiler", () => {
 			requestOverrides: { logit_bias: { "50256": -100 } },
 		});
 		expect(plan.budget.fits).toBe(true);
-		expect(plan.budget.contextLimit).toBe(100_000);
-		expect(plan.budget.responseBudget).toBe(1024);
-		expect(plan.budget.safetyAllowance).toBe(500);
+		expect(plan.budget.breakdown.contextLimit).toBe(100_000);
+		expect(plan.budget.breakdown.responseBudget).toBe(1024);
+		expect(plan.budget.breakdown.safetyAllowance).toBe(500);
 	});
 
 	test("compiles the Sibling plan with the sibling intent and no Continuation operand", () => {
@@ -453,19 +447,12 @@ describe("Generation Plan Compiler", () => {
 				{ reference: "history", enabled: true },
 			],
 			settings: configuredSettings({ contextLimit: 50, responseBudget: 1, safetyAllowance: 0 }),
-			attempt: {
-				environment: {
-					self: "Writer",
-					other: "Maren",
-					random: () => randomValues[randomCalls++] ?? 0.999,
-				},
-				state: createMacroAttemptState(),
-			},
+			attempt: testMacroAttempt({ random: () => randomValues[randomCalls++] ?? 0.999 }),
 			estimator: (transcript) => transcript.includes("old") ? 100 : 0,
 		});
 
 		expect(randomCalls).toBe(1);
-		expect(plan.budget.omittedContext).toEqual([entry("Maren", "old", "model")]);
+		expect(plan.omittedContext).toEqual([entry("Maren", "old", "model")]);
 		expect(plan.promptPlan.blocks[0]?.content).toBe("a");
 	});
 
@@ -487,7 +474,7 @@ describe("Generation Plan Compiler", () => {
 		// The history shrank before the prefix: the human entry was omitted
 		// while the prefill prefix stayed protected.
 		expect(plan.budget.fits).toBe(true);
-		expect(plan.budget.omittedContext).toEqual([entry("Writer", "h".repeat(400), "human")]);
+		expect(plan.omittedContext).toEqual([entry("Writer", "h".repeat(400), "human")]);
 		expect(plan.promptPlan.blocks.filter((block) => block.kind === "history")).toEqual([
 			{ kind: "history", speakerName: "Maren", content: "p".repeat(400), role: "model" },
 		]);
@@ -509,13 +496,13 @@ describe("Generation Plan Compiler", () => {
 		});
 
 		expect(plan.budget.fits).toBe(false);
-		expect(plan.budget.failure?.reason).toBe("protected-history-too-large");
+		expect(plan.budget.failure).toBe("protected-history-too-large");
 		// The failing candidate still protects the prefill prefix and omits
 		// the human entry, so the breakdown describes a real candidate.
 		expect(plan.promptPlan.blocks.filter((block) => block.kind === "history")).toEqual([
 			{ kind: "history", speakerName: "Maren", content: "p".repeat(400), role: "model" },
 		]);
-		expect(plan.budget.omittedContext).toEqual([entry("Writer", "h".repeat(400), "human")]);
+		expect(plan.omittedContext).toEqual([entry("Writer", "h".repeat(400), "human")]);
 	});
 
 	test("recompiles omitted history with the Continuation intent intact", () => {
@@ -533,7 +520,7 @@ describe("Generation Plan Compiler", () => {
 		expect(plan.budget.fits).toBe(true);
 		// The latest human entry stays protected; the older model entry is the
 		// whole-history omission.
-		expect(plan.budget.omittedContext).toEqual([entry("Maren", "m".repeat(400), "model")]);
+		expect(plan.omittedContext).toEqual([entry("Maren", "m".repeat(400), "model")]);
 		expect(plan.promptPlan.intent).toEqual({
 			type: "continuation",
 			strategy: "instruction",
@@ -570,7 +557,7 @@ describe("Generation Plan Compiler", () => {
 		} catch (error) {
 			expect(error).toBeInstanceOf(PromptBudgetExceededError);
 			if (!(error instanceof PromptBudgetExceededError)) return;
-			expect(error.result.failure?.reason).toBe("protected-history-too-large");
+			expect(error.failure).toBe("protected-history-too-large");
 			expect(error.breakdown.contextLimit).toBe(200);
 		}
 	});

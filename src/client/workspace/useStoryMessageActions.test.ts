@@ -1,4 +1,4 @@
-import { boxSetups, boxes } from "../test-fixtures/box-setups";
+import { historyVariant, historyMessage, historyPage, conversationSummary, installFetch, type FetchHandler } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatHistoryPage } from "../chat-history";
@@ -6,11 +6,6 @@ import type { StoryAction, StoryState } from "../story";
 import type { ConversationSummary } from "../../shared/contract/conversation-schema";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const { useStoryMessageActions } = await import("./useStoryMessageActions");
 const { createStoryState, displayedVariantId, reduceStory } = await import("../story");
 
@@ -23,13 +18,8 @@ afterEach(() => {
 // The seam under test is the hook's changeSwipe against a fake Conversation command transport plus the real
 // story reducer, wired per call exactly like the workspace does per render.
 
-const summary = (revision: number): ConversationSummary => ({
-	boxSetups, boxes, boxVersions: {}, forkedFrom: null,
-	background: null,
-	id: 1,
-	name: "Seaside Letters",
+const summary = (revision: number): ConversationSummary => conversationSummary({
 	revision,
-	cast: [],
 	control: { humanParticipantId: 10, modelParticipantId: 20 },
 	controlValidity: { valid: true, reason: null },
 	playable: true,
@@ -38,10 +28,9 @@ const summary = (revision: number): ConversationSummary => ({
 		generate: { available: true, reason: null },
 		swipe: { available: true, reason: null },
 	},
-	activeGenerations: [],
 });
 
-const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
+const firstPage = (withLaterMessage = false): ChatHistoryPage => historyPage({
 	conversationId: 1,
 	name: "Seaside Letters",
 	revision: 5,
@@ -49,42 +38,23 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => ({
 		{ id: 10, position: 1, name: "Writer" },
 		{ id: 20, position: 2, name: "Model" },
 	],
-	page: {
-		index: 1,
-		pageSize: 10,
-		totalMessages: withLaterMessage ? 2 : 1,
-		totalPages: 1,
-		hasOlder: false,
-		hasNewer: false,
-	},
-	messages: [{
-		id: 10,
-		position: 1,
-		timestamp: "2026-01-01T00:00:00.000Z",
-		authorRole: "model",
-		modelParticipantIdAtCreation: null,
-		continuable: true,
-		swipe: { eligible: true, reason: null },
+	page: { pageSize: 10, totalMessages: withLaterMessage ? 2 : 1, totalPages: 1, hasOlder: false },
+	messages: [historyMessage({
 		author: { participantId: 20, capturedName: "Author", inCast: true },
-		moves: {},
 		variants: [
-			{ id: 100, position: 1, content: "First", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
-			{ id: 101, position: 2, content: "Second", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:01.000Z", selected: false },
-			{ id: 102, position: 3, content: "Third", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:02.000Z", selected: false },
-			{ id: 103, position: 4, content: "Fourth", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:03.000Z", selected: false },
+			historyVariant({ content: "First" }),
+			historyVariant({ id: 101, position: 2, content: "Second", timestamp: "2026-01-01T00:00:01.000Z", selected: false }),
+			historyVariant({ id: 102, position: 3, content: "Third", timestamp: "2026-01-01T00:00:02.000Z", selected: false }),
+			historyVariant({ id: 103, position: 4, content: "Fourth", timestamp: "2026-01-01T00:00:03.000Z", selected: false }),
 		],
-	}, ...(withLaterMessage ? [{
+	}), ...(withLaterMessage ? [historyMessage({
 		id: 11,
 		position: 2,
 		timestamp: "2026-01-01T00:00:03.000Z",
-		authorRole: "human" as const,
-		modelParticipantIdAtCreation: null,
-		continuable: true,
-		swipe: { eligible: true as const, reason: null },
+		authorRole: "human",
 		author: { participantId: 10, capturedName: "Writer", inCast: true },
-		moves: {},
-		variants: [{ id: 110, position: 1, content: "Later", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:03.000Z", selected: true }],
-	}] : [])],
+		variants: [historyVariant({ id: 110, content: "Later", timestamp: "2026-01-01T00:00:03.000Z" })],
+	})] : [])],
 });
 
 // The concrete wire failure payloads the command route serves for a
@@ -100,8 +70,6 @@ type CommandMode =
 	| { kind: "conflict" }
 	| { kind: "network" }
 	| { kind: "outcome"; status: number; payload: FailureOutcomePayload };
-
-type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
 type RecordedCommand = {
 	expectedRevision: number;
@@ -130,17 +98,10 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 			const body = JSON.parse(String(init?.body)) as RecordedCommand;
 			commands.push(body);
 			events.push(`send:${body.expectedRevision}`);
-			if (mode.kind === "conflict") {
-				// The server kept its own selection and returns the current
-				// Conversation at the unchanged revision.
-				return Response.json(
-					{ outcome: "conflict", currentConversation: summary(revision) },
-					{ status: 409 },
-				);
-			}
+			if (mode.kind === "conflict") revision += 1;
 			if (body.expectedRevision !== revision) {
 				return Response.json(
-					{ outcome: "conflict", currentConversation: summary(revision) },
+					{ outcome: "conflict", reason: "stale-revision", expectedRevision: body.expectedRevision, actualRevision: revision, current: summary(revision) },
 					{ status: 409 },
 				);
 			}
@@ -149,7 +110,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		}
 		return new Response(null, { status: 404 });
 	};
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
+	installFetch(handler);
 
 	let story: StoryState = reduceStory(
 		reduceStory(createStoryState(), { type: "chat-opened", conversationId: 1 }),
@@ -279,7 +240,7 @@ describe("Requested selection", () => {
 
 		await harness.swipe(10, 1);
 
-		expect(harness.conversation()?.revision).toBe(5);
+		expect(harness.conversation()?.revision).toBe(6);
 		expect(harness.shownVariantId()).toBe(100);
 		expect(harness.story().requestedSelections.size).toBe(0);
 	});

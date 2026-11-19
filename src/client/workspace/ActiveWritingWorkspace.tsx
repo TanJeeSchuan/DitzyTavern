@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { IllustrationActionsContext, type PaintTarget } from "../painting";
 import type { ComposerHandle } from "../story/Composer";
 import { PaintPanel } from "../PaintPanel";
@@ -26,7 +27,7 @@ import {
 	previewNavigationNeedsConfirmation,
 	reduceStory,
 } from "../story";
-import type { Workspace, ChatSummary, ThemePreference } from "../workspace";
+import { invalidateChatLists, type ThemePreference } from "../workspace";
 import type { PrimaryPanelName } from "./types";
 import { NavigationDrawer, NavigationRail } from "./NavigationRail";
 import { NewChatSurface } from "./NewChatSurface";
@@ -62,7 +63,7 @@ import { openedDefinitionDraft, requestedDefinitionDraft } from "../characters/d
 const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
 
 export function ActiveWritingWorkspace({
-	initialWorkspace,
+	initialChatId,
 	onNewChat,
 	newChatOpen,
 	onNewChatClose,
@@ -70,7 +71,7 @@ export function ActiveWritingWorkspace({
 	onImportLaunched,
 	onReload,
 }: {
-	initialWorkspace: Workspace & { activeChat: ChatSummary };
+	initialChatId: string;
 	onNewChat: () => void;
 	newChatOpen: boolean;
 	onNewChatClose: () => void;
@@ -78,6 +79,7 @@ export function ActiveWritingWorkspace({
 	onImportLaunched: (conversationId: number) => void;
 	onReload: () => void;
 }) {
+	const client = useQueryClient();
 	const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
 	const [panelState, dispatchPanel] = useReducer(
 		(state: PanelCoordinationState, action: PanelCoordinationAction) => reducePanelCoordination(state, action, story.preview !== null),
@@ -93,17 +95,22 @@ export function ActiveWritingWorkspace({
 	const [forkNotice, setForkNotice] = useState<string | null>(null);
 	const saveNavigation = useSaveNavigation();
 	const inspectionNavigation = useSaveNavigation();
+	const paintNavigation = useSaveNavigation();
 	const registerInspectionGuard = useCallback((guard: SaveGuard) => {
 		const unregister = [saveNavigation.registerSaveGuard(guard), inspectionNavigation.registerSaveGuard(guard)];
 		return () => unregister.forEach((remove) => remove());
 	}, [saveNavigation.registerSaveGuard, inspectionNavigation.registerSaveGuard]);
+	const registerPaintGuard = useCallback((guard: SaveGuard) => {
+		const unregister = [registerInspectionGuard(guard), paintNavigation.registerSaveGuard(guard)];
+		return () => unregister.forEach((remove) => remove());
+	}, [registerInspectionGuard, paintNavigation.registerSaveGuard]);
 	const registerWorkspaceGuard = useCallback((guard: SaveGuard) =>
 		guard.save === undefined ? registerInspectionGuard(guard) : saveNavigation.registerSaveGuard(guard),
 	[registerInspectionGuard, saveNavigation.registerSaveGuard]);
 	const [theme, setPersistedTheme] = useThemePreference();
 	const [swipeBrowsing, setSwipeBrowsing] = useSwipeBrowsing();
 
-	const session = useConversationSession({ initialWorkspace, story, dispatchStory });
+	const session = useConversationSession({ initialChatId, story, dispatchStory });
 	const connectionSettings = useConnectionSettingsController();
 	const generationSettings = useGenerationSettingsDraft({
 		conversation: session.conversation,
@@ -227,6 +234,7 @@ export function ActiveWritingWorkspace({
 			const result = await forkConversation(conversation.id, { expectedRevision: revision, at: forkAt, name, trimVariants });
 			return result.outcome === "available" ? { outcome: "operation", operation: result.value } : result;
 		}, { onOperation: (result) => {
+			invalidateChatLists(client);
 			openChat(String(result.conversation.id));
 			if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
 			setForkNotice(result.omittedBoxes.length ? `Boxes not copied because they are not installed: ${result.omittedBoxes.join(", ")}.` : null);
@@ -321,8 +329,7 @@ export function ActiveWritingWorkspace({
 			<CoveredLayer inert={narrow && (newChatOpen || panelState.inspector !== null)}>
 			<PrimaryPanelView
 				panel={panelState.primaryPanel}
-				workspace={initialWorkspace}
-				activeChat={session.activeChat}
+				activeChatId={session.activeChatId}
 				theme={theme}
 				onThemeChange={setPersistedTheme}
 				swipeBrowsing={swipeBrowsing}
@@ -408,7 +415,8 @@ export function ActiveWritingWorkspace({
 
 			<CoveredLayer inert={narrow && newChatOpen}>
 			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintTarget !== null && conversation !== null && (
-				<SaveGuardContext.Provider value={registerInspectionGuard}>
+				<SaveGuardContext.Provider value={registerPaintGuard}>
+				<SaveNavigationContext.Provider value={paintNavigation.requestNavigation}>
 				<PaintPanel
 					key={`${conversation.id}:${panelState.paintTarget.requestId}`}
 					conversation={conversation} onConversationChange={session.setConversation} target={panelState.paintTarget}
@@ -418,12 +426,14 @@ export function ActiveWritingWorkspace({
 					}}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
+				</SaveNavigationContext.Provider>
 				</SaveGuardContext.Provider>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
+					key={session.activeChatId}
 					conversationId={Number(session.activeChatId)}
-					chatTitle={session.activeChat.title}
+					chatTitle={session.activeChatTitle}
 					conversation={session.conversation}
 					onConversationChange={session.setConversation}
 					onOpenForkSource={openForkSource}
@@ -489,6 +499,7 @@ export function ActiveWritingWorkspace({
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
 		<UnsavedChangesDialog {...inspectionNavigation.dialogProps} />
+		<UnsavedChangesDialog {...paintNavigation.dialogProps} />
 		</Toast.Provider>
 		</VariantStreamsContext>
 		</ChatPins.Provider>

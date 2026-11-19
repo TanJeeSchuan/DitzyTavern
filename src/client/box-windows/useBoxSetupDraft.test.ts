@@ -1,7 +1,8 @@
+import { conversationSummary, installFetch } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { renderHook } from "../test-fixtures/render-hook";
-import { boxSetups, boxes } from "../test-fixtures/box-setups";
+import { boxSetups } from "../test-fixtures/box-setups";
 import type { ConversationSummary } from "../conversation";
 import { authorNoteSetup } from "../../boxes/author-note/contract";
 
@@ -10,18 +11,7 @@ const { queueConversationCommand } = await import("../conversation-command-runne
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; });
 
-const chat = (revision: number, note: string): ConversationSummary => ({
-	id: 1, name: "Chat", revision, boxSetups: { ...boxSetups, "author-note": note }, boxes, boxVersions: {}, forkedFrom: null, background: null, cast: [],
-	control: { humanParticipantId: null, modelParticipantId: null },
-	controlValidity: { valid: false, reason: "missing-seat" },
-	playable: false,
-	capabilities: {
-		compose: { available: false, reason: "conversation-not-playable" },
-		generate: { available: false, reason: "conversation-not-playable" },
-		swipe: { available: false, reason: "conversation-not-playable" },
-	},
-	activeGenerations: [],
-});
+const chat = (revision: number, note: string): ConversationSummary => conversationSummary({ name: "Chat", revision, boxSetups: { ...boxSetups, "author-note": note } });
 
 const render = async (initial: ConversationSummary) => {
 	let conversation = initial;
@@ -34,13 +24,13 @@ const render = async (initial: ConversationSummary) => {
 /** The server holds `server`: a save at its revision applies, any other conflicts. */
 const serve = (server: ConversationSummary) => {
 	const sent: number[] = [];
-	globalThis.fetch = Object.assign(async (_input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch(async (_input: RequestInfo | URL, init?: RequestInit) => {
 		const { expectedRevision, action } = JSON.parse(String(init?.body));
 		sent.push(expectedRevision);
 		return expectedRevision === server.revision
 			? Response.json({ outcome: "applied", conversation: chat(server.revision + 1, action.setup) })
-			: Response.json({ outcome: "conflict", expectedRevision, actualRevision: server.revision, currentConversation: server }, { status: 409 });
-	}, { preconnect: () => {} });
+			: Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: server.revision, current: server }, { status: 409 });
+	});
 	return sent;
 };
 

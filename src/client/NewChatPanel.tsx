@@ -1,8 +1,10 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidateChatLists } from "./workspace";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { AppSelect } from "@/components/ui/select";
-import { type CharacterSummary, listCharacters } from "./character-library";
+import { charactersQuery, type CharacterSummary } from "./character-library";
 import {
 	createNativeConversation,
 	emptySeatDraft,
@@ -10,7 +12,6 @@ import {
 } from "./new-chat";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
 import { promptChannelFields } from "../shared/definition";
-import { useAsyncEffect } from "./lib/use-async";
 
 // @approved
 //  Native New Chat setup: the human and model seats are configured side by
@@ -173,21 +174,13 @@ export function NewChatPanel({
 	onCreated: (conversationId: number) => void;
 }) {
 	const [name, setName] = useState("");
-	const [characters, setCharacters] = useState<CharacterSummary[]>([]);
+	const client = useQueryClient();
+	const characters = useQuery(charactersQuery).data ?? [];
 	const [humanSeat, setHumanSeat] = useState<SeatDraft>(emptySeatDraft());
 	const [modelSeat, setModelSeat] = useState<SeatDraft>(emptySeatDraft());
 	const [pending, setPending] = useState(false);
 	const [validationRevealed, setValidationRevealed] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
-
-	useAsyncEffect(async (isCancelled) => {
-		try {
-			const summaries = await listCharacters();
-			if (!isCancelled()) setCharacters(summaries);
-		} catch {
-			if (!isCancelled()) setCharacters([]);
-		}
-	}, []);
 
 	const humanReady =
 		humanSeat.type === "adhoc"
@@ -214,11 +207,12 @@ export function NewChatPanel({
 			});
 			switch (outcome.outcome) {
 				case "available":
+					invalidateChatLists(client);
 					onCreated(outcome.value.conversation.id);
 					break;
 				case "conflict":
 					setProblem(
-						`${outcome.currentCharacter.name} changed while you were setting up. Re-select it to fork the current version.`,
+						`${outcome.current.name} changed while you were setting up. Re-select it to fork the current version.`,
 					);
 					break;
 				case "not-found":

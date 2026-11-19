@@ -74,6 +74,6 @@ describe("Cast Memory identities", () => {
 		expect((await save(database, chat.id, other.cast[0]!.id, { kind: "excluded" })).status).toBe(422);
 		expect(readConversationMemories(database, chat.id)).toEqual(before);
 		expect((await save(database, chat.id, writer.id, { kind: "excluded" })).status).toBe(200);
-		expect(() => mergeMemoryLabels(database, chat.id, { expectedRevision: staleLabels, labels: ["Mary"], destination: "Maren" })).toThrow();
+		expect(() => mergeMemoryLabels(database, chat.id, { expectedRevision: staleLabels, labels: ["Mary"], destination: "Maren" })).toThrow("The Memory value changed since it was read.");
 	});
 });

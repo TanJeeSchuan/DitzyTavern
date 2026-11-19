@@ -2,9 +2,7 @@ import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, useSyncExternalStore, type Dispatch, type RefObject } from "react";
 import {
 	previewConversationGeneration,
-	startConversationContinuationGeneration,
 	startConversationGeneration,
-	startConversationSiblingGeneration,
 	type ConversationSummary,
 	type GenerationPreviewBody,
 } from "../conversation";
@@ -112,21 +110,19 @@ export function useAssemblyController({
 		if (latest === null || Number(activeChatIdRef.current) !== submission.conversationId) throw new Error("The Chat changed.");
 		// @approved
 		//  A seat change queued ahead of this start applied first: its seat-bound Moves would be sent as the new seat's.
-		if (submission.request.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.moves ?? {}, (id) => seatBound(chatBoxDescriptor(latest, id))))) {
+		if (submission.request.target.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.target.moves ?? {}, (id) => seatBound(chatBoxDescriptor(latest, id))))) {
 			throw new Error("The writer changed before this Send went out, so it was not sent.");
 		}
 		// @approved
 		//  An upgrade applied first: Moves staged for the version the Chat left would be sent to the one it moved to.
-		if (submission.request.kind === "send" && hasMoves(pickMoves(submission.request.moves ?? {}, (id) => latest.boxVersions[id] !== submission.versions[id]))) {
+		if (submission.request.target.kind === "send" && hasMoves(pickMoves(submission.request.target.moves ?? {}, (id) => latest.boxVersions[id] !== submission.versions[id]))) {
 			throw new Error("A Box in this Chat was updated before this Send went out, so it was not sent.");
 		}
 		const revision = Math.max(latest.revision, previous ?? 0);
-		const formatting = { timeZone: submission.request.timeZone, locale: submission.request.locale };
-		const outcome = submission.request.kind === "send"
-			? await startConversationGeneration(submission.conversationId, revision, submission.request.content, submission.request.moves, formatting, submission.preview, submission.signal)
-			: submission.request.kind === "continuation"
-				? await startConversationContinuationGeneration(submission.conversationId, revision, formatting, submission.preview, submission.signal)
-				: await startConversationSiblingGeneration(submission.conversationId, submission.request.messageId, formatting, submission.preview, submission.signal, submission.request.reroll);
+		const { target, ...formatting } = submission.request;
+		const options = { ...formatting, ...submission.preview };
+		const body = target.kind === "sibling" ? { ...target, ...options } : { ...target, ...options, expectedRevision: revision };
+		const outcome = await startConversationGeneration(submission.conversationId, body, submission.signal);
 		submission.signal.throwIfAborted();
 		if (outcome.outcome === "available") return { target: outcome.value, sentRevision: revision };
 		throw new Error(outcome.outcome === "not-found"
@@ -155,8 +151,8 @@ export function useAssemblyController({
 	//  places its Variant.
 	const launch = (request: StartRequest, preview?: GenerationStartSubmission["preview"]) => {
 		const startId = generationStart.begin();
-		dispatchStory({ type: "generation-requested", request: request.request });
-		const restoreComposer = request.request.kind === "send" ? takeComposer() : undefined;
+		dispatchStory({ type: "generation-requested", request: request.request.target });
+		const restoreComposer = request.request.target.kind === "send" ? takeComposer() : undefined;
 		issueGeneration({ ...request, signal, preview }).then(({ target, sentRevision }) => {
 			if (!transition({ type: "start-accepted", visit: signal })) return;
 			dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });

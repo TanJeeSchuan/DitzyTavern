@@ -1,10 +1,10 @@
 # T6: Generation Settings column
 
-Status: READY
+Status: IN PROGRESS
 
 Blocked By: T5
 
-Model: Astra 6 high writes; Sol 6.1 high fixes.
+Model: Sol 6.2 high writes and fixes. Reviewer: Sonnet 5.5 high.
 
 **This ticket changes stored data. Do not merge it. The owner backs up the hosted database and deploys it himself.**
 
@@ -29,14 +29,18 @@ Evidence: report 18, finding 1; report 17, F6.
 
 ## TODO
 
-- [ ] Migration, with the round-trip test over non-default rows
-- [ ] Module reads and writes through `settings_json`
-- [ ] The two direct reads and the model-selection write
+- [x] Migration, with the round-trip test over non-default rows
+- [x] Module reads and writes through `settings_json`
+- [x] The two direct reads and the model-selection write
 - [ ] Typecheck, settings and migration tests, CI
-- [ ] PR opened and left for the owner; say in the PR body that it migrates stored data and is a one-way door
+- [x] PR opened and left for the owner; say in the PR body that it migrates stored data and is a one-way door
 
 ## Acceptance
 
 The migration test passes. `git grep -n 'settingsColumn' -- src` is empty. No per-field error message changed: the settings tests that assert messages pass unedited.
 
 ## Outcome
+
+Migration 0045 copies each settings row into the new schema and keeps the Connection Profile foreign key. The upgrade test starts at 0044 and reads both Chats through the Conversation module after migration. It checks every setting, including nullable sampling fields and nested Request Overrides. The fork test verifies that a custom model ID survives the copy.
+
+The settings tests use the new storage column for their corruption fixtures. Their existing error-message assertions are unchanged. Changed-file lint passed. The draft PR runs typecheck and tests in GitHub Actions.

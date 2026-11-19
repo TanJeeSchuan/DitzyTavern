@@ -8,7 +8,7 @@ import { snapshotQuery } from "../../shared/contract/box-sandboxed";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import type { ScenarioInput, ScenarioResult } from "../../shared/contract/authoring";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { checkedDecisionAnswers } from "../decision-model";
 import type { BoxContext, DigestPassage } from "../box/contract";
 import { withBoxOperations, checkSandboxedFolder, type CheckedSandboxedBox, type LoadedBox } from "../box/registry";

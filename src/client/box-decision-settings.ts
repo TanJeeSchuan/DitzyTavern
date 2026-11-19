@@ -1,7 +1,8 @@
 import { api } from "./lib/eden";
-import { requestData, requestOutcome } from "./lib/request-outcome";
+import { requestData } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
 import {
-	DEFAULT_BOX_DELEGATE, boxDecisionSettings, boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors, boxDelegateSettings, boxDelegateSettingsApplied, boxDelegateSettingsCommandErrors, installedBoxes,
+	DEFAULT_BOX_DELEGATE, boxDecisionSettingsCommandResponse, boxDecisionSettingsReadResponse, boxDelegateSettingsCommandResponse, boxDelegateSettingsReadResponse, installedBoxes,
 	type BoxDecisionSettings, type BoxDecisionSettingsCommand, type BoxDelegateSettings, type BoxDelegateSettingsCommand, type BoxId, type BoxMetadata,
 } from "../shared/contract/box";
 
@@ -32,14 +33,14 @@ const kept = <Shown, Io>(shown: (metadata: BoxMetadata) => Shown | undefined, io
 	};
 };
 export const boxDecisionClients = kept(({ decision }) => decision && { decision }, (box) => ({
-	load: (): Promise<BoxDecisionSettings> => requestData(route(box).get(), boxDecisionSettings),
-	save: (command: BoxDecisionSettingsCommand) => requestOutcome(route(box).commands.post(command), boxDecisionSettingsApplied, boxDecisionSettingsCommandErrors),
+	load: (): Promise<BoxDecisionSettings> => requestData(route(box).get(), boxDecisionSettingsReadResponse[200]),
+	save: (command: BoxDecisionSettingsCommand) => requestOutcome(route(box).commands.post(command), boxDecisionSettingsCommandResponse),
 }));
 
 const delegateRoute = (box: BoxId) => api.api.boxes({ box })["delegate-settings"];
 const delegateClient = (box: BoxId) => ({
-	load: (): Promise<BoxDelegateSettings> => requestData(delegateRoute(box).get(), boxDelegateSettings),
-	save: (command: BoxDelegateSettingsCommand) => requestOutcome(delegateRoute(box).commands.post(command), boxDelegateSettingsApplied, boxDelegateSettingsCommandErrors),
+	load: (): Promise<BoxDelegateSettings> => requestData(delegateRoute(box).get(), boxDelegateSettingsReadResponse[200]),
+	save: (command: BoxDelegateSettingsCommand) => requestOutcome(delegateRoute(box).commands.post(command), boxDelegateSettingsCommandResponse),
 });
 export const defaultDelegateClient = delegateClient(DEFAULT_BOX_DELEGATE);
 export const boxDelegateClients = kept(({ delegate }) => delegate && { delegate }, delegateClient);

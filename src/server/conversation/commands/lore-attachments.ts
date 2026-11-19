@@ -16,12 +16,6 @@ import { type ConversationDatabase, findActiveParticipant } from "../internal";
 // mutations executed through the shared command seam. They touch no Variant,
 // so they report no write change.
 
-// @approved
-//  Re-checks the Participant inside the command transaction. The
-// Lorebook attachment wire command carries no conversation id, so the
-// transport derives it from the Participant's Chat reference before
-// dispatch; this lookup keeps the old atomicity, where the owner read and
-// the write shared one immediate transaction.
 const requireConversationLoreParticipant = (
 	db: ConversationDatabase,
 	conversationId: number,

@@ -1,3 +1,4 @@
+import { historyVariant, historyMessage as message, historyPage as page } from "./test-fixtures/conversation";
 import { describe, expect, test } from "bun:test";
 import type { ChatHistoryPage } from "./chat-history";
 import {
@@ -23,25 +24,6 @@ import { createVariantStreams, streamedVariant, type VariantObservation } from "
 // accumulation, selected-Variant updates, empty placeholders, and the
 // conversation switch reset. The view feeds transport-typed pages in and
 // reads pure state out.
-
-const page = (
-	overrides: Partial<ChatHistoryPage> = {},
-): ChatHistoryPage => ({
-	conversationId: 7,
-	name: "Lantern House",
-	revision: 3,
-	cast: [{ id: 1, position: 1, name: "Writer" }],
-	page: {
-		index: 1,
-		pageSize: 2,
-		totalMessages: 4,
-		totalPages: 2,
-		hasOlder: true,
-		hasNewer: false,
-	},
-	messages: [],
-	...overrides,
-});
 
 const readyStory = (state: StoryState) => {
 	if (state.status !== "ready") throw new Error("Story was not ready.");
@@ -80,27 +62,6 @@ const append = (eventId: number, text: string, stream: "content" | "reasoning" =
 	({ ...at, eventId, mode: "append", stream, text });
 const replace = (eventId: number, content: string, reasoning = "", at = target): VariantObservation =>
 	({ ...at, eventId, mode: "replace", content, reasoning });
-
-const message = (
-	overrides: Partial<Omit<
-		ChatHistoryPage["messages"][number],
-		"modelParticipantIdAtCreation" | "continuable" | "swipe"
-	>> = {},
-): ChatHistoryPage["messages"][number] => ({
-	id: 10,
-	position: 1,
-	timestamp: "2026-01-01T00:00:00.000Z",
-	authorRole: "model",
-	modelParticipantIdAtCreation: null,
-	continuable: true,
-	swipe: { eligible: true, reason: null },
-	author: { participantId: 1, capturedName: "Writer", inCast: true },
-	variants: [
-		{ id: 100, position: 1, content: "Once", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
-	],
-	moves: {},
-	...overrides,
-});
 
 const storyMessage = (
 	id: number,
@@ -216,24 +177,8 @@ describe("story reading state", () => {
 						message({
 							id: 10,
 							variants: [
-								{
-									id: 100,
-									position: 1,
-									content: "First",
-									empty: false,
-									hasReasoning: false,
-									timestamp: "2026-01-01T00:00:00.000Z",
-									selected: true,
-								},
-								{
-									id: 101,
-									position: 2,
-									content: "Second",
-									empty: false,
-									hasReasoning: false,
-									timestamp: "2026-01-01T00:00:01.000Z",
-									selected: false,
-								},
+								historyVariant({ content: "First" }),
+								historyVariant({ id: 101, position: 2, content: "Second", timestamp: "2026-01-01T00:00:01.000Z", selected: false }),
 							],
 						}),
 					],
@@ -266,33 +211,9 @@ describe("story reading state", () => {
 						message({
 							id: 10,
 							variants: [
-								{
-									id: 100,
-									position: 1,
-									content: "Once",
-									empty: false,
-									hasReasoning: false,
-									timestamp: "2026-01-01T00:00:00.000Z",
-									selected: false,
-								},
-								{
-									id: 101,
-									position: 2,
-									content: "Once",
-									empty: false,
-									hasReasoning: false,
-									timestamp: "2026-01-01T00:00:01.000Z",
-									selected: false,
-								},
-								{
-									id: 102,
-									position: 3,
-									content: "",
-									empty: true,
-									hasReasoning: false,
-									timestamp: "2026-01-01T00:00:02.000Z",
-									selected: true,
-								},
+								historyVariant({ selected: false }),
+								historyVariant({ id: 101, position: 2, timestamp: "2026-01-01T00:00:01.000Z", selected: false }),
+								historyVariant({ id: 102, position: 3, content: "", empty: true, timestamp: "2026-01-01T00:00:02.000Z" }),
 							],
 						}),
 					],
@@ -547,9 +468,7 @@ describe("streaming Provisional Variant content", () => {
 	for (const observedLive of [false, true]) test(`terminal history rejects later replay after live history was ${observedLive ? "observed" : "not observed"}`, () => {
 		const story = observedLive ? stateWithProvisional() : reader();
 		const content = "The tide turns against the pier.\n\nThen the";
-		story.receive(page({ revision: 5, messages: [message({ id: 10, variants: [{
-			id: 100, position: 1, content, empty: false, hasReasoning: true, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
-		}] })] }), []);
+		story.receive(page({ revision: 5, messages: [message({ id: 10, variants: [historyVariant({ content, hasReasoning: true })] })] }), []);
 		for (const [index, text] of ["The tide turns against the pier.\n\n", "Then the"].entries()) {
 			story.observe(append(index + 1, text));
 			expect(story.shown(100)?.content).toBe(content);
@@ -578,7 +497,7 @@ describe("streaming Provisional Variant content", () => {
 		expect(story.shown(100)?.reasoning).toBe("Authoritative thought.");
 
 		story.receive(page({ revision: 5, messages: [message({ id: 10, variants: [
-			{ id: 100, position: 1, content: "Finished.", empty: false, hasReasoning: true, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
+			historyVariant({ content: "Finished.", hasReasoning: true }),
 		] })] }));
 		// A stream that missed its end must not stand in for the persisted text.
 		expect(story.shown(100)).toMatchObject({ content: "Finished.", reasoning: "", hasReasoning: true });
@@ -603,9 +522,7 @@ describe("streaming Provisional Variant content", () => {
 
 	const unplaced = { messageId: 11, variantId: 110, generationId: 55 };
 	const placing = (live: { eventId: number; content: string } | null, content = "") => {
-		const variant: ChatHistoryPage["messages"][number]["variants"][number] = {
-			id: 110, position: 1, content, empty: content === "", hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
-		};
+		const variant: ChatHistoryPage["messages"][number]["variants"][number] = historyVariant({ id: 110, content, empty: content === "" });
 		if (live) variant.liveGeneration = { generationId: 55, eventId: live.eventId, content: live.content, reasoning: "" };
 		return page({ messages: [message({ id: 11, variants: [variant] })] });
 	};
@@ -674,8 +591,8 @@ describe("detached story windows", () => {
 	const history = (index: number, positions: number[], totalMessages = 8) => page({
 		page: { index, pageSize: 2, totalMessages, totalPages: Math.ceil(totalMessages / 2), hasOlder: index < Math.ceil(totalMessages / 2), hasNewer: index > 1 },
 		messages: positions.map((position) => message({ id: position, position, variants: [
-			{ id: position * 10, position: 1, content: `Message ${position}`, empty: false, hasReasoning: false, timestamp: "", selected: true },
-			{ id: position * 10 + 1, position: 2, content: "Alternative", empty: false, hasReasoning: false, timestamp: "", selected: false },
+			historyVariant({ id: position * 10, content: `Message ${position}`, timestamp: "" }),
+			historyVariant({ id: position * 10 + 1, position: 2, content: "Alternative", timestamp: "", selected: false }),
 		] })),
 	});
 	const open = () => reduceStory(reduceStory(createStoryState(), { type: "chat-opened", conversationId: 7 }), { type: "window-received", page: history(1, [7, 8]) });
@@ -702,7 +619,7 @@ describe("detached story windows", () => {
 		expect(reduceStory(refreshed, { type: "window-received", page: history(3, [4]) }).preview).toBeNull();
 		const selectedElsewhere = history(3, [3, 4]);
 		selectedElsewhere.messages[0]!.variants[0]!.selected = false;
-		selectedElsewhere.messages[0]!.variants.push({ id: 32, position: 3, content: "Third", empty: false, hasReasoning: false, timestamp: "", selected: true });
+		selectedElsewhere.messages[0]!.variants.push(historyVariant({ id: 32, position: 3, content: "Third", timestamp: "" }));
 		expect(reduceStory(refreshed, { type: "window-received", page: selectedElsewhere }).preview?.priorVariantId).toBe(32);
 		selectedElsewhere.messages[0]!.variants[2]!.selected = false;
 		selectedElsewhere.messages[0]!.variants[1]!.selected = true;
@@ -750,7 +667,7 @@ describe("Requested Send", () => {
 
 		const placed = reduceStory(stale, { type: "window-received", page: page({ revision: 5, messages: [
 			message(),
-			message({ id: 20, position: 2, variants: [{ id: 201, position: 1, content: "", empty: true, hasReasoning: false, timestamp: "2026-01-01T00:00:01.000Z", selected: true }] }),
+			message({ id: 20, position: 2, variants: [historyVariant({ id: 201, content: "", empty: true, timestamp: "2026-01-01T00:00:01.000Z" })] }),
 		] }) });
 		expect(placed.requestedGeneration).toBeNull();
 	});
@@ -768,8 +685,8 @@ describe("Requested Send", () => {
 
 	test("a Requested Swipe shows an empty Variant in place of the Requested selection until a page places its Variant", () => {
 		const twoTakes = reduceStory(opened(), { type: "window-received", page: page({ messages: [message({ variants: [
-			{ id: 100, position: 1, content: "Once", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true },
-			{ id: 101, position: 2, content: "Twice", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: false },
+			historyVariant(),
+			historyVariant({ id: 101, position: 2, content: "Twice", selected: false }),
 		] })] }) });
 		const selected = reduceStory(twoTakes, { type: "selection-requested", messageId: 10, variantId: 101 });
 		const requested = reduceStory(selected, { type: "generation-requested", request: { kind: "sibling", messageId: 10 } });
@@ -778,9 +695,9 @@ describe("Requested Send", () => {
 		expect(shown.swipes.at(-1)).toMatchObject({ id: displayedVariantId(shown, null, requested.requestedSelections), content: "", empty: true, hasReasoning: false });
 		const accepted = reduceStory(requested, { type: "generation-request-accepted", generationId: 9, variantId: 102, sentRevision: 3 });
 		const placed = reduceStory(accepted, { type: "window-received", page: page({ revision: 4, messages: [message({ variants: [
-			{ id: 100, position: 1, content: "Once", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: false },
-			{ id: 101, position: 2, content: "Twice", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: false },
-			{ id: 102, position: 3, content: "", empty: true, hasReasoning: false, timestamp: "2026-01-01T00:00:01.000Z", selected: true },
+			historyVariant({ selected: false }),
+			historyVariant({ id: 101, position: 2, content: "Twice", selected: false }),
+			historyVariant({ id: 102, position: 3, content: "", empty: true, timestamp: "2026-01-01T00:00:01.000Z" }),
 		] })] }) });
 		expect(shownMessage(placed, placed.messages[0]!).swipes.map(({ id }) => id)).toEqual([100, 101, 102]);
 	});

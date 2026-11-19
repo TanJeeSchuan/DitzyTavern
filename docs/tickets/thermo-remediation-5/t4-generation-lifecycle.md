@@ -1,6 +1,6 @@
 # T4: Generation lifecycle
 
-Status: READY
+Status: DONE
 
 Blocked By: T3
 
@@ -58,13 +58,57 @@ Report 11, findings 1 and 8.
 
 ## TODO
 
-- [ ] Slice a (Astra), then fixes (Sol), PR
-- [ ] Slice b (Astra), then fixes (Sol), PR
-- [ ] Slice c (Sol), PR
-- [ ] Slice d (Sol), PR
+- [x] Slice a first implementation (Astra)
+- [x] Slice a review, fixes, and CI
+- [ ] Slice a PR merged
+- [x] Slice b first implementation (Astra)
+- [x] Slice b review, fixes (Sol), and CI
+- [ ] Slice b PR merged
+- [x] Slice c (Sol), PR
+- [x] Slice d (Sol), PR
 
 ## Acceptance
 
 `git grep -n -E 'removeConversationGeneration|acceptConversation(Tail|Continuation|Sibling)Generation|advanceConversationRevisionGuarded|AttemptConfiguration|assistantPrefill|budgetEditedPromptPlan|retainedContext' -- src` is empty. The recovery, Stop, acceptance and capture tests pass, and e2e passes in CI.
 
 ## Outcome
+
+Slice a first implementation:
+
+- Removed the separate Remove command/input, recovery's terminal-write branch, `interruptedGenerationData`, duplicate reasoning data, and sibling-selection chain walk.
+- Stop takes a required cause. Provider cleanup and recovery call Stop; Stop All re-reads each row after earlier removals repair prior selections.
+- Migrated removal coverage to `stop-generation-cleanup.test.ts`. Added workflow cases for provider failure and empty completion racing a final content/reasoning checkpoint.
+- Changed-file `bunx --no-install oxlint` and `git diff --check` passed. No unit tests, typecheck, or e2e ran locally, as requested; CI owns those checks.
+- Opus 5.5 high standards and spec reviews: no blockers. Fixed by the orchestrator (the Sol follow-up hit a Codex 429): `GenerationRecoveryCause` now has one home in `conversation/types.ts` and Stop's cause uses it; the scaffolding comment and the cleanup test names describe Stop instead of removal; one test's object formatting. Kept as is: recovery's counters read the row's checkpoint before Stop, because changing Stop's return to report retention would widen every caller for a log line.
+- CI on `914c436f`: check and e2e green. Slices b–d remain.
+
+Slice b first implementation:
+
+- Replaced the three acceptance commands and their per-kind input/result types with `acceptGeneration(database, capture, target)` and one result. Migrated all direct test callers; removed the workflow dispatch switch and acceptance hooks.
+- Added Conversation-owned `requireGenerationTarget`, used by capture and acceptance for Sibling and Continue eligibility. Continue acceptance now returns `ContinuationUnavailableError` with the typed reason.
+- Removed `advanceConversationRevisionGuarded`; commands and macro edits use the transaction's initial revision check and one revision advance. Macro edits now call `requireConversationRevision`.
+- Strengthened the reasoning-only Continue test to assert the typed reason and added checks for revision, author-stamp, active-generation, and terminal-eligibility error precedence.
+- Changed-file `bunx --no-install oxlint` passed with two existing unused-variable warnings; `git diff --check` passed. No unit tests, typecheck, or e2e ran locally. The new assertions have not been executed on the base or head locally; CI owns execution.
+- CI `check` and `e2e` passed on `e206a209`. The PR now targets `master`. [PR #275](https://github.com/TanJeeSchuan/DitzyTavern/pull/275)
+
+### Slice b review fixes
+
+- Removed `AcceptedGenerationRecord`. Send and Continue acceptance targets carry the captured revision. Sibling takes no revision, and the capture projection returns `GenerationAcceptanceCapture` directly.
+- Capture and acceptance share `promptIntentOf`. Persistence encodes a Send as `tail`, while the Send Prompt Plan still omits intent.
+- Split eligibility into `requireSiblingHistoricalControl` and `requireTerminalTarget`. The acceptance tests share a local assertion for the typed Continue refusal.
+- Traced the Continue start route on this branch and `master`. Capture-time and acceptance-time eligibility refusals both return HTTP 422 with `outcome: "invalid"` and a `reason` string. The acceptance-time `ContinuationUnavailableError` supplies the same reason text as capture. Master returned the same status and shape with the generic acceptance reason text.
+
+### Slice c implementation
+
+- Capture returns preparation, the Generation Plan, and macro writes. Acceptance derives provenance and author stamps from those facts.
+- Target capture supplies the history bound, gate, Moves, Box intent, seed, and pending Human-authored text. The preview fingerprint enumerates captured inputs and keeps Box image grants and Semantic Trigger settings.
+- The Model Client reads the prefill prefix and suffix from the Prompt Plan. The adapter tests cover suffixes, the final assistant position, and the anchor for an ungranted Box image.
+- The Opus spec review found no blockers. The standards review prompted removal of the duplicate Conversation ID and staged Moves and use of the named Box intent type. The fingerprint stays explicit per the ticket, with a type check for missing snapshot fields.
+- A change to Message or Variant identity alone now leaves a preview current when the captured inputs match.
+- Changed-file `bunx --no-install oxlint` and `git diff --check` passed. CI runs the unit tests, typecheck, and e2e. Slice d remains.
+
+### Slice d implementation
+
+- Generation Plans carry the compile-time history omissions separately from the budget measurement. Preview acceptance remeasures the edited Prompt Plan and keeps the original omissions. The T1 regression still checks the omissions stored by acceptance.
+- Both compilers take explicit lore and macro attempts. Production callers supply the attempt clock and random source, and compiler tests use one deterministic attempt factory.
+- The Acceptance grep reports zero matches. The Memory extraction local variable was renamed because it matched the same grep.

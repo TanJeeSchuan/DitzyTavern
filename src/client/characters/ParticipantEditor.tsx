@@ -89,7 +89,10 @@ export function ParticipantEditor({
 			{boxClients().map(([id, { ParticipantSection }]) => ParticipantSection && <BoxBoundary key={id} box={id}>
 				<ParticipantSection conversation={conversation} participant={participant} />
 			</BoxBoundary>)}
-			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={editor.saving} />
+			<LoreAttachmentEditor owner="participant" ownerId={participant.id} disabled={editor.saving}
+				onCommand={({ type, ...attachment }, revision) => runConversationCommand({
+					conversationId: conversation.id, revision: () => revision, exact: true, onConversationChange, setNotice: () => {},
+				}, { ...attachment, participantId, type: type === "attach" ? "attach-participant" : "detach-participant" })} />
 		</DefinitionEditor>
 	);
 }

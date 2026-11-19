@@ -43,7 +43,7 @@ export interface ConversationCommandNotices {
 export interface ConversationCommandRunOptions<TOperation = never> {
 	notices?: Partial<ConversationCommandNotices>;
 	onApplied?: (conversation: ConversationSummary) => void;
-	onConflict?: (currentConversation: ConversationSummary) => void;
+	onConflict?: (current: ConversationSummary) => void;
 	onNotPlayable?: (reason: string) => void;
 	onNotRemovable?: (reason: string) => void;
 	onOperation?: (operation: TOperation) => void;
@@ -130,9 +130,9 @@ async function executeConversationCommand<TOperation>(
 			return outcome.value.conversation.revision;
 		case "conflict":
 			effect(() => {
-				surface.onConversationChange(outcome.currentConversation);
+				surface.onConversationChange(outcome.current);
 				surface.setNotice(notices.conflict);
-				options.onConflict?.(outcome.currentConversation);
+				options.onConflict?.(outcome.current);
 			});
 			return false;
 		case "invalid":

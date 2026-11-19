@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useReducer, useRef, 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
-export type SaveGuard = { dirty: boolean; saving?: boolean; save?: () => Promise<boolean>; discard: () => void };
+export type SaveGuard = { dirty: boolean; saving?: boolean; canSave?: boolean; save?: () => Promise<boolean>; discard: () => void };
 type RegisteredGuard = SaveGuard & { readonly scope?: string };
 export const SaveGuardContext = createContext<(guard: RegisteredGuard) => () => void>(() => () => undefined);
 export const SaveGuardScope = createContext<string | undefined>(undefined);
@@ -44,7 +44,7 @@ export function useSaveNavigation(): SaveNavigationController {
 	const saveAndLeave = async () => {
 		if (leave === null) return;
 		const dirty = guardsIn(leave.scope).filter((guard) => guard.dirty);
-		if (dirty.some((guard) => guard.save === undefined)) return;
+		if (dirty.some((guard) => guard.save === undefined || guard.canSave === false)) return;
 		if (dirty.length === 0) { setLeave(null); leave.action(); return; }
 		setLeaveSaving(true);
 		setError(null);
@@ -64,6 +64,7 @@ export function useSaveNavigation(): SaveNavigationController {
 		dialogProps: {
 			open: leave !== null,
 			saving: leaveSaving || affected.some((guard) => guard.saving),
+			canSave: !affected.some((guard) => guard.dirty && guard.canSave === false),
 			error,
 			onSave: affected.some((guard) => guard.dirty && guard.save === undefined) ? undefined : () => void saveAndLeave(),
 			onDiscard: () => {
@@ -82,24 +83,26 @@ export function useSaveGuard(guard: SaveGuard) {
 	const scope = useContext(SaveGuardScope);
 	const live = useRef<RegisteredGuard>({ ...guard, scope });
 	live.current = { ...guard, scope };
-	const canSave = guard.save !== undefined;
+	const hasSave = guard.save !== undefined;
 	const registered = useRef<RegisteredGuard>({
 		get scope() { return live.current.scope; },
 		get dirty() { return live.current.dirty; },
 		get saving() { return live.current.saving; },
+		get canSave() { return live.current.canSave; },
 		get save() { return live.current.save; },
 		discard: () => live.current.discard(),
 	});
-	useEffect(() => register(registered.current), [register, guard.saving, canSave]);
+	useEffect(() => register(registered.current), [register, guard.saving, guard.canSave, hasSave]);
 }
 
 export function useNavigationRequest() {
 	return useContext(SaveNavigationContext);
 }
 
-export function UnsavedChangesDialog({ open, saving, error, onSave, onDiscard, onKeepEditing }: {
+export function UnsavedChangesDialog({ open, saving, canSave, error, onSave, onDiscard, onKeepEditing }: {
 	open: boolean;
 	saving: boolean;
+	canSave: boolean;
 	error: string | null;
 	onSave: (() => void) | undefined;
 	onDiscard: () => void;
@@ -115,7 +118,7 @@ export function UnsavedChangesDialog({ open, saving, error, onSave, onDiscard, o
 			<DialogFooter>
 				<Button type="button" variant="ghost" autoFocus disabled={saving} onClick={onKeepEditing}>Keep editing</Button>
 				<Button type="button" variant="destructive" disabled={saving} onClick={onDiscard}>Discard</Button>
-				{onSave !== undefined && <Button type="button" disabled={saving} onClick={onSave}>{saving ? "Saving…" : "Save and leave"}</Button>}
+				{onSave !== undefined && <Button type="button" disabled={saving || !canSave} onClick={onSave}>{saving ? "Saving…" : "Save and leave"}</Button>}
 			</DialogFooter>
 		</DialogContent>
 	</Dialog>;

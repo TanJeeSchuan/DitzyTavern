@@ -1,6 +1,6 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart, shortReplyPrompt, participantSeed } from "../test-fixtures/conversation";
 import {
-	removeConversationGeneration,
+	stopConversationGeneration,
 	readActiveGenerationDetails,
 	readConversationRevision,
 	executeConversationCommand,
@@ -11,22 +11,17 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { activeGenerationTable } from "../database/schema";
-import {
-	acceptConversationContinuationGeneration,
-	acceptConversationSiblingGeneration,
-	acceptConversationTailGeneration,
-	InvalidConversationCommandError,
-} from ".";
+import { acceptGeneration, InvalidConversationCommandError } from ".";
 
 import { observeConversationWrites } from "./commands/transaction";
 import type { ConversationWriteChange } from "../../shared/contract/conversation-write-change";
-// Regression tests for canonical Generation removal. The Active Generation
-// row is the only authority for which mutation a removal performs: a Sibling
+// Regression tests for a Stop with no checkpointed output. The Active
+// Generation row is the only authority for what that Stop deletes: a Sibling
 // Generation loses its provisional Variant, while Tail and Continuation
 // Generations lose their whole provisional Message. A caller-supplied mode
-// used to override that authority and let a Tail-mode removal delete the
+// used to override that authority and let a Tail-mode cleanup delete the
 // Message owning every Sibling Variant.
-describe("canonical Conversation Generation removal", () => {
+describe("Stop with no checkpointed output", () => {
 	let database: Database;
 
 	beforeEach(() => {
@@ -40,8 +35,8 @@ describe("canonical Conversation Generation removal", () => {
 		const created = createConversationWithHistory(module, {
 			name: "Removal Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original answer."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original answer."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -54,33 +49,33 @@ describe("canonical Conversation Generation removal", () => {
 	const acceptSibling = (input: ReturnType<typeof setup>) => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
-		return acceptConversationSiblingGeneration(database, {
+		return acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			messageId: target.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: target.id });
 	};
 
-	test("removing earlier siblings preserves the rollback selection of later siblings", () => {
+	test("stopping earlier empty siblings preserves the rollback selection of later siblings", () => {
 		const input = setup();
 		const first = acceptSibling(input);
 		const second = acceptSibling(input);
-		removeConversationGeneration(input.module, { conversationId: input.created.id, generationId: first.generationId });
-		removeConversationGeneration(input.module, { conversationId: input.created.id, generationId: second.generationId });
+		stopConversationGeneration(input.module, { cause: "provider", conversationId: input.created.id, generationId: first.generationId });
+		stopConversationGeneration(input.module, { cause: "provider", conversationId: input.created.id, generationId: second.generationId });
 		const surviving = readTestConversationSnapshot(input.module, input.created.id)?.messages[0]?.variants;
 		expect(surviving).toHaveLength(1);
 		expect(surviving?.[0]?.content).toBe("Original answer.");
 		expect(surviving?.[0]?.selected).toBe(true);
 	});
 
-	test("removal refuses a checkpointed target so cleanup cannot erase durable output", () => {
+	test("provider cleanup retains a checkpoint that arrived before Stop", () => {
 		const input = setup();
 		const accepted = acceptSibling(input);
 		checkpointFromStart(input.module, {
@@ -88,16 +83,24 @@ describe("canonical Conversation Generation removal", () => {
 			generationId: accepted.generationId,
 			content: "Keep this output.",
 		});
-		expect(() => removeConversationGeneration(input.module, {
+		stopConversationGeneration(input.module, {
+			cause: "provider",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
-		})).toThrow("A Generation with durable output must be resolved or stopped.");
+		});
 		const after = readTestConversationSnapshot(input.module, input.created.id);
-		expect(after?.activeGenerations).toHaveLength(1);
-		expect(readActiveGenerationDetails(input.module, input.created.id, accepted.generationId)?.checkpoint.content).toBe("Keep this output.");
+		expect(after?.activeGenerations).toHaveLength(0);
+		expect(after?.messages[0]?.variants.find((variant) => variant.selected)).toMatchObject({
+			content: "Keep this output.",
+			data: expect.arrayContaining([
+				{ namespace: "generation", key: "outcome", value: "interrupted" },
+				{ namespace: "generation", key: "interruption-cause", value: "provider" },
+			]),
+		});
+		expect(readActiveGenerationDetails(input.module, input.created.id, accepted.generationId)?.status).toBe("interrupted");
 	});
 
-	test("removing a Sibling Generation keeps its owning Message and every surviving Variant", () => {
+	test("stopping an empty Sibling Generation keeps its owning Message and every surviving Variant", () => {
 		const input = setup();
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
@@ -105,7 +108,8 @@ describe("canonical Conversation Generation removal", () => {
 		if (before === undefined) throw new Error("Snapshot missing.");
 		const accepted = acceptSibling(input);
 
-		removeConversationGeneration(input.module, {
+		stopConversationGeneration(input.module, {
+			cause: "provider",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
@@ -123,23 +127,23 @@ describe("canonical Conversation Generation removal", () => {
 		expect(after.revision).toBe(accepted.conversation.revision + 1);
 	});
 
-	test("removing a Tail Generation removes its provisional Message and keeps the accepted human input", () => {
+	test("stopping an empty Tail Generation removes its provisional Message and keeps the accepted human input", () => {
 		const input = setup();
-		const accepted = acceptConversationTailGeneration(database, {
+		const accepted = acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
-			humanContent: "Keep my input.",
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "send", expectedRevision: input.created.revision, content: "Keep my input." });
 
-		removeConversationGeneration(input.module, {
+		stopConversationGeneration(input.module, {
+			cause: "provider",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
@@ -152,7 +156,7 @@ describe("canonical Conversation Generation removal", () => {
 		expect(after.revision).toBe(accepted.conversation.revision + 1);
 	});
 
-	test("removals report their removed Variant ids so Memory can abandon the work the write deleted", () => {
+	test("empty Stops report their removed Variant ids so Memory can abandon the work the write deleted", () => {
 	const input = setup();
 	const delivered: ConversationWriteChange[] = [];
 	// The per-database registration is the same seam the application or the
@@ -165,7 +169,7 @@ describe("canonical Conversation Generation removal", () => {
 	// A Sibling Generation loses exactly its provisional Variant.
 	const sibling = acceptSibling(input);
 	delivered.splice(0);
-	removeConversationGeneration(input.module, { conversationId: input.created.id, generationId: sibling.generationId });
+	stopConversationGeneration(input.module, { cause: "provider", conversationId: input.created.id, generationId: sibling.generationId });
 	expect(delivered).toHaveLength(1);
 	expect([...delivered[0]?.removedVariantIds ?? []]).toEqual([sibling.provisionalVariantId]);
 	expect(delivered[0]?.touchedVariantIds).toEqual([]);
@@ -175,48 +179,45 @@ describe("canonical Conversation Generation removal", () => {
 	// removal report is drained and asserted on its own.
 	const revision = readConversationRevision(input.module, input.created.id);
 	if (revision === undefined) throw new Error("Conversation missing.");
-	const tail = acceptConversationTailGeneration(database, {
+	const tail = acceptGeneration(database, {
 		seed: "test-generation-seed",
 		conversationId: input.created.id,
-		expectedRevision: revision,
 		timestamp: "2026-08-27T00:00:02.000Z",
-		humanContent: "Keep my input.",
 		humanParticipantId: input.humanId,
 		modelParticipantId: input.modelId,
 		capturedHumanName: "Writer",
 		capturedModelName: input.modelName,
 		promptPlan: { blocks: [], warnings: [], images: [] },
-		modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-	});
+		modelId: "fixture-model",
+		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+	}, { kind: "send", expectedRevision: revision, content: "Keep my input." });
 	delivered.splice(0);
-	removeConversationGeneration(input.module, { conversationId: input.created.id, generationId: tail.generationId });
+	stopConversationGeneration(input.module, { cause: "provider", conversationId: input.created.id, generationId: tail.generationId });
 	expect(delivered).toHaveLength(1);
 	expect([...delivered[0]?.removedVariantIds ?? []]).toEqual([tail.provisionalVariantId]);
 	expect(delivered[0]?.touchedVariantIds).toEqual([]);
 });
 
-test("removing a Continuation Generation removes only its provisional Message", () => {
+test("stopping an empty Continuation Generation removes only its provisional Message", () => {
 		const input = setup();
 		const opening = input.created.messages[0];
 		const openingVariant = opening?.variants[0];
 		if (opening === undefined || openingVariant === undefined) throw new Error("Opening missing.");
-		const accepted = acceptConversationContinuationGeneration(database, {
-			generationIntent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
+		const accepted = acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
-			precedingMessageId: opening.id,
-			precedingVariantId: openingVariant.id,
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "continuation", expectedRevision: input.created.revision, intent: { type: "continuation", strategy: "instruction", instruction: "Continue." }, precedingMessageId: opening.id, precedingVariantId: openingVariant.id });
 
-		removeConversationGeneration(input.module, {
+		stopConversationGeneration(input.module, {
+			cause: "provider",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
@@ -230,7 +231,7 @@ test("removing a Continuation Generation removes only its provisional Message", 
 		expect(after.revision).toBe(accepted.conversation.revision + 1);
 	});
 
-	test("removal keeps an explicit Sibling selection made while the attempt ran", () => {
+	test("an empty Stop keeps an explicit Sibling selection made while the attempt ran", () => {
 		const input = setup();
 		const target = input.created.messages[0];
 		const priorVariant = target?.variants[0];
@@ -246,7 +247,8 @@ test("removing a Continuation Generation removes only its provisional Message", 
 		});
 		const selected = readTestConversationSnapshot(input.module, input.created.id)!;
 
-		removeConversationGeneration(input.module, {
+		stopConversationGeneration(input.module, {
+			cause: "provider",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
@@ -297,10 +299,11 @@ test("removing a Continuation Generation removes only its provisional Message", 
 		expect(selected.activeGenerations).toEqual(accepted.conversation.activeGenerations);
 	});
 
-	test("removing an unknown Generation id is rejected", () => {
+	test("stopping an unknown Generation id is rejected", () => {
 		const input = setup();
 		expect(() =>
-			removeConversationGeneration(input.module, {
+			stopConversationGeneration(input.module, {
+				cause: "provider",
 				conversationId: input.created.id,
 				generationId: 999999,
 			})
@@ -316,7 +319,8 @@ test("removing a Continuation Generation removes only its provisional Message", 
 			.where(eq(activeGenerationTable.id, accepted.generationId))
 			.run();
 
-		expect(() => removeConversationGeneration(input.module, {
+		expect(() => stopConversationGeneration(input.module, {
+			cause: "provider",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		})).toThrow("invalid persisted Generation intent");
@@ -329,11 +333,4 @@ test("removing a Continuation Generation removes only its provisional Message", 
 	});
 });
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();

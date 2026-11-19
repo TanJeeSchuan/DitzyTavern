@@ -187,14 +187,11 @@ const presetRecipeOf = (
 		? undefined
 		: { id: preset.id, name: preset.name, slots: storedOccurrences(db, preset.id) };
 
+const recipeForId = (db: PromptPresetDatabase, presetId: number) => presetRecipeOf(readPromptPresetHeader(db, presetId), db);
+
 /** @approved One stored preset's recipe by identity. Undefined when the preset does not exist. */
-export const readPromptPresetRecipe = (
-	database: Database,
-	presetId: number,
-): PromptPresetRecipe | undefined => {
-	const db = connect(database);
-	return presetRecipeOf(readPromptPresetHeader(db, presetId), db);
-};
+export const readPromptPresetRecipe = (database: Database, presetId: number): PromptPresetRecipe | undefined =>
+	recipeForId(connect(database), presetId);
 
 /** @approved Read the selected recipe through an existing coherent database view. */
 export const readConversationPromptPresetRecipeFromConnection = (
@@ -210,8 +207,8 @@ export const readConversationPromptPresetRecipeFromConnection = (
 	return presetRecipeOf(readPromptPresetHeader(db, selection.prompt_preset_id), db);
 };
 
-export const requirePaintPresetRecipe = (database: Database, presetId: number): PromptPresetRecipe => {
-	const recipe = readPromptPresetRecipe(database, presetId);
+export const requirePaintPresetRecipe = (db: PromptPresetDatabase, presetId: number): PromptPresetRecipe => {
+	const recipe = recipeForId(db, presetId);
 	if (!recipe || !hasEnabledBriefInstruction(recipe.slots)) throw new InvalidPromptPresetCommandError("Choose a Paint Preset with an enabled Brief instruction.");
 	return recipe;
 };

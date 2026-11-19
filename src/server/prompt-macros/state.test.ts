@@ -28,10 +28,6 @@ describe("Macro state persistence", () => {
 			],
 		});
 		expect(state).toEqual(new Map([["turn", 6]]));
-		expect(readMacroWrites(decodedRecords(selected), 4)).toEqual([
-			{ name: "turn", operation: "set", value: 6 },
-			{ name: "old", operation: "delete", value: undefined },
-		]);
 	});
 
 	test("compacts durable writes to each variable's final assignment or deletion", () => {

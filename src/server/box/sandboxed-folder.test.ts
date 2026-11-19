@@ -92,3 +92,20 @@ test("a file the loader replaces is written as a new file, never through a link 
 	await replaceFile(path, "bundle");
 	expect([readFileSync(join(outside, "sentinel.js"), "utf8"), readFileSync(path, "utf8"), lstatSync(path).isSymbolicLink()]).toEqual(["host file", "bundle", false]);
 });
+
+test("the loader refuses sandboxed Chat values because commit-box cannot write them", async () => {
+	const { root } = plugins({ "chat-values": (box) => {
+		const file = JSON.parse(descriptor("chat-values"));
+		delete file.dependencies;
+		file.values = { chat: { notes: { type: "string" } } };
+		writeFileSync(join(box, "descriptor.json"), JSON.stringify(file));
+		writeFileSync(join(box, "logic.js"), "export default { read: () => ({ view: null }) };");
+	} });
+	const { boxes, refused } = await discoverBoxes([root]);
+	try {
+		expect(boxes).toHaveLength(0);
+		expect(refused.map(({ reason }) => reason)).toEqual([
+			"A sandboxed Box cannot declare values.chat because commit-box supports only Library, Character and Participant owners.",
+		]);
+	} finally { for (const { dispose } of boxes) dispose?.(); }
+});

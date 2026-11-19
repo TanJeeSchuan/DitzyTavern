@@ -1,4 +1,5 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -24,7 +25,7 @@ import {
 	selectPreset,
 	startGeneration,
 	toggleBlock,
-	withProfile,
+	withProfile, profile as chatProfile, sseReply,
 } from "./prompt-preset-test-fixtures";
 
 type ImportError = { outcome: "invalid"; reason: string };
@@ -394,26 +395,15 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Imported preset chat",
 			participants: [
-				{ definition: { name: "Writer", prompt: { systemInstruction: "Human", identity: "Human", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt: { systemInstruction: "Model", identity: "Model", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Writer", { prompt: { ...emptyPromptChannels(), systemInstruction: "Human", identity: "Human" } }),
+				participantSeed("Maren", { prompt: { ...emptyPromptChannels(), systemInstruction: "Model", identity: "Model" } }),
 			],
 			control: { human: 0, model: 1 },
 		});
 		const key = new Uint8Array(32).fill(19);
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
-			profile: {
-				displayName: "Test provider",
-				apiFormat: "chat-completions",
-				requestUrl: "http://127.0.0.1:43131/v1/",
-				modelsUrl: "",
-				modelBackend: "automatic",
-				adapter: "deepseek",
-				outputTokenRepresentation: "automatic",
-				systemPlacement: "strict",
-				timeoutMs: 120_000,
-				pinnedModels: [],
-			},
+			profile: { ...chatProfile, displayName: "Test provider", systemPlacement: "strict" },
 			credential: "test-secret",
 		});
 		const conversations = createConversationRoutes(database, {
@@ -423,7 +413,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 				//  SAFETY: the conversation route sends this exact JSON request body
 				// to the configured ModelFetch implementation.
 				captured = JSON.parse(String(init?.body)) as CapturedGenerationRequest;
-				return new Response("data: {\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Done.\"},\"finish_reason\":null}]}\n\ndata: {\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n", { headers: { "content-type": "text/event-stream" } });
+				return sseReply([{ content: "Done." }], { singleChunk: true });
 			}) satisfies ModelFetch,
 		});
 		let captured: CapturedGenerationRequest = { messages: [] };
@@ -590,18 +580,18 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
 		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
 
-		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// The adjacent backslash pair remains authored text, then the active
 		// `{{self}}` names the human-controlled Participant.
-		expect(captured?.messages).toContainEqual({
+		expect(captured.messages).toContainEqual({
 			role: "system",
 			content: "\\\\Writer precedes Writer.",
 		});
@@ -650,19 +640,19 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		});
 		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
 
-		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// This Conversation's own model Participant content reaches the request
 		// with the reference's default outgoing role; the disabled history and
 		// human Identity slots contribute nothing.
-		expect(captured?.messages).toEqual([
+		expect(captured.messages).toEqual([
 			{ role: "system", content: "main" },
 			{ role: "assistant", content: "I am Maren." },
 		]);
@@ -705,13 +695,13 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
 		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
 
-		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const provider = captureModelFetch();
 		let inspection: {
 			promptPlan: { warnings: { block: string; macro: string }[] };
 		} | undefined;
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
 		const inspected = await generating.handle(new Request(
@@ -720,11 +710,11 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		// SAFETY: the route's response schema is the active inspection payload.
 		inspection = await inspected.json() as typeof inspection;
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// Compilation drops the active comments whole without evaluating or
 		// warning about their contents; the escaped comments stay literal.
-		expect(captured?.messages).toEqual([{
+		expect(captured.messages).toEqual([{
 			role: "system",
 			content: "Start  inline  scoped  multi \\{{// kept {{user}} }} \\{{//}} kept {{char}} {{///}} end",
 		}]);
@@ -762,10 +752,10 @@ describe("SillyTavern Prompt Preset import transport", () => {
 		await selectPreset(conversations, conversation.id, revision, applied.preset.id);
 		const selectedRevision = (await readConversation(conversations, conversation.id)).revision;
 
-		let captured: { messages: { role: string; content: string }[] } | undefined;
+		const provider = captureModelFetch();
 		const generating = createConversationRoutes(database, {
 			masterKey: key,
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: provider.fetch,
 		});
 		const generationId = await startGeneration(generating, conversation.id, selectedRevision);
 		const inspected = await generating.handle(new Request(
@@ -776,12 +766,12 @@ describe("SillyTavern Prompt Preset import transport", () => {
 			promptPlan: { warnings: { block: string; macro: string }[] };
 		};
 		await completeGeneration(generating, conversation.id, generationId);
-		while (captured === undefined) await new Promise((resolve) => setTimeout(resolve, 0));
+		const captured = await provider.captured;
 
 		// The supported time macro expands; the malformed delimiter stays raw
 		// text without a warning, and Generation is available throughout.
-		expect(captured?.messages).toHaveLength(1);
-		expect(captured?.messages[0]?.content).toMatch(/^\d{1,2}:\d{2} [AP]M stays and \{\{user stays open$/);
+		expect(captured.messages).toHaveLength(1);
+		expect(captured.messages[0]?.content).toMatch(/^\d{1,2}:\d{2} [AP]M stays and \{\{user stays open$/);
 		expect(inspection.promptPlan.warnings).toEqual([]);
 	});
 });

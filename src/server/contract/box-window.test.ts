@@ -1,5 +1,5 @@
 import { boxDescriptor } from "../../shared/contract/box";
-import { openObservedDatabase, createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
+import { openObservedDatabase, insertBox, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { Value } from "@sinclair/typebox/value";
 import type { Database } from "bun:sqlite";
@@ -10,25 +10,16 @@ import { generationPreview, type ConversationAction } from "../../shared/contrac
 import { readRecordSlots, writeAutomaticRecord, writeDigestError } from "../box/records";
 import { sha256 } from "../hash";
 import { createContract } from ".";
-import { acceptConversationTailGeneration } from "../conversation";
 import { advanceRace } from "../../boxes/race/logic-engine";
 import { fillRaceField, initialRaceSetup } from "../../boxes/race/shared-data";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const initial = initialWorldClockSetup;
 
 let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 
-const createClockChat = () => createConversationWithHistory(database, {
-	name: "Clock Chat",
-	participants: [
-		{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-		{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-	],
-	control: { human: 0, model: 1 },
-});
+const createClockChat = () => pairChat(database, "Clock Chat");
 
 const command = (app: ReturnType<typeof createContract>, id: number, revision: number, action: ConversationAction) =>
 	app.handle(new Request(`http://localhost/api/conversations/${id}/commands`, {
@@ -43,7 +34,7 @@ const readClock = async (app: ReturnType<typeof createContract>, id: number) =>
 
 const preview = async (app: ReturnType<typeof createContract>, id: number) => {
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${id}/generations/preview`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Look outside." }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: { kind: "send", content: "Look outside." } }),
 	}));
 	expect(response.status).toBe(200);
 	return Value.Decode(generationPreview, await response.json());
@@ -165,12 +156,9 @@ test("a Variant still generating takes no Writer override, so its own record can
 	const chat = createClockChat();
 	const app = createContract(database);
 	insertBox(database, chat.id, "race");
-	const [human, model] = chat.cast;
-	if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-	const accepted = acceptConversationTailGeneration(database, {
-		seed: "override-seed", conversationId: chat.id, expectedRevision: chat.revision, timestamp: "2026-08-27T00:00:00.000Z",
-		humanContent: "Go.", humanParticipantId: human.id, modelParticipantId: model.id, capturedHumanName: human.name, capturedModelName: model.name,
-		promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+	const accepted = acceptTestGeneration(database, chat, { kind: "send", expectedRevision: chat.revision, content: "Go." }, {
+		seed: "override-seed",
+		timestamp: "2026-08-27T00:00:00.000Z",
 	});
 	const setup = { ...initialRaceSetup, raceId: "race-a", phase: "running" as const, slots: fillRaceField([], [], "field") };
 	const record = advanceRace({ setup, state: null, seed: "stretch", intent: "respond", moves: [] })?.record;
@@ -231,7 +219,7 @@ test("Moves outside their Box's Move schema, or for a Box that takes none, are r
 	const app = createContract(database);
 	insertBox(database, chat.id, "phone");
 	const send = async (moves: Readonly<Record<string, readonly object[]>>) => (await app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations/preview`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Hello.", moves }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: { kind: "send", content: "Hello.", moves } }),
 	}))).json();
 	expect(await send({ phone: [{ to: "Maren" }] })).toEqual({ outcome: "invalid", reason: "The Phone Moves do not match their schema." });
 	expect(await send({ "world-clock": [{}] })).toEqual({ outcome: "invalid", reason: "No world-clock Box takes Moves." });

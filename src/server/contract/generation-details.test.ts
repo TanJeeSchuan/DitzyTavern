@@ -1,24 +1,12 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import {
-	acceptConversationTailGeneration,
-	resolveConversationGeneration,
-	readActiveGenerationDetails,
-	readVariantDetails,
-} from "../conversation";
+import { readTestConversationSnapshot, shortReplyPrompt, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
+import { resolveConversationGeneration, readActiveGenerationDetails, readVariantDetails } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { cleanupRetainedGenerationInspections, GENERATION_REPLAY_RETENTION_MS } from "../conversation";
 import { createConversationRoutes } from "./conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "A quiet room.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt({ scenario: "A quiet room." });
 
 describe("Generation detail transport", () => {
 	let database: Database;
@@ -29,25 +17,10 @@ describe("Generation detail transport", () => {
 	afterEach(() => database.close());
 
 	test("exposes exact active inspection and only compact safe terminal provenance", () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Details Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Details Chat", { prompt });
 		const module = database;
-		const accepted = acceptConversationTailGeneration(module, {
-			seed: "test-generation-seed",
-			conversationId: conversation.id,
-			expectedRevision: conversation.revision,
+		const accepted = acceptTestGeneration(module, conversation, { kind: "send", expectedRevision: conversation.revision, content: "Guide the scene." }, {
 			timestamp: "2026-08-27T10:00:00Z",
-			humanContent: "Guide the scene.",
-			humanParticipantId: conversation.cast[0]!.id,
-			modelParticipantId: conversation.cast[1]!.id,
-			capturedHumanName: "Writer",
-			capturedModelName: "Maren",
 			promptPlan: {
 				blocks: [{
 					kind: "history",
@@ -57,7 +30,7 @@ describe("Generation detail transport", () => {
 				}],
 				warnings: [], images: [],
 			},
-			modelId: "fixture-model", promptInspection: {
+			promptInspection: {
 				tokenEstimate: 19,
 				responseBudget: 64,
 				safetyAllowance: 5,
@@ -107,6 +80,14 @@ describe("Generation detail transport", () => {
 			expect(body).toContain('"tokenEstimate":19');
 			expect(body).toContain("Omitted.");
 			expect(body).not.toContain("credential-do-not-expose");
+
+			database.run("UPDATE active_generation SET box_traces_json = ? WHERE id = ?", ["[]", accepted.generationId]);
+			const corruptInspection = await app.handle(new Request(
+				`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/inspection`,
+			));
+			expect(corruptInspection.status).toBe(422);
+			expect(await corruptInspection.json()).toEqual({ outcome: "invalid", reason: "Persisted Box traces do not match their schema." });
+			database.run("UPDATE active_generation SET box_traces_json = ? WHERE id = ?", ["{}", accepted.generationId]);
 
 			resolveConversationGeneration(module, {
 				conversationId: conversation.id,
@@ -161,6 +142,15 @@ describe("Generation detail transport", () => {
 			expect(expiredInspection.status).toBe(404);
 			expect(readVariantDetails(module, conversation.id, message.id, variant.id)?.provenance?.status)
 				.toBe("length-limited");
+
+			const detailsUrl = `http://localhost/api/conversations/${conversation.id}/messages/${message.id}/variants`;
+			database.run("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'lore-activation', 'record', '{}')", [variant.id]);
+			const corruptDetails = await app.handle(new Request(`${detailsUrl}/${variant.id}/details`));
+			expect(corruptDetails.status).toBe(422);
+			expect(await corruptDetails.json()).toEqual({ outcome: "invalid", reason: "Persisted Lore Activation Record does not match the canonical schema." });
+			const missingDetails = await app.handle(new Request(`${detailsUrl}/${variant.id + 1}/details`));
+			expect(missingDetails.status).toBe(404);
+			expect(await missingDetails.json()).toEqual({ outcome: "not-found" });
 		});
 	});
 });

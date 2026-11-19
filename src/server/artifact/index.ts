@@ -6,7 +6,6 @@ export {
 	mediaTypeFromFilename,
 	sanitizeArtifactFilename,
 	sha256Hex,
-	storeExactArtifactCopy,
 	uniqueManagedRelativePath,
 } from "./store";
 export type {

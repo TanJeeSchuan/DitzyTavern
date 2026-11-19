@@ -1,8 +1,8 @@
 import { and, eq } from "drizzle-orm";
-import { activeGenerationTable, conversationGenerationSettingsTable, messageTable, messageVariantTable } from "../database/schema";
+import { activeGenerationTable, messageTable, messageVariantTable } from "../database/schema";
 import { ContinuationUnavailableError, InvalidConversationCommandError } from "./errors";
-import { DEFAULT_SIBLING_GENERATION_LIMIT } from "./generation-settings";
-import { decodeStoredGenerationIntent, isProvisional } from "./generation-state";
+import { requireConversationGenerationSettings } from "./generation-settings";
+import { decodeStoredGenerationIntent } from "./generation-state";
 import type { ConversationDatabase } from "./internal";
 import type { ConversationAction } from "./types";
 
@@ -41,6 +41,8 @@ const policies = {
 	"update-generation-settings": { rule: "allowed" },
 	"set-generation-model": { rule: "allowed" },
 	"select-prompt-preset": { rule: "allowed" },
+	"select-paint-preset": { rule: "allowed" },
+	"set-brief-message-count": { rule: "allowed" },
 	"set-box-setup": { rule: "allowed" },
 	"set-box-state": { rule: "allowed" },
 	"upgrade-box": { rule: "allowed" },
@@ -52,7 +54,7 @@ const policies = {
 	"detach-chat": { rule: "allowed" },
 	"attach-participant": { rule: "allowed" },
 	"detach-participant": { rule: "allowed" },
-	"save-settings": { rule: "allowed" },
+	"save-lore-settings": { rule: "allowed" },
 	"delete-conversation": { rule: "blocked", reason: "Stop the running Generation before deleting this Chat." },
 	"fork-conversation": { rule: "blocked", reason: "Cannot fork while an Active Generation exists." },
 	"accept-tail": { rule: "blocked", reason: "This Conversation already has an Active Generation." },
@@ -74,14 +76,14 @@ export function generationGate(db: ConversationDatabase, conversationId: number,
 		case "blocked": throw new InvalidConversationCommandError(policy.reason);
 		case "continuation": throw new ContinuationUnavailableError("active-generation");
 		case "settled-variant":
-			if ("variantId" in command && isProvisional(command.variantId, active)) throw new InvalidConversationCommandError(policy.reason);
+			if ("variantId" in command && active.some((row) => row.variantId === command.variantId)) throw new InvalidConversationCommandError(policy.reason);
 			return;
 		case "settled-macro-position": {
 			if (command.type !== "edit-macro-variables" || command.position === 0) return;
 			const variant = db.select({ id: messageVariantTable.id }).from(messageVariantTable)
 				.innerJoin(messageTable, eq(messageTable.id, messageVariantTable.message_id))
 				.where(and(eq(messageTable.conversation_id, conversationId), eq(messageTable.position, command.position), eq(messageVariantTable.selected, true))).get();
-			if (variant !== undefined && isProvisional(variant.id, active)) throw new InvalidConversationCommandError(policy.reason);
+			if (variant !== undefined && active.some((row) => row.variantId === variant.id)) throw new InvalidConversationCommandError(policy.reason);
 			return;
 		}
 		case "same-message-sibling-only": {
@@ -91,9 +93,7 @@ export function generationGate(db: ConversationDatabase, conversationId: number,
 			if ("messageId" in command && active.some((row) => row.messageId !== command.messageId)) {
 				throw new InvalidConversationCommandError("Sibling Generations are allowed only at the active response position.");
 			}
-			const limit = db.select({ value: conversationGenerationSettingsTable.sibling_generation_limit })
-				.from(conversationGenerationSettingsTable).where(eq(conversationGenerationSettingsTable.conversation_id, conversationId))
-				.get()?.value ?? DEFAULT_SIBLING_GENERATION_LIMIT;
+			const { siblingGenerationLimit: limit } = requireConversationGenerationSettings(db, conversationId);
 			if (active.length >= limit) throw new InvalidConversationCommandError(`The Conversation already has ${limit} active Sibling Generations at this response position.`);
 		}
 	}

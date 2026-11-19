@@ -1,15 +1,9 @@
+import { installFetch } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import { NetworkError } from "./lib/request-outcome";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	value: { location: { origin: "http://localhost" } },
-});
 const { loadConversation } = await import("./conversation");
-const installFetch = (handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>) => {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-};
 afterEach(() => { globalThis.fetch = originalFetch; });
 
 describe("Conversation refresh transport", () => {

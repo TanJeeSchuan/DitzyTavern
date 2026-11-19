@@ -1,7 +1,7 @@
 import { Value } from "@sinclair/typebox/value";
 import { Type, type Static } from "@sinclair/typebox";
 import type { DecisionAnswer } from "../src/shared/contract/decision-model";
-import type { GenerationJsonValue } from "../src/shared/generation-json";
+import type { GenerationJsonValue } from "../src/shared/contract/json-value";
 import type { BuildMetadata } from "../src/server/build-metadata";
 
 export type RegistryReply = { buildNumber: number; revision: string; hold?: boolean } | { status: number };

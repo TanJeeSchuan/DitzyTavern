@@ -1,5 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
-import { conversationSummary } from "./conversation-schema";
+import { conversationConflict, conversationSummary } from "./conversation-schema";
+import { invalidOutcome, notFoundOutcome } from "./outcomes";
 import { numericWire } from "./wire";
 import {
 	macroValue,
@@ -33,14 +34,12 @@ export const macroVariable = Type.Object({
 	source: macroVariableLocation,
 });
 
-export const macroVariablesTarget = macroVariableLocation;
-
 export const macroVariables = Type.Object({
 	conversationId: Type.Integer(),
 	promptPresetId: Type.Integer(),
 	promptPresetName: Type.String(),
 	position: Type.Integer(),
-	target: macroVariablesTarget,
+	target: macroVariableLocation,
 	variables: Type.Array(macroVariable),
 });
 
@@ -68,8 +67,18 @@ export const macroVariablesAppliedResponse = Type.Object({
 
 export type MacroVariableSource = Static<typeof macroVariableLocation>;
 export type MacroVariable = Static<typeof macroVariable>;
-export type MacroVariablesTarget = Static<typeof macroVariablesTarget>;
 export type MacroVariables = Static<typeof macroVariables>;
-export type MacroVariablesQuery = Static<typeof macroVariablesQuery>;
 export type MacroVariablesEditBody = Static<typeof macroVariablesEditBody>;
-export type MacroVariablesAppliedResponse = Static<typeof macroVariablesAppliedResponse>;
+
+export const macroVariablesReadResponse = {
+	200: macroVariables,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+export const macroVariablesEditResponse = {
+	200: macroVariablesAppliedResponse,
+	404: notFoundOutcome,
+	409: conversationConflict,
+	422: invalidOutcome,
+};

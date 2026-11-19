@@ -50,7 +50,12 @@ test("older Messages landing during a smooth scroll do not let it carry on to it
 	});
 	await loadMore(page, 1500);
 	await expect(articles).toHaveCount(60);
-	await page.waitForTimeout(1500);
 	// Left alone, the animation ends at 1500 px in content that has since grown above it, a page away from where the reader was.
-	expect(await scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(1500);
+	let previousTop = 0;
+	await expect.poll(async () => {
+		const top = await scroll.evaluate((element) => element.scrollTop);
+		const settled = top === previousTop;
+		previousTop = top;
+		return settled ? top : 0;
+	}).toBeGreaterThan(1500);
 });

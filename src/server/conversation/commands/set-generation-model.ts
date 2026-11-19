@@ -1,10 +1,6 @@
 import type { ConversationDatabase } from "../internal";
 import { readProfileApiFormat } from "../../connection-settings/persistence";
-import {
-	DEFAULT_CONVERSATION_GENERATION_SETTINGS,
-	readConversationGenerationSettingsFromConnection,
-	updateConversationModelSelection,
-} from "../generation-settings";
+import { updateConversationModelSelection } from "../generation-settings";
 import { InvalidConversationCommandError } from "../errors";
 
 export interface SetGenerationModelInput {
@@ -30,10 +26,5 @@ export function setGenerationModel(
 	if (apiFormat === "images") throw new InvalidConversationCommandError("An Images connection cannot write Messages. Choose a chat model.");
 	if (apiFormat === "embeddings") throw new InvalidConversationCommandError("An Embeddings connection cannot write Messages. Choose a chat model.");
 	if (apiFormat === "system-one") throw new InvalidConversationCommandError("A System One connection cannot write Messages. Choose a chat model.");
-	const existing = readConversationGenerationSettingsFromConnection(db, input.conversationId);
-	return updateConversationModelSelection(db, input.conversationId, {
-		...(existing ?? DEFAULT_CONVERSATION_GENERATION_SETTINGS),
-		connectionProfileId: input.connectionProfileId,
-		modelId,
-	});
+	updateConversationModelSelection(db, input.conversationId, { connectionProfileId: input.connectionProfileId, modelId });
 }

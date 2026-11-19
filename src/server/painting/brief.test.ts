@@ -3,7 +3,7 @@ import { formatImageReference } from "../../shared/image-reference";
 import { pngFixture } from "../image/image-fixtures";
 import { uploadImage } from "../image";
 import { expect, test, setSystemTime } from "bun:test";
-import { openObservedDatabase, requireSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { openObservedDatabase, requireSnapshot, createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { humanPrompt, modelPrompt, createChat, conversationApp, withProfile, captureModelFetch, key, type CapturedRequest } from "../contract/prompt-preset-test-fixtures";
 import { executeConversationCommand } from "../conversation";
 import { macroWritesToData } from "../prompt-macros";
@@ -30,10 +30,9 @@ test("a Brief uses its Paint Preset, the last N selected Messages ending at the 
 			{ reference: "brief-instruction", enabled: true, role: "assistant", content: "Paint {{self}} in charcoal on {{date}}. {{setvar::temporary::changed}}" },
 			{ reference: "instruction", enabled: true, role: "system", name: "End", content: "Last preset block." },
 		] });
-		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "author-note", setup: "This nonempty Box note must not reach the Brief." } });
-		const paintings = createPaintingModule(database);
-		paintings.command(chat.id, { type: "select-paint-preset", paintPresetId: preset.id });
-		paintings.command(chat.id, { type: "set-brief-message-count", briefMessageCount: 2 });
+		const configured = executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "author-note", setup: "This nonempty Box note must not reach the Brief." } });
+		const paint = executeConversationCommand(database, { conversationId: chat.id, expectedRevision: configured.revision, action: { type: "select-paint-preset", paintPresetId: preset.id } });
+		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: paint.revision, action: { type: "set-brief-message-count", briefMessageCount: 2 } });
 		database.exec(`INSERT INTO lorebook (id, name) VALUES (1, 'River');
 			INSERT INTO lorebook_entry (lorebook_id, position, title, content, keywords_json) VALUES (1, 1, 'Lantern', 'The lantern is green.', '["lantern"]'), (1, 2, 'Future', 'Wrong future Lore.', '["Later"]');`);
 		database.query("INSERT INTO conversation_lorebook_attachment (conversation_id, lorebook_id) VALUES (?, 1)").run(chat.id);
@@ -42,7 +41,7 @@ test("a Brief uses its Paint Preset, the last N selected Messages ending at the 
 		const variantRows = database.query("SELECT * FROM message_variant_data").all();
 		const requests: CapturedRequest[] = [];
 		const events = await Array.fromAsync(writeBrief(database, chat.id, { variantId: snapshot.messages[3]!.variants[0]!.id, ask: "Focus on {{self}} at the bridge.", locale: "fr-FR", timeZone: "Pacific/Honolulu" },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		expect(requests).toHaveLength(1);
 		const messages = requests[0]!.messages;
 		expect(messages).toEqual([
@@ -64,12 +63,12 @@ test("an empty Ask names the scene, and Image References in an Ask reach the mod
 	const database = openObservedDatabase();
 	try {
 		const chat = createConversationWithHistory(database, { name: "Scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: modelPrompt, sendAppearanceImages: true, openings: ["First scene"] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: modelPrompt, openings: ["First scene"] }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const requests: CapturedRequest[] = [];
-		const routes = createPaintingRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) });
+		const routes = createPaintingRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch });
 		const write = async (ask: string) => {
 			const response = await routes.handle(new Request(`http://localhost/api/conversations/${chat.id}/brief`, {
 				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ variantId: chat.messages[0]!.variants[0]!.id, ask }),
@@ -132,8 +131,8 @@ test("a provider rejection before streaming returns its Brief error", async () =
 	const database = openObservedDatabase();
 	try {
 		const chat = createConversationWithHistory(database, { name: "Scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: modelPrompt, sendAppearanceImages: true, openings: ["A scene"] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: modelPrompt, openings: ["A scene"] }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const routes = createPaintingRoutes(database, { masterKey: key, fetch: async () => Response.json({ error: { message: "Brief quota exceeded" } }, { status: 429 }) });
@@ -149,8 +148,8 @@ test("a Brief pins its target Variant after a swipe and reads only its own prese
 	const database = openObservedDatabase();
 	try {
 		const chat = createConversationWithHistory(database, { name: "Scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: modelPrompt, sendAppearanceImages: true, openings: ["Original lantern", "Swiped lake"] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: modelPrompt, openings: ["Original lantern", "Swiped lake"] }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const preset = importNativePromptPreset(database, { name: "Both", slots: [
@@ -166,27 +165,28 @@ test("a Brief pins its target Variant after a swipe and reads only its own prese
 			if (!entry) throw new Error("Macro fixture missing");
 			database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, ?, ?, ?)").run(variantId, entry.namespace, entry.key, entry.value);
 		}
-		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: selected.revision, action: { type: "select-variant", messageId: message.id, variantId: swiped.id } });
-		const paintings = createPaintingModule(database);
-		paintings.command(chat.id, { type: "select-paint-preset", paintPresetId: preset.id });
+		const selection = executeConversationCommand(database, { conversationId: chat.id, expectedRevision: selected.revision, action: { type: "select-variant", messageId: message.id, variantId: swiped.id } });
+		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: selection.revision, action: { type: "select-paint-preset", paintPresetId: preset.id } });
 		const before = requireSnapshot(database, chat.id);
 		const rows = database.query("SELECT * FROM message_variant_data").all();
 		const requests: CapturedRequest[] = [];
 		const write = () => Array.fromAsync(writeBrief(database, chat.id, { variantId: original.id, ask: "Paint this." },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		await write();
 		expect(requests[0]!.messages).toEqual([
 			{ role: "assistant", content: "Original lantern" },
 			{ role: "user", content: "Tone: warm." },
 			{ role: "user", content: "Paint this." },
 		]);
+		expect(requireSnapshot(database, chat.id)).toEqual(before);
 		const paintOnly = importNativePromptPreset(database, { name: "Paint only", slots: [
 			{ reference: "brief-instruction", enabled: true, role: "user", content: "Before: {{getvar::tone}}; local: {{setvar::local::ink}}{{getvar::local}}." },
 		] });
-		paintings.command(chat.id, { type: "select-paint-preset", paintPresetId: paintOnly.id });
+		executeConversationCommand(database, { conversationId: chat.id, expectedRevision: before.revision, action: { type: "select-paint-preset", paintPresetId: paintOnly.id } });
+		const beforePaintOnly = requireSnapshot(database, chat.id);
 		await write();
 		expect(requests[1]!.messages[0]).toEqual({ role: "user", content: "Before: ; local: ink." });
-		expect(requireSnapshot(database, chat.id)).toEqual(before);
+		expect(requireSnapshot(database, chat.id)).toEqual(beforePaintOnly);
 		expect(database.query("SELECT * FROM message_variant_data").all()).toEqual(rows);
 	} finally { database.close(); }
 });
@@ -196,8 +196,8 @@ test("a Brief preserves a provider failure after content has started streaming",
 	const database = openObservedDatabase();
 	try {
 		const chat = createConversationWithHistory(database, { name: "Scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: modelPrompt, sendAppearanceImages: true, openings: ["A scene"] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: modelPrompt, openings: ["A scene"] }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const chunks = [
@@ -223,16 +223,16 @@ test("a Brief reads unseated Cast Appearance by name or authorship and sends onl
 	try {
 		const image = await uploadImage(database, pngFixture());
 		const chat = createConversationWithHistory(database, { name: "Cast scene", participants: [
-			{ definition: { name: "Writer", prompt: humanPrompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt: { ...modelPrompt, appearance: "A red cloak beside {{other}}." }, sendAppearanceImages: true, openings: ["Iris waits on the bridge."] } },
-			{ definition: { name: "Iris", prompt: { ...modelPrompt, appearance: `{{self}} has silver hair. ${formatImageReference("Silver hair", image.hash)}` }, sendAppearanceImages: false, openings: [] } },
-			{ definition: { name: "Nora", prompt: { ...modelPrompt, appearance: "A blue scarf." }, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Absent", prompt: { ...modelPrompt, appearance: "Must not be sent." }, sendAppearanceImages: true, openings: [] } },
+			participantSeed("Writer", { prompt: humanPrompt }),
+			participantSeed("Maren", { prompt: { ...modelPrompt, appearance: "A red cloak beside {{other}}." }, openings: ["Iris waits on the bridge."] }),
+			participantSeed("Iris", { prompt: { ...modelPrompt, appearance: `{{self}} has silver hair. ${formatImageReference("Silver hair", image.hash)}` }, sendAppearanceImages: false }),
+			participantSeed("Nora", { prompt: { ...modelPrompt, appearance: "A blue scarf." } }),
+			participantSeed("Absent", { prompt: { ...modelPrompt, appearance: "Must not be sent." } }),
 		], control: { human: 0, model: 1 } });
 		withProfile(database);
 		const requests: CapturedRequest[] = [];
 		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint Nora beside her." },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		const sent = JSON.stringify(requests[0]!.messages);
 		expect(sent).toContain("Maren\\nA red cloak beside Writer.");
 		expect(sent).toContain("Iris\\nIris has silver hair. [Image: Silver hair]");
@@ -242,11 +242,11 @@ test("a Brief reads unseated Cast Appearance by name or authorship and sends onl
 		const nora = chat.cast.find((participant) => participant.name === "Nora")!;
 		database.query("UPDATE messages SET author_participant_id = ?, author_name = 'A witness' WHERE id = ?").run(nora.id, chat.messages[0]!.id);
 		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint the bridge." },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		expect(JSON.stringify(requests[1]!.messages)).toContain("Nora\\nA blue scarf.");
 		database.query("UPDATE participant_prompt SET send_appearance_images = 1 WHERE participant_id = ?").run(chat.cast.find((participant) => participant.name === "Iris")!.id);
 		await Array.fromAsync(writeBrief(database, chat.id, { variantId: chat.messages[0]!.variants[0]!.id, ask: "Paint the bridge." },
-			{ masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) }, new AbortController().signal));
+			{ masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch }, new AbortController().signal));
 		expect(JSON.stringify(requests[2]!.messages)).toContain(`data:image/png;base64,${pngFixture().toString("base64")}`);
 	} finally { database.close(); }
 });

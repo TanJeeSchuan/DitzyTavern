@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
 import { createConversation } from "../conversation";
-import { openObservedDatabase } from "../test-fixtures/conversation";
+import { openObservedDatabase, participantSeed } from "../test-fixtures/conversation";
 import { emptyPromptChannels } from "../../shared/definition";
 import { createConversationRoutes } from "./conversation";
 import { createPromptPresetRoutes } from "./prompt-preset-routes";
@@ -17,13 +17,13 @@ test("the Default preset sends each Appearance immediately after its Identity", 
 	const chat = createConversation(database, {
 		name: "Appearance",
 		participants: [
-			{ definition: { name: "Writer", sendAppearanceImages: true, prompt: { ...emptyPromptChannels(), identity: "Writer Identity", appearance: "Writer Appearance" }, openings: [] } },
-			{ definition: { name: "Maren", sendAppearanceImages: true, prompt: { ...emptyPromptChannels(), identity: "Maren Identity", appearance: "Maren Appearance" }, openings: [] } },
+			participantSeed("Writer", { prompt: { ...emptyPromptChannels(), identity: "Writer Identity", appearance: "Writer Appearance" } }),
+			participantSeed("Maren", { prompt: { ...emptyPromptChannels(), identity: "Maren Identity", appearance: "Maren Appearance" } }),
 		], control: { human: 0, model: 1 },
 	});
 	withProfile(database);
 	let captured: unknown;
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 	const generationId = await startGeneration(app, chat.id, chat.revision);
 	await completeGeneration(app, chat.id, generationId);
 	expect(captured).toMatchObject({ messages: [
@@ -43,13 +43,13 @@ for (const sendAppearanceImages of [true, false]) {
 		const portrait = await uploadImage(database, pngFixture({ width: 11 }));
 		const chat = createConversation(database, {
 			name: "Appearance Images", participants: [
-				{ definition: { name: "Writer", prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt: { ...emptyPromptChannels(), identity: "Maren Identity", appearance: `Grey eyes. ${formatImageReference("Maren", picture.hash)}` }, sendAppearanceImages, portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 }, openings: [] } },
+				participantSeed("Writer"),
+				participantSeed("Maren", { prompt: { ...emptyPromptChannels(), identity: "Maren Identity", appearance: `Grey eyes. ${formatImageReference("Maren", picture.hash)}` }, sendAppearanceImages, portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } }),
 			], control: { human: 0, model: 1 },
 		});
 		withProfile(database);
 		let captured: unknown;
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 		const id = await startGeneration(app, chat.id, chat.revision);
 		await completeGeneration(app, chat.id, id);
 		expect(captured).toMatchObject({ messages: [
@@ -70,7 +70,7 @@ test("empty Appearance adds no message to the existing request", async () => {
 	const chat = createConversation(database, { name: "Empty Appearance", participants: [{ definition }, { definition: { ...definition, name: "Maren" } }], control: { human: 0, model: 1 } });
 	withProfile(database);
 	let captured: unknown;
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 	const id = await startGeneration(app, chat.id, chat.revision);
 	await completeGeneration(app, chat.id, id);
 	expect(captured).toMatchObject({ messages: [

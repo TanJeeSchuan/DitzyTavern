@@ -1,3 +1,4 @@
+import { installFetch } from "../test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { createElement } from "react";
@@ -14,9 +15,9 @@ const clock: BoxMetadata = { id: "clock", label: "Clock", summary: "", instructi
 const scene: BoxMetadata = { id: "scene", label: "Scene", summary: "", instructions: "", delegate: { tag: "scene", summary: "", description: "", off: "" } };
 
 test("a Box joining the catalog while the settings are open keeps every draft already being edited", async () => {
-	globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => Response.json(String(input).includes("delegate-settings")
+	installFetch(async (input: RequestInfo | URL) => Response.json(String(input).includes("delegate-settings")
 		? { profileId: null, model: "", revision: 0 }
-		: { decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 4_000, revision: 0 }), { preconnect: realFetch.preconnect });
+		: { decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 4_000, revision: 0 }));
 	installBoxes([{ metadata: clock, descriptor: undefined }]);
 	let seen: Drafts = { decisions: [], delegates: [] };
 	const view = await renderTree(() => createElement(BoxSettingsDrafts, { render: (drafts) => { seen = drafts; return null; } }), new QueryClient());
@@ -33,9 +34,9 @@ test("a Box joining the catalog while the settings are open keeps every draft al
 });
 
 test("a Box already in the catalog that starts delegating keeps the drafts of the Boxes after it", async () => {
-	globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => Response.json(String(input).includes("delegate-settings")
+	installFetch(async (input: RequestInfo | URL) => Response.json(String(input).includes("delegate-settings")
 		? { profileId: null, model: "", revision: 0 }
-		: { decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 4_000, revision: 0 }), { preconnect: realFetch.preconnect });
+		: { decisionProfileId: null, decisionModel: "", decisionStateTokenLimit: 4_000, revision: 0 }));
 	const { delegate: _, ...plainScene } = scene;
 	installBoxes([{ metadata: plainScene, descriptor: undefined }, { metadata: clock, descriptor: undefined }]);
 	let seen: Drafts = { decisions: [], delegates: [] };

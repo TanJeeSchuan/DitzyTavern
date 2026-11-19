@@ -85,16 +85,3 @@ export type EffectiveGenerationSettings = Static<typeof effectiveGenerationSetti
 
 export type CanonicalGenerationSettings = Static<typeof canonicalGenerationSettings>;
 export type GenerationSettingsField = keyof CanonicalGenerationSettings;
-
-// The canonical field vocabulary, read from the canonical schema's own keys:
-// the schema is the one canonical declaration of the Generation Settings
-// structure (ADR-0032), so this runtime key list cannot drift from it and
-// keeps the schema's declaration order.
-// SAFETY: the schema's properties are declared with the canonical literal
-// keys; this cast only restores those literal key types from Object.keys'
-// widening.
-const canonicalGenerationSettingsKeys = Object.keys(
-	canonicalGenerationSettings.properties,
-) as readonly GenerationSettingsField[];
-
-export const GENERATION_SETTINGS_FIELDS = canonicalGenerationSettingsKeys;

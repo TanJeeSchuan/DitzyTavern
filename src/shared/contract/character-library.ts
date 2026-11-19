@@ -2,7 +2,8 @@ import { Type, type Static } from "@sinclair/typebox";
 import { portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import { numericWire } from "./wire";
-import { invalidOutcome, notFoundOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
+import { scopedLorebookAttachment } from "./lorebook";
 
 // Typed transport schemas mirror the Character Library seam's public types.
 // Routes stay thin adapters: persistence and validation rules live behind
@@ -102,6 +103,23 @@ const setPinnedCommand = Type.Object({
 	pinned: Type.Boolean(),
 });
 
+const lorebookAttachment = {
+	characterId: Type.Integer(),
+	expectedRevision: Type.Integer(),
+	...scopedLorebookAttachment,
+};
+
+const attachLorebookCommand = Type.Object({
+	type: Type.Literal("attach-lorebook"),
+	...lorebookAttachment,
+	enabled: Type.Optional(Type.Boolean()),
+});
+
+const detachLorebookCommand = Type.Object({
+	type: Type.Literal("detach-lorebook"),
+	...lorebookAttachment,
+});
+
 // Confirmed deletion. The expected revision guards against deleting a
 // Character whose impact the caller has not seen; the outcome derives the
 // deletion mode from the current reference count.
@@ -118,6 +136,8 @@ export const commandBodySchema = Type.Union([
 	replacePromptCommand,
 	replaceOpeningsCommand,
 	setPinnedCommand,
+	attachLorebookCommand,
+	detachLorebookCommand,
 	deleteCommand,
 ]);
 
@@ -136,15 +156,14 @@ export type CharacterCommand = Static<typeof commandBodySchema>;
 
 export const characterIdParams = Type.Object({ id: numericWire });
 
-export const characterListResponse = Type.Object({
-	characters: Type.Array(characterLibrarySummary),
-});
+export const characterListResponse = { 200: Type.Object({ characters: Type.Array(characterLibrarySummary) }) };
+export const characterReadResponse = { 200: characterSnapshot, 404: notFoundOutcome };
 
 // A confirmed deletion returns the typed result rather than a snapshot and
 // neither stays readable; every other command returns the authoritative
 // updated Character. DeletionMode is exclusive to the result, so the
 // discriminant keeps the two applied payloads distinct.
-export const characterCommandApplied = Type.Union([
+const characterCommandApplied = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("applied"),
 		character: characterSnapshot,
@@ -157,19 +176,11 @@ export const characterCommandApplied = Type.Union([
 
 // Stale-revision conflict carrying the authoritative current Character so
 // the caller can recover without a follow-up read.
-export const characterConflict = Type.Object({
-	outcome: Type.Literal("conflict"),
-	expectedRevision: Type.Integer(),
-	actualRevision: Type.Integer(),
-	currentCharacter: characterSnapshot,
-});
+export const characterConflict = revisionConflict(characterSnapshot);
 
-// @approved
-//  The Character command family's modeled error union: the composed
-// 409/404/422 envelopes the library command and native-creation routes
-// declare, so the client decodes an error body against exactly that union.
-export const characterCommandErrors = Type.Union([
-	characterConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const characterCommandResponse = {
+	200: characterCommandApplied,
+	404: notFoundOutcome,
+	409: characterConflict,
+	422: invalidOutcome,
+};

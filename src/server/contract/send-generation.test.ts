@@ -1,64 +1,15 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { profile as chatProfile, sseReply } from "./prompt-preset-test-fixtures";
+import { readTestConversationSnapshot, shortReplyPrompt, pairChat } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { createConversationRoutes } from "./conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
-const profile = {
-	displayName: "Send test profile",
-	apiFormat: "chat-completions" as const,
-	requestUrl: "http://127.0.0.1:43127/v1/",
-	modelsUrl: "",
-	modelBackend: "automatic" as const,
-	adapter: "deepseek" as const,
-	outputTokenRepresentation: "automatic" as const,
-	systemPlacement: "strict" as const,
-	timeoutMs: 120_000,
-	pinnedModels: [],
-};
+const profile = { ...chatProfile, displayName: "Send test profile", requestUrl: "http://127.0.0.1:43127/v1/", systemPlacement: "strict" } satisfies typeof chatProfile;
 
-const providerStreamResponse = ({
-	content,
-	finishReason = "stop",
-	failAfterContent = false,
-}: {
-	content?: string;
-	finishReason?: string;
-	failAfterContent?: boolean;
-}) => {
-	const encoder = new TextEncoder();
-	return new Response(new ReadableStream({
-		start(controller) {
-			if (content !== undefined) {
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })}\n\n`));
-			}
-			if (failAfterContent) {
-				controller.enqueue(encoder.encode(`data: ${JSON.stringify({
-					error: {
-						message: "Injected provider connection failure.",
-						type: "server_error",
-						code: "injected_failure",
-					},
-				})}\n\n`));
-				controller.close();
-				return;
-			}
-			controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finishReason }] })}\n\n`));
-			controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-			controller.close();
-		},
-	}), { headers: { "content-type": "text/event-stream" } });
-};
 
 describe("Send generation transport", () => {
 	let database: Database;
@@ -68,134 +19,8 @@ describe("Send generation transport", () => {
 	});
 	afterEach(() => database.close());
 
-	test("persists partial provider output as an interrupted Variant through the HTTP routes", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Partial Send contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
-		const masterKey = new Uint8Array(32).fill(10);
-		createConnectionSettingsModule(database, { masterKey }).createProfile({
-			expectedRevision: 0,
-			profile,
-			credential: "partial-contract-secret",
-		});
-		const app = createConversationRoutes(database, {
-			masterKey,
-			fetch: async () => providerStreamResponse({
-				content: "Saved partial answer.",
-				failAfterContent: true,
-			}),
-		});
-
-		const acceptedResponse = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send",  expectedRevision: conversation.revision, content: "Write through the failure." }),
-			},
-		));
-		// SAFETY: this contract test controls the typed acceptance response.
-		const accepted = await acceptedResponse.json() as { generationId: number };
-		const eventsResponse = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations/${accepted.generationId}/events`,
-		));
-		const events = await eventsResponse.text();
-		const snapshot = readTestConversationSnapshot(database, conversation.id);
-		const message = snapshot?.messages.at(-1);
-		const variant = message?.variants[0];
-		if (message === undefined || variant === undefined) throw new Error("Interrupted Variant missing.");
-		const detailsResponse = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/messages/${message.id}/variants/${variant.id}/details`,
-		));
-		const details = await detailsResponse.text();
-
-		expect(acceptedResponse.status).toBe(200);
-		expect(events).toContain('"text":"Saved partial answer."');
-		expect(events).toContain("event: complete");
-		expect(variant.content).toBe("Saved partial answer.");
-		expect(details).toContain('"status":"interrupted"');
-		expect(details).toContain('"interruptionCause":"provider"');
-		expect(details).not.toContain("Injected provider connection failure.");
-	});
-
-	test("zero output retries only on an explicit second start and never duplicates the human Message", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Zero-output retry contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
-		const masterKey = new Uint8Array(32).fill(11);
-		createConnectionSettingsModule(database, { masterKey }).createProfile({
-			expectedRevision: 0,
-			profile,
-			credential: "zero-output-contract-secret",
-		});
-		let providerRequests = 0;
-		const app = createConversationRoutes(database, {
-			masterKey,
-			fetch: async () => {
-				providerRequests += 1;
-				return providerRequests === 1
-					? providerStreamResponse({})
-					: providerStreamResponse({ content: "Retry succeeded." });
-			},
-		});
-		const start = (expectedRevision: number) => app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations`,
-			{
-				method: "POST",
-				headers: { "content-type": "application/json" },
-				body: JSON.stringify({ kind: "send",  expectedRevision, content: "Please answer once." }),
-			},
-		));
-
-		const firstResponse = await start(conversation.revision);
-		// SAFETY: this contract test controls the typed acceptance response.
-		const first = await firstResponse.json() as { generationId: number };
-		const firstEventsResponse = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations/${first.generationId}/events`,
-		));
-		const firstEvents = await firstEventsResponse.text();
-		const afterZeroOutput = readTestConversationSnapshot(database, conversation.id);
-		expect(firstEvents).toContain("event: error");
-		expect(providerRequests).toBe(1);
-		expect(afterZeroOutput?.messages).toHaveLength(1);
-		expect(afterZeroOutput?.messages[0]?.variants[0]?.content).toBe("Please answer once.");
-
-		const retryResponse = await start(afterZeroOutput?.revision ?? -1);
-		// SAFETY: this contract test controls the typed acceptance response.
-		const retry = await retryResponse.json() as { generationId: number };
-		const retryEventsResponse = await app.handle(new Request(
-			`http://localhost/api/conversations/${conversation.id}/generations/${retry.generationId}/events`,
-		));
-		const retryEvents = await retryEventsResponse.text();
-		const persisted = readTestConversationSnapshot(database, conversation.id);
-
-		expect(retryResponse.status).toBe(200);
-		expect(retryEvents).toContain("event: complete");
-		expect(providerRequests).toBe(2);
-		expect(persisted?.messages).toHaveLength(2);
-		expect(persisted?.messages[0]?.variants[0]?.content).toBe("Please answer once.");
-		expect(persisted?.messages[1]?.variants[0]?.content).toBe("Retry succeeded.");
-	});
-
 	test("provider response bodies and request details never enter Generation HTTP or SSE errors", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Safe provider failure contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Safe provider failure contract", { prompt });
 		const masterKey = new Uint8Array(32).fill(17);
 		createConnectionSettingsModule(database, { masterKey }).createProfile({
 			expectedRevision: 0,
@@ -240,14 +65,7 @@ describe("Send generation transport", () => {
 	});
 
 	test("raw provider finish reasons are normalized before Generation SSE", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Safe finish contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Safe finish contract", { prompt });
 		const masterKey = new Uint8Array(32).fill(18);
 		createConnectionSettingsModule(database, { masterKey }).createProfile({
 			expectedRevision: 0,
@@ -257,7 +75,7 @@ describe("Send generation transport", () => {
 		const rawFinishReason = "https://secret.endpoint X-Secret=header-do-not-expose arbitrary-provider-text";
 		const app = createConversationRoutes(database, {
 			masterKey,
-			fetch: async () => providerStreamResponse({ content: "Safe answer.", finishReason: rawFinishReason }),
+			fetch: async () => sseReply([{ content: "Safe answer." }], { finish: { reason: rawFinishReason } }),
 		});
 		const acceptedResponse = await app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/generations`,
@@ -281,14 +99,7 @@ describe("Send generation transport", () => {
 	});
 
 	test("persists a length-limited terminal outcome through the HTTP routes", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Length-limited Send contract",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Length-limited Send contract", { prompt });
 		const masterKey = new Uint8Array(32).fill(12);
 		createConnectionSettingsModule(database, { masterKey }).createProfile({
 			expectedRevision: 0,
@@ -297,10 +108,7 @@ describe("Send generation transport", () => {
 		});
 		const app = createConversationRoutes(database, {
 			masterKey,
-			fetch: async () => providerStreamResponse({
-				content: "Bounded response.",
-				finishReason: "length",
-			}),
+			fetch: async () => sseReply([{ content: "Bounded response." }], { finish: { reason: "length" } }),
 		});
 
 		const acceptedResponse = await app.handle(new Request(

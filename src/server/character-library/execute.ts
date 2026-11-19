@@ -1,7 +1,8 @@
 import { portraitRow } from "../image";
 import type { Database } from "bun:sqlite";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import {
+	characterLorebookAttachmentTable,
 	characterOpeningTable,
 	characterPromptTable,
 	characterTable,
@@ -117,6 +118,24 @@ export function executeCharacterCommand(
 					.run();
 				break;
 			}
+			case "attach-lorebook": {
+				const enabled = command.enabled ?? true;
+				db.insert(characterLorebookAttachmentTable)
+					.values({ character_id: character.id, lorebook_id: command.bookId, scope: command.scope, enabled })
+					.onConflictDoUpdate({
+						target: [characterLorebookAttachmentTable.character_id, characterLorebookAttachmentTable.lorebook_id, characterLorebookAttachmentTable.scope],
+						set: { enabled },
+					})
+					.run();
+				break;
+			}
+			case "detach-lorebook":
+				db.delete(characterLorebookAttachmentTable).where(and(
+					eq(characterLorebookAttachmentTable.character_id, character.id),
+					eq(characterLorebookAttachmentTable.lorebook_id, command.bookId),
+					eq(characterLorebookAttachmentTable.scope, command.scope),
+				)).run();
+				break;
 			default: {
 				const _exhaustive: never = command;
 				throw new Error(`Unhandled Character command: ${JSON.stringify(_exhaustive)}`);

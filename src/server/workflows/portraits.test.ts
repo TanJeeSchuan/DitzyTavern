@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
 import { executeConversationCommand, readConversationSummary} from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
@@ -11,14 +12,7 @@ import { uploadImage, sweepOrphanedImages, InvalidImageError } from "../image";
 import type { Portrait } from "../../shared/contract/image";
 import { addCharacterToCast, createNativeConversation, saveParticipantAsCharacter } from ".";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "A lighthouse archivist.",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
+const prompt = { ...emptyPromptChannels(), identity: "A lighthouse archivist." };
 
 describe("Portraits", () => {
 	let database: Database;
@@ -168,7 +162,7 @@ describe("Portraits", () => {
 		});
 		const response = await createConversationRoutes(database).handle(new Request(
 			`http://localhost/api/conversations/${chat.id}/generations/preview`,
-			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "hello" }) },
+			{ method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: { kind: "send", content: "hello" } }) },
 		));
 		expect(response.status).toBe(200);
 		expect(JSON.stringify(await response.json())).not.toContain(carried.portrait.hash);

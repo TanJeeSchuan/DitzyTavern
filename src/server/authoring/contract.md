@@ -40,7 +40,7 @@ Check your work with `run_scenario`. It loads the Box exactly as the app would a
 | `alwaysRender` | optional `true`: render the block even when `advance` returns no items |
 | `block` | optional `{ "description", "source" }`: the preset editor's copy for the block |
 | `setup` | optional `{ "schema", "initial" }`: per-Chat configuration; `initial` must pass `schema` |
-| `values` | optional `{ "chat": { key: schema }, "participant": { key: schema } }`: schemas for stored values |
+| `values` | optional `{ "participant": { key: schema } }`: schemas for stored Participant values; `values.chat` is refused because `commit-box` supports only Library, Character and Participant owners |
 | `record` | optional object schema: one Variant's record, folded into state |
 | `moves` | optional `{ "schema", "max", "label", "seatBound"? }`: actions on a Human Message. `label` is a template: each `{key}` reads that field of the Move, shown as its literal's `title` when the schema gives one |
 | `decision` | optional `{ "summary", "description", "off", "context" }`: the Box digests settled prose through a Decision Model, and these four strings word its setting |

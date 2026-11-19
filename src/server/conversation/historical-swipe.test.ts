@@ -1,9 +1,6 @@
-import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import {
-	executeConversationCommand,
-	acceptConversationSiblingGeneration,
-	resolveConversationGeneration,
-} from ".";
+import { emptyPromptChannels } from "../../shared/definition";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
+import { executeConversationCommand, acceptGeneration, resolveConversationGeneration } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -27,12 +24,8 @@ import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversa
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
 ): ParticipantDefinition["prompt"] => ({
-	systemInstruction: "",
+	...emptyPromptChannels(),
 	identity: "I am {{self}}, speaking to {{other}}.",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
 	...overrides,
 });
 
@@ -40,12 +33,7 @@ const adHoc = (
 	name: string,
 	openings: string[] = [],
 	promptOverrides: Partial<ParticipantDefinition["prompt"]> = {},
-): ParticipantDefinition => ({
-	name,
-	prompt: prompt(promptOverrides),
-	sendAppearanceImages: true,
-	openings,
-});
+): ParticipantDefinition => participantDefinition(name, { prompt: prompt(promptOverrides), openings });
 
 const setup = (database: Database) => {
 	const module = database;
@@ -188,7 +176,7 @@ describe("Sibling Generation acceptance and resolution", () => {
 		input: ReturnType<typeof siblingInput>,
 		control: ReturnType<typeof seats>,
 	) =>
-		acceptConversationSiblingGeneration(module, {
+		acceptGeneration(module, {
 			seed: "test-generation-seed",
 			...input,
 			humanParticipantId: control.humanId,
@@ -196,8 +184,9 @@ describe("Sibling Generation acceptance and resolution", () => {
 			capturedHumanName: "Writer",
 			capturedModelName: control.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: input.messageId });
 
 	const resolveSibling = (
 		module: Database,
@@ -443,18 +432,18 @@ describe("Sibling Generation acceptance and resolution", () => {
 		if (target === undefined) throw new Error("Message missing.");
 
 		expect(() =>
-			acceptConversationSiblingGeneration(module, {
+			acceptGeneration(module, {
 				seed: "test-generation-seed",
 				conversationId: snapshot.id,
-				messageId: target.id,
 				timestamp: "2026-08-20T14:00:00Z",
 				humanParticipantId: modelId,
 				modelParticipantId: humanId,
 				capturedHumanName: "Maren",
 				capturedModelName: "Writer",
-			promptPlan: { blocks: [], warnings: [], images: [] },
-				modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-			}),
+				promptPlan: { blocks: [], warnings: [], images: [] },
+				modelId: "fixture-model",
+				promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+			}, { kind: "sibling", messageId: target.id }),
 		).toThrow(
 			"The captured historical Control pair does not match the target Message.",
 		);

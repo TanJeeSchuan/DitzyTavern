@@ -1,6 +1,6 @@
 # T5: Wire
 
-Status: READY
+Status: DONE
 
 Blocked By: T4
 
@@ -54,13 +54,31 @@ Report 18, finding 5; report 20, finding 5.
 
 ## TODO
 
-- [ ] Slice a, PR
-- [ ] Slice b, PR (split by route family if large)
-- [ ] Slice c, PR
-- [ ] Slice d, PR
+- [x] Slice a, PR
+- [x] Slice b, Conversation response maps
+- [x] Slice b, library response maps
+- [x] Slice b, settings response maps
+- [x] Slice c, PR #282
+- [x] Slice d, PR
 
 ## Acceptance
 
 `git grep -n -E 'current(Settings|Preset|Book|State|Character|Conversation)\b' -- src e2e` is empty. `git grep -n -E 'continue/generations|sibling/generations' -- src e2e scripts` is empty. Typecheck, unit tests and e2e pass in CI on each slice.
 
 ## Outcome
+
+- Slice a puts stale-revision responses on one schema and migrates every caller in the same change. Prompt Preset deletion impact uses `current` and keeps its own reason. Generation starts still send prose, and Memory keeps its Box contracts.
+- The old-field search finds Memory's explicit exception and one local `currentState` variable in the Prompt Preset editor. No core HTTP wire fields match.
+- Slice a changed-file lint passed with three existing warnings. `git diff --check` passed. The first CI check stopped at typecheck. The follow-up uses the concrete shared fields for the generic editor type and preserves the literal tags in the test expectation.
+- Slice b shares Conversation, Chat Import, Painting, and Brief response maps across the server and client. The sibling Generation start now uses its own map. The Conversation transport tests use the Macro Variables route map and retain their success, error, and network cases.
+- Changed-file lint and `git diff --check` passed for the Conversation PR. GitHub Actions runs typecheck, unit tests, and e2e.
+- Slice b shares the Character, Lorebook, and Prompt Preset response maps across the server and client. Preset recipe operations use their Treaty requests directly, so the hand-written request types are gone.
+- Changed-file lint and `git diff --check` passed for the library PR. Typecheck, unit tests, and e2e run in GitHub Actions.
+- Slice b shares the Connection, Semantic Trigger, Model Selection, and Box Decision Model and delegate settings response maps across the server and client. It removes the unused core error unions. The Box SDK keeps its three-argument `requestOutcome` API.
+- Slice c uses one Generation start route for Send, Continue, and Sibling. Preview takes the same target under `target`. The Paint Preset and Brief Message count actions advance the Chat revision through the Conversation dispatcher.
+- Slice c, not stated in the ticket: a Sibling start carrying an edited Prompt Plan without a preview token now returns 422, as Send and Continue already did. Master generated it and dropped the edit. Accepted by the orchestrator on 2026-11-19. Merged as PR #282; its first e2e run failed `story-jump.spec.ts` on "Send exact plan" and passed on rerun.
+- GitHub Actions reproduced bug 8 on the test-only commit. `src/server/contract/paint-preset-commands.test.ts` expected HTTP 422 for a revisionless write and got 200.
+- Slice d moves Chat and Participant Lore writes to the Conversation command endpoint. The settings action is named `save-lore-settings`. Character attachments use `attach-lorebook` and `detach-lorebook` under the Character revision guard. The Lorebook attachment endpoint now serves reads, and the editor uses its owner's command sender.
+- Attachment writes use the revision of the displayed list. A stale command refreshes the list before the user retries.
+- The old-field acceptance grep found 14 `currentSettings` hits in the Memory Box's separate conflict contract, callers, and tests. It also found three references to the Prompt Preset editor's local `currentState` variable. The core HTTP conflicts use `current`. The old Generation route grep returned no hits.
+- Changed-file lint and `git diff --check` passed. GitHub Actions runs typecheck, unit tests, and e2e for the draft PR.

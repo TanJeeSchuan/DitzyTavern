@@ -86,8 +86,8 @@ test("a cancelled pinning writes nothing, even when everything it needs is alrea
 	mkdirSync(join(box, "deps"));
 	writeFileSync(join(box, "deps", "dice@1.0.0.js"), bundle);
 	writeFileSync(join(box, "deps.lock.json"), lock);
-	const cancelled = AbortSignal.abort();
-	await expect(pinnedPackages(box, "dice-box", await sandboxedFolder(box, "dice-box"), { dice: "1.0.0" }, origin, cancelled)).rejects.toThrow();
+	const cancelled = AbortSignal.abort(new Error("Pinning was cancelled."));
+	await expect(pinnedPackages(box, "dice-box", await sandboxedFolder(box, "dice-box"), { dice: "1.0.0" }, origin, cancelled)).rejects.toThrow("Pinning was cancelled.");
 	expect([readFileSync(join(box, "deps.lock.json"), "utf8"), requests]).toEqual([lock, []]);
 });
 

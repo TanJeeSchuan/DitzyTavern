@@ -5,30 +5,14 @@ import {
 	createCharacterLibraryModule,
 } from "../character-library";
 import {
-	characterCommandApplied,
-	characterConflict,
+	characterCommandResponse,
 	characterIdParams,
 	characterListResponse,
-	characterSnapshot,
+	characterReadResponse,
 	commandBodySchema,
 } from "../../shared/contract/character-library";
 
-import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
-
 import { toCharacterPayload } from "./projections";
-
-// @approved
-//  Keep this adapter export stable for sibling route adapters that use the
-// Character transport projection while the implementation lives below the
-// route-adapter layer.
-const commandResponse = {
-	200: characterCommandApplied,
-	409: characterConflict,
-	404: notFoundOutcome,
-	422: invalidOutcome,
-};
-
-export { toCharacterPayload };
 
 // @approved
 //  Thin typed adapters over the Character Library seam. The database is
@@ -54,10 +38,7 @@ export const createCharacterLibraryRoutes = (database: Database) =>
 			},
 			{
 				params: characterIdParams,
-				response: {
-					200: characterSnapshot,
-					404: notFoundOutcome,
-				},
+				response: characterReadResponse,
 			},
 		)
 		.post(
@@ -79,11 +60,11 @@ export const createCharacterLibraryRoutes = (database: Database) =>
 						character: toCharacterPayload(outcome),
 					};
 				} catch (error) {
-					return presentDomainError(error, commandResponse);
+					return presentDomainError(error, characterCommandResponse);
 				}
 			},
 			{
 				body: commandBodySchema,
-				response: commandResponse,
+				response: characterCommandResponse,
 			},
 		);

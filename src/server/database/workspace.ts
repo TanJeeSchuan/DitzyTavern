@@ -1,5 +1,4 @@
 import type { Database } from "bun:sqlite";
-import { createCharacterLibraryModule } from "../character-library";
 import { listChatSummaries } from "../conversation";
 
 export const getWorkspace = (database: Database) => {
@@ -8,9 +7,5 @@ export const getWorkspace = (database: Database) => {
 	return {
 		activeChatId: chats[0]?.id ?? null,
 		chats,
-		characters: createCharacterLibraryModule(database).list().map((character) => ({
-				id: character.id,
-				name: character.name,
-			})),
 	};
 };

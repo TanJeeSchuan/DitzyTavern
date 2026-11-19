@@ -1,14 +1,16 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { acceptConversationTailGeneration, executeConversationCommand, forkConversation, readConversationSummary, resolveConversationGeneration, readVariantDetails } from "../conversation";
+import { executeConversationCommand, forkConversation, readConversationSummary, resolveConversationGeneration, readVariantDetails } from "../conversation";
 import type { ConversationAction } from "../conversation";
-import { createConversationWithHistory, checkpointFromStart, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
+import { createConversationWithHistory, checkpointFromStart, openObservedDatabase, setBoxState, participantSeed, acceptTestGeneration } from "../test-fixtures/conversation";
 import { writeVersionedBox, type BoxFiles } from "../test-fixtures/versioned-box";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { boxAt, builtInBoxes, chatBox, checkSandboxedFolder, installVersion, loadBoxes, loadBoxVersion, unversionedBoxIds } from "./registry";
 import { readBoxLifecycles } from "./setup";
 import { versionFolder, writeLatest } from "./versions";
+import type { GenerationBody, GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { captureModelFetch, key, readConversation, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { createConversationRoutes } from "../contract/conversation";
@@ -17,12 +19,15 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createCharacterLibraryModule } from "../character-library";
 import { addPromptPresetBlock, readConversationPromptPresetRecipeFromConnection, removePromptPresetBlock } from "../prompt-preset";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = emptyPromptChannels();
 const integer = { type: "integer" };
 const object = (properties: Readonly<Record<string, BoxValue>>) => ({ type: "object", properties, required: Object.keys(properties), additionalProperties: false });
 const v1 = {
 	setup: { schema: object({ goal: { type: "integer", minimum: 1 } }), initial: { goal: 3 } },
-	values: { chat: { host: { type: "integer", rowReference: "participant" } }, participant: { odds: { type: "object", patternProperties: { "^(?:[0-9])+$": integer } } } },
+	values: { participant: {
+		host: { type: "integer", rowReference: "participant" },
+		odds: { type: "object", patternProperties: { "^(?:[0-9])+$": integer } },
+	} },
 	record: object({ coins: { type: "integer", minimum: 0 } }),
 	moves: { schema: object({ coins: { type: "integer", minimum: 1 } }), max: 3, label: "Tip {coins}" },
 };
@@ -58,7 +63,7 @@ const versioned = async (other: BoxFiles) => {
 	return { ...box, v1: box.versions[0]!, v2: box.versions[1]! }; // @approved Two versions were written.
 };
 const createChat = () => createConversationWithHistory(database, {
-	name: "Tip Chat", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["The jar waits."] } }], control: { human: 0, model: 1 },
+	name: "Tip Chat", participants: [participantSeed("Writer"), participantSeed("Maren", { openings: ["The jar waits."] })], control: { human: 0, model: 1 },
 });
 const command = (conversationId: number, action: ConversationAction) =>
 	executeConversationCommand(database, { conversationId, expectedRevision: readConversationSummary(database, conversationId)!.revision, action }); // @approved Every Chat here exists.
@@ -181,9 +186,9 @@ test.each([
 		(): string => "The Chat holds 1 record slots, and this version declares no record."],
 	["a setupError that refuses the stored setup", tally({}, { extra: "setupError: ({ goal }) => goal > 5 ? \"That goal is out of reach.\" : undefined," }),
 		({ chat }: Tipped): string => { command(chat.id, { type: "set-box-setup", box: "tally", setup: { goal: 9 } }); return "Setup: That goal is out of reach."; }],
-	["a changed rowReference", tally({ values: { ...v1.values, chat: { host: integer } } }),
-		(): string => "Row reference at chat value host (participant): this version no longer has it, so Fork would stop remapping it"],
-	["a ParticipantKey Record turned into a string-keyed one, which accepts the same values", tally({ values: { ...v1.values, participant: { odds: { type: "object", patternProperties: { "^(.*)$": integer } } } } }),
+	["a changed rowReference", tally({ values: { participant: { ...v1.values.participant, host: integer } } }),
+		(): string => "Row reference at participant value host (participant): this version no longer has it, so Fork would stop remapping it"],
+	["a ParticipantKey Record turned into a string-keyed one, which accepts the same values", tally({ values: { participant: { ...v1.values.participant, odds: { type: "object", patternProperties: { "^(.*)$": integer } } } } }),
 		({ chat }: Tipped): string => {
 			command(chat.id, { type: "commit-box", box: "tally", version: readConversationSummary(database, chat.id)!.boxVersions.tally, writes: [{ owner: { type: "participant", participantId: chat.cast[1]!.id }, key: "odds", value: JSON.stringify({ [chat.cast[0]!.id]: 2 }) }] }); // @approved The Chat and its Cast exist.
 			return "Row reference at participant value odds/{key} (participant key): this version no longer has it, so Fork would stop remapping it";
@@ -219,13 +224,13 @@ test("a row reference moved between a key holding / and the nested field it spel
 		"a/b": annotated === "flat" ? { type: "integer", rowReference: "participant" } : integer,
 		a: object({ b: annotated === "nested" ? { type: "integer", rowReference: "participant" } : integer }),
 	});
-	const box = await writeVersionedBox("tally", [tally({ values: { ...v1.values, chat: { host: host("flat") } } }), tally({ values: { ...v1.values, chat: { host: host("nested") } } })]);
+	const box = await writeVersionedBox("tally", [tally({ values: { participant: { ...v1.values.participant, host: host("flat") } } }), tally({ values: { participant: { ...v1.values.participant, host: host("nested") } } })]);
 	removes.push(box.remove);
 	await loadBoxes([builtInBoxes, box.plugins]);
 	await loadBoxVersion("tally", box.versions[1]!); // @approved Two versions were written.
 	const chat = createChat();
 	setBoxState(database, chat.id, "tally", "enabled");
-	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow("Row reference at chat value host/a%2Fb (participant): this version no longer has it"); // @approved Two versions were written.
+	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow("Row reference at participant value host/a%2Fb (participant): this version no longer has it"); // @approved Two versions were written.
 });
 
 // @approved
@@ -253,7 +258,7 @@ test("seeding a Participant from a Character copies only the values the Chat's p
 // so the version the first insertion pins may refuse them; kept, they would
 // break that Chat's reads and Forks.
 test("inserting a Box drops Participant values seeded while it was absent that the version it pins refuses", async () => {
-	const box = await versioned(tally({ values: { ...v1.values, participant: { odds: { type: "object", patternProperties: { "^(?:[0-9])+$": { type: "string" } } } } } }));
+	const box = await versioned(tally({ values: { participant: { ...v1.values.participant, odds: { type: "object", patternProperties: { "^(?:[0-9])+$": { type: "string" } } } } } }));
 	const chat = createChat();
 	const seed = (participant: number, odds: BoxValue) => database.query("INSERT INTO participant_data (participant_id, namespace, key, value) VALUES (?, 'box:tally', 'odds', ?)").run(participant, JSON.stringify(odds));
 	// SAFETY: createChat makes a Chat with exactly two Participants.
@@ -275,13 +280,13 @@ test("a union holding a row reference whose branches were reordered is refused",
 	const host = (first: BoxValue, second: BoxValue) => ({ anyOf: [first, second] });
 	const v1Host = host({ type: "integer", rowReference: "participant" }, { type: "string" });
 	const v2Host = host({ type: "string", rowReference: "participant" }, integer);
-	const box = await writeVersionedBox("tally", [tally({ values: { ...v1.values, chat: { host: v1Host } } }), tally({ values: { ...v1.values, chat: { host: v2Host } } })]);
+	const box = await writeVersionedBox("tally", [tally({ values: { participant: { ...v1.values.participant, host: v1Host } } }), tally({ values: { participant: { ...v1.values.participant, host: v2Host } } })]);
 	removes.push(box.remove);
 	await loadBoxes([builtInBoxes, box.plugins]);
 	await loadBoxVersion("tally", box.versions[1]!); // @approved Two versions were written.
 	const chat = createChat();
 	setBoxState(database, chat.id, "tally", "enabled");
-	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow(/Row reference at chat value host \(union [0-9a-f]{12}\): this version no longer has it/); // @approved Two versions were written.
+	expect(() => upgrade(chat.id, box.versions[1]!)).toThrow(/Row reference at participant value host \(union [0-9a-f]{12}\): this version no longer has it/); // @approved Two versions were written.
 });
 
 // @approved
@@ -292,11 +297,9 @@ for (const upgraded of [false, true]) {
 		const box = await versioned(same);
 		const chat = createChat();
 		setBoxState(database, chat.id, "tally", "enabled");
-		const [human, model] = readConversationSummary(database, chat.id)!.cast; // @approved Created above.
-		const accepted = acceptConversationTailGeneration(database, {
-			seed: "seed", conversationId: chat.id, expectedRevision: readConversationSummary(database, chat.id)!.revision, timestamp: "2026-11-05T00:00:00.000Z", // @approved Created above.
-			humanContent: "Tip it.", humanParticipantId: human!.id, modelParticipantId: model!.id, capturedHumanName: human!.name, capturedModelName: model!.name, // @approved The Chat has both seats.
-			promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		const accepted = acceptTestGeneration(database, chat, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip it." }, {
+			seed: "seed",
+			timestamp: "2026-11-05T00:00:00.000Z",
 			boxRecords: { tally: { instance: instanceOf(chat.id), version: box.v1, record: { coins: 4 } } },
 		});
 		if (upgraded) upgrade(chat.id, box.v2);
@@ -318,13 +321,15 @@ for (const upgraded of [false, true]) {
 		const chat = createChat();
 		setBoxState(database, chat.id, "tally", "enabled");
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
-		const post = async (path: string, body: Readonly<Record<string, BoxValue | undefined>>) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
-			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Tip it.", ...body }),
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
+		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
+			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const { previewId, promptPlan } = await (await post("/preview", {})).json();
+		const preview = await post("/preview", { target: { kind: "send", content: "Tip it." } });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
 		if (upgraded) upgrade(chat.id, box.v2);
-		const response = await post("", { expectedRevision: (await readConversation(app, chat.id)).revision, previewId, promptPlan });
+		const response = await post("", { kind: "send", content: "Tip it.", expectedRevision: (await readConversation(app, chat.id)).revision, previewId, promptPlan });
 		expect(response.status).toBe(upgraded ? 422 : 200);
 		if (upgraded) expect(await response.json()).toMatchObject({ reason: "The Prompt Plan is stale. Refresh it before sending." });
 	});
@@ -379,13 +384,11 @@ for (const deleteHistory of [false, true]) test(`a Generation resolving after re
 	const { chat } = tippedChat();
 	const oldInstance = instanceOf(chat.id);
 	const traces = { "box:tally": { trace: { kept: true }, items: [], automaticText: "", finalText: "" } };
-	const accepted = acceptConversationTailGeneration(database, {
-		seed: "remove-history", conversationId: chat.id, expectedRevision: readConversationSummary(database, chat.id)!.revision,
-		timestamp: "2026-11-10T00:00:00Z", humanContent: "Tip.", humanParticipantId: chat.cast[0]!.id, modelParticipantId: chat.cast[1]!.id,
-		capturedHumanName: "Writer", capturedModelName: "Maren", modelId: "fixture-model",
-		promptPlan: { blocks: [], warnings: [], images: [] },
-		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		boxTraces: traces, boxRecords: { tally: { instance: oldInstance, version: box.v1, record: { coins: 4 } }, memory: { instance: "other", record: { kept: true } } },
+	const accepted = acceptTestGeneration(database, chat, { kind: "send", expectedRevision: readConversationSummary(database, chat.id)!.revision, content: "Tip." }, {
+		seed: "remove-history",
+		timestamp: "2026-11-10T00:00:00Z",
+		boxTraces: traces,
+		boxRecords: { tally: { instance: oldInstance, version: box.v1, record: { coins: 4 } }, memory: { instance: "other", record: { kept: true } } },
 	});
 	command(chat.id, { type: "set-box-state", box: "tally", state: "absent", deleteHistory });
 	command(chat.id, { type: "set-box-state", box: "tally", state: "enabled" });

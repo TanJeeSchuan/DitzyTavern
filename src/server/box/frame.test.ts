@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -8,7 +9,7 @@ import { BOX_IMAGE_BYTES, BOX_IMAGE_COUNT, boxFrameImage, closeBoxFrame, openBox
 
 const definition = (name: string, hash?: string) => ({
 	name,
-	prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
+	prompt: emptyPromptChannels(),
 	sendAppearanceImages: true,
 	openings: [],
 	...hash !== undefined && { portrait: { hash, focalX: 0.5, focalY: 0.5 } },

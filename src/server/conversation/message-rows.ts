@@ -1,17 +1,14 @@
 import { and, asc, eq, getTableColumns, inArray, lte, type SQL } from "drizzle-orm";
-import { messageDataTable, messageTable, messageVariantDataTable, messageVariantTable } from "../database/schema";
-import { groupRowsByNumber, groupVariantsByMessage, type ConversationDatabase } from "./internal";
+import { messageTable, messageVariantDataTable, messageVariantTable } from "../database/schema";
+import { groupRowsByNumber, type ConversationDatabase } from "./internal";
 import type { ConversationDataEntry } from "./types";
 import { liveVariantContent } from "./generation-checkpoint";
 
 export const toDataEntry = (row: { namespace: string; key: string; value: string }): ConversationDataEntry => ({ namespace: row.namespace, key: row.key, value: row.value });
 
-export interface MessageRowsRequest {
+interface MessageRowsRequest {
 	ids?: readonly number[];
 	upToPosition?: number;
-	selectedOnly?: boolean;
-	variantData?: boolean;
-	messageData?: boolean;
 }
 
 export function loadMessageRows(db: ConversationDatabase, conversationId: number, request: MessageRowsRequest = {}) {
@@ -23,19 +20,9 @@ export function loadMessageRows(db: ConversationDatabase, conversationId: number
 	const ids = messages.map((message) => message.id);
 	const variants = ids.length === 0 ? [] : db.select({ ...getTableColumns(messageVariantTable), content: liveVariantContent }).from(messageVariantTable).where(and(
 		inArray(messageVariantTable.message_id, ids),
-		request.selectedOnly ? eq(messageVariantTable.selected, true) : undefined,
+		eq(messageVariantTable.selected, true),
 	)).orderBy(asc(messageVariantTable.message_id), asc(messageVariantTable.position)).all();
-	const variantIds = variants.map((variant) => variant.id);
-	const variantData = !request.variantData ? new Map<number, ConversationDataEntry[]>() : loadVariantDataRows(db, variantIds);
-	const messageData = !request.messageData || ids.length === 0 ? [] : db.select().from(messageDataTable)
-		.where(inArray(messageDataTable.message_id, ids)).orderBy(asc(messageDataTable.message_id), asc(messageDataTable.namespace), asc(messageDataTable.key)).all();
-	return {
-		messages,
-		variants,
-		variantsByMessage: groupVariantsByMessage(variants, (variant) => variant),
-		variantData,
-		messageData: groupRowsByNumber(messageData, (row) => row.message_id, toDataEntry),
-	};
+	return { messages, variants };
 }
 
 export function loadVariantDataRows(db: ConversationDatabase, ids: readonly number[], filter?: SQL): Map<number, ConversationDataEntry[]> {

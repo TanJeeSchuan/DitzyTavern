@@ -1,17 +1,16 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart, participantSeed } from "../test-fixtures/conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { acceptConversationTailGeneration } from "../conversation";
+import { acceptGeneration } from "../conversation";
 import { resolveConversationGeneration } from "../conversation";
 import { macroInitialValuesToData, readMacroWrites } from "../prompt-macros";
 import type { MacroValue } from "../../shared/prompt-macro-engine";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { readVariantData } from "../conversation";
-import {
-	captureGeneration,
-	capturedAcceptanceFields,
-} from "./generate-capture";
+import { captureGeneration } from "./generate-capture";
+import { capturedAcceptanceFields } from "./generate-capture-projections";
 import { recoverActiveGenerations } from "./generation-recovery";
 
 describe("Conversation-persistent prompt macro variables", () => {
@@ -27,36 +26,16 @@ describe("Conversation-persistent prompt macro variables", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Macro variables",
 			participants: [
-				{
-					definition: {
-						name: "Writer",
-						prompt: {
+				participantSeed("Writer", { prompt: {
+							...emptyPromptChannels(),
 							systemInstruction: "{{setvar::turn::{{incvar::turn}}}}",
 							identity: "turn={{getvar::turn}}",
-							appearance: "",
-							scenario: "",
-							exampleDialogue: "",
-							postHistoryInstruction: "",
-						},
-						sendAppearanceImages: true,
-						openings: [],
-					},
-				},
-				{
-					definition: {
-						name: "Model",
-						prompt: {
+						} }),
+				participantSeed("Model", { prompt: {
+							...emptyPromptChannels(),
 							systemInstruction: "{{setvar::turn::{{incvar::turn}}}}{{if::{{getvar::enabled}}}}yes{{else}}no{{/if}}",
 							identity: "turn={{getvar::turn}}",
-							appearance: "",
-							scenario: "",
-							exampleDialogue: "",
-							postHistoryInstruction: "",
-						},
-						sendAppearanceImages: true,
-						openings: [],
-					},
-				},
+						} }),
 			],
 			control: { human: 0, model: 1 },
 			data: macroInitialValuesToData(1, new Map<string, MacroValue>([["turn", 5], ["enabled", true]])),
@@ -69,11 +48,8 @@ describe("Conversation-persistent prompt macro variables", () => {
 			{ name: "turn", value: "6", operation: "set" },
 		]);
 
-		const accepted = acceptConversationTailGeneration(database, {
-			...capturedAcceptanceFields(first, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
-			expectedRevision: conversation.revision,
-			humanContent: "Hello",
-		});
+		const fields = capturedAcceptanceFields(first, "2026-09-12T00:00:00.000Z");
+		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: conversation.revision, content: "Hello" });
 		resolveConversationGeneration(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,
@@ -97,22 +73,8 @@ describe("Conversation-persistent prompt macro variables", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Macro greeting",
 			participants: [
-				{
-					definition: {
-						name: "Writer",
-						prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
-						sendAppearanceImages: true,
-						openings: [],
-					},
-				},
-				{
-					definition: {
-						name: "Model",
-						prompt: { systemInstruction: "", identity: "greeted={{getvar::greeted}}", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
-						sendAppearanceImages: true,
-						openings: ["{{setvar::greeted::yes}}Hello"],
-					},
-				},
+				participantSeed("Writer"),
+				participantSeed("Model", { prompt: { ...emptyPromptChannels(), identity: "greeted={{getvar::greeted}}" }, openings: ["{{setvar::greeted::yes}}Hello"] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -132,31 +94,14 @@ describe("Conversation-persistent prompt macro variables", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Recover macro writes",
 			participants: [
-				{
-					definition: {
-						name: "Writer",
-						prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
-						sendAppearanceImages: true,
-						openings: [],
-					},
-				},
-				{
-					definition: {
-						name: "Model",
-						prompt: { systemInstruction: "{{setvar::recovered::yes}}", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" },
-						sendAppearanceImages: true,
-						openings: [],
-					},
-				},
+				participantSeed("Writer"),
+				participantSeed("Model", { prompt: { ...emptyPromptChannels(), systemInstruction: "{{setvar::recovered::yes}}" } }),
 			],
 			control: { human: 0, model: 1 },
 		});
 		const capture = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: conversation.id });
-		const accepted = acceptConversationTailGeneration(database, {
-			...capturedAcceptanceFields(capture, { conversationId: conversation.id, timestamp: "2026-09-12T00:00:00.000Z" }),
-			expectedRevision: conversation.revision,
-			humanContent: "Hello",
-		});
+		const fields = capturedAcceptanceFields(capture, "2026-09-12T00:00:00.000Z");
+		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: conversation.revision, content: "Hello" });
 		checkpointFromStart(database, {
 			conversationId: conversation.id,
 			generationId: accepted.generationId,

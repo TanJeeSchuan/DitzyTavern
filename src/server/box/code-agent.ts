@@ -7,7 +7,7 @@ import type { QuickJSHandle } from "quickjs-emscripten-core";
 import { DEFAULT_BOX_DELEGATE, type BoxId } from "../../shared/contract/box";
 import { codeAgentRunInput, codeAgentSubmitInput, type CodeAgentActivity } from "../../shared/contract/code-agent";
 import { sandboxedFailure, type SandboxedFailure } from "../../shared/contract/box-sandboxed";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { resolveBoxDelegate } from "./delegate-settings";
 import { determinism, guestError, guestLimit, guestRuntime, type GuestLimits } from "./sandboxed";
 

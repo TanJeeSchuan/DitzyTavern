@@ -3,7 +3,7 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { openObservedDatabase, createConversationWithHistory, insertBox } from "../../server/test-fixtures/conversation";
+import { openObservedDatabase, insertBox, pairChat } from "../../server/test-fixtures/conversation";
 import { createContract } from "../../server/contract";
 import { writeAutomaticRecord } from "../../server/box/records";
 import { sha256 } from "../../server/hash";
@@ -14,12 +14,7 @@ let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 const initial = initialWorldClockSetup;
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-const createClockChat = () => createConversationWithHistory(database, {
-	name: "Clock Chat",
-	participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }],
-	control: { human: 0, model: 1 },
-});
+const createClockChat = () => pairChat(database, "Clock Chat");
 const saveSetup = (app: ReturnType<typeof createContract>, id: number, revision: number, setup: typeof initial) =>
 	app.handle(new Request(`http://localhost/api/conversations/${id}/commands`, {
 		method: "POST", headers: { "content-type": "application/json" },

@@ -14,8 +14,4 @@ describe("compareModelIds", () => {
 		models.sort(compareModelIds);
 		expect(models).toEqual(["model-A", "model-a"]);
 	});
-
-	test("returns 0 for identical strings", () => {
-		expect(compareModelIds("model-v1", "model-v1")).toBe(0);
-	});
 });

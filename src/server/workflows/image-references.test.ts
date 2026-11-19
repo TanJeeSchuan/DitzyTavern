@@ -1,4 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart, participantSeed } from "../test-fixtures/conversation";
 import type { ConversationAction } from "../conversation";
 import {
 	executeConversationCommand,
@@ -26,13 +27,14 @@ import {
 } from "../../shared/contract/conversation-schema";
 import { formatImageReference } from "../../shared/image-reference";
 import type { MacroValue } from "../../shared/contract/macro-variable-write";
-import { acceptConversationTailGeneration } from "../conversation";
+import { acceptGeneration } from "../conversation";
 import { resolveConversationGeneration } from "../conversation";
 import { removeRetainedGenerationInspection } from "../conversation";
 import { createNativeConversation } from ".";
-import { captureGeneration, capturedAcceptanceFields } from "./generate-capture";
+import { captureGeneration } from "./generate-capture";
+import { capturedAcceptanceFields } from "./generate-capture-projections";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = emptyPromptChannels();
 const writer = { name: "Writer", prompt, sendAppearanceImages: true, openings: [] };
 const timestamp = "2026-10-04T00:00:00.000Z";
 
@@ -121,7 +123,7 @@ describe("Image Reference lifetime", () => {
 			const definition = {
 				name: "Maren",
 				portrait: { hash: portrait!.hash, focalX: 0.5, focalY: 0.5 },
-				prompt: { systemInstruction: system!.token, identity: identity!.token, appearance: "", scenario: scenario!.token, exampleDialogue: dialogue!.token, postHistoryInstruction: postHistory!.token },
+				prompt: { ...emptyPromptChannels(), systemInstruction: system!.token, identity: identity!.token, scenario: scenario!.token, exampleDialogue: dialogue!.token, postHistoryInstruction: postHistory!.token },
 				sendAppearanceImages: true,
 				openings: [opening!.token],
 			};
@@ -363,16 +365,13 @@ describe("Image Reference lifetime", () => {
 			name: "Chat",
 			participants: [
 				{ definition: writer },
-				{ definition: { name: "Maren", prompt: { ...prompt, systemInstruction: `{{setvar::outfit::${art.token}}}` }, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Maren", { prompt: { ...prompt, systemInstruction: `{{setvar::outfit::${art.token}}}` } }),
 			],
 			control: { human: 0, model: 1 },
 		});
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const accepted = acceptConversationTailGeneration(database, {
-			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
-			expectedRevision: target.revision,
-			humanContent: "Hello",
-		});
+		const fields = capturedAcceptanceFields(captured, timestamp);
+		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: target.revision, content: "Hello" });
 		resolveConversationGeneration(database, {
 			conversationId: target.id,
 			generationId: accepted.generationId,
@@ -397,13 +396,11 @@ describe("Image Reference lifetime", () => {
 		const target = chat();
 		const art = await picture(4);
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const fields = capturedAcceptanceFields(captured, { conversationId: target.id, timestamp });
-		const accepted = acceptConversationTailGeneration(database, {
+		const fields = capturedAcceptanceFields(captured, timestamp);
+		const accepted = acceptGeneration(database, {
 			...fields,
 			promptPlan: { ...fields.promptPlan, blocks: [{ kind: "instruction", role: "system", content: `Show ${art.token}` }] },
-			expectedRevision: target.revision,
-			humanContent: "Hello",
-		});
+		}, { kind: "send", expectedRevision: target.revision, content: "Hello" });
 		expect(referenced()).toEqual([art.hash]);
 
 		resolveConversationGeneration(database, { conversationId: target.id, generationId: accepted.generationId, timestamp, content: "Done" });
@@ -443,7 +440,7 @@ describe("Image Reference lifetime", () => {
 		const art = await picture(4);
 		const ghost = formatImageReference("ghost", "f".repeat(64));
 
-		const preview = Value.Parse(generationPreview, await (await post("/generations/preview", { kind: "send", content: "Hello" })).json());
+		const preview = Value.Parse(generationPreview, await (await post("/generations/preview", { target: { kind: "send", content: "Hello" } })).json());
 		expect(preview.promptPlan.images).toEqual([]);
 		const last = preview.promptPlan.blocks.length - 1;
 		const edited = {
@@ -486,10 +483,8 @@ describe("Image Reference lifetime", () => {
 		const target = chat();
 		const art = await picture(4);
 		const captured = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: target.id });
-		const accepted = acceptConversationTailGeneration(database, {
-			...capturedAcceptanceFields(captured, { conversationId: target.id, timestamp }),
-			expectedRevision: target.revision, humanContent: "Hello",
-		});
+		const fields = capturedAcceptanceFields(captured, timestamp);
+		const accepted = acceptGeneration(database, fields, { kind: "send", expectedRevision: target.revision, content: "Hello" });
 		expect(orphanedAt(art.hash)).toBeNumber();
 		checkpointFromStart(database, { conversationId: target.id, generationId: accepted.generationId, content: art.token });
 		expect(orphanedAt(art.hash)).toBeNull();

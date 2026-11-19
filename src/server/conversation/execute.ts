@@ -33,6 +33,7 @@ import {
 	detachParticipantLorebook,
 	saveConversationLoreSettings,
 } from "./commands/lore-attachments";
+import { selectPaintPreset, setBriefMessageCount } from "./commands/paint-preset";
 import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
@@ -47,8 +48,7 @@ import {
 	type ConversationDatabase,
 } from "./internal";
 import {
-	advanceConversationRevisionGuarded,
-	requireConversationSummary,
+	advanceConversationRevision,
 	runConversationTransaction,
 } from "./commands/transaction";
 import type {
@@ -88,6 +88,8 @@ const handlers = {
 	"update-generation-settings": (db, input) => { updateConversationGenerationSettings(db, input.conversationId, input.settings); },
 	"set-generation-model": (db, input) => { setGenerationModel(db, input); },
 	"select-prompt-preset": selectPromptPreset,
+	"select-paint-preset": selectPaintPreset,
+	"set-brief-message-count": setBriefMessageCount,
 	"set-box-setup": setBoxSetup,
 	"set-box-state": setBoxState,
 	"upgrade-box": upgradeBox,
@@ -100,7 +102,7 @@ const handlers = {
 	"detach-chat": detachConversationLorebook,
 	"attach-participant": attachParticipantLorebook,
 	"detach-participant": detachParticipantLorebook,
-	"save-settings": saveConversationLoreSettings,
+	"save-lore-settings": saveConversationLoreSettings,
 } satisfies { [K in ConversationAction["type"]]: CommandHandler<K> };
 
 const playOnly = new Set<ConversationAction["type"]>(["create-message"]);
@@ -110,7 +112,7 @@ export function executeConversationCommand(
 	command: ConversationCommand,
 ): ConversationSummary {
 	return runConversationTransaction(database, (db, reportChange) => {
-		const conversation = requireConversationRevision(
+		requireConversationRevision(
 			db,
 			command.conversationId,
 			command.expectedRevision,
@@ -124,18 +126,12 @@ export function executeConversationCommand(
 			throw new ConversationNotPlayableError(command.conversationId);
 		}
 
-		const input = { conversationId: command.conversationId, ...command.action };
+		const input = { ...command.action, conversationId: command.conversationId };
 		// @approved
 		// SAFETY: satisfies checks each handler against its action; indexing loses that correlation.
 		const reportedChange = (handlers[input.type] as CommandHandler<typeof input.type>)(db, input);
 
-		advanceConversationRevisionGuarded(
-			db,
-			command.conversationId,
-			command.expectedRevision,
-			conversation.revision,
-		);
 		if (reportedChange !== undefined) reportChange(reportedChange);
-		return requireConversationSummary(db, command.conversationId);
+		return advanceConversationRevision(db, command.conversationId);
 	});
 }

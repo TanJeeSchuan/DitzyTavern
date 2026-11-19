@@ -5,7 +5,10 @@ import { generationEvent } from "../shared/contract/generation-events";
 import { clientFormattingContext } from "./lib/formatting-context";
 import { keptBriefReferences, appendBriefReferences } from "../shared/painting-brief";
 import type { ConversationSummary } from "../shared/contract/conversation-schema";
-import { briefErrors, type BriefRequest } from "../shared/contract/painting";
+import { briefResponse, type BriefRequest } from "../shared/contract/painting";
+import { responseErrorSchema } from "../shared/contract/outcomes";
+
+const briefErrorSchema = responseErrorSchema(briefResponse);
 
 export function useWriteBrief(conversationId: number, onText: (text: string) => void) {
 	const controller = useRef<AbortController | null>(null);
@@ -26,7 +29,7 @@ export function useWriteBrief(conversationId: number, onText: (text: string) => 
 				method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ ...clientFormattingContext(), ...request }), signal: active.signal,
 			});
 			if (!response.ok) {
-				const failure = decodeWirePayload(briefErrors, await response.json().catch(() => null));
+				const failure = decodeWirePayload(briefErrorSchema, await response.json().catch(() => null));
 				throw new Error(failure && "reason" in failure ? failure.reason : failure?.outcome === "not-found" ? "The Chat is no longer available." : "The Brief request could not start. Try again.");
 			}
 			if (!response.body) throw new Error("The Brief request could not start. Try again.");

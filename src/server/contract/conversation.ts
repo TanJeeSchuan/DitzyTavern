@@ -1,7 +1,7 @@
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { forkConversation } from "../conversation";
 import { chatBox, loadBoxVersion, withBoxOperations } from "../box/registry";
-import { presentDomainError, type ResponseSchemas } from "./domain-error";
+import { presentDomainError } from "./domain-error";
 import {
 	readConversationSummary,
 	readConversationGenerationSettings,
@@ -29,49 +29,42 @@ import {
 	type GenerationCoordinatorOptions,
 } from "../application/generation-coordinator";
 
-import { conversationPromptPreset, conversationPromptPresetQuery } from "../../shared/contract/prompt-preset";
+import { conversationPromptPresetQuery, conversationPromptPresetResponse } from "../../shared/contract/prompt-preset";
 import {
 	addCharacterToCast,
 	generationRuntimeFor,
 	saveParticipantAsCharacter,
 } from "../workflows";
-import { toCharacterPayload } from "./character-library";
 import { notFoundResponse } from "./responses";
-import { toConversationSummary } from "./projections";
+import { toCharacterPayload, toConversationSummary } from "./projections";
 import {
-	activeGenerationDetails,
+	addCharacterToCastResponse,
+	chatHistoryResponse,
+	conversationCommandResponse,
+	conversationDeleteResponse,
+	conversationForkResponse,
+	conversationGenerationSettingsResponse,
+	conversationReadResponse,
+	generationInspectionResponse,
+	generationPreviewResponse,
+	generationStartResponse,
+	generationStopResponse,
+	generationsStopResponse,
+	saveParticipantAsCharacterResponse,
+	variantDetailsResponse,
+	variantTextResponse,
 	addCharacterToCastBody,
-	castCharacterConflict,
-	characterAppliedResponse,
-	chatHistoryPage,
-	variantText,
-	conversationAppliedResponse,
 	conversationCommandBody,
 	forkConversationBody,
-	forkConversationResponse,
-	conversationCommandConflict,
-	conversationConflict,
-	conversationGenerationSettings,
-	conversationDeleted,
 	conversationIdParams,
-	conversationSummary,
-	continuationBody,
-	siblingGenerationBody,
 	type PromptPlan,
-	generationAccepted,
 	generationBody,
-	generationPreview,
 	generationPreviewBody,
-	generationConflictResponse,
 	generationEventsQuery,
 	generationIdParams,
-	generationStopped,
-	generationsStopped,
 	historyPageQuery,
-	messageIdParams,
 	participantIdParams,
 	saveParticipantAsCharacterBody,
-	variantDetails,
 	variantIdParams,
 } from "../../shared/contract/conversation-schema";
 import {
@@ -80,114 +73,12 @@ import {
 	type GenerationPreviewAcceptance,
 } from "../workflows/generation-preview";
 import {
-	macroVariables,
-	macroVariablesAppliedResponse,
+	macroVariablesEditResponse,
+	macroVariablesReadResponse,
 	macroVariablesEditBody,
 	macroVariablesQuery,
 } from "../../shared/contract/macro-variables";
 import { generationSubscriptionEvents } from "./generation-sse";
-import {
-	invalidOutcome,
-	notFoundOutcome,
-	notPlayableOutcome,
-} from "../../shared/contract/outcomes";
-
-const saveParticipantResponse = {
-	200: characterAppliedResponse,
-	409: conversationConflict,
-	404: notFoundOutcome,
-	422: invalidOutcome,
-};
-
-const addCastCharacterResponse = {
-	200: conversationAppliedResponse,
-	409: castCharacterConflict,
-	404: notFoundOutcome,
-	422: invalidOutcome,
-};
-
-const forkResponse = {
-	200: forkConversationResponse,
-	409: conversationCommandConflict,
-	404: notFoundOutcome,
-	422: invalidOutcome,
-};
-
-const commandResponse = {
-	200: conversationAppliedResponse,
-	409: conversationCommandConflict,
-	404: notFoundOutcome,
-	422: invalidOutcome,
-};
-
-const siblingGenerationResponse = {
-	200: generationAccepted,
-	404: notFoundOutcome,
-	409: notPlayableOutcome,
-	422: invalidOutcome,
-};
-
-const macroVariablesEditResponse = {
-	200: macroVariablesAppliedResponse,
-	404: notFoundOutcome,
-	409: conversationConflict,
-	422: invalidOutcome,
-};
-
-const macroVariablesReadResponse = {
-	200: macroVariables,
-	404: notFoundOutcome,
-	422: invalidOutcome,
-};
-
-const variantDetailsResponse = { 200: variantDetails, 404: notFoundOutcome, 422: invalidOutcome };
-
-const generationInspectionResponse = { 200: activeGenerationDetails, 404: notFoundOutcome, 422: invalidOutcome };
-
-const generationPreviewResponse = {
-	200: generationPreview,
-	404: notFoundOutcome,
-	409: notPlayableOutcome,
-	422: invalidOutcome,
-};
-
-const deleteResponse = {
-	200: conversationDeleted,
-	404: notFoundOutcome,
-	422: invalidOutcome,
-};
-
-// @approved
-//  Send and Continue share one acceptance response contract.
-const generationStartRouteResponse = {
-	200: generationAccepted,
-	404: notFoundOutcome,
-	409: generationConflictResponse,
-	422: invalidOutcome,
-};
-
-async function acceptanceResponse<S extends ResponseSchemas>(
-	conversationId: number,
-	start: () => Promise<{ readonly accepted: {
-		readonly generationId: number;
-		readonly messageId: number;
-		readonly provisionalVariantId: number;
-	} }>,
-	responses: S,
-) {
-	try {
-		const { accepted } = await start();
-		return {
-			outcome: "accepted" as const,
-			generationId: accepted.generationId,
-			conversationId,
-			messageId: accepted.messageId,
-			variantId: accepted.provisionalVariantId,
-		};
-	} catch (error) {
-		return presentDomainError(error, responses);
-	}
-}
 
 const previewUseFor = (
 	database: Database,
@@ -229,12 +120,12 @@ export const createConversationRoutes = (
 					deleteConversation(database, params.id);
 					return { outcome: "deleted" as const };
 				} catch (error) {
-					return presentDomainError(error, deleteResponse);
+					return presentDomainError(error, conversationDeleteResponse);
 				}
 			},
 			{
 				params: conversationIdParams,
-				response: deleteResponse,
+				response: conversationDeleteResponse,
 			},
 		)
 		.post(
@@ -256,10 +147,7 @@ export const createConversationRoutes = (
 			},
 			{
 				params: generationIdParams,
-				response: {
-					200: generationStopped,
-					404: notFoundOutcome,
-				},
+				response: generationStopResponse,
 			},
 		)
 		.post(
@@ -275,29 +163,7 @@ export const createConversationRoutes = (
 			},
 			{
 				params: conversationIdParams,
-				response: {
-					200: generationsStopped,
-					404: notFoundOutcome,
-				},
-			},
-		)
-		.post(
-			"/api/conversations/:id/continue/generations",
-			async ({ params, body }) => acceptanceResponse(
-				params.id,
-				() => generationCoordinator.startGeneration({
-					conversationId: params.id,
-					expectedRevision: body.previewId === undefined ? body.expectedRevision : undefined,
-					formatting: { timeZone: body.timeZone, locale: body.locale },
-					target: { kind: body.kind },
-					preview: previewUseFor(database, params.id, body.previewId, body.promptPlan),
-				}),
-				generationStartRouteResponse,
-			),
-			{
-				params: conversationIdParams,
-				body: continuationBody,
-				response: generationStartRouteResponse,
+				response: generationsStopResponse,
 			},
 		)
 		.post(
@@ -306,41 +172,38 @@ export const createConversationRoutes = (
 				try {
 					const settings = readConversationGenerationSettings(database, params.id);
 					if (settings === undefined) throw new ConversationNotFoundError(params.id);
-					const common = {
+					const preview = await createGenerationPreviewAsync(database, {
 						connection: generationCoordinator.resolveTransport(database, settings.connectionProfileId, true)?.connection ?? null,
 						conversationId: params.id,
 						formatting: { timeZone: body.timeZone, locale: body.locale },
 						connectionSettings: options,
 						preparationFetch: options.fetch,
-					};
-					const input = body.kind === "send"
-						? { ...common, kind: body.kind, content: body.content, moves: body.moves }
-						: body.kind === "sibling"
-							? { ...common, kind: body.kind, messageId: body.messageId, reroll: body.reroll }
-							: { ...common, kind: body.kind };
-					const preview = await createGenerationPreviewAsync(database, input);
+						target: body.target,
+					});
 					const capture = preview.capture;
+					const { human, model } = capture.preparation.derivation;
+					const { breakdown, fits } = capture.plan.budget;
 					return {
 						outcome: "available" as const,
 						previewId: preview.id,
-						conversationId: preview.conversationId,
-						kind: preview.capture.target.kind,
+						conversationId: capture.preparation.conversationId,
+						kind: capture.preparation.target.kind,
 						promptPlan: capture.plan.promptPlan,
 						participants: {
-							human: capture.humanParticipant,
-							model: { id: capture.author.participantId, name: capture.author.capturedName },
+							human: { id: human.id, name: human.name },
+							model: { id: model.id, name: model.name },
 						},
 						effectiveSettings: capture.plan.effectiveSettings,
 						pendingWrites: [...capture.macroWrites],
 						loreActivation: capture.plan.loreActivation,
 						boxTraces: capture.plan.boxTraces,
 						budget: {
-							tokenEstimate: capture.plan.budget.tokenEstimate,
-							responseBudget: capture.plan.budget.responseBudget,
-							safetyAllowance: capture.plan.budget.safetyAllowance,
-							contextLimit: capture.plan.budget.contextLimit,
-							totalRequiredTokens: capture.plan.budget.totalRequiredTokens,
-							budgetFits: capture.plan.budget.fits,
+							tokenEstimate: breakdown.tokenEstimate,
+							responseBudget: breakdown.responseBudget,
+							safetyAllowance: breakdown.safetyAllowance,
+							contextLimit: breakdown.contextLimit,
+							totalRequiredTokens: breakdown.totalRequiredTokens,
+							budgetFits: fits,
 						},
 					};
 				} catch (error) {
@@ -372,7 +235,7 @@ export const createConversationRoutes = (
 			({ params }) => readVariantText(database, params.id, params.messageId, params.variantId) ?? notFoundResponse(),
 			{
 				params: variantIdParams,
-				response: { 200: variantText, 404: notFoundOutcome },
+				response: variantTextResponse,
 			},
 		)
 		.get(
@@ -395,10 +258,7 @@ export const createConversationRoutes = (
 				readConversationSummary(database, params.id) ?? notFoundResponse(),
 			{
 				params: conversationIdParams,
-				response: {
-					200: conversationSummary,
-					404: notFoundOutcome,
-				},
+				response: conversationReadResponse,
 			},
 		)
 		.get(
@@ -410,10 +270,7 @@ export const createConversationRoutes = (
 			{
 				params: conversationIdParams,
 				query: conversationPromptPresetQuery,
-				response: {
-					200: conversationPromptPreset,
-					404: notFoundOutcome,
-				},
+				response: conversationPromptPresetResponse,
 			},
 		)
 		.get(
@@ -470,10 +327,7 @@ export const createConversationRoutes = (
 			{
 				params: conversationIdParams,
 				query: historyPageQuery,
-				response: {
-					200: chatHistoryPage,
-					404: notFoundOutcome,
-				},
+				response: chatHistoryResponse,
 			},
 		)
 		.get(
@@ -491,29 +345,36 @@ export const createConversationRoutes = (
 			},
 			{
 				params: conversationIdParams,
-				response: {
-					200: conversationGenerationSettings,
-					404: notFoundOutcome,
-				},
+				response: conversationGenerationSettingsResponse,
 			},
 		)
 		.post(
 			"/api/conversations/:id/generations",
-			async ({ params, body }) => acceptanceResponse(
-				params.id,
-				() => generationCoordinator.startGeneration({
-					conversationId: params.id,
-					expectedRevision: body.previewId === undefined ? body.expectedRevision : undefined,
-					target: { kind: body.kind, content: body.content, moves: body.moves },
-					formatting: { timeZone: body.timeZone, locale: body.locale },
-					preview: previewUseFor(database, params.id, body.previewId, body.promptPlan),
-				}),
-				generationStartRouteResponse,
-			),
+			async ({ params, body }) => {
+				try {
+					const { expectedRevision, timeZone, locale, previewId, promptPlan, ...target } = { expectedRevision: undefined, ...body };
+					const { accepted } = await generationCoordinator.startGeneration({
+						conversationId: params.id,
+						expectedRevision,
+						target,
+						formatting: { timeZone, locale },
+						preview: previewUseFor(database, params.id, previewId, promptPlan),
+					});
+					return {
+						outcome: "accepted" as const,
+						generationId: accepted.generationId,
+						conversationId: params.id,
+						messageId: accepted.messageId,
+						variantId: accepted.provisionalVariantId,
+					};
+				} catch (error) {
+					return presentDomainError(error, generationStartResponse);
+				}
+			},
 			{
 				params: conversationIdParams,
 				body: generationBody,
-				response: generationStartRouteResponse,
+				response: generationStartResponse,
 			},
 		)
 		.get(
@@ -531,31 +392,6 @@ export const createConversationRoutes = (
 				query: generationEventsQuery,
 				response: t.Any(),
 			},
-		)
-		// @approved
-		//  A targeted Swipe creates one server-owned Provisional Variant
-		// on an existing Message. The request is only an observer;
-		// closing it never aborts the sibling provider attempt.
-		.post(
-			"/api/conversations/:id/messages/:messageId/sibling/generations",
-			async ({ params, body }) =>
-				acceptanceResponse(
-					params.id,
-					() => generationCoordinator.startGeneration({
-						conversationId: params.id,
-						target: { kind: body.kind, messageId: params.messageId, reroll: body.reroll },
-						formatting: { timeZone: body.timeZone, locale: body.locale },
-						preview: body.previewId === undefined
-							? undefined
-							: previewUseFor(database, params.id, body.previewId, body.promptPlan),
-					}),
-					siblingGenerationResponse,
-				),
-				{
-					params: messageIdParams,
-					body: siblingGenerationBody,
-					response: siblingGenerationResponse,
-				},
 		)
 		// @approved
 		//  Revisioned Conversation commands remain separate from the
@@ -585,13 +421,13 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					return presentDomainError(error, commandResponse);
+					return presentDomainError(error, conversationCommandResponse);
 				}
 			},
 			{
 				params: conversationIdParams,
 				body: conversationCommandBody,
-				response: commandResponse,
+				response: conversationCommandResponse,
 			},
 		)
 		.post(
@@ -601,10 +437,10 @@ export const createConversationRoutes = (
 					const result = forkConversation(database, { conversationId: params.id, ...body });
 					return { outcome: "applied" as const, ...result, conversation: toConversationSummary(result.conversation) };
 				} catch (error) {
-					return presentDomainError(error, forkResponse);
+					return presentDomainError(error, conversationForkResponse);
 				}
 			},
-			{ params: conversationIdParams, body: forkConversationBody, response: forkResponse },
+			{ params: conversationIdParams, body: forkConversationBody, response: conversationForkResponse },
 		)
 		.post(
 			"/api/conversations/:id/cast/characters",
@@ -621,13 +457,13 @@ export const createConversationRoutes = (
 						conversation: toConversationSummary(conversation),
 					};
 				} catch (error) {
-					return presentDomainError(error, addCastCharacterResponse);
+					return presentDomainError(error, addCharacterToCastResponse);
 				}
 			},
 			{
 				params: conversationIdParams,
 				body: addCharacterToCastBody,
-				response: addCastCharacterResponse,
+				response: addCharacterToCastResponse,
 			},
 		)
 		.post(
@@ -645,13 +481,13 @@ export const createConversationRoutes = (
 						character: toCharacterPayload(character),
 					};
 				} catch (error) {
-					return presentDomainError(error, saveParticipantResponse);
+					return presentDomainError(error, saveParticipantAsCharacterResponse);
 				}
 			},
 			{
 				params: participantIdParams,
 				body: saveParticipantAsCharacterBody,
-				response: saveParticipantResponse,
+				response: saveParticipantAsCharacterResponse,
 			},
 		);
 };

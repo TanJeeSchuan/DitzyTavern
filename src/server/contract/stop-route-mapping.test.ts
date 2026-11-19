@@ -1,19 +1,12 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
-import { acceptConversationSiblingGeneration } from "../conversation";
+import { createConversationWithHistory, shortReplyPrompt, participantSeed } from "../test-fixtures/conversation";
+import { acceptGeneration } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { generationRuntimeFor } from "../workflows";
 import { createConversationRoutes } from "./conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
 // Route tests own one responsibility only: mapping typed Generation lifecycle
 // outcomes onto transport responses. Ordering, races, and settlement belong to
@@ -35,8 +28,8 @@ describe("Generation Stop route mapping", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Stop mapping",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -47,18 +40,18 @@ describe("Generation Stop route mapping", () => {
 	};
 
 	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
-		acceptConversationSiblingGeneration(input.module, {
+		acceptGeneration(input.module, {
 			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
-			messageId,
 			timestamp,
 			humanParticipantId: input.human.id,
 			modelParticipantId: input.model.id,
 			capturedHumanName: input.human.name,
 			capturedModelName: input.model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: messageId });
 
 	const startRuntime = (
 		conversationId: number,

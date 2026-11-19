@@ -1,5 +1,5 @@
-import { boxSetups, boxes } from "../test-fixtures/box-setups";
-import { afterEach, describe, expect, test } from "bun:test";
+import { historyMessage, historyPage, conversationSummary, installFetch } from "../test-fixtures/conversation";
+import { afterEach, describe, expect, mock, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
 import { NetworkError } from "../lib/request-outcome";
@@ -8,11 +8,6 @@ import type { ChatHistoryPage } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const { useConversationSession } = await import("./useConversationSession");
 
 afterEach(() => {
@@ -22,29 +17,15 @@ afterEach(() => {
 interface HistoryRefreshResult { conversation: ConversationSummary | null; failure?: unknown }
 
 async function historyRefresh(historyResponse: () => Promise<Response>) {
-	const conversation: ConversationSummary = {
-		id: 1, name: "Chat", revision: 1, boxSetups, boxes, boxVersions: {}, forkedFrom: null,
-	background: null, cast: [],
-		control: { humanParticipantId: null, modelParticipantId: null },
-		controlValidity: { valid: false, reason: "missing-seat" },
-		playable: false,
-		capabilities: {
-			compose: { available: false, reason: "conversation-not-playable" },
-			generate: { available: false, reason: "conversation-not-playable" },
-			swipe: { available: false, reason: "conversation-not-playable" },
-		},
-		activeGenerations: [],
-	};
+	const conversation: ConversationSummary = conversationSummary({ name: "Chat", revision: 1 });
 	let refreshing = false;
-	globalThis.fetch = Object.assign(async (input: RequestInfo | URL) =>
-		String(input).includes("/history") ? refreshing ? historyResponse() : Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(conversation),
-	{ preconnect: () => {} });
+	installFetch(async (input: RequestInfo | URL) =>
+		String(input).includes("/history") ? refreshing ? historyResponse() : Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(conversation));
 	const dispatched: StoryAction[] = [];
-	const activeChat = { id: "1", title: "Chat", revision: 1, updatedAt: "", cast: [], excerpt: "" };
 	const dispatchStory = (action: StoryAction) => { dispatched.push(action); };
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const hook = await renderHook(() => useConversationSession({
-		initialWorkspace: { activeChat, chats: [activeChat], characters: [] },
+		initialChatId: "1",
 		story: { ...createStoryState(), status: "loading-first", conversationId: 1 },
 		dispatchStory,
 	}), client);
@@ -65,16 +46,21 @@ async function historyRefresh(historyResponse: () => Promise<Response>) {
 
 describe("history refresh error classification", () => {
 	test("a valid history page refreshes the Conversation", async () => {
-		const page: ChatHistoryPage = {
-			conversationId: 1, name: "Chat", revision: 1, cast: [],
-			messages: [{
-				id: 11, position: 1, timestamp: "2026-01-01T00:00:00.000Z",
-				authorRole: null, modelParticipantIdAtCreation: null, continuable: false,
+		const page: ChatHistoryPage = historyPage({
+			conversationId: 1,
+			name: "Chat",
+			revision: 1,
+			cast: [],
+			messages: [historyMessage({
+				id: 11,
+				authorRole: null,
+				continuable: false,
 				swipe: { eligible: false, reason: "conversation-not-playable" },
-				author: null, variants: [], moves: {},
-			}],
-			page: { index: 1, pageSize: 10, totalMessages: 1, totalPages: 1, hasOlder: false, hasNewer: false },
-		};
+				author: null,
+				variants: [],
+			})],
+			page: { pageSize: 10, totalMessages: 1, totalPages: 1, hasOlder: false },
+		});
 		const { conversation, dispatched } = await historyRefresh(async () => Response.json(page));
 		expect(conversation?.id).toBe(1);
 		// The refresh must APPLY the returned history, not merely resolve.
@@ -85,11 +71,11 @@ describe("history refresh error classification", () => {
 		});
 	});
 
-	test("a missing history page keeps the existing not-found behavior", async () => {
-		const { conversation, dispatched } = await historyRefresh(async () => Response.json({ outcome: "not-found" }, { status: 404 }));
-		expect(conversation?.id).toBe(1);
-		// The existing not-found behavior: a missing page is skipped, not
-		// treated as a failure — neither page application nor failure dispatch.
+	test("a missing history page still returns the refreshed Conversation without applying a page", async () => {
+		const missing = mock(async () => Response.json({ outcome: "not-found" }, { status: 404 }));
+		const { conversation, dispatched } = await historyRefresh(missing);
+		expect(missing).toHaveBeenCalledTimes(1);
+		expect(conversation).toMatchObject({ id: 1, name: "Chat", revision: 1 });
 		expect(dispatched.some(({ type }) => type === "window-received")).toBe(false);
 	});
 

@@ -19,7 +19,8 @@ const attachLorebook = async (request: APIRequestContext) => {
 	} })).json();
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 	const { revision } = await (await request.get(`/api/lorebooks/attachments?conversationId=${activeChatId}`)).json();
-	await request.post("/api/lorebooks/attachments/commands", { data: { type: "attach-chat", conversationId: activeChatId, bookId: book.id, expectedRevision: revision } });
+	const attached = await request.post(`/api/conversations/${activeChatId}/commands`, { data: { expectedRevision: revision, action: { type: "attach-chat", bookId: book.id } } });
+	await expect(attached).toBeOK();
 	await enableDecisionModels(request);
 };
 

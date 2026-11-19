@@ -1,6 +1,6 @@
+import { historyVariant, historyMessage, historyPage, conversationSummary, installFetch } from "../test-fixtures/conversation";
 import type { StoryState } from "../story";
-import { boxSetups, boxes } from "../test-fixtures/box-setups";
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
 import { useCallback, useReducer } from "react";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
@@ -11,39 +11,45 @@ import type { ConversationSummary } from "../conversation";
 const { useConversationSession } = await import("./useConversationSession");
 const { useStoryMessageActions } = await import("./useStoryMessageActions");
 const originalFetch = globalThis.fetch;
-afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true); });
-const summary = (id = 1, revision = 5): ConversationSummary => ({
-	id, revision, name: `Chat ${id}`, boxSetups, boxes, boxVersions: {}, forkedFrom: null,
-	background: null, cast: [], control: { humanParticipantId: null, modelParticipantId: null },
-	controlValidity: { valid: false, reason: "missing-seat" }, playable: false,
-	capabilities: { compose: { available: false, reason: "conversation-not-playable" },
-		generate: { available: false, reason: "conversation-not-playable" }, swipe: { available: false, reason: "conversation-not-playable" } }, activeGenerations: [],
+let originalDocument: PropertyDescriptor | undefined;
+beforeEach(() => { originalDocument = Object.getOwnPropertyDescriptor(globalThis, "document"); });
+afterEach(() => {
+	globalThis.fetch = originalFetch;
+	onlineManager.setOnline(true);
+	if (originalDocument === undefined) Reflect.deleteProperty(globalThis, "document");
+	else Object.defineProperty(globalThis, "document", originalDocument);
 });
-const page = (id = 1, index = 1, revision = 5): ChatHistoryPage => ({
-	conversationId: id, revision, name: `Chat ${id}`, cast: [],
-	messages: Array.from({ length: 2 }, (_, i) => ({
-		id: id * 100 + 7 - index * 2 + i, position: 7 - index * 2 + i, timestamp: "2026-01-01T00:00:00.000Z",
-		authorRole: null, modelParticipantIdAtCreation: null, continuable: false, swipe: { eligible: false as const, reason: "conversation-not-playable" as const }, author: null,
-		moves: {}, variants: [{ id: 1000 + i, position: 1, content: "Before", empty: false, hasReasoning: false, selected: true, timestamp: "2026-01-01T00:00:00.000Z" }],
+const summary = (id = 1, revision = 5): ConversationSummary => conversationSummary({ id, revision, name: `Chat ${id}` });
+const page = (id = 1, index = 1, revision = 5): ChatHistoryPage => historyPage({
+	conversationId: id,
+	revision,
+	name: `Chat ${id}`,
+	cast: [],
+	messages: Array.from({ length: 2 }, (_, i) => historyMessage({
+		id: id * 100 + 7 - index * 2 + i,
+		position: 7 - index * 2 + i,
+		authorRole: null,
+		continuable: false,
+		swipe: { eligible: false, reason: "conversation-not-playable" },
+		author: null,
+		variants: [historyVariant({ id: 1000 + i, content: "Before" })],
 	})),
-	page: { index, pageSize: 2, totalMessages: 6, totalPages: 3, hasOlder: index < 3, hasNewer: index > 1 },
+	page: { index, totalMessages: 6, totalPages: 3, hasOlder: index < 3, hasNewer: index > 1 },
 });
 type Request = { url: URL; init?: RequestInit };
 async function harness(handler?: (request: Request) => Promise<Response>, strict = false) {
 	const requests: Request[] = [];
-	globalThis.fetch = Object.assign((input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch((input: RequestInfo | URL, init?: RequestInit) => {
 		const request = { url: new URL(String(input)), init }; requests.push(request);
 		const id = Number(request.url.pathname.split("/")[3]);
 		return handler?.(request) ?? Promise.resolve(Response.json(request.url.pathname.endsWith("history") ? page(id) : summary(id)));
-	}, { preconnect() {} });
+	});
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
-	const chat = (id: number) => ({ id: String(id), title: `Chat ${id}`, revision: 1, updatedAt: "", cast: [], excerpt: "" });
-	const initialWorkspace = { activeChat: chat(1), chats: [chat(1), chat(2)], characters: [] };
 	const actions: StoryAction[] = [];
 	const hook = await renderHook(() => {
 		const [story, dispatch] = useReducer(reduceStory, undefined, createStoryState);
 		const dispatchStory = useCallback((action: StoryAction) => { actions.push(action); dispatch(action); }, []);
-		const session = useConversationSession({ initialWorkspace, story, dispatchStory });
+		const session = useConversationSession({ initialChatId: "1", story, dispatchStory });
 		const commands = useStoryMessageActions({
 			signal: session.signal,
 			story, conversation: session.conversation, dispatchStory, setConversation: session.setConversation,
@@ -83,7 +89,7 @@ test("StrictMode, 21 summary readers, rerenders and reconnect issue one open pai
 	expect(readers.current.map(({ data }) => data?.name)).toEqual(Array(21).fill("Saved"));
 	const later = await renderHook(() => useConversationQuery(1), h.client);
 	expect(later.current.data?.revision).toBe(6);
-	expect(h.hook.current.activeChat.title).toBe("Saved");
+	expect(h.hook.current.activeChatTitle).toBe("Saved");
 	expect(h.requests).toHaveLength(3);
 });
 
@@ -113,7 +119,7 @@ test("commands use the current revision and a 409 publishes authority to every r
 	const { runConversationCommand } = await import("../conversation-command-runner");
 	const { useConversationQuery } = await import("../conversation-query");
 	const h = await harness(({ url, init }) => Promise.resolve(init?.method === "POST"
-		? Response.json({ outcome: "conflict", expectedRevision: 7, actualRevision: 9, currentConversation: summary(1, 9) }, { status: 409 })
+		? Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 7, actualRevision: 9, current: summary(1, 9) }, { status: 409 })
 		: Response.json(url.pathname.endsWith("history") ? page() : summary())));
 	const reader = await renderHook(() => useConversationQuery(1), h.client);
 	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 7)));
@@ -274,10 +280,10 @@ test("an old Stop mutation cannot settle a newer Stop after A to B to A", async 
 	const responses = [Promise.withResolvers<Response>(), Promise.withResolvers<Response>()];
 	let stops = 0;
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-	globalThis.fetch = Object.assign((input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch((input: RequestInfo | URL, init?: RequestInit) => {
 		if (String(input).endsWith("/stop")) return responses[stops++]!.promise;
 		return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("Detached")), { once: true }));
-	}, { preconnect() {} });
+	});
 	let conversation = { ...summary(), activeGenerations: [{ generationId: 7, messageId: 105, variantId: 1005, startedAt: "2026-01-01T00:00:00.000Z" }] };
 	const activeChatIdRef = { current: "1" };
 	const dispatchStory = () => {};
@@ -336,10 +342,9 @@ test("reopening after a write and late refresh fetches fresh history and never d
 	await h.hook.act(async () => { late.resolve(Response.json(page())); });
 	await h.hook.unmount();
 	await refresh;
-	const activeChat = { id: "1", title: "Chat", revision: 1, updatedAt: "", cast: [], excerpt: "" };
 	const reopened = await renderHook(() => {
 		const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
-		const session = useConversationSession({ initialWorkspace: { activeChat, chats: [activeChat], characters: [] }, story, dispatchStory });
+		const session = useConversationSession({ initialChatId: "1", story, dispatchStory });
 		return { session, story };
 	}, h.client);
 	await flushHook();

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { applyCommand, LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
+import { LIBRARY_UNREACHABLE_NOTICE, useCharacterCommand } from "../character-library";
 import { ConflictBanner } from "../ConflictBanner";
 import type { ConversationSummary } from "../conversation";
 import { CONVERSATION_UNREACHABLE_NOTICE, runConversationCommand } from "../conversation-command-runner";
@@ -34,6 +34,7 @@ export function DraftDefinitionEditor({ conversation, request, onConversationCha
 	onKept: (kept: DraftKept) => void;
 	onBack: () => void;
 }) {
+	const applyCommand = useCharacterCommand();
 	const replaced = conversation.cast.find(({ id }) => id === request.replaces);
 	const kept = (current: typeof replaced) =>
 		({ sendAppearanceImages: current?.sendAppearanceImages ?? true, openings: current?.openings ?? [], portrait: current?.portrait });

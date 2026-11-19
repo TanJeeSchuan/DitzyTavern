@@ -20,10 +20,8 @@ export {
 	type NewChatSeat,
 } from "./native-chat";
 export {
-	type AcceptedGenerationRecord,
 	type GenerationInput,
 	type GenerationAttemptInput,
-	type ParticipantPreview,
 	runGenerationLifecycle,
 	startServerOwnedGeneration,
 	type ServerOwnedGeneration,
@@ -44,6 +42,5 @@ export {
 	recoverActiveGenerations,
 	gracefullyShutdownGenerations,
 	shutdownActiveGenerations,
-	type GenerationRecoveryCause,
 	type GenerationRecoverySummary,
 } from "./generation-recovery";

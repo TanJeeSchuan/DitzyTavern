@@ -100,11 +100,9 @@ export interface ChatImportModule {
 }
 
 export interface StagedRecord {
-	token: string;
 	originalFilename: string;
 	byteLength: number;
 	sha256: string;
-	integrity: string | null;
 	stagedPath: string;
 	// The managed relative path of the staged bytes: the final artifact
 	// path that the commit transaction claims in place.

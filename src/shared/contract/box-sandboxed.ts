@@ -150,6 +150,7 @@ const titledLiterals = Type.Object({ anyOf: Type.Array(Type.Object({ const: Type
 // same on either side.
 export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescriptor => {
 	const { setup, values, record, moves, delegate, window: { kind }, dependencies: _packages, ...fields } = file;
+	if (values?.chat !== undefined) throw new Error("A sandboxed Box cannot declare values.chat because commit-box supports only Library, Character and Participant owners.");
 	if ((kind === "digest") !== (fields.decision !== undefined)) throw new Error("Its window is the passage timeline exactly when it declares a decision.");
 	const moveSchema = moves && sandboxedSchema(moves.schema, "/moves/schema");
 	const schemas = (entries: Readonly<Record<string, BoxValue>> | undefined, path: string) =>
@@ -157,7 +158,7 @@ export const sandboxedDescriptor = (file: SandboxedDescriptorFile): BoxDescripto
 	const descriptor = {
 		...fields,
 		...setup && { setup: { schema: sandboxedSchema(setup.schema, "/setup/schema"), initial: setup.initial } },
-		...values && { values: { ...values.chat && { chat: schemas(values.chat, "/values/chat") }, ...values.participant && { participant: schemas(values.participant, "/values/participant") } } },
+		...values && { values: { ...values.participant && { participant: schemas(values.participant, "/values/participant") } } },
 		...record !== undefined && { record: sandboxedSchema(record, "/record") },
 		...delegate && { delegate: { ...delegate, operations: sandboxedSchema(delegate.operations, "/delegate/operations") } },
 		...moves && moveSchema && { moves: { schema: moveSchema, max: moves.max, label: templateLabel(moves.label, moveSchema), ...moves.seatBound && { seatBound: true as const } } },
@@ -214,9 +215,7 @@ const boxFrameToken = Type.String({ pattern: "^[A-Za-z0-9_-]{24}$" });
 /** @approved The version a window's frame runs, which must be the version its Chat pins; an unversioned Box sends none. */
 export const boxFrameOpen = Type.Object({ version: Type.Optional(boxVersion) });
 export const boxFrameOpened = Type.Object({ token: boxFrameToken });
-export const boxFrameParams = boxFrameOpened;
 export const boxFrameImageParams = Type.Object({ token: boxFrameToken, hash: imageHash });
 
 /** @approved One commit from a sandboxed Box's window: what the host turns into `commit-box` for that Box at `snapshot`. */
 export const sandboxedCommit = Type.Object({ snapshot: Type.Integer({ minimum: 0 }), ...Type.Omit(commitBoxAction, ["type", "box", "version"]).properties }, { additionalProperties: false });
-export type SandboxedCommit = Static<typeof sandboxedCommit>;

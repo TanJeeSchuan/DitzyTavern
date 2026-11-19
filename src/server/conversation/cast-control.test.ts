@@ -1,4 +1,5 @@
-import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels as emptyPrompt } from "../../shared/definition";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory, participantDefinition, participantSeed } from "../test-fixtures/conversation";
 import { executeConversationCommand } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -16,19 +17,10 @@ import { InvalidConversationCommandError } from ".";
 import type { ConversationAction, ParticipantDefinition } from ".";
 import { applyCommand } from "../test-fixtures/conversation";
 
-const emptyPrompt = () => ({
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-});
-
 const adHoc = (
 	name: string,
 	openings: string[] = [],
-): ParticipantDefinition => ({ name, prompt: emptyPrompt(), sendAppearanceImages: true, openings });
+): ParticipantDefinition => participantDefinition(name, { openings });
 
 const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);
@@ -49,8 +41,8 @@ describe("Cast and Control management", () => {
 		const snapshot = createConversationWithHistory(module, {
 			name: "Cast Conversation",
 			participants: [
-				{ definition: adHoc("Writer") },
-				{ definition: adHoc("Maren Voss", ["The lamp turns."]) },
+				participantSeed("Writer"),
+				participantSeed("Maren Voss", { openings: ["The lamp turns."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -75,7 +67,7 @@ describe("Cast and Control management", () => {
 
 	test("saves one Participant Definition atomically", () => {
 		const { module, snapshot, modelId } = setup();
-		const next = adHoc("Maren Vale", ["A new beginning."]);
+		const next = participantDefinition("Maren Vale", { openings: ["A new beginning."] });
 		next.prompt.identity = "A different identity.";
 		const saved = append(module, snapshot, { type: "update-participant-definition", participantId: modelId, definition: next });
 		expect(saved.revision).toBe(snapshot.revision + 1);
@@ -88,7 +80,7 @@ describe("Cast and Control management", () => {
 		const { module, snapshot } = setup();
 		const updated = append(module, snapshot, {
 			type: "add-participant",
-			definition: adHoc("Juno Ashfeld", ["The workshop bell rings."]),
+			definition: participantDefinition("Juno Ashfeld", { openings: ["The workshop bell rings."] }),
 		});
 
 		expect(castNames(updated)).toEqual(["Writer", "Maren Voss", "Juno Ashfeld"]);
@@ -176,9 +168,9 @@ describe("Cast and Control management", () => {
 			type: "replace-participant-prompt",
 			participantId: modelId,
 			prompt: {
+				...emptyPrompt(),
 				systemInstruction: "Keep responses literary.",
 				identity: "Lighthouse archivist.",
-				appearance: "",
 				scenario: "A storm season.",
 				exampleDialogue: "<START>\n{{user}}: Who tends the light?",
 				postHistoryInstruction: "Favor tactile detail.",
@@ -254,8 +246,8 @@ describe("Cast and Control management", () => {
 		const other = createConversationWithHistory(database, {
 			name: "Other",
 			participants: [
-				{ definition: adHoc("Outsider") },
-				{ definition: adHoc("Local") },
+				participantSeed("Outsider"),
+				participantSeed("Local"),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -315,7 +307,7 @@ describe("Cast and Control management", () => {
 		const { module, snapshot, humanId } = setup();
 		const withThird = append(module, snapshot, {
 			type: "add-participant",
-			definition: adHoc("Juno Ashfeld"),
+			definition: participantDefinition("Juno Ashfeld"),
 		});
 		const thirdId = withThird.cast[2]?.id ?? 0;
 
@@ -350,11 +342,11 @@ describe("Cast and Control management", () => {
 		const { module, snapshot } = setup();
 		const withThird = append(module, snapshot, {
 			type: "add-participant",
-			definition: adHoc("Juno Ashfeld"),
+			definition: participantDefinition("Juno Ashfeld"),
 		});
 		const withFourth = append(module, withThird, {
 			type: "add-participant",
-			definition: adHoc("Bram Okafor"),
+			definition: participantDefinition("Bram Okafor"),
 		});
 		const humanId = withFourth.control.humanParticipantId ?? 0;
 		const modelId = withFourth.control.modelParticipantId ?? 0;
@@ -385,7 +377,7 @@ describe("Cast and Control management", () => {
 		const { module, snapshot } = setup();
 		const updated = append(module, snapshot, {
 			type: "add-participant",
-			definition: adHoc("Writer"),
+			definition: participantDefinition("Writer"),
 		});
 		expect(updated.cast.map((participant) => participant.duplicateLabel)).toEqual([
 			"Writer",
@@ -398,7 +390,7 @@ describe("Cast and Control management", () => {
 		// An incomplete Conversation derives the missing-seat reason.
 		const incomplete = createConversationWithHistory(database, {
 			name: "Incomplete",
-			participants: [{ definition: adHoc("Solo") }],
+			participants: [participantSeed("Solo")],
 		});
 		expect(incomplete.playable).toBe(false);
 		expect(incomplete.controlValidity).toEqual({
@@ -420,8 +412,8 @@ describe("Cast and Control management", () => {
 		const preserved = createConversationWithHistory(module, {
 			name: "Preserved Import",
 			participants: [
-				{ definition: adHoc("Writer") },
-				{ definition: adHoc("Maren Voss") },
+				participantSeed("Writer"),
+				participantSeed("Maren Voss"),
 			],
 		});
 		const humanOnly = executeConversationCommand(module, {
@@ -489,7 +481,7 @@ describe("Cast and Control management", () => {
 		const updated = executeConversationCommand(module, {
 			conversationId: preserved.id,
 			expectedRevision: preserved.revision,
-			action: { type: "add-participant", definition: adHoc("Writer") },
+			action: { type: "add-participant", definition: participantDefinition("Writer") },
 		});
 		expect(updated.cast.map((participant) => participant.name)).toEqual([
 			"Writer",
@@ -556,7 +548,7 @@ describe("Cast and Control management", () => {
 		const module = database;
 		const oneSeat = createConversationWithHistory(module, {
 			name: "Preserved",
-			participants: [{ definition: adHoc("Writer") }],
+			participants: [participantSeed("Writer")],
 			// The incomplete-import exception reserves the first resolved
 			// Participant's seat (human) before the model seat is filled.
 			control: { human: 0 },
@@ -581,7 +573,7 @@ describe("Cast and Control management", () => {
 		const completed = executeConversationCommand(module, {
 			conversationId: oneSeat.id,
 			expectedRevision: oneSeat.revision,
-			action: { type: "add-participant", definition: adHoc("Rulership") },
+			action: { type: "add-participant", definition: participantDefinition("Rulership") },
 		});
 		expect(completed.cast.map((participant) => participant.name)).toEqual([
 			"Writer",

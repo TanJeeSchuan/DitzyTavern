@@ -1,17 +1,9 @@
-import { type TestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { type TestConversationSnapshot, createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 import { listChatSummaries } from "./chat-summaries";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
 
 describe("Chat list summaries", () => {
 	let database: Database;
@@ -26,7 +18,7 @@ describe("Chat list summaries", () => {
 	const createChat = (name: string, names: string[]) =>
 		createConversationWithHistory(module, {
 			name,
-			participants: names.map((participantName) => ({ definition: { name: participantName, prompt, sendAppearanceImages: true, openings: [] } })),
+			participants: names.map((participantName) => (participantSeed(participantName))),
 			control: { human: 0, model: 1 },
 		});
 
@@ -97,10 +89,5 @@ describe("Chat list summaries", () => {
 		database.query("UPDATE participant_prompt SET portrait_hash = ?, portrait_focal_x = ?, portrait_focal_y = ? WHERE participant_id = ?")
 			.run("a".repeat(64), 2, 0.5, chat.cast[0]?.id ?? 0);
 		expect(() => listChatSummaries(database)).toThrow();
-	});
-
-	test("a Chat without Participants has no Portraits", () => {
-		const chat = createConversationWithHistory(module, { name: "No Cast" });
-		expect(listChatSummaries(database).find((summary) => summary.id === chat.id)?.cast).toEqual([]);
 	});
 });

@@ -1,3 +1,4 @@
+import { participantSeed } from "../test-fixtures/conversation";
 import { describe, expect, test } from "bun:test";
 import {
 	ARCHIVE_KEY,
@@ -9,7 +10,7 @@ import {
 	decodeSillyTavernImportReport,
 	decodeSillyTavernImportSource,
 } from "./adapter";
-import { UNKNOWN_IMPORTED_AUTHOR_NAME, defaultImportResolution, projectImport } from "./import-projection";
+import { UNKNOWN_IMPORTED_AUTHOR_NAME, emptyImportedDefinition, projectImport } from "./import-projection";
 import type { SillyTavernImportMeta } from "./adapter";
 import { SillyTavernImportError } from "./errors";
 import {
@@ -24,32 +25,94 @@ import {
 } from "./fixtures";
 
 const meta: SillyTavernImportMeta = {
-	name: "lantern-house",
 	filename: "lantern-house.jsonl",
 	sha256: "0f5c3e0a9d0c8f5b3a9e4d6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6",
 };
 
-const project = (sourceText: string) => {
+const project = (sourceText: string, ...participantNamePerMessage: string[]) => {
 	const decoded = decodeSillyTavernImportSource(sourceText, meta);
-	return projectImport(decoded, defaultImportResolution(decoded), { exact: [], related: [] });
+	return projectImport(decoded, {
+		participants: participantNamePerMessage.map((name) => ({ definition: emptyImportedDefinition(name) })),
+		messageOwners: new Map(participantNamePerMessage.map((_, index) => [index + 1, index])),
+	}, { exact: [], related: [] });
 };
 
 // Imported Participants start with an empty typed Prompt and no openings:
 // the resolved identity carries only a native nonblank name.
-const importedSeed = (name: string) => ({
-	definition: {
-		name,
-		prompt: {
-			systemInstruction: "",
-			identity: "",
-			appearance: "",
-			scenario: "",
-			exampleDialogue: "",
-			postHistoryInstruction: "",
-		},
-		sendAppearanceImages: true,
-		openings: [],
-	},
+const importedSeed = (name: string) => (participantSeed(name));
+
+describe("SillyTavern Author's Note mapping", () => {
+	const decodeNote = (metadata: Partial<typeof header.chat_metadata>) => {
+		const { authorNote, report } = decodeSillyTavernImportSource(jsonl([{ ...header, chat_metadata: metadata }, first]), meta);
+		return { authorNote, warnings: report.warnings };
+	};
+
+	test("maps imported participant macros regardless of case", () => {
+		expect(decodeNote({ ...header.chat_metadata, note_prompt: "{{User}} guides {{CHAR}}; {{USER}} listens to {{Char}}." }).authorNote).toBe("{{self}} guides {{other}}; {{self}} listens to {{other}}.");
+	});
+
+	test("maps spaced participant macros in an imported note while preserving Prompt Comments", () => {
+		const { authorNote } = decodeNote({ note_prompt: "{{ user }} guides {{ char }}. {{// Keep {{char}} as a reminder. }}" });
+		expect(authorNote).toBe("{{self}} guides {{other}}. {{// Keep {{char}} as a reminder. }}");
+	});
+
+	test.each([
+		{ note_prompt: "Keep quiet." },
+		{ ...header.chat_metadata, note_position: undefined },
+		{ ...header.chat_metadata, note_depth: undefined },
+		{ ...header.chat_metadata, note_role: undefined },
+		{ ...header.chat_metadata, note_interval: undefined },
+	])("imports a note with absent settings without false warnings (%#)", (metadata) => {
+		const { authorNote, warnings } = decodeNote(metadata);
+		expect(authorNote).not.toBe("");
+		expect(warnings).toEqual([]);
+	});
+
+	test.each([
+		{ metadata: { note_prompt: "Keep quiet.", note_position: 2 }, setting: "position 2" },
+		{ metadata: { note_prompt: "Keep quiet.", note_depth: 4 }, setting: "depth 4" },
+	])("warns about supplied placement settings without inventing missing values (%#)", ({ metadata, setting }) => {
+		const { warnings } = decodeNote(metadata);
+		expect(warnings).toEqual([`Author's Note placement (${setting}) was not kept; the default Author Note slot is after history.`]);
+	});
+
+	test.each([
+		{ position: 0, depth: 0, warning: "Author's Note placement (position 0, depth 0) was not kept; the default Author Note slot is after history." },
+		{ position: 2, depth: 4, warning: "Author's Note placement (position 2, depth 4) was not kept; the default Author Note slot is after history." },
+		{ position: 1, depth: 4, warning: "Author's Note placement (position 1, depth 4) was not kept; the default Author Note slot is after history." },
+	])("warns once for Author's Note placement at position $position and depth $depth", ({ position, depth, warning }) => {
+		const { warnings } = decodeNote({ ...header.chat_metadata, note_position: position, note_depth: depth });
+		expect(warnings).toEqual([warning]);
+	});
+
+	test.each([
+		{ role: 1, warning: "Author's Note role (1) was not kept; the default Author Note slot uses the system role." },
+		{ role: 2, warning: "Author's Note role (2) was not kept; the default Author Note slot uses the system role." },
+	])("warns for Author's Note role $role", ({ role, warning }) => {
+		const { warnings } = decodeNote({ ...header.chat_metadata, note_role: role });
+		expect(warnings).toEqual([warning]);
+	});
+
+	test.each([
+		{ interval: 0, warning: "Author's Note interval (0) was not kept; the Author Note applies to every Generation." },
+		{ interval: 3, warning: "Author's Note interval (3) was not kept; the Author Note applies to every Generation." },
+	])("warns for Author's Note interval $interval", ({ interval, warning }) => {
+		const { warnings } = decodeNote({ ...header.chat_metadata, note_interval: interval });
+		expect(warnings).toEqual([warning]);
+	});
+
+	test.each([
+		{ description: "empty", note: "" },
+		{ description: "whitespace-only", note: " \n\t " },
+		{ description: "missing", note: undefined },
+	])("imports an $description Author's Note as blank without note warnings", ({ note }) => {
+		expect(decodeNote({ note_prompt: note, note_position: 2, note_depth: 4, note_role: 2, note_interval: 3 })).toEqual({ authorNote: "", warnings: [] });
+	});
+
+	test("imports supported Author's Note settings without warnings", () => {
+		const { warnings } = decodeNote(header.chat_metadata);
+		expect(warnings).toEqual([]);
+	});
 });
 
 describe("SillyTavern JSONL adapter", () => {
@@ -90,7 +153,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("maps a header and payload-only records into a generic creation input", () => {
-		const { input } = project(jsonl([header, first, second, blankName]));
+		const { input } = project(jsonl([header, first, second, blankName]), "Writer", "Rulership", UNKNOWN_IMPORTED_AUTHOR_NAME);
 
 		expect(input.participants).toEqual([
 			importedSeed("Writer"),
@@ -161,12 +224,12 @@ describe("SillyTavern JSONL adapter", () => {
 
 	test("keeps the first nonempty record as the source header", () => {
 		const source = `\n\n${JSON.stringify(header)}\n${JSON.stringify(first)}\n\n`;
-		const { report } = project(source);
+		const { report } = decodeSillyTavernImportSource(source, meta);
 		expect(report.counts).toEqual({ messages: 1, variants: 1 });
 	});
 
 	test("stores the canonical archive and import identity as separate conversation entries", () => {
-		const { input, report } = project(jsonl([header, first, second]));
+		const { input, report } = project(jsonl([header, first, second]), "Writer", "Rulership");
 
 		const archive = input.data?.find(
 			(entry) =>
@@ -237,7 +300,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("keeps unknown and source-only fields value-lossless in the archive only", () => {
-		const { input } = project(jsonl([header, first, second]));
+		const { input } = project(jsonl([header, first, second]), "Writer", "Rulership");
 
 		const archive = input.data?.find(
 			(entry) =>
@@ -258,7 +321,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("preserves empty payload content as an empty Variant", () => {
-		const { input, report } = project(jsonl([header, emptyContent]));
+		const { input, report } = project(jsonl([header, emptyContent]), "Writer");
 		expect(input.messages?.[0]?.variants[0]?.content).toBe("");
 		expect(input.messages?.[0]?.variants[0]?.timestamp).toBe(
 			"2026-08-08T13:20:00.000Z",
@@ -324,7 +387,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("derives one Variant per Swipe in source order and selects exactly swipe_id", () => {
-		const { input, report } = project(jsonl([header, swiped]));
+		const { input, report } = project(jsonl([header, swiped]), "TANJS");
 
 		const message = input.messages?.[0];
 		expect(message).toEqual({
@@ -406,7 +469,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("never promotes the duplicated top-level assistant payload when Swipes exist", () => {
-		const { input, report } = project(jsonl([header, swiped]));
+		const { input, report } = project(jsonl([header, swiped]), "TANJS");
 
 		// Row-level values duplicated from the saved alternative (mes,
 		// extra.api/model/gen_id, reasoning, gen_started/gen_finished) must
@@ -445,7 +508,7 @@ describe("SillyTavern JSONL adapter", () => {
 				{ send_date: "2026-08-08T13:40:05.000Z" },
 			],
 		};
-		const { input, report } = project(jsonl([header, emptySelected]));
+		const { input, report } = project(jsonl([header, emptySelected]), "TANJS");
 
 		const variants = input.messages?.[0]?.variants ?? [];
 		expect(variants).toHaveLength(2);
@@ -457,7 +520,7 @@ describe("SillyTavern JSONL adapter", () => {
 	});
 
 	test("attaches row-level provenance to a payload-only Variant", () => {
-		const { input } = project(jsonl([header, provenancedPayload]));
+		const { input } = project(jsonl([header, provenancedPayload]), "Writer");
 
 		expect(input.messages).toEqual([
 			{

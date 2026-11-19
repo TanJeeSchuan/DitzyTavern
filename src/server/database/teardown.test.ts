@@ -1,12 +1,13 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { rmSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { mkdirSync, rmSync, mkdtempSync } from "node:fs";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createCharacterLibraryModule } from "../character-library";
 import { openInitializedDatabase } from "./database";
 import { characterTable, conversationTable } from "./schema";
-import { seed } from "./seed";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { characters, seed } from "./seed";
 import { teardown } from "./teardown";
 
 describe("Database seed and teardown", () => {
@@ -14,7 +15,8 @@ describe("Database seed and teardown", () => {
 	let databasePath: string;
 
 	beforeEach(() => {
-		directory = mkdtempSync(join(tmpdir(), "ditzytavern-teardown-"));
+		mkdirSync(".scratch", { recursive: true });
+		directory = mkdtempSync(join(".scratch", "ditzytavern-teardown-"));
 		databasePath = join(directory, "test.sqlite");
 	});
 
@@ -42,12 +44,10 @@ describe("Database seed and teardown", () => {
 				definition: {
 					name: "User Custom Character",
 					prompt: {
+						...emptyPromptChannels(),
 						systemInstruction: "Custom system instruction",
 						identity: "A unique wanderer.",
-						appearance: "",
 						scenario: "Traveling through uncharted lands.",
-						exampleDialogue: "",
-						postHistoryInstruction: "",
 					},
 					sendAppearanceImages: true,
 					openings: ["Hello, traveler."],
@@ -89,4 +89,37 @@ describe("Database seed and teardown", () => {
 			finalDb.close();
 		}
 	});
+	test("teardown preserves a user Chat fork and its seeded Character provenance", () => {
+		seed(databasePath);
+		const database = openInitializedDatabase({ path: databasePath });
+		let chatId: number;
+		let sourceId: number;
+		try {
+			const source = createCharacterLibraryModule(database).list()[0]!;
+			const character = createCharacterLibraryModule(database).get(source.id)!;
+			sourceId = character.id;
+			chatId = createConversationWithHistory(database, {
+				name: "User fork", participants: [{ definition: character, sourceCharacterId: character.id }],
+			}).id;
+		} finally { database.close(); }
+		teardown(databasePath);
+		teardown(databasePath);
+		const after = openInitializedDatabase({ path: databasePath });
+		try {
+			expect(createCharacterLibraryModule(after).get(sourceId)).toBeUndefined();
+			expect(after.query("SELECT name, source_character_id FROM participant WHERE conversation_id = ?").get(chatId))
+				.toMatchObject({ source_character_id: sourceId });
+			expect(after.query("SELECT deleted_at FROM character WHERE id = ?").get(sourceId)).toMatchObject({ deleted_at: expect.any(String) });
+			expect(after.query("SELECT name FROM conversation WHERE id = ?").get(chatId)).toEqual({ name: "User fork" });
+		} finally { after.close(); }
+		seed(databasePath);
+		seed(databasePath);
+		const reseeded = openInitializedDatabase({ path: databasePath });
+		try {
+			expect(createCharacterLibraryModule(reseeded).list()).toHaveLength(characters.length);
+			expect(reseeded.query("SELECT source_character_id FROM participant WHERE conversation_id = ?").get(chatId))
+				.toEqual({ source_character_id: sourceId });
+		} finally { reseeded.close(); }
+	});
+
 });

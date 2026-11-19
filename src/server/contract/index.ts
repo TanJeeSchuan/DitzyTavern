@@ -28,16 +28,6 @@ import { loadChatVersions } from "../box/registry";
 
 const chatPath = /^\/api\/conversations\/(\d+)(?:\/|$)/;
 
-export { createChatImportRoutes } from "./chat-import";
-export { createCharacterLibraryRoutes } from "./character-library";
-export { createConnectionSettingsRoutes } from "./connection-settings";
-export { createConversationRoutes } from "./conversation";
-export { createNativeConversationRoutes } from "./native-conversation";
-export { createPromptPresetRoutes } from "./prompt-preset-routes";
-export { createLorebookRoutes } from "./lorebook-routes";
-export { createLorebookAttachmentRoutes } from "./lorebook-routes";
-export { createSemanticTriggerSettingsRoutes } from "./semantic-trigger-settings";
-
 export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(), updates: UpdateChecker = createUpdateChecker(database), authoring = createAuthoring(database)) => new Elysia()
 	// @approved
 	//  Every Chat route resolves the Chat's Boxes at the versions it pins, so
