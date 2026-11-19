@@ -9,6 +9,8 @@ import {
 	classifyVariantSelection,
 	displayedVariantId,
 	shownVariant,
+	previewOnMessage,
+	type RequestedWrite,
 	type StoryAction,
 	type StoryState,
 	isStoryReady,
@@ -30,7 +32,7 @@ const STORY_COMMAND_NOTICES = {
 // outcomes, made explicit so the runner never flattens them for this surface.
 const noPresentation = () => undefined;
 
-type RequestedSelection = { messageId: number; variantId: number };
+type RequestedSelection = { messageId: number; request: RequestedWrite<number> };
 // Each Chat visit's latest-wins slot, keyed by the visit's signal: whether a select-variant waits in the command
 // queue, and the Variant it will send. A later visit never shares a slot with a command an earlier one queued.
 const selections = new WeakMap<AbortSignal, { queued: boolean; requested: RequestedSelection | null }>();
@@ -46,13 +48,6 @@ type StoryMessageActionsOptions = {
 	onEnterPreview: (enter: () => void) => void;
 };
 
-/**
- * Coordinates user commands that mutate or preview a story Message. Preview state and Requested selections are
- * immediate local presentation; the persisted selection moves only after the server applies the command, and a
- * Requested selection whose command fails is dropped, so a failed Swipe never diverges the two state owners.
- * Selections are latest-wins: at most one select-variant waits in the command queue per Chat, and it sends
- * whichever Variant is requested when its turn comes.
- */
 export function useStoryMessageActions({
 	signal,
 	story,
@@ -69,7 +64,8 @@ export function useStoryMessageActions({
 		setNotice: noPresentation,
 		isCurrent: () => !signal.aborted,
 	};
-	const requestSelection = async (conversationId: number, requested: RequestedSelection) => {
+	const requestSelection = async (conversationId: number, messageId: number, variantId: number) => {
+		const requested = { messageId, request: { value: variantId, appliedRevision: null } };
 		const current = selections.get(signal) ?? { queued: false, requested: null };
 		selections.set(signal, current);
 		current.requested = requested;
@@ -80,20 +76,29 @@ export function useStoryMessageActions({
 		const applied = await runConversationCommand({ ...surface, conversationId }, (expectedRevision) => {
 			current.queued = false;
 			sent = current.requested ?? requested;
-			return applyConversationCommand(conversationId, expectedRevision, { type: "select-variant", ...sent });
+			current.requested = null;
+			return applyConversationCommand(conversationId, expectedRevision, {
+				type: "select-variant", messageId: sent.messageId, variantId: sent.request.value,
+			});
 		}, {
 			notices: STORY_COMMAND_NOTICES,
-			onApplied: () => { if (sent !== undefined) dispatchStory({ type: "swipe-selected", ...sent }); },
+			onApplied: (result) => {
+				if (sent !== undefined) dispatchStory({ type: "selection-settled", ...sent, revision: result.revision });
+			},
 		});
-		current.queued = false;
-		if (!applied || current.requested === sent) current.requested = null;
-		if (!applied && !signal.aborted) dispatchStory({ type: "selection-dropped", messageId: requested.messageId });
+		if (applied || signal.aborted) return;
+		const failed = sent ?? current.requested ?? requested;
+		if (sent === undefined) {
+			current.queued = false;
+			current.requested = null;
+		}
+		dispatchStory({ type: "selection-settled", ...failed, revision: null });
 	};
 
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return;
-		const shownId = displayedVariantId(storyMessage, story.preview, story.requestedSelections);
+		const shownId = displayedVariantId(story, storyMessage);
 		const currentIndex = storyMessage.swipes.findIndex((variant) => variant.id === shownId);
 		if (currentIndex === -1) return;
 		const target = storyMessage.swipes[Math.min(storyMessage.swipes.length - 1, Math.max(0, currentIndex + direction))];
@@ -103,9 +108,11 @@ export function useStoryMessageActions({
 	const selectSwipe = async (messageId: number, variantId: number) => {
 		const preview = story.preview;
 		if (preview !== null) {
-			if (preview.messageId !== messageId) return;
+			if (preview.messageId !== messageId || preview.variantId === variantId) return;
+			const message = story.messages.find((entry) => entry.id === messageId);
+			if (!message?.swipes.some((variant) => variant.id === variantId)) return;
 			queueSwipeScroll(messageId);
-			dispatchStory({ type: "preview-retargeted", messageId, variantId });
+			dispatchStory({ type: "preview-changed", preview: previewOnMessage(message, variantId) });
 			return;
 		}
 		if (!canEnterPreview) return;
@@ -116,18 +123,14 @@ export function useStoryMessageActions({
 		if (selection.kind === "preview") {
 			onEnterPreview(() => {
 				queueSwipeScroll(messageId);
-				dispatchStory({
-					type: "preview-started",
-					messageId: selection.messageId,
-					variantId: selection.variantId,
-				});
+				dispatchStory({ type: "preview-changed", preview: { messageId, variantId } });
 			});
 			return;
 		}
 
 		if (!isStoryReady(story)) return;
 		queueSwipeScroll(selection.messageId);
-		await requestSelection(story.conversationId, { messageId: selection.messageId, variantId: selection.variantId });
+		await requestSelection(story.conversationId, selection.messageId, selection.variantId);
 	};
 
 	// @approved
@@ -153,12 +156,13 @@ export function useStoryMessageActions({
 
 	const setMessageMoves = async (messageId: number, moves: BoxMoves) => {
 		if (!isStoryReady(story) || story.preview !== null) return;
-		dispatchStory({ type: "moves-requested", messageId, moves });
+		const request = { value: moves, appliedRevision: null };
+		dispatchStory({ type: "moves-requested", messageId, request });
 		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
 			notices: STORY_COMMAND_NOTICES,
-			onApplied: () => dispatchStory({ type: "moves-set", messageId, moves }),
+			onApplied: (result) => dispatchStory({ type: "moves-settled", messageId, request, revision: result.revision }),
 		});
-		if (!applied && !signal.aborted) dispatchStory({ type: "moves-dropped", messageId });
+		if (!applied && !signal.aborted) dispatchStory({ type: "moves-settled", messageId, request, revision: null });
 	};
 
 	const deleteStoryMessage = async (messageId: number) => {

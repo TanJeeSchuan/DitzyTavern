@@ -5,7 +5,7 @@ import { QueryClient, onlineManager } from "@tanstack/react-query";
 import type { ConversationSummary, GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../shared/contract/generation-events";
-import { createStoryState, reduceStory, type StoryAction } from "./story";
+import { createStoryOverlays, reduceStoryOverlays, type StoryAction } from "./story";
 
 const { useAssemblyController } = await import("./workspace/useAssemblyController");
 const originalFetch = globalThis.fetch;
@@ -117,7 +117,7 @@ describe("assembly session", () => {
 		await h.open();
 		await h.hook.act(async () => h.hook.current.sendPromptPlanPreview());
 		await flushHook();
-		expect(h.stories.reduce(reduceStory, createStoryState()).requestedGeneration).toEqual({
+		expect(h.stories.reduce(reduceStoryOverlays, createStoryOverlays()).requestedGeneration).toEqual({
 			request: { kind: "send", content: "Draft" },
 			accepted: { generationId: 10, variantId: 30, sentRevision: 2 },
 		});

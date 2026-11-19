@@ -1,22 +1,16 @@
 import { historyVariant, historyMessage, historyPage, conversationSummary, installFetch, type FetchHandler } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
-import type { Dispatch, SetStateAction } from "react";
 import type { ChatHistoryPage } from "../chat-history";
-import type { StoryAction, StoryState } from "../story";
+import type { StoryAction } from "../story";
 import type { ConversationSummary } from "../../shared/contract/conversation-schema";
 
 const originalFetch = globalThis.fetch;
 const { useStoryMessageActions } = await import("./useStoryMessageActions");
-const { createStoryState, displayedVariantId, reduceStory } = await import("../story");
+const { createStoryOverlays, displayedVariantId, readStory, reduceStoryOverlays, retireStoryOverlays, toStoryMessage } = await import("../story");
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
-
-// A Swipe on the final Message shows its Variant at once as a Requested selection; the persisted selection
-// moves only when select-variant applies, and a refused command returns the view to the server's Variant.
-// The seam under test is the hook's changeSwipe against a fake Conversation command transport plus the real
-// story reducer, wired per call exactly like the workspace does per render.
 
 const summary = (revision: number): ConversationSummary => conversationSummary({
 	revision,
@@ -53,7 +47,10 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => historyPage({
 		timestamp: "2026-01-01T00:00:03.000Z",
 		authorRole: "human",
 		author: { participantId: 10, capturedName: "Writer", inCast: true },
-		variants: [historyVariant({ id: 110, content: "Later", timestamp: "2026-01-01T00:00:03.000Z" })],
+		variants: [
+			historyVariant({ id: 110, content: "Later", timestamp: "2026-01-01T00:00:03.000Z" }),
+			historyVariant({ id: 111, position: 2, selected: false }),
+		],
 	})] : [])],
 });
 
@@ -112,27 +109,32 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	};
 	installFetch(handler);
 
-	let story: StoryState = reduceStory(
-		reduceStory(createStoryState(), { type: "chat-opened", conversationId: 1 }),
-		{ type: "window-received", page: firstPage(withLaterMessage) },
-	);
-	let conversation: ConversationSummary | null = summary(5);
+	let overlays = createStoryOverlays();
+	const initial = firstPage(withLaterMessage);
+	let window = { revision: initial.revision, page: initial.page, messages: initial.messages.map(toStoryMessage) };
+	let conversation = summary(5);
 
+	const story = () => readStory({ overlays, window, conversationId: 1, historyFailed: false, loadingMore: false });
 	const dispatchStory = (action: StoryAction) => {
 		events.push(`action:${action.type}`);
-		story = reduceStory(story, action);
+		overlays = retireStoryOverlays(reduceStoryOverlays(overlays, action), window, conversation);
 	};
-	// SAFETY: the runner adopts snapshots by value on this seam; the wider
-	// SetStateAction function shape is never produced by any caller here.
-	const setConversation = ((value: ConversationSummary | null) => {
+	const setConversation = (value: ConversationSummary) => {
 		conversation = value;
-		events.push(`adopt:${value?.revision ?? "cleared"}`);
-	}) as Dispatch<SetStateAction<ConversationSummary | null>>;
+		events.push(`adopt:${value.revision}`);
+	};
+	const publishHistory = (variantId: number) => {
+		const page = initial.messages.map((message) => message.id === 10 ? {
+			...message, variants: message.variants.map((variant) => ({ ...variant, selected: variant.id === variantId })),
+		} : message);
+		window = { ...window, revision, messages: page.map(toStoryMessage) };
+		overlays = retireStoryOverlays(overlays, window, conversation);
+	};
 
 	const visit = new AbortController();
 	const actions = () => useStoryMessageActions({
 		signal: visit.signal,
-		story,
+		story: story(),
 		conversation,
 		dispatchStory,
 		setConversation,
@@ -149,14 +151,14 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	const edit = (messageId: number, content: string) => actions().editStoryMessage(messageId, content, false);
 
 	const activeVariantId = (): number | null => {
-		const message = story.messages.find((entry) => entry.id === 10);
+		const message = window.messages.find((entry) => entry.id === 10);
 		// SAFETY: the fixture above gave the Message exactly the four Variants
 		// every assertion in this file reads between.
 		return message?.swipes[message.activeSwipe]?.id ?? null;
 	};
 	const shownVariantId = (): number | null => {
-		const message = story.messages.find((entry) => entry.id === 10);
-		return message === undefined ? null : displayedVariantId(message, story.preview, story.requestedSelections);
+		const message = window.messages.find((entry) => entry.id === 10);
+		return message === undefined ? null : displayedVariantId(story(), message);
 	};
 	const hold = () => {
 		const release = Promise.withResolvers<void>();
@@ -170,16 +172,18 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		fetches,
 		swipe,
 		edit,
+		select: (messageId: number, variantId: number) => actions().selectSwipe(messageId, variantId),
 		activeVariantId,
 		shownVariantId,
 		hold,
-		story: () => story,
+		story,
+		publishHistory,
 		conversation: () => conversation,
 	};
 }
 
 describe("Requested selection", () => {
-	test("a Swipe shows its Variant at once and persists it when the command applies", async () => {
+	test("a Swipe stays visible after acceptance until history reflects it", async () => {
 		const harness = createHarness({ kind: "applied" });
 		const release = harness.hold();
 
@@ -192,12 +196,11 @@ describe("Requested selection", () => {
 		expect(harness.commands).toEqual([
 			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } },
 		]);
+		expect(harness.activeVariantId()).toBe(100);
+		expect(harness.shownVariantId()).toBe(101);
+		harness.publishHistory(101);
 		expect(harness.activeVariantId()).toBe(101);
 		expect(harness.story().requestedSelections.size).toBe(0);
-		// No history read rides along: the Swipe applies from the already loaded Variants.
-		expect(harness.fetches).toEqual([
-			{ method: "POST", url: "http://localhost/api/conversations/1/commands" },
-		]);
 	});
 
 	test("rapid Swipes send only the latest Variant, on the revision the first one produced", async () => {
@@ -216,8 +219,9 @@ describe("Requested selection", () => {
 			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } },
 			{ expectedRevision: 6, action: { type: "select-variant", messageId: 10, variantId: 103 } },
 		]);
-		expect(harness.activeVariantId()).toBe(103);
 		expect(harness.shownVariantId()).toBe(103);
+		harness.publishHistory(103);
+		expect(harness.activeVariantId()).toBe(103);
 	});
 
 	test("an edit made while a Swipe waits edits the Variant on screen", async () => {
@@ -260,7 +264,6 @@ describe("Requested selection", () => {
 
 			expect(harness.shownVariantId()).toBe(100);
 			expect(harness.activeVariantId()).toBe(100);
-			expect(harness.events).not.toContain("action:swipe-selected");
 		}
 	});
 
@@ -280,5 +283,8 @@ describe("Requested selection", () => {
 		expect(harness.commands).toEqual([]);
 		expect(harness.story().preview?.variantId).toBe(102);
 		expect(harness.activeVariantId()).toBe(100);
+		await harness.select(11, 111);
+		expect(harness.commands).toEqual([]);
+		expect(harness.story().preview?.variantId).toBe(102);
 	});
 });

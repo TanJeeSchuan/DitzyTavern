@@ -36,17 +36,18 @@ export function usePreviewController({
 		isCurrent: () => !signal.aborted,
 	};
 
-	const cancelPreview = () => dispatchStory({ type: "preview-cancelled" });
+	const cancelPreview = () => dispatchStory({ type: "preview-changed", preview: null });
 
 	const confirmPreview = async () => {
 		const preview = story.preview;
 		if (preview === null || !isStoryReady(story)) return;
 		const { messageId, variantId } = preview;
-		dispatchStory({ type: "preview-confirmed" });
+		const request = { value: variantId, appliedRevision: null };
+		dispatchStory({ type: "preview-confirmed", messageId, request });
 		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId }, { type: "select-variant", messageId, variantId }, {
-			onApplied: () => dispatchStory({ type: "swipe-selected", messageId, variantId }),
+			onApplied: (result) => dispatchStory({ type: "selection-settled", messageId, request, revision: result.revision }),
 		});
-		if (!applied && !signal.aborted) dispatchStory({ type: "selection-dropped", messageId });
+		if (!applied && !signal.aborted) dispatchStory({ type: "selection-settled", messageId, request, revision: null });
 	};
 
 	return { cancelPreview, confirmPreview };

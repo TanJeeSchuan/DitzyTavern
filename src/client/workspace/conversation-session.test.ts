@@ -2,9 +2,8 @@ import { historyVariant, historyMessage, historyPage, conversationSummary, insta
 import type { StoryState } from "../story";
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
-import { useCallback, useReducer } from "react";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
-import { createStoryState, reduceStory, type StoryAction } from "../story";
+import { createStoryOverlays, displayedVariantId, readStory } from "../story";
 import type { ChatHistoryPage } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
 
@@ -45,21 +44,18 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		return handler?.(request) ?? Promise.resolve(Response.json(request.url.pathname.endsWith("history") ? page(id) : summary(id)));
 	});
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
-	const actions: StoryAction[] = [];
 	const hook = await renderHook(() => {
-		const [story, dispatch] = useReducer(reduceStory, undefined, createStoryState);
-		const dispatchStory = useCallback((action: StoryAction) => { actions.push(action); dispatch(action); }, []);
-		const session = useConversationSession({ initialChatId: "1", story, dispatchStory });
+		const session = useConversationSession({ initialChatId: "1" });
 		const commands = useStoryMessageActions({
-			signal: session.signal,
-			story, conversation: session.conversation, dispatchStory, setConversation: session.setConversation,
-			queueSwipeScroll() {}, canEnterPreview: true, onEnterPreview() {},
+			signal: session.signal, story: session.story, conversation: session.conversation,
+			dispatchStory: session.dispatchStory, setConversation: session.setConversation,
+			queueSwipeScroll() {}, canEnterPreview: true, onEnterPreview: (enter) => enter(),
 		});
-		return { ...session, ...commands, story };
+		return { ...session, ...commands };
 	}, client, strict);
 	Object.assign(window, { requestAnimationFrame: (callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 0; } });
 	await flushHook();
-	return { hook, client, requests, actions, switchTo: async (id: number) => { await hook.act(async () => hook.current.selectChat(String(id))); await flushHook(); } };
+	return { hook, client, requests, switchTo: async (id: number) => { await hook.act(async () => hook.current.selectChat(String(id))); await flushHook(); } };
 }
 
 test("switching Conversation aborts both open reads and rejects their late response", async () => {
@@ -139,7 +135,11 @@ test("commands use the current revision and a 409 publishes authority to every r
 test("a late refresh cannot roll back a newer write or its history", async () => {
 	const late = Promise.withResolvers<Response>();
 	let historyReads = 0;
-	const h = await harness(({ url }) => Promise.resolve(url.pathname.endsWith("history") ? (++historyReads === 1 ? Response.json(page()) : late.promise) : Response.json(summary())));
+	const h = await harness(({ url }) => {
+		if (!url.pathname.endsWith("history")) return Promise.resolve(Response.json(summary()));
+		if (++historyReads === 1) return Promise.resolve(Response.json(page()));
+		return late.promise.then((response) => response.clone());
+	});
 	let refresh: Promise<ConversationSummary | null> = Promise.resolve(null);
 	await h.hook.act(async () => { refresh = h.hook.current.refreshStory(1).catch(() => null); });
 	await flushHook();
@@ -147,7 +147,7 @@ test("a late refresh cannot roll back a newer write or its history", async () =>
 	await h.hook.act(async () => { late.resolve(Response.json(page(1, 1, 5))); await refresh; });
 	await flushHook();
 	expect(h.hook.current.conversation?.revision).toBe(8);
-	expect(h.actions.filter(({ type }) => type === "window-received")).toHaveLength(1);
+	expect(readyStory(h.hook.current.story).revision).toBe(5);
 });
 
 test("a newer source position aborts the old window and never scrolls to its late result", async () => {
@@ -175,11 +175,13 @@ test("paging follows the current edge and deduplicates rapid calls independently
 		const index = Number(url.searchParams.get("page")) || (around === 103 ? 2 : 1);
 		return Promise.resolve(Response.json(url.pathname.endsWith("history") ? page(1, index) : summary()));
 	});
+	const first = h.hook.current.story.messages[0];
 	let paging: Promise<void>[] = [];
 	await h.hook.act(async () => { paging = [h.hook.current.loadMoreHistory(), h.hook.current.loadMoreHistory()]; await Promise.all(paging); });
 	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
 	expect(h.requests).toHaveLength(3);
+	expect(h.hook.current.story.messages[2]).toBe(first);
 	await h.hook.act(async () => h.hook.current.loadMoreHistory());
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104, 105, 106]);
 	expect(h.requests).toHaveLength(4);
@@ -210,6 +212,23 @@ test("newer paging extends a detached window and generation refresh retains that
 	await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104, 105, 106]);
 	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
+});
+
+test("a reload discards the local Preview even when React Query still has history", async () => {
+	const history = page();
+	history.messages[0]?.variants.push(historyVariant({ id: 1099, position: 2, selected: false }));
+	const h = await harness(({ url }) => Promise.resolve(Response.json(url.pathname.endsWith("history") ? history : summary())));
+	const message = h.hook.current.story.messages[0]!;
+	await h.hook.act(async () => h.hook.current.selectSwipe(message.id, 1099));
+	expect(displayedVariantId(h.hook.current.story, message)).toBe(1099);
+	expect(h.requests.some(({ init }) => init?.method === "POST")).toBe(false);
+
+	await h.hook.unmount();
+	const reopened = await renderHook(() => useConversationSession({ initialChatId: "1" }), h.client);
+	await flushHook();
+	const reopenedStory = reopened.current.story;
+	expect(displayedVariantId(reopenedStory, reopenedStory.messages[0]!)).toBe(1000);
+	expect(reopenedStory.preview).toBeNull();
 });
 
 test("source navigation cancels a refresh still reading the Conversation before it can fetch history", async () => {
@@ -290,7 +309,7 @@ test("an old Stop mutation cannot settle a newer Stop after A to B to A", async 
 	let visit = new AbortController();
 	const reselect = () => { visit.abort(); visit = new AbortController(); };
 	const hook = await renderHook(() => useGenerationController({
-		signal: visit.signal, conversation, story: { ...createStoryState(), status: "loading-first", conversationId: conversation.id }, dispatchStory, activeChatIdRef,
+		signal: visit.signal, conversation, story: readStory({ overlays: createStoryOverlays(), window: null, conversationId: conversation.id, historyFailed: false, loadingMore: false }), dispatchStory, activeChatIdRef,
 		refreshStory: async () => conversation, ensureLatest: async () => conversation, beforeInspect: (inspect) => inspect(),
 		inspectPromptPlanBeforeGenerating: false,
 	}), client);
@@ -342,11 +361,7 @@ test("reopening after a write and late refresh fetches fresh history and never d
 	await h.hook.act(async () => { late.resolve(Response.json(page())); });
 	await h.hook.unmount();
 	await refresh;
-	const reopened = await renderHook(() => {
-		const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
-		const session = useConversationSession({ initialChatId: "1", story, dispatchStory });
-		return { session, story };
-	}, h.client);
+	const reopened = await renderHook(() => useConversationSession({ initialChatId: "1" }), h.client);
 	await flushHook();
 	expect(reads).toBeGreaterThanOrEqual(3);
 	expect(reopened.current.story.messages).toEqual([]);

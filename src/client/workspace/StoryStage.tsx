@@ -150,7 +150,7 @@ export function StoryStage({
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
 	const composerPaintDisabledReason = generationRunning ? "Wait for the Generation to finish before painting." : paintDisabledReason;
-	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(latestStoryMessage, story.preview, story.requestedSelections);
+	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(story, latestStoryMessage);
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
 	const lens = useMemo(() => conversation === null ? undefined : { conversation, open: (box: BoxId) => latest.current.boxWindows.open(box) }, [conversation]);
@@ -220,9 +220,9 @@ export function StoryStage({
 							isLatest={latestStoryMessage?.id === message.id}
 							generationActive={swiping || generation.activeGenerationTargets.some((target) =>
 								target.messageId === message.id &&
-								target.variantId === displayedVariantId(message, story.preview, story.requestedSelections)
+								target.variantId === displayedVariantId(story, message)
 							)}
-							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelections)}
+							displayedVariantId={displayedVariantId(story, message)}
 							mutationsDisabled={story.preview !== null || swiping}
 							saveAsNewDisabled={generation.isGenerating}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
@@ -295,7 +295,7 @@ export function StoryStage({
 					className="secondary-button"
 					type="button"
 					disabled={previewMode}
-					onClick={() => void session.jumpToLatest().catch(() => dispatchStory({ type: "history-failed" }))}
+					onClick={() => void session.jumpToLatest().catch(() => undefined)}
 				>
 					Jump to latest
 				</button>

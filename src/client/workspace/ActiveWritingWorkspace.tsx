@@ -21,11 +21,7 @@ import { PanelHeader } from "../PanelHeader";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
 import { GenerationDetailsPanel } from "../GenerationDetailsPanel";
-import {
-	createStoryState,
-	previewNavigationNeedsConfirmation,
-	reduceStory,
-} from "../story";
+import { previewNavigationNeedsConfirmation } from "../story";
 import { invalidateChatLists, type ThemePreference } from "../workspace";
 import type { PrimaryPanelName } from "./types";
 import { NavigationDrawer, NavigationRail } from "./NavigationRail";
@@ -78,7 +74,8 @@ export function ActiveWritingWorkspace({
 	onReload: () => void;
 }) {
 	const client = useQueryClient();
-	const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
+	const session = useConversationSession({ initialChatId });
+	const { story, dispatchStory } = session;
 	const [panelState, dispatchPanel] = useReducer(
 		(state: PanelCoordinationState, action: PanelCoordinationAction) => reducePanelCoordination(state, action, story.preview !== null),
 		undefined,
@@ -100,7 +97,6 @@ export function ActiveWritingWorkspace({
 	const [theme, setPersistedTheme] = useThemePreference();
 	const [swipeBrowsing, setSwipeBrowsing] = useSwipeBrowsing();
 
-	const session = useConversationSession({ initialChatId, story, dispatchStory });
 	const connectionSettings = useConnectionSettingsController();
 	const generationSettings = useGenerationSettingsDraft({
 		conversation: session.conversation,
@@ -166,7 +162,7 @@ export function ActiveWritingWorkspace({
 	});
 
 	const openChat = (chatId: string, messageId: number | null = null) => {
-		dispatchStory({ type: "preview-cancelled" });
+		dispatchStory({ type: "preview-changed", preview: null });
 		if (chatId !== session.activeChatId) generation.conversationSwitched();
 		session.selectChat(chatId, messageId);
 		dispatchPanel({ type: "workspace-reset" });

@@ -65,7 +65,8 @@ Report 06, finding 1; report 05, findings 3 and 5.
 ## TODO
 
 - [x] Slices a and b, one PR, ADR 0036 amended
-- [ ] Slice c, report to the owner, then fixes, PR
+- [x] Slice c first write
+- [ ] Slice c owner review and fixes
 - [ ] Slice d (Astra), fixes (Sol), PR
 
 ## Acceptance
@@ -88,3 +89,11 @@ Report 06, finding 1; report 05, findings 3 and 5.
 - `Save and leave keeps a draft overwritten by another Prompt Preset editor` verifies that an overwrite during the save leaves the draft unsaved and blocks navigation.
 - `a failed recipe read after switching presets hides the old editor` verifies that the panel shows the error when the selected preset's recipe fails to load.
 - `a Prompt Preset draft survives a failed recipe read for the same Chat` verifies that editing and saving are disabled during the failure, SaveGuard still prompts, and the draft returns when the recipe reloads.
+
+### Slice c first write
+
+- Query pages supply the Message window. The story reducer holds Preview, requested selections, requested Moves and an unplaced Generation. Successful selection and Moves overlays stay visible until history reaches their applied Revision.
+- Removed the Chat-open reducer effect, the history adoption effect, the revision-refetch effect, and the navigation `flushSync`. Page revision checks run in the history query.
+- `paging follows the current edge and deduplicates rapid calls independently of window size` covers older prepend and row identity. `newer paging extends a detached window and generation refresh retains that complete window` covers newer append. `a source jump supersedes paging without allowing the old completion to extend its window` covers the discarded read.
+- `an older Variant only changes the local reading until Confirm` covers local display and downstream blocking. `a reload discards the local Preview even when React Query still has history` covers reload. Streaming cases moved to `story/variant-streams.test.ts`.
+- Changed-file lint and `git diff --check` passed. Typecheck, tests and browser verification are pending.
