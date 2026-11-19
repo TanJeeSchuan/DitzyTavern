@@ -33,11 +33,11 @@ test("a profile maps to libfx's provider: its base URL, key, custom headers and 
 });
 
 test.each([null, 4_000])("an authoring request rejects a cross-origin 307 (idle timeout %p)", async (timeoutMs) => {
-	let redirectedWithAuthorization = false;
+	const destinationRequests: { authorizationPresent: boolean }[] = [];
 	const destination = Bun.serve({
 		hostname: "127.0.0.1", port: 0,
 		fetch(request) {
-			redirectedWithAuthorization = request.headers.has("authorization");
+			destinationRequests.push({ authorizationPresent: request.headers.has("authorization") });
 			return new Response("ok");
 		},
 	});
@@ -59,7 +59,7 @@ test.each([null, 4_000])("an authoring request rejects a cross-origin 307 (idle 
 		}, () => "rejected");
 		expect(authorizations).toEqual(["Bearer test-key"]);
 		expect(signal.aborted).toBe(false);
-		expect({ outcome, redirectedWithAuthorization }).toEqual({ outcome: "rejected", redirectedWithAuthorization: false });
+		expect({ outcome, destinationRequests }).toEqual({ outcome: "rejected", destinationRequests: [] });
 	} finally {
 		await Promise.all([origin.stop(true), destination.stop(true)]);
 	}
