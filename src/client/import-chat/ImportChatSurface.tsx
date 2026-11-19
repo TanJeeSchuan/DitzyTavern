@@ -7,11 +7,9 @@ import {
 } from "../import-chat-flow";
 
 export function ImportChatSurface({
-	characters,
 	onImportLaunched,
 	onClose,
 }: {
-	characters: { id: number; name: string }[];
 	onImportLaunched: (conversationId: number) => void;
 	onClose: () => void;
 }) {
@@ -32,7 +30,6 @@ export function ImportChatSurface({
 			<ImportChatPanel
 				flow={flow}
 				onDispatch={dispatch}
-				characters={characters}
 				onImportLaunched={onImportLaunched}
 				onBackToList={close}
 				onClose={close}

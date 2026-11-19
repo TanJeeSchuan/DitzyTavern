@@ -149,7 +149,7 @@ export interface RecipeOperationHandlers {
 	onDraftChange: (blockId: number, draft: BlockDraft) => void;
 	onEnabledChange: (blockId: number, enabled: boolean) => void;
 	onDraftCancel: (blockId: number) => void;
-	onOperation: (run: () => Promise<PromptPresetOperationOutcome>) => void;
+	onOperation: (run: () => Promise<PromptPresetOperationOutcome>) => Promise<void>;
 }
 
 // @approved
@@ -165,6 +165,7 @@ export function PromptPresetRecipeRow({
 	historyIndex,
 	draft,
 	pending,
+	editingDisabled,
 	autoOpenEditor,
 	onAutoOpenEditorHandled,
 	onDraftChange,
@@ -179,6 +180,7 @@ export function PromptPresetRecipeRow({
 	historyIndex: number;
 	draft: BlockDraft | undefined;
 	pending: boolean;
+	editingDisabled: boolean;
 	autoOpenEditor: boolean;
 	onAutoOpenEditorHandled: () => void;
 } & RecipeOperationHandlers) {
@@ -241,7 +243,7 @@ export function PromptPresetRecipeRow({
 					variant="ghost"
 					size="icon-sm"
 					className="border-0 text-muted-foreground"
-					disabled={pending}
+					disabled={editingDisabled}
 					title={`Edit ${title}`}
 					aria-label={`Edit ${title}`}
 					aria-haspopup="dialog"
@@ -282,7 +284,7 @@ export function PromptPresetRecipeRow({
 							slot={slot}
 							title={title}
 							draft={draft}
-							disabled={pending}
+							disabled={editingDisabled}
 							onChange={(fields) => onDraftChange(slot.id, { kind: "content", ...fields })}
 						/>
 					</div>
@@ -309,7 +311,7 @@ export function PromptPresetRecipeRow({
 					<p className="min-w-0 flex-1">{title} can change between Sends. Above Chat history, each change makes the provider reprocess the whole history at full price.</p>
 					<Button variant="outline" size="sm" disabled={pending} onClick={() => {
 						setEditing(false);
-						onOperation(() => movePromptPresetBlock(presetId, slot.id, historyIndex + 1));
+						void onOperation(() => movePromptPresetBlock(presetId, slot.id, historyIndex + 1));
 					}}>Move below Chat history</Button>
 				</div>}
 				</div>
@@ -327,7 +329,7 @@ export function PromptPresetRecipeRow({
 									aria-label={`Delete ${title}`}
 									onClick={() => {
 										setEditing(false);
-										onOperation(() => removePromptPresetBlock(presetId, slot.id));
+										void onOperation(() => removePromptPresetBlock(presetId, slot.id));
 									}}
 									>
 										<Trash2 aria-hidden="true" />
@@ -341,7 +343,7 @@ export function PromptPresetRecipeRow({
 									size="icon-sm"
 									disabled={pending || index === 0}
 									aria-label={`Move ${title} up`}
-									onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index))}
+									onClick={() => void onOperation(() => movePromptPresetBlock(presetId, slot.id, index))}
 									>
 										<ChevronUp aria-hidden="true" />
 									</Button>
@@ -351,7 +353,7 @@ export function PromptPresetRecipeRow({
 									size="icon-sm"
 									disabled={pending || index === slotCount - 1}
 									aria-label={`Move ${title} down`}
-									onClick={() => onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2))}
+									onClick={() => void onOperation(() => movePromptPresetBlock(presetId, slot.id, index + 2))}
 									>
 										<ChevronDown aria-hidden="true" />
 									</Button>
@@ -361,7 +363,7 @@ export function PromptPresetRecipeRow({
 									size="icon-sm"
 									disabled={pending || isSingleUseReference(slot.reference)}
 									aria-label={`Duplicate ${title}`}
-									onClick={() => onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}
+									onClick={() => void onOperation(() => duplicatePromptPresetBlock(presetId, slot.id))}
 									>
 										<Copy aria-hidden="true" />
 									</Button>
@@ -380,7 +382,7 @@ export function PromptPresetRecipeRow({
 					</div>
 					<div className="ml-auto flex items-center gap-2">
 						<Button title="Cancel" variant="ghost" size="icon-sm" disabled={pending} aria-label="Cancel" onClick={closeAndDiscard}><X aria-hidden="true" /></Button>
-						<Button title="Done" size="sm" disabled={pending} onClick={() => setEditing(false)}>Done</Button>
+						<Button title="Done" size="sm" disabled={editingDisabled} onClick={() => setEditing(false)}>Done</Button>
 					</div>
 				</div>
 			</DialogContent>

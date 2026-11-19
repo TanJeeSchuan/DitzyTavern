@@ -1,15 +1,15 @@
 import { MoreHorizontal, Pencil, Plus, Search, Trash2, Upload } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import type { ConversationSummary } from "./conversation";
 import { formatListTime, recencyGroup } from "./lib/format";
 import { Portrait } from "./story/Portrait";
-import { deleteChat, listChats, renameChat, type ChatSummary } from "./workspace";
+import { deleteChat, invalidateChatLists, renameChat, workspaceQuery, type ChatSummary } from "./workspace";
 
 export function ChatsPanel({
-	chats: initialChats,
 	activeId,
 	mutationsDisabled = false,
 	onSelect,
@@ -18,7 +18,6 @@ export function ChatsPanel({
 	onConversationChange,
 	onActiveChatDeleted,
 }: {
-	chats: ChatSummary[];
 	activeId: string;
 	mutationsDisabled?: boolean;
 	onSelect: (chatId: string) => void;
@@ -27,19 +26,15 @@ export function ChatsPanel({
 	onConversationChange: (conversation: ConversationSummary) => void;
 	onActiveChatDeleted: () => void;
 }) {
-	const [chats, setChats] = useState(initialChats);
+	const client = useQueryClient();
+	const { data, isPending } = useQuery(workspaceQuery);
+	const chats = data?.chats ?? [];
 	const [query, setQuery] = useState("");
 	const [renamingId, setRenamingId] = useState<string | null>(null);
 	const [deleteTarget, setDeleteTarget] = useState<ChatSummary | null>(null);
 	const [pending, setPending] = useState(false);
 	const renameInput = useRef<HTMLInputElement>(null);
 	const [notice, setNotice] = useState<string | null>(null);
-
-	useEffect(() => {
-		let cancelled = false;
-		void listChats().then((fresh) => { if (!cancelled) setChats(fresh); }, () => undefined);
-		return () => { cancelled = true; };
-	}, []);
 
 	const needle = query.trim().toLocaleLowerCase();
 	const filtered = chats.filter((chat) => needle === "" || [chat.title, chat.excerpt, ...chat.cast.map(({ name }) => name)].some((text) => text.toLocaleLowerCase().includes(needle)));
@@ -53,7 +48,7 @@ export function ChatsPanel({
 		setPending(false);
 		if (outcome.outcome === "failed") return setNotice(outcome.reason);
 		setNotice(null);
-		setChats((current) => current.map((item) => item.id === chat.id ? { ...item, title: outcome.conversation.name } : item));
+		void client.invalidateQueries({ queryKey: workspaceQuery.queryKey });
 		if (chat.id === activeId) onConversationChange(outcome.conversation);
 	};
 
@@ -64,8 +59,8 @@ export function ChatsPanel({
 		setDeleteTarget(null);
 		if (failure !== null) return setNotice(failure);
 		setNotice(null);
-		if (chat.id === activeId) return onActiveChatDeleted();
-		setChats((current) => current.filter((item) => item.id !== chat.id));
+		invalidateChatLists(client);
+		if (chat.id === activeId) onActiveChatDeleted();
 	};
 
 	return (
@@ -79,7 +74,8 @@ export function ChatsPanel({
 				<Button type="button" size="sm" onClick={onNewChat}><Plus aria-hidden="true" /> New</Button>
 			</div>
 			{notice !== null && <p role="status" className="text-sm text-muted-foreground">{notice}</p>}
-			{filtered.length === 0 && <p className="px-1 text-sm text-muted-foreground">No Chats match this search.</p>}
+			{isPending && <p className="px-1 text-sm text-muted-foreground" role="status">Loading Chats…</p>}
+			{!isPending && filtered.length === 0 && <p className="px-1 text-sm text-muted-foreground">No Chats match this search.</p>}
 			{[...groups].map(([group, items]) => (
 				<section key={group} className="flex flex-col gap-1" aria-label={group}>
 					<h3 className="px-1 text-xs font-medium text-muted-foreground">{group}</h3>

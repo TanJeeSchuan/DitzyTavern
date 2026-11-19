@@ -15,14 +15,14 @@ const get = (path: string, etag?: string) =>
 	createContract(database).handle(new Request(`http://localhost${path}`, { headers: etag === undefined ? {} : { "if-none-match": etag } }));
 
 test("a read answers its own validator with an empty 304, and a changed read with its new bytes", async () => {
-	const first = await get("/api/workspace");
+	const first = await get("/api/characters");
 	const etag = first.headers.get("etag")!;
 	expect(first.headers.get("cache-control")).toBe("no-cache");
-	const repeated = await get("/api/workspace", etag.replace(/^W\//, ""));
+	const repeated = await get("/api/characters", etag.replace(/^W\//, ""));
 	expect(repeated.status).toBe(304);
 	expect(await repeated.text()).toBe("");
 	createCharacterLibraryModule(database).execute({ type: "create", definition: { name: "Maren", prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] } });
-	const changed = await get("/api/workspace", etag);
+	const changed = await get("/api/characters", etag);
 	expect(changed.status).toBe(200);
 	expect(changed.headers.get("etag")).not.toBe(etag);
 	expect((await changed.json()).characters).toEqual([expect.objectContaining({ name: "Maren" })]);

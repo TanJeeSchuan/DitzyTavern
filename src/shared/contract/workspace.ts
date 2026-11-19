@@ -19,13 +19,7 @@ export const chatSummary = Type.Object({
 	excerpt: Type.String(),
 });
 
-export const characterSummary = Type.Object({
-	id: Type.Integer(),
-	name: Type.String(),
-});
-
 export const workspaceResponse = Type.Object({
 	activeChatId: Type.Union([Type.Null(), Type.Integer()]),
 	chats: Type.Array(chatSummary),
-	characters: Type.Array(characterSummary),
 });

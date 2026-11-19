@@ -1,10 +1,10 @@
 import { MoreHorizontal, Pin, Plus, Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
-	applyCommand,
+	useCharacterCommand,
 	getCharacter,
 	type CharacterCommand,
 	type CharacterSnapshot,
@@ -24,16 +24,15 @@ export function CharacterEditor({
 	autoSelectName,
 	canAddToChat,
 	onAddToChat,
-	onChanged,
 	onClosed,
 }: {
 	characterId: number;
 	autoSelectName: boolean;
 	canAddToChat: boolean;
 	onAddToChat: (character: CharacterSnapshot) => void;
-	onChanged: () => void;
 	onClosed: (notice: string | null) => void;
 }) {
+	const applyCommand = useCharacterCommand();
 	const [snapshot, setSnapshot] = useState<CharacterSnapshot | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
 	const [pendingAction, setPendingAction] = useState<"save" | "pin" | "delete" | "lore" | null>(null);
@@ -48,7 +47,7 @@ export function CharacterEditor({
 	}, [characterId]);
 
 	/** @approved Runs one Character command; resolves the Character it left, or the one it lost to. */
-	const run = useCallback(async (action: NonNullable<typeof pendingAction>, command: CharacterCommand): Promise<{ applied: CharacterSnapshot } | { conflict: CharacterSnapshot } | null> => {
+	const run = async (action: NonNullable<typeof pendingAction>, command: CharacterCommand): Promise<{ applied: CharacterSnapshot } | { conflict: CharacterSnapshot } | null> => {
 		setPendingAction(action);
 		const report = action === "lore" ? () => {} : setNotice;
 		try {
@@ -57,13 +56,11 @@ export function CharacterEditor({
 				case "available": {
 					const applied = outcome.value;
 					if ("result" in applied) {
-						onChanged();
 						onClosed(deletionResultNotice(applied.result));
 						return null;
 					}
 					setSnapshot(applied.character);
 					setNotice(null);
-					onChanged();
 					return { applied: applied.character };
 				}
 				case "conflict":
@@ -73,7 +70,6 @@ export function CharacterEditor({
 					if (action === "pin" || action === "delete") setNotice("This Character changed elsewhere. Try again.");
 					return { conflict: outcome.current };
 				case "not-found":
-					onChanged();
 					onClosed("That Character is no longer in the Library.");
 					return null;
 				case "invalid":
@@ -90,7 +86,7 @@ export function CharacterEditor({
 		} finally {
 			setPendingAction(null);
 		}
-	}, [onChanged, onClosed]);
+	};
 
 	const revisioned = (character: CharacterSnapshot) => ({ value: definitionOf(character), revision: character.revision });
 	const editor = useRevisionedDraft(snapshot === null ? null : revisioned(snapshot), {

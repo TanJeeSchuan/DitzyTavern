@@ -20,6 +20,6 @@ Import maps supported source placeholders to native content slots and omits unsu
 
 New Conversations initially select an ordinary editable Default preset containing the current assembly order. It uses the same recipe mechanism as imported presets. Default may be edited but not deleted. Deleting another preset switches affected Conversations to Default; deletion shows the affected-Conversation count beforehand.
 
-Edit presets in a popup dialog, an explicit exception to the usual primary-panel direction in DESIGN.MD. Each prompt block has its own edit/save boundary. Preset-level ordering and toggles persist immediately rather than waiting for a whole-preset save. Closing the popup or switching presets with unsaved block edits offers Save, Discard and Keep editing; this does not undo already persisted order or toggle changes.
+Edit Prompt Presets in the primary panel. Block enablement and authored fields are drafts until saved together from the panel footer. Ordering persists immediately. Closing the panel or switching presets with unsaved edits offers Save and leave, Discard, and Keep editing.
 
 The first version supports creating blank presets, duplicating presets, and exporting and reimporting native DitzyTavern preset JSON. SillyTavern export is outside this version's scope.

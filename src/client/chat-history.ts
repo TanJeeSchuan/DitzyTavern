@@ -77,9 +77,9 @@ export const loadVariantText = (conversationId: number, messageId: number, varia
 // @approved
 // Loads the persisted receipt and source identity for one Chat; a typed
 //  not-found for Chats without import provenance.
-export async function loadImportDetails(conversationId: number) {
+export async function loadImportDetails(conversationId: number, signal: AbortSignal) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId })["import-details"].get(),
+		api.api.conversations({ id: conversationId })["import-details"].get({ fetch: { signal } }),
 		chatImportDetailsResponse,
 	);
 }

@@ -1,17 +1,17 @@
 import { isStoryReady } from "../story";
-import { infiniteQueryOptions, useInfiniteQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
+import { infiniteQueryOptions, useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useCallback, useEffect, useEffectEvent, useRef, useState, type Dispatch } from "react";
 import { flushSync } from "react-dom";
 import { loadHistoryPage, type ChatHistoryPageRequest } from "../chat-history";
 import type { ConversationSummary } from "../conversation";
 import { cancellableFetch, conversationKey, conversationQuery, publishConversation, useConversationQuery } from "../conversation-query";
 import type { StoryAction, StoryState } from "../story";
-import type { ChatSummary, Workspace } from "../workspace";
+import { workspaceQuery } from "../workspace";
 import { NetworkError, SERVER_UNREACHABLE_NOTICE } from "../lib/request-outcome";
 import { useVisitSignal } from "../lib/visit";
 
 type ConversationSessionOptions = {
-	initialWorkspace: Workspace & { activeChat: ChatSummary };
+	initialChatId: string;
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
 };
@@ -37,11 +37,11 @@ const historyQuery = (id: number, anchor: HistoryAnchor) => infiniteQueryOptions
 const afterRender = () => new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
 
 /** @approved Coordinates the selected Chat's authoritative snapshot and paginated reading history. */
-export function useConversationSession({ initialWorkspace, story, dispatchStory }: ConversationSessionOptions) {
+export function useConversationSession({ initialChatId, story, dispatchStory }: ConversationSessionOptions) {
 	const client = useQueryClient();
 	// @approved
 	//  Each selection is a new visit, even when a batch returns to the same Chat.
-	const [{ activeChatId, visit }, setSelection] = useState({ activeChatId: initialWorkspace.activeChat.id, visit: 0 });
+	const [{ activeChatId, visit }, setSelection] = useState({ activeChatId: initialChatId, visit: 0 });
 	const signal = useVisitSignal(visit);
 	// @approved
 	//  The latest navigation within the visit: a newer one, or a Chat switch, aborts it.
@@ -101,8 +101,8 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 		if (new Set(revisions).size > 1 || revisions.some((revision) => revision < (conversation?.revision ?? 0))) void history.refetch({ cancelRefetch: false });
 	}, [history.data, conversation, history.refetch]);
 
-	const listedChat = initialWorkspace.chats.find((chat) => chat.id === activeChatId) ?? initialWorkspace.activeChat;
-	const activeChat = conversation !== null && String(conversation.id) === activeChatId ? { ...listedChat, id: activeChatId, title: conversation.name } : { ...listedChat, id: activeChatId };
+	const workspace = useQuery({ ...workspaceQuery, enabled: false }).data;
+	const activeChatTitle = conversation?.name ?? workspace?.chats.find((chat) => chat.id === activeChatId)?.title ?? "Chat";
 	const selectChat = (chatId: string, messageId: number | null = null) => {
 		if (chatId === activeChatIdRef.current) return;
 		navigation.current.window.abort();
@@ -188,7 +188,7 @@ export function useConversationSession({ initialWorkspace, story, dispatchStory 
 	};
 
 	return {
-		signal, activeChatId, activeChat, conversation, setConversation, activeChatIdRef,
+		signal, activeChatId, activeChatTitle, conversation, setConversation, activeChatIdRef,
 		selectChat, loadMoreHistory, jumpToLatest, ensureLatest, navigateToSourceMessage, refreshStory,
 	};
 }

@@ -1,3 +1,4 @@
+import { queryOptions, useQueryClient } from "@tanstack/react-query";
 import { api } from "./lib/eden";
 import { foundOrNull, requestData } from "./lib/request-outcome";
 import { requestOutcome } from "./lib/request-route-outcome";
@@ -29,17 +30,11 @@ export type {
 	CharacterSummary,
 };
 
-// @approved
-// The Character command route's outcome is the wire's own: the applied
-//  response (applied snapshot or derived deletion result) under `available`,
-// the typed 409/404/422 envelopes verbatim, network when the transport could
-// not complete the request, and the shared unusable fallback when the response
-// could not be read.
-export type CommandOutcome = Awaited<ReturnType<typeof applyCommand>>;
-
-export async function listCharacters(): Promise<CharacterSummary[]> {
-	return (await requestData(api.api.characters.get(), characterListResponse[200])).characters;
-}
+export const charactersQuery = queryOptions({
+	queryKey: ["characters"],
+	queryFn: async ({ signal }) =>
+		(await requestData(api.api.characters.get({ fetch: { signal } }), characterListResponse[200])).characters,
+});
 
 export async function getCharacter(
 	characterId: number,
@@ -47,10 +42,15 @@ export async function getCharacter(
 	return foundOrNull(await requestOutcome(api.api.characters({ id: characterId }).get(), characterReadResponse));
 }
 
-export async function applyCommand(
-	command: CharacterCommand,
-) {
-	return requestOutcome(api.api.characters.commands.post(command), characterCommandResponse);
+export function useCharacterCommand() {
+	const client = useQueryClient();
+	return async (command: CharacterCommand) => {
+		const outcome = await requestOutcome(api.api.characters.commands.post(command), characterCommandResponse);
+		if (outcome.outcome === "available" || outcome.outcome === "conflict" || outcome.outcome === "not-found") {
+			void client.invalidateQueries({ queryKey: charactersQuery.queryKey });
+		}
+		return outcome;
+	};
 }
 
 export const LIBRARY_UNREACHABLE_NOTICE = "The Library could not be reached.";
