@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { createConversationWithHistory, openObservedDatabase, insertBox, readTestConversationSnapshot } from "../test-fixtures/conversation";
-import { executeConversationCommand, readConversationSummary, readChatHistory, deleteConversation, acceptGeneration } from "../conversation";
+import { DEFAULT_CONVERSATION_GENERATION_SETTINGS, executeConversationCommand, readConversationGenerationSettings, readConversationSummary, readChatHistory, deleteConversation, acceptGeneration } from "../conversation";
 import { forkConversation } from "../conversation";
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
@@ -23,15 +23,21 @@ test("forks through a selected alternative and leaves later Messages behind", as
 	const source = createConversationWithHistory(database, {
 		name: "Source", participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Model", prompt, sendAppearanceImages: true, openings: ["first", "alternative"] } }], control: { human: 0, model: 1 },
 	});
-	executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["later"], authorParticipantId: source.cast[0]!.id } });
+	const withLaterMessage = executeConversationCommand(database, { conversationId: source.id, expectedRevision: source.revision, action: { type: "create-message", timestamp: "2026-01-01T00:00:00Z", variantContents: ["later"], authorParticipantId: source.cast[0]!.id } });
+	const { connectionProfileId, ...settings } = DEFAULT_CONVERSATION_GENERATION_SETTINGS;
+	settings.modelId = "forked-story-model";
+	const configured = executeConversationCommand(database, { conversationId: source.id, expectedRevision: withLaterMessage.revision,
+		action: { type: "update-generation-settings", settings },
+	});
 	const app = createConversationRoutes(database);
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${source.id}/fork`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: 1, at: { through: source.messages[0]!.id, variantId: source.messages[0]!.variants[1]!.id }, trimVariants: true, name: "Fork" }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ expectedRevision: configured.revision, at: { through: source.messages[0]!.id, variantId: source.messages[0]!.variants[1]!.id }, trimVariants: true, name: "Fork" }),
 	}));
 	if (response.status !== 200) throw new Error(await response.text());
 	const result = await response.json();
 	expect(result.conversation.name).toBe("Fork");
 	expect(result.conversation.forkedFrom).toEqual({ conversationId: source.id, messageId: source.messages[0]!.id, name: "Source" });
+	expect(readConversationGenerationSettings(database, result.conversation.id)).toEqual({ ...settings, connectionProfileId });
 	const history = await app.handle(new Request(`http://localhost/api/conversations/${result.conversation.id}/history`));
 	const body = JSON.stringify(await history.json());
 	expect(body).toContain("alternative");

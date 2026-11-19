@@ -1,7 +1,7 @@
 import { and, eq } from "drizzle-orm";
-import { activeGenerationTable, conversationGenerationSettingsTable, messageTable, messageVariantTable } from "../database/schema";
+import { activeGenerationTable, messageTable, messageVariantTable } from "../database/schema";
 import { ContinuationUnavailableError, InvalidConversationCommandError } from "./errors";
-import { DEFAULT_SIBLING_GENERATION_LIMIT } from "./generation-settings";
+import { requireConversationGenerationSettings } from "./generation-settings";
 import { decodeStoredGenerationIntent } from "./generation-state";
 import type { ConversationDatabase } from "./internal";
 import type { ConversationAction } from "./types";
@@ -93,9 +93,7 @@ export function generationGate(db: ConversationDatabase, conversationId: number,
 			if ("messageId" in command && active.some((row) => row.messageId !== command.messageId)) {
 				throw new InvalidConversationCommandError("Sibling Generations are allowed only at the active response position.");
 			}
-			const limit = db.select({ value: conversationGenerationSettingsTable.sibling_generation_limit })
-				.from(conversationGenerationSettingsTable).where(eq(conversationGenerationSettingsTable.conversation_id, conversationId))
-				.get()?.value ?? DEFAULT_SIBLING_GENERATION_LIMIT;
+			const { siblingGenerationLimit: limit } = requireConversationGenerationSettings(db, conversationId);
 			if (active.length >= limit) throw new InvalidConversationCommandError(`The Conversation already has ${limit} active Sibling Generations at this response position.`);
 		}
 	}

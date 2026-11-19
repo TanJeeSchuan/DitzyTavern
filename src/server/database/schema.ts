@@ -875,27 +875,7 @@ export const conversationGenerationSettingsTable = sqliteTable(
 		connection_profile_id: int().references(() => connectionProfileTable.id, {
 			onDelete: "set null",
 		}),
-		model_id: text().notNull().default("deepseek-chat"),
-		temperature: real(),
-		top_p: real(),
-		frequency_penalty: real(),
-		presence_penalty: real(),
-		context_limit: int().notNull().default(32768),
-		response_budget: int().notNull().default(1024),
-		safety_allowance: int().notNull().default(500),
-		// @approved
-		//  Maximum number of parallel Sibling Generations at one response
-		// position. Tail and Continuation still use the single-position gate.
-		//  The column default restates the Conversation default literal because
-		//  the schema may not import the domain that names it.
-		sibling_generation_limit: int().notNull().default(4),
-		continuation_strategy: text().notNull().default("instruction"),
-		continuation_instruction: text()
-			.notNull()
-			.default("Continue the narrative naturally without repeating the previous text."),
-		continuation_prefill_suffix: text().notNull().default(""),
-		repeated_image_placement: text().notNull().default("first"),
-		request_overrides_json: text().notNull(),
+		settings_json: text().notNull(),
 	},
 );
 

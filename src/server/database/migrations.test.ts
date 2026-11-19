@@ -4,10 +4,10 @@ import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { initializeDatabase } from "./database";
+import { initializeDatabase, openDatabase } from "./database";
 import journal from "./migrations/meta/_journal.json";
 import { builtInBoxes, loadBoxes } from "../box/registry";
-import { observeConversationWrites, readActiveGenerationDetails, readConversationSummary, readVariantData } from "../conversation";
+import { observeConversationWrites, readActiveGenerationDetails, readConversationGenerationSettings, readConversationSummary, readVariantData, type ConversationGenerationSettings } from "../conversation";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { readBoxDecisionSettings } from "../box/decision-settings";
 import { readRecordSlots } from "../box/records";
@@ -155,6 +155,80 @@ test("upgrades Request Overrides namespaces without replacing authored overrides
 		}
 	} finally {
 		database.close();
+	}
+});
+
+test("0045 preserves each Chat's Generation Settings when migrating the stored columns to JSON", async () => {
+	const scratch = join(process.cwd(), ".scratch");
+	await mkdir(scratch, { recursive: true });
+	const folder = await mkdtemp(join(scratch, "generation-settings-upgrade-"));
+	const database = openDatabase({ path: ":memory:" });
+	try {
+		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
+		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 44) }));
+		initializeDatabase(database, folder);
+		database.exec(`
+			INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES
+				(1, 'Custom sampling', '2026-11-19', '2026-11-19'),
+				(2, 'Provider sampling', '2026-11-19', '2026-11-19');
+			INSERT INTO connection_profile (id, display_name, api_format, request_url, model_backend, adapter)
+			VALUES (7, 'Story', 'chat-completions', 'https://example.test/', 'automatic', 'openai-compatible');
+		`);
+		const custom: ConversationGenerationSettings = {
+			connectionProfileId: 7,
+			modelId: "story-model",
+			temperature: 0.625,
+			topP: 0.875,
+			frequencyPenalty: -0.5,
+			presencePenalty: 1.25,
+			contextLimit: 16384,
+			responseBudget: 640,
+			safetyAllowance: 0,
+			siblingGenerationLimit: 2,
+			continuationStrategy: "assistant-prefill",
+			continuationInstruction: 'Keep the "夜" imagery.',
+			continuationPrefillSuffix: "\n\n",
+			repeatedImagePlacement: "every",
+			requestOverrides: {
+				"chat-completions": { stop: ["END", "\nHuman:"], extra: { flag: false, unset: null } },
+				responses: { reasoning: { effort: "low" } },
+				"anthropic-messages": { top_k: 9 },
+			},
+		};
+		const provider: ConversationGenerationSettings = {
+			...custom,
+			connectionProfileId: null,
+			modelId: "another-model",
+			temperature: null,
+			topP: null,
+			frequencyPenalty: null,
+			presencePenalty: null,
+			continuationStrategy: "instruction",
+			continuationPrefillSuffix: " ",
+			repeatedImagePlacement: "last",
+			requestOverrides: { "chat-completions": {}, responses: { max_output_tokens: 320 }, "anthropic-messages": {} },
+		};
+		const insertLegacySettings = database.query(`
+			INSERT INTO conversation_generation_settings (
+				conversation_id, connection_profile_id, model_id, temperature, top_p, frequency_penalty, presence_penalty,
+				context_limit, response_budget, safety_allowance, sibling_generation_limit, continuation_strategy,
+				continuation_instruction, continuation_prefill_suffix, repeated_image_placement, request_overrides_json
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`);
+		const chats = [[1, custom], [2, provider]] as const;
+		for (const [id, settings] of chats) {
+			insertLegacySettings.run(id, settings.connectionProfileId, settings.modelId, settings.temperature, settings.topP,
+				settings.frequencyPenalty, settings.presencePenalty, settings.contextLimit, settings.responseBudget, settings.safetyAllowance,
+				settings.siblingGenerationLimit, settings.continuationStrategy, settings.continuationInstruction, settings.continuationPrefillSuffix,
+				settings.repeatedImagePlacement, JSON.stringify(settings.requestOverrides));
+		}
+
+		initializeDatabase(database);
+		for (const [id, settings] of chats) expect(readConversationGenerationSettings(database, id)).toEqual(settings);
+		expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
+	} finally {
+		database.close();
+		await rm(folder, { recursive: true, force: true });
 	}
 });
 

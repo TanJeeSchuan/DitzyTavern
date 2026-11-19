@@ -205,7 +205,7 @@ test.each(["send", "sibling", "continuation"] as const)("%s keeps rendered Moves
 	const target = kind === "send" ? { kind, content: prose, moves: { probe: [rendered] } }
 		: kind === "sibling" ? { kind, messageId: modelMessage.id, reroll: true } : { kind };
 	if (kind === "continuation") {
-		database.query("UPDATE conversation_generation_settings SET continuation_strategy = 'assistant-prefill' WHERE conversation_id = ?").run(chat.id);
+		database.query("UPDATE conversation_generation_settings SET settings_json = json_set(settings_json, '$.continuationStrategy', 'assistant-prefill') WHERE conversation_id = ?").run(chat.id);
 		writeMessageMoves(drizzle(database), modelMessage.id, { probe: [formatImageReference("prefix", portrait.hash)] });
 	}
 	const capture = await captureGeneration(database, target, options);

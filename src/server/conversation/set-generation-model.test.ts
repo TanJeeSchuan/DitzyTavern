@@ -107,7 +107,7 @@ const createConnection = (database: Database): number => {
 		expect(updated.revision).toBe(conversation.revision + 2);
 	});
 
-	test("creates the default settings under the submitted model when none are stored", () => {
+	test("changes the model and keeps the settings a new Conversation starts with", () => {
 		const connectionProfileId = createConnection(database);
 		const conversation = createTestConversation(database, "Unconfigured model command");
 		const module = database;

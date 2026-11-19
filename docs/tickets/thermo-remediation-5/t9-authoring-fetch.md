@@ -1,6 +1,6 @@
 # T9: Authoring requests and redirects
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: T5
 
@@ -24,7 +24,7 @@ Send both requests with `redirect: "error"`, as `fetchWithTimeout` and `box/sand
 ## TODO
 
 - [x] Failing test, then fix
-- [ ] CI check and e2e
+- [x] CI check and e2e
 
 ## Acceptance
 
@@ -37,3 +37,5 @@ Bun 1.4.4 followed the cross-origin 307 and stripped `Authorization` in both tim
 Both authoring requests now receive `redirect: "error"` through the shared request options. The test checks that the destination receives no request. The provider keeps its Stream Inactivity Timeout. `fetchWithTimeout` uses a total deadline.
 
 Changed-file lint passed with `bun run lint src/server/authoring/provider.ts src/server/authoring/provider.test.ts`. GitHub Actions runs `check` and `e2e` on the draft PR. [PR checks](https://github.com/TanJeeSchuan/DitzyTavern/pull/284/checks)
+
+The credential premise was false (Bun strips `Authorization` cross-origin), but a 307 re-posts the request body to the new host, so the orchestrator kept the fix. CI on `65b9ac49`: check and e2e green; NitFX LGTM. Merged as PR #284.
