@@ -5,7 +5,7 @@ import { StaleRevisionError } from "../revision";
 import { PromptPresetDeletionImpactChangedError } from "../prompt-preset";
 import { generationConflictResponse } from "../../shared/contract/conversation-schema";
 import { modelSelectionConflict } from "../../shared/contract/model-selection";
-import { promptPresetCommandConflict } from "../../shared/contract/prompt-preset";
+import { promptPresetCommandResponse } from "../../shared/contract/prompt-preset";
 import { invalidOutcome, notFoundOutcome, notPlayableOutcome } from "../../shared/contract/outcomes";
 
 describe("domain error presentation", () => {
@@ -25,7 +25,7 @@ describe("domain error presentation", () => {
 		const settings = { profileId: 1, model: "Writer", revision: 3 };
 		const preset = { id: 9, name: "Changed", revision: 3, isBuiltIn: false, conversationCount: 1 };
 		const settingsConflict = presentDomainError(new StaleRevisionError("settings", 2, 3, settings), { 409: modelSelectionConflict });
-		const presetConflict = presentDomainError(new StaleRevisionError("preset", 2, 3, preset), { 409: promptPresetCommandConflict });
+		const presetConflict = presentDomainError(new StaleRevisionError("preset", 2, 3, preset), promptPresetCommandResponse);
 		const conflict = { outcome: "conflict", reason: "stale-revision", expectedRevision: 2, actualRevision: 3 } as const;
 
 		expect(settingsConflict.code).toBe(409);
@@ -37,7 +37,7 @@ describe("domain error presentation", () => {
 	test("presents a nested deletion-impact union with its authoritative preset", () => {
 		const preset = { id: 9, name: "Changed", revision: 2, isBuiltIn: false, conversationCount: 3 };
 		const error = new PromptPresetDeletionImpactChangedError(1, preset);
-		const result = presentDomainError(error, { 409: promptPresetCommandConflict });
+		const result = presentDomainError(error, promptPresetCommandResponse);
 		expect(result.code).toBe(409);
 		expect(result.response).toEqual({ outcome: "conflict", reason: "deletion-impact", current: preset });
 	});

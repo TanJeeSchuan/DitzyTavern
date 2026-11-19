@@ -1,19 +1,18 @@
-import type { StaticDecode } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
-import { NetworkError, SERVER_UNREACHABLE_NOTICE, foundOrNull, requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
+import { NetworkError, SERVER_UNREACHABLE_NOTICE, foundOrNull, requestData } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
 import {
-	lorebook,
-	lorebookCommandErrors,
+	lorebookReadResponse,
 	lorebookCommandResponse,
-	lorebookImportApplied,
+	lorebookExportResponse,
+	lorebookImportResponse,
 	lorebookListResponse,
 	loreMatchTestResponse,
-	loreAttachmentState,
-	loreAttachmentCommandErrors,
+	loreAttachmentStateResponse,
 	loreAttachmentCommandResponse,
-	lorebookAttachmentImpact,
-	lorebookOwnerAttachmentState,
+	lorebookAttachmentImpactResponse,
+	lorebookOwnerAttachmentResponse,
 	type LoreAttachmentState,
 	type LoreAttachmentCommand,
 	type LorebookAttachmentImpact,
@@ -25,7 +24,6 @@ import {
 	type Lorebook as LorebookValue,
 	type LorebookListResponse,
 } from "../shared/contract/lorebook";
-import { notFoundOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
 import type { SillyTavernJsonValue } from "../shared/contract/prompt-preset";
 
 export type { LorebookCommand, NativeLorebook, LorebookValue as Lorebook, LorebookListResponse, LoreAttachmentState, LoreAttachmentCommand };
@@ -36,8 +34,7 @@ export type LoreMatchTest = LoreMatchTestResponse;
 export async function getLorebookAttachmentState(conversationId: number, signal?: AbortSignal): Promise<LoreAttachmentState | null> {
 	return foundOrNull(await requestOutcome(
 		api.api.lorebooks.attachments.get({ query: { conversationId }, fetch: { signal } }),
-		loreAttachmentState,
-		notFoundOutcome,
+		loreAttachmentStateResponse,
 	));
 }
 
@@ -45,43 +42,39 @@ export async function applyLorebookAttachmentCommand(command: LoreAttachmentComm
 	return requestOutcome(
 		api.api.lorebooks.attachments.commands.post(command),
 		loreAttachmentCommandResponse,
-		loreAttachmentCommandErrors,
 	);
 }
 
 export async function getLorebookAttachmentImpact(bookId: number): Promise<LorebookAttachmentImpact | null> {
-	return foundOrNull(await requestOutcome(api.api.lorebooks({ bookId }).attachments.get(), lorebookAttachmentImpact, notFoundOutcome));
+	return foundOrNull(await requestOutcome(api.api.lorebooks({ bookId }).attachments.get(), lorebookAttachmentImpactResponse));
 }
 
 export async function getCharacterLorebookAttachments(characterId: number): Promise<LorebookOwnerAttachmentState | null> {
 	return foundOrNull(await requestOutcome(
 		api.api.lorebooks.attachments.character.get({ query: { ownerId: characterId } }),
-		lorebookOwnerAttachmentState,
-		notFoundOutcome,
+		lorebookOwnerAttachmentResponse,
 	));
 }
 
 export async function getParticipantLorebookAttachments(participantId: number): Promise<LorebookOwnerAttachmentState | null> {
 	return foundOrNull(await requestOutcome(
 		api.api.lorebooks.attachments.participant.get({ query: { ownerId: participantId } }),
-		lorebookOwnerAttachmentState,
-		notFoundOutcome,
+		lorebookOwnerAttachmentResponse,
 	));
 }
 
 export async function listLorebooks(signal?: AbortSignal): Promise<LorebookListResponse["books"]> {
-	return (await requestData(api.api.lorebooks.get({ fetch: { signal } }), lorebookListResponse)).books;
+	return (await requestData(api.api.lorebooks.get({ fetch: { signal } }), lorebookListResponse[200])).books;
 }
 
 export async function getLorebook(bookId: number, signal?: AbortSignal): Promise<LorebookValue | null> {
-	return foundOrNull(await requestOutcome(api.api.lorebooks({ bookId }).get({ fetch: { signal } }), lorebook, notFoundOutcome));
+	return foundOrNull(await requestOutcome(api.api.lorebooks({ bookId }).get({ fetch: { signal } }), lorebookReadResponse));
 }
 
 export async function testLorebookMatch(bookId: number, writing: string, signal?: AbortSignal): Promise<LoreMatchTest> {
 	const outcome = await requestOutcome(
 		api.api.lorebooks["match-test"].post({ bookId, writing }, { fetch: { signal } }),
 		loreMatchTestResponse,
-		notFoundOutcome,
 	);
 	// @approved
 	//  The missing-Lorebook race is the one domain condition a match test
@@ -93,14 +86,10 @@ export async function testLorebookMatch(bookId: number, writing: string, signal?
 	return outcome.value;
 }
 
-export type LorebookCommandResult = RequestOutcome<StaticDecode<typeof lorebookCommandResponse>, StaticDecode<typeof lorebookCommandErrors>>;
+export type LorebookCommandResult = Awaited<ReturnType<typeof applyLorebookCommand>>;
 
-export async function applyLorebookCommand(command: LorebookCommand): Promise<LorebookCommandResult> {
-	return requestOutcome(
-		api.api.lorebooks.commands.post(command),
-		lorebookCommandResponse,
-		lorebookCommandErrors,
-	);
+export async function applyLorebookCommand(command: LorebookCommand) {
+	return requestOutcome(api.api.lorebooks.commands.post(command), lorebookCommandResponse);
 }
 
 export function parseNativeLorebook(text: string): NativeLorebook | null {
@@ -112,21 +101,13 @@ export function parseNativeLorebook(text: string): NativeLorebook | null {
 }
 
 export async function importNativeLorebook(native: NativeLorebook) {
-	return requestOutcome(
-		api.api.lorebooks.import.post(native),
-		lorebookImportApplied,
-		readOutcomeErrors,
-	);
+	return requestOutcome(api.api.lorebooks.import.post(native), lorebookImportResponse);
 }
 
 export async function importSillyTavernLorebook(source: SillyTavernJsonValue) {
-	return requestOutcome(
-		api.api.lorebooks.import.sillytavern.post({ source }),
-		lorebookImportApplied,
-		readOutcomeErrors,
-	);
+	return requestOutcome(api.api.lorebooks.import.sillytavern.post({ source }), lorebookImportResponse);
 }
 
 export async function exportNativeLorebook(bookId: number): Promise<NativeLorebook> {
-	return requestData(api.api.lorebooks({ bookId }).export.get(), nativeLorebook);
+	return requestData(api.api.lorebooks({ bookId }).export.get(), lorebookExportResponse[200]);
 }

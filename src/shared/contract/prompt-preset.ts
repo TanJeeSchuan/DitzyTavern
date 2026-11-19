@@ -314,10 +314,8 @@ export const sillyTavernImportApplied = Type.Object({
 });
 export type SillyTavernImportApplied = Static<typeof sillyTavernImportApplied>;
 
-export const promptPresetListResponse = Type.Object({
-	presets: Type.Array(promptPresetSummary),
-});
-export type PromptPresetListResponse = Static<typeof promptPresetListResponse>;
+export const promptPresetListResponse = { 200: Type.Object({ presets: Type.Array(promptPresetSummary) }) };
+export type PromptPresetListResponse = Static<typeof promptPresetListResponse[200]>;
 
 // Creation names a blank recipe; the recipe stays empty until the editor
 // tickets add block operations.
@@ -414,7 +412,7 @@ export type PromptPresetDeletionResult = Static<typeof promptPresetDeletionResul
 // the typed result instead of a summary because the preset no longer exists.
 // Block operations respond through the recipe route with a minimal applied acknowledgment; the
 // client reloads the resolved recipe through the Conversation read seam.
-export const promptPresetCommandApplied = Type.Union([
+const promptPresetCommandApplied = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("applied"),
 		preset: promptPresetSummary,
@@ -424,11 +422,6 @@ export const promptPresetCommandApplied = Type.Union([
 		result: promptPresetDeletionResult,
 	}),
 ]);
-
-export const promptPresetRecipeApplied = Type.Object({
-	outcome: Type.Literal("applied"),
-});
-export type PromptPresetRecipeApplied = Static<typeof promptPresetRecipeApplied>;
 
 // @approved
 //  The two recoverable command conflicts share one 409 envelope: the
@@ -450,20 +443,26 @@ export type PromptPresetConflict = Static<typeof promptPresetConflict>;
 // @approved
 //  The command route's typed 409 payload: a recoverable command conflict,
 // or the refusal of a Default deletion.
-export const promptPresetCommandConflict = Type.Union([
+const promptPresetCommandConflict = Type.Union([
 	promptPresetConflict,
 	notRemovableOutcome,
 ]);
 
-// @approved
-//  The Prompt Preset command family's modeled error union: the composed
-// 409/404/422 envelopes the command route declares, so the client decodes an
-// error body against exactly that union.
-export const promptPresetCommandErrors = Type.Union([
-	promptPresetCommandConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const promptPresetCommandResponse = {
+	200: promptPresetCommandApplied,
+	404: notFoundOutcome,
+	409: promptPresetCommandConflict,
+	422: invalidOutcome,
+};
+export const promptPresetExportResponse = { 200: nativePromptPreset, 404: notFoundOutcome };
+export const promptPresetImportResponse = { 200: promptPresetCommandApplied, 422: invalidOutcome };
+export const sillyTavernPresetImportResponse = { 200: sillyTavernImportApplied, 422: invalidOutcome };
+export const sillyTavernPresetReviewResponse = { 200: sillyTavernImportPreview, 422: invalidOutcome };
+export const promptPresetRecipeResponse = {
+	200: Type.Object({ outcome: Type.Literal("applied") }),
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
 
 // @approved
 //  The authoritative recipe operations the popup composes. Each operation

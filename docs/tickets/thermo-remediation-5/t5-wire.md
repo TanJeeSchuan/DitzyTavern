@@ -56,7 +56,7 @@ Report 18, finding 5; report 20, finding 5.
 
 - [x] Slice a, PR
 - [x] Slice b, Conversation response maps
-- [ ] Slice b, library response maps
+- [x] Slice b, library response maps
 - [ ] Slice b, settings response maps
 - [ ] Slice c, PR
 - [ ] Slice d, PR
@@ -72,4 +72,6 @@ Report 18, finding 5; report 20, finding 5.
 - Slice a changed-file lint passed with three existing warnings. `git diff --check` passed. The first CI check stopped at typecheck. The follow-up uses the concrete shared fields for the generic editor type and preserves the literal tags in the test expectation.
 - Slice b shares Conversation, Chat Import, Painting, and Brief response maps across the server and client. The sibling Generation start now uses its own map. The Conversation transport tests use the Macro Variables route map and retain their success, error, and network cases.
 - Changed-file lint and `git diff --check` passed for the Conversation PR. GitHub Actions runs typecheck, unit tests, and e2e.
-- The remaining route families still use separate success and error schemas. The Box SDK also exposes that call shape.
+- Slice b shares the Character, Lorebook, and Prompt Preset response maps across the server and client. Preset recipe operations use their Treaty requests directly, so the hand-written request types are gone.
+- Changed-file lint and `git diff --check` passed for the library PR. Typecheck, unit tests, and e2e run in GitHub Actions.
+- Settings still uses separate success and error schemas. The Box SDK keeps its three-argument `requestOutcome` API.

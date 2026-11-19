@@ -136,15 +136,14 @@ export type CharacterCommand = Static<typeof commandBodySchema>;
 
 export const characterIdParams = Type.Object({ id: numericWire });
 
-export const characterListResponse = Type.Object({
-	characters: Type.Array(characterLibrarySummary),
-});
+export const characterListResponse = { 200: Type.Object({ characters: Type.Array(characterLibrarySummary) }) };
+export const characterReadResponse = { 200: characterSnapshot, 404: notFoundOutcome };
 
 // A confirmed deletion returns the typed result rather than a snapshot and
 // neither stays readable; every other command returns the authoritative
 // updated Character. DeletionMode is exclusive to the result, so the
 // discriminant keeps the two applied payloads distinct.
-export const characterCommandApplied = Type.Union([
+const characterCommandApplied = Type.Union([
 	Type.Object({
 		outcome: Type.Literal("applied"),
 		character: characterSnapshot,
@@ -159,12 +158,9 @@ export const characterCommandApplied = Type.Union([
 // the caller can recover without a follow-up read.
 export const characterConflict = revisionConflict(characterSnapshot);
 
-// @approved
-//  The Character command family's modeled error union: the composed
-// 409/404/422 envelopes the library command and native-creation routes
-// declare, so the client decodes an error body against exactly that union.
-export const characterCommandErrors = Type.Union([
-	characterConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const characterCommandResponse = {
+	200: characterCommandApplied,
+	404: notFoundOutcome,
+	409: characterConflict,
+	422: invalidOutcome,
+};

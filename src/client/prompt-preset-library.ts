@@ -1,22 +1,21 @@
 import { Value } from "@sinclair/typebox/value";
 import { api } from "./lib/eden";
-import type { EdenResponse } from "./lib/eden";
-import { invalidOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
-import { requestData, requestOutcome } from "./lib/request-outcome";
+import { requestData } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
 import {
 	nativePromptPreset,
-	promptPresetCommandApplied,
-	promptPresetCommandErrors,
+	promptPresetCommandResponse,
+	promptPresetExportResponse,
+	promptPresetImportResponse,
 	promptPresetListResponse,
-	promptPresetRecipeApplied,
-	sillyTavernImportApplied,
-	sillyTavernImportPreview,
+	promptPresetRecipeResponse,
+	sillyTavernPresetImportResponse,
+	sillyTavernPresetReviewResponse,
 } from "../shared/contract/prompt-preset";
 import type {
 	NativePromptPreset,
 	PromptBlockReference,
 	PromptPresetBlockPatch,
-	PromptPresetRecipeApplied,
 	SillyTavernImportApplied,
 	SillyTavernImportPreview,
 	SillyTavernImportRequest,
@@ -59,19 +58,15 @@ const sillyTavernImportRequest = (
 export async function applyPromptPresetCommand(
 	command: PromptPresetCommand,
 ) {
-	return requestOutcome(
-		api.api["prompt-presets"].commands.post(command),
-		promptPresetCommandApplied,
-		promptPresetCommandErrors,
-	);
+	return requestOutcome(api.api["prompt-presets"].commands.post(command), promptPresetCommandResponse);
 }
 
 export async function listPromptPresets(signal?: AbortSignal): Promise<PromptPresetSummary[]> {
-	return (await requestData(api.api["prompt-presets"].get({ fetch: { signal } }), promptPresetListResponse)).presets;
+	return (await requestData(api.api["prompt-presets"].get({ fetch: { signal } }), promptPresetListResponse[200])).presets;
 }
 
 export async function loadNativePromptPreset(presetId: number): Promise<NativePromptPreset> {
-	return requestData(api.api["prompt-presets"]({ presetId }).export.get(), nativePromptPreset);
+	return requestData(api.api["prompt-presets"]({ presetId }).export.get(), promptPresetExportResponse[200]);
 }
 
 export function parseNativePromptPreset(text: string): NativePromptPreset | null {
@@ -85,11 +80,7 @@ export function parseNativePromptPreset(text: string): NativePromptPreset | null
 export async function importNativePromptPreset(
 	native: NativePromptPreset,
 ) {
-	return requestOutcome(
-		api.api["prompt-presets"].import.post(native),
-		promptPresetCommandApplied,
-		invalidOutcome,
-	);
+	return requestOutcome(api.api["prompt-presets"].import.post(native), promptPresetImportResponse);
 }
 
 export async function reviewSillyTavernPromptPreset(
@@ -100,8 +91,7 @@ export async function reviewSillyTavernPromptPreset(
 	const request = sillyTavernImportRequest(source, name, orderListId);
 	return requestOutcome(
 		api.api["prompt-presets"].import.sillytavern.review.post(request),
-		sillyTavernImportPreview,
-		invalidOutcome,
+		sillyTavernPresetReviewResponse,
 	);
 }
 
@@ -113,8 +103,7 @@ export async function commitSillyTavernPromptPreset(
 	const request = sillyTavernImportRequest(source, name, orderListId);
 	return requestOutcome(
 		api.api["prompt-presets"].import.sillytavern.post(request),
-		sillyTavernImportApplied,
-		invalidOutcome,
+		sillyTavernPresetImportResponse,
 	);
 }
 
@@ -128,25 +117,15 @@ export type PresetCommandOutcome = Awaited<ReturnType<typeof applyPromptPresetCo
 // persists one smallest operation against the shared preset; the applied response is only an
 // acknowledgment because the editor reloads the Conversation-resolved recipe through its read
 // seam.
-export type PromptPresetOperationOutcome = Awaited<ReturnType<typeof applyRecipeOperation>>;
-
-// @approved
-//  Every recipe operation responds with the same applied acknowledgment plus
-// the shared not-found/invalid envelopes, so one adapter maps the treaty union for all of them.
-type RecipeOperationRequest = EdenResponse<
-	PromptPresetRecipeApplied,
-	{ status: number; value: { outcome: "not-found" } | { outcome: "invalid"; reason: string } }
->;
-
-const applyRecipeOperation = (request: RecipeOperationRequest) =>
-	requestOutcome(request, promptPresetRecipeApplied, readOutcomeErrors);
+export type PromptPresetOperationOutcome = Awaited<ReturnType<typeof addPromptPresetReference>>;
 
 export function addPromptPresetReference(
 	presetId: number,
 	reference: PromptBlockReference,
-): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks.post({ reference })
+) {
+	return requestOutcome(
+		api.api["prompt-presets"]({ presetId }).blocks.post({ reference }),
+		promptPresetRecipeResponse,
 	);
 }
 
@@ -156,8 +135,9 @@ export function addPromptPresetReference(
 export function addPromptPresetInstruction(
 	presetId: number,
 ): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).instructions.post()
+	return requestOutcome(
+		api.api["prompt-presets"]({ presetId }).instructions.post(),
+		promptPresetRecipeResponse,
 	);
 }
 
@@ -166,8 +146,9 @@ export function movePromptPresetBlock(
 	blockId: number,
 	toPosition: number,
 ): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).move.post({ toPosition })
+	return requestOutcome(
+		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).move.post({ toPosition }),
+		promptPresetRecipeResponse,
 	);
 }
 
@@ -176,8 +157,9 @@ export function setPromptPresetBlockEnabled(
 	blockId: number,
 	enabled: boolean,
 ): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).toggle.post({ enabled })
+	return requestOutcome(
+		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).toggle.post({ enabled }),
+		promptPresetRecipeResponse,
 	);
 }
 
@@ -185,8 +167,9 @@ export function duplicatePromptPresetBlock(
 	presetId: number,
 	blockId: number,
 ): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).duplicate.post()
+	return requestOutcome(
+		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).duplicate.post(),
+		promptPresetRecipeResponse,
 	);
 }
 
@@ -194,8 +177,9 @@ export function removePromptPresetBlock(
 	presetId: number,
 	blockId: number,
 ): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).delete()
+	return requestOutcome(
+		api.api["prompt-presets"]({ presetId }).blocks({ blockId }).delete(),
+		promptPresetRecipeResponse,
 	);
 }
 
@@ -208,7 +192,8 @@ export function savePromptPresetBlockPatches(
 	presetId: number,
 	patches: readonly PromptPresetBlockPatch[],
 ): Promise<PromptPresetOperationOutcome> {
-	return applyRecipeOperation(
+	return requestOutcome(
 		api.api["prompt-presets"]({ presetId }).blocks.patches.post({ patches: [...patches] }),
+		promptPresetRecipeResponse,
 	);
 }

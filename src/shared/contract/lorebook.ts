@@ -22,7 +22,6 @@ export const loreAttachmentCommandBody = Type.Union([
 	Type.Object({ type: Type.Literal("save-settings"), conversationId: Type.Integer(), expectedRevision: Type.Integer(), scanDepth: Type.Integer(), allowance: Type.Integer() }),
 ]);
 export type LoreAttachmentCommand = Static<typeof loreAttachmentCommandBody>;
-export const loreAttachmentCommandResponse = Type.Object({ outcome: Type.Literal("applied") });
 export const loreAttachmentQuery = Type.Object({ conversationId: numericWire });
 export const loreAttachmentState = Type.Object({
 	conversationId: Type.Integer(),
@@ -60,14 +59,14 @@ export type LorebookOwnerAttachmentState = Static<typeof lorebookOwnerAttachment
 // produce a Lorebook attachment conflict; the Conversation-owned commands
 // recover through the Conversation conflict shape (conversation-schema), so
 // the conversation state members left this union with their machinery.
-export const loreAttachmentConflict = revisionConflict(lorebookOwnerAttachmentState);
+const loreAttachmentConflict = revisionConflict(lorebookOwnerAttachmentState);
 
 // @approved
 //  The Lorebook attachment command's conflict response: Character-owned
 // commands recover through the Lorebook attachment conflict above, while
 // the Conversation-owned commands recover through the canonical Conversation
 // conflict shape.
-export const loreAttachmentCommandConflict = Type.Union([loreAttachmentConflict, conversationConflict]);
+const loreAttachmentCommandConflict = Type.Union([loreAttachmentConflict, conversationConflict]);
 
 export const lorebookAttachmentImpact = Type.Object({
 	bookId: Type.Integer(),
@@ -197,14 +196,13 @@ export const nativeLorebook = Type.Object({
 export type NativeLorebook = Static<typeof nativeLorebook>;
 export const sillyTavernLorebookImportBody = Type.Object({ source: Type.Unknown() });
 
-export const lorebookImportApplied = Type.Object({
+const lorebookImportApplied = Type.Object({
 	outcome: Type.Literal("applied"),
 	book: lorebook,
 	warnings: Type.Array(Type.String()),
 });
-export const lorebookCommandApplied = Type.Object({ outcome: Type.Literal("applied"), book: lorebook });
-export const lorebookDeleted = Type.Object({ outcome: Type.Literal("deleted"), bookId: Type.Integer() });
-export const lorebookCommandResponse = Type.Union([lorebookCommandApplied, lorebookDeleted]);
+const lorebookCommandApplied = Type.Object({ outcome: Type.Literal("applied"), book: lorebook });
+const lorebookDeleted = Type.Object({ outcome: Type.Literal("deleted"), bookId: Type.Integer() });
 export const loreMatchTestBody = Type.Object({ bookId: Type.Integer(), writing: Type.String() });
 const loreMatchTestCondition = Type.Object({ matched: Type.Boolean(), matchedExpressions: Type.Array(Type.String()), missingExpressions: Type.Array(Type.String()) });
 const loreMatchTestSemantic = Type.Object({
@@ -227,36 +225,36 @@ const loreMatchTestEntry = Type.Object({
 	semantic: loreMatchTestSemantic,
 	reasons: Type.Array(Type.String()),
 });
-export const loreMatchTestResponse = Type.Object({
+const loreMatchTestResult = Type.Object({
 	mode: Type.Union([Type.Literal("semantic"), Type.Literal("keyword-fallback"), Type.Literal("none")]),
 	fallbackReason: Type.Optional(Type.String()),
 	scan: Type.Array(Type.Object({ id: Type.Union([Type.Integer(), Type.Null()]), content: Type.String() })),
 	matches: Type.Array(loreMatchTestEntry),
 });
-export type LoreMatchTestResponse = Static<typeof loreMatchTestResponse>;
-export const lorebookConflict = revisionConflict(lorebook);
+export type LoreMatchTestResponse = Static<typeof loreMatchTestResult>;
 
-export const lorebookListResponse = Type.Object({ books: Type.Array(lorebookSummary) });
 export const bookIdParams = Type.Object({ bookId: numericWire });
 
-export type LorebookListResponse = Static<typeof lorebookListResponse>;
+export const lorebookListResponse = { 200: Type.Object({ books: Type.Array(lorebookSummary) }) };
+export type LorebookListResponse = Static<typeof lorebookListResponse[200]>;
 
-// @approved
-//  The Lorebook command families' modeled error unions: the composed
-// 409/404/422 envelopes each family declares, so the client decodes an error
-// body against exactly the union its route models. The attachment command
-// family's 409 is the two-shape conflict union: Character-owned commands
-// recover through the Lorebook attachment state, while the five
-// Conversation-owned commands recover through the Conversation conflict
-// shape.
-export const lorebookCommandErrors = Type.Union([
-	lorebookConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const lorebookReadResponse = { 200: lorebook, 404: notFoundOutcome };
+export const lorebookExportResponse = { 200: nativeLorebook, 404: notFoundOutcome };
+export const lorebookImportResponse = { 200: lorebookImportApplied, 404: notFoundOutcome, 422: invalidOutcome };
+export const lorebookCommandResponse = {
+	200: Type.Union([lorebookCommandApplied, lorebookDeleted]),
+	404: notFoundOutcome,
+	409: revisionConflict(lorebook),
+	422: invalidOutcome,
+};
 
-export const loreAttachmentCommandErrors = Type.Union([
-	loreAttachmentCommandConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const loreMatchTestResponse = { 200: loreMatchTestResult, 404: notFoundOutcome };
+export const loreAttachmentStateResponse = { 200: loreAttachmentState, 404: notFoundOutcome };
+export const lorebookAttachmentImpactResponse = { 200: lorebookAttachmentImpact, 404: notFoundOutcome };
+export const lorebookOwnerAttachmentResponse = { 200: lorebookOwnerAttachmentState, 404: notFoundOutcome };
+export const loreAttachmentCommandResponse = {
+	200: Type.Object({ outcome: Type.Literal("applied") }),
+	404: notFoundOutcome,
+	409: loreAttachmentCommandConflict,
+	422: invalidOutcome,
+};
