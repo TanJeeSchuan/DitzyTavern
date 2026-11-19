@@ -108,7 +108,7 @@ export type HostBox = Box<BoxValue | undefined, unknown, GenerationJsonValue, Ge
 };
 
 /** @approved The Exports the host holds for a Box: each input has passed the Export's declared input schema, and each answer is checked against its output schema before it crosses back. */
-export type HostBoxExports = Readonly<Record<string, (input: BoxValue | undefined, context: BoxExportContext) => BoxValue>>;
+type HostBoxExports = Readonly<Record<string, (input: BoxValue | undefined, context: BoxExportContext) => BoxValue>>;
 
 /** @approved What a Box's window `read` gets, read in one host transaction: `db` for further reads, the Chat's summary and Selected path, the Box's setup, and its fold over the Selected path's effective records, as Generation capture folds it. */
 export type BoxWindowRead<Setup, State> = {

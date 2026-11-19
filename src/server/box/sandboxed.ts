@@ -104,8 +104,9 @@ const mebibytes = (bytes: number) => `${bytes / 1024 / 1024} MiB`;
 export const guestRuntime = async (heapBytes: number, entryMs: number) => {
 	const runtime = (await quickjs(heapBytes)).newRuntime();
 	let deadline = 0;
-	runtime.setInterruptHandler(() => performance.now() > deadline);
-	return { runtime, enter: () => { deadline = performance.now() + entryMs; } };
+	const expired = () => performance.now() > deadline;
+	runtime.setInterruptHandler(expired);
+	return { runtime, expired, enter: () => { deadline = performance.now() + entryMs; } };
 };
 type GuestRuntime = Awaited<ReturnType<typeof guestRuntime>>;
 

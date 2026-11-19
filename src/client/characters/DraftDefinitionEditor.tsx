@@ -17,7 +17,7 @@ const NOTICES = {
 };
 
 /** @approved Where the panel goes once the writer keeps the draft: the Participant it became or replaced, or the Library Character it was saved as. */
-export type DraftKept = { readonly kind: "participant" | "character"; readonly id: number };
+type DraftKept = { readonly kind: "participant" | "character"; readonly id: number };
 
 // @approved
 //  A Box's draft in the core Definition editor. Nothing is written until the

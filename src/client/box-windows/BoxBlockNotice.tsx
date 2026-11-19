@@ -23,7 +23,7 @@ const oneLine = "flex flex-wrap items-center justify-between gap-x-3 gap-y-1";
 
 export const sendBoxState = (surface: ConversationCommandSurface, client: QueryClient, box: BoxId, state: BoxState, deleteHistory = false) =>
 	runConversationCommand(surface, { type: "set-box-state", box, state, deleteHistory }, {
-		onApplied: () => { if (state === "enabled" && boxMetadata(box).prompt !== false) void refreshPresetReads(client); },
+		onApplied: (conversation) => { if (state === "enabled" && chatBoxDescriptor(conversation, box)?.prompt !== false) void refreshPresetReads(client); },
 		notices: { conflict: "The Chat changed elsewhere; its Boxes were reloaded.", notFound: CONVERSATION_UNREACHABLE_NOTICE, unreachable: CONVERSATION_UNREACHABLE_NOTICE },
 	});
 
@@ -39,8 +39,9 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 	className?: string;
 }) {
 	const client = useQueryClient();
-	const { label, prompt } = boxMetadata(box);
-	const on = conversation.boxes[box] === "enabled" && prompt !== false;
+	const descriptor = chatBoxDescriptor(conversation, box);
+	const metadata = descriptor ?? (conversation.boxVersions[box] === undefined ? boxMetadata(box) : undefined);
+	const on = conversation.boxes[box] === "enabled" && metadata !== undefined && metadata.prompt !== false;
 	const preset = useQuery({
 		queryKey: ["conversation-preset", conversation.id, conversation.revision],
 		queryFn: ({ signal }) => loadConversationPromptPreset(conversation.id, signal),
@@ -50,13 +51,14 @@ export function BoxBlockNotice({ conversation, box, disabled, className }: {
 	const fix = useMutation({
 		mutationFn: async (presetId: number) => {
 			const outcome = slot === undefined
-				? await addPromptPresetReference(presetId, boxReference(box))
+				? await addPromptPresetReference(presetId, boxReference(box), conversation.id)
 				: await setPromptPresetBlockEnabled(presetId, slot.id, true);
-			if (outcome.outcome !== "available") throw new Error(outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : `The ${label} block could not be updated.`);
+			if (outcome.outcome !== "available") throw new Error(outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Box block could not be updated.");
 		},
 		onSuccess: () => refreshPresetReads(client),
 	});
 	if (!on || !preset.data || slot?.enabled) return null;
+	const { label } = metadata;
 	const { id, name } = preset.data;
 	return <Alert className={cn(oneLine, className)}>
 		<AlertDescription>{slot === undefined ? `${name} has no ${label} block.` : `${label} block is off in ${name}.`}</AlertDescription>

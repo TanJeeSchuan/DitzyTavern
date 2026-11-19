@@ -14,9 +14,9 @@ import { determinism, guestError, guestLimit, guestRuntime, type GuestLimits } f
 /** @approved The steps one code-agent run may take: model requests and tool calls count against the same cap. */
 export const CODE_AGENT_STEPS = 24;
 /** @approved Each code-agent run's QuickJS heap: the most its WebAssembly memory may grow to. */
-export const CODE_AGENT_HEAP_BYTES = 128 * 1024 * 1024;
+const CODE_AGENT_HEAP_BYTES = 128 * 1024 * 1024;
 /** @approved The guest time one `run` call may take. */
-export const CODE_AGENT_CALL_MS = 2_000;
+const CODE_AGENT_CALL_MS = 2_000;
 /** @approved What one `run` call may return to the model, notice included, cut by its UTF-8 bytes. */
 export const CODE_AGENT_OUTPUT_BYTES = 8 * 1024;
 
@@ -25,7 +25,7 @@ const CODE_AGENT_LIMITS: GuestLimits = { ms: CODE_AGENT_CALL_MS, heapBytes: CODE
 /** @approved The notice a cut-off reply ends with, inside the byte limit rather than past it. */
 const OUTPUT_NOTE = "\n[Output cut off at 8 KiB; narrow your query]";
 
-/** @approved A function a global may hold: the guest calls it with JSON (or nothing) and it returns JSON. */
+/** @approved A function a global may hold. It accepts up to one JSON input and returns a value for the guest. */
 export type CodeAgentFunction = (input: GenerationJsonValue | undefined) => CodeAgentValue | undefined;
 /** @approved A value a global may hold: JSON, or a function the guest calls with JSON, nested in objects and arrays. */
 export type CodeAgentValue = null | boolean | number | string | readonly CodeAgentValue[] | { readonly [key: string]: CodeAgentValue } | CodeAgentFunction;
@@ -91,10 +91,14 @@ const declarationOf = (schema: TSchema): string => {
 	}
 	if (TypeGuard.IsObject(schema)) return `{ ${Object.entries(schema.properties).map(propertyOf).join("; ")} }`;
 	if (TypeGuard.IsFunction(schema)) {
-		const names = schema.parameters.map((_, index) => schema.parameters.length === 1 ? "input" : `arg${index}`);
-		return `(${schema.parameters.map((parameter, index) => `${names[index]}: ${declarationOf(parameter)}`).join(", ")}) => ${declarationOf(schema.returns)}`;
+		if (schema.parameters.length > 1) throw new Error("A code agent function global requires a schema with at most one JSON input.");
+		const [input] = schema.parameters;
+		return `(${input === undefined ? "" : `input: ${declarationOf(input)}`}) => ${declarationOf(schema.returns)}`;
 	}
-	if (TypeGuard.IsIntersect(schema)) return schema.allOf.map(declarationOf).join(" & ");
+	if (TypeGuard.IsIntersect(schema)) return schema.allOf.map((member) => {
+		const declaration = declarationOf(member);
+		return TypeGuard.IsUnion(member) || TypeGuard.IsFunction(member) ? `(${declaration})` : declaration;
+	}).join(" & ");
 	return "unknown";
 };
 
@@ -186,7 +190,7 @@ const isText = (value: CodeAgentValue): value is string => typeof value === "str
 
 // @approved
 //  The agent's QuickJS guest: one runtime and context for the whole run, on
-// the sandboxed Boxes' module instance and memory cap, holding the frozen
+// its own WebAssembly instance and capped memory, holding the frozen
 // `globals` and a `console.log` that buffers what the code logs. Each `run`
 // call evaluates its code in the global scope under the deadline, so a
 // variable set in one call is there in the next, and answers the logged
@@ -196,7 +200,7 @@ const isText = (value: CodeAgentValue): value is string => typeof value === "str
 // filesystem, `determinism` removes the clock and `Math.random`, and the
 // helpers the host calls are never named in the guest.
 const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGlobal>>) => {
-	const { runtime, enter } = await guestRuntime(CODE_AGENT_HEAP_BYTES, CODE_AGENT_CALL_MS);
+	const { runtime, enter, expired } = await guestRuntime(CODE_AGENT_HEAP_BYTES, CODE_AGENT_CALL_MS);
 	const vm = runtime.newContext();
 	const kept: QuickJSHandle[] = [];
 	const dispose = () => {
@@ -236,7 +240,8 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 	// proves in the guest first, dumping the proved text in and building the
 	// answer out again, so a call crosses as JSON alone.
 	const build = (value: CodeAgentValue, name: string): QuickJSHandle => {
-		if (isFunction(value)) return vm.newFunction(name, (input) => {
+		if (isFunction(value)) return vm.newFunction(name, (input, ...extra) => {
+			if (extra.length > 0) throw new TypeError("A code agent function global takes at most one JSON input.");
 			// @approved
 			//  A call with no argument, or an explicit undefined one, hands the Box
 			// undefined.
@@ -287,9 +292,13 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 		return text;
 	};
 	const logged = (logs: string): string => logs === "" ? "" : `Logged:\n${logs}\n\n`;
+	const runFailure = (failure: SandboxedFailure): CodeAgentRun => {
+		const error = failed(failure);
+		return guestLimit(failure) ? { output: error.message, failure: error } : { output: fit(`${logged(readLogs())}${error.message}`) };
+	};
 	// @approved
-	//  One `run` call: the code evaluates in the global scope under one
-	// deadline, and the reply is the buffered logs and the final value, or why
+	//  One `run` call: evaluation and queued jobs share a deadline. The reply
+	// holds the buffered logs and the final value, or says why
 	// the code stopped. The heap and time limits end the run, answered with
 	// their reason alone: after an exhausted heap, no guest call can be
 	// counted on to run. A guest throw is the call's output, so the model can
@@ -298,20 +307,18 @@ const codeGuest = async (id: BoxId, globals: Readonly<Record<string, CodeAgentGl
 		try {
 			enter();
 			const result = vm.evalCode(code, "run.js", { type: "global" });
-			if (result.error !== undefined) {
-				const failure = failureOf(result.error);
-				const error = failed(failure);
-				if (guestLimit(failure)) return { output: error.message, failure: error };
-				return { output: fit(`${logged(readLogs())}${error.message}`) };
+			const failure = result.error === undefined ? undefined : failureOf(result.error);
+			if (failure !== undefined && guestLimit(failure)) return runFailure(failure);
+			using value = result.value;
+			while (!expired() && runtime.hasPendingJob()) {
+				const jobs = runtime.executePendingJobs(64);
+				if (jobs.error !== undefined) return runFailure(failureOf(jobs.error));
 			}
-			const value = result.value!; // @approved A call result holds a value exactly when it holds no error.
-			try {
-				const logs = readLogs();
-				const shown = call(show, value, limit);
-				const reply = vm.getString(shown);
-				shown.dispose();
-				return { output: fit(`${logged(logs)}Returned:\n${reply}`) };
-			} finally { value.dispose(); }
+			if (expired()) return runFailure({ name: "InternalError", message: "interrupted" });
+			if (failure !== undefined) return runFailure(failure);
+			const logs = readLogs();
+			using shown = call(show, value!, limit); // @approved A call result holds a value exactly when it holds no error.
+			return { output: fit(`${logged(logs)}Returned:\n${vm.getString(shown)}`) };
 		} catch (error) {
 			if (!(error instanceof WebAssembly.RuntimeError)) throw error;
 			const trapped = failed({ name: error.name, message: error.message });
@@ -386,6 +393,7 @@ export const runCodeAgent = async <Draft extends TSchema>(database: Database, re
 	const setting = agentModel(database);
 	if (setting.kind !== "ready") throw new Error(unavailableReason(setting));
 	signal.throwIfAborted();
+	const globalDeclarations = declarations(globals);
 	const guest = await codeGuest(boxId, globals);
 	const submitInput = codeAgentSubmitInput(submitSchema);
 	const runInput = codeAgentRunInput;
@@ -418,7 +426,7 @@ export const runCodeAgent = async <Draft extends TSchema>(database: Database, re
 			//  The declarations go in the instructions, not the run tool's
 			// description: libfx cuts every tool description at 1024 characters.
 			backend: "wasm", durability: memory(), name: "code-agent",
-			instructions: `${instructions}\n\nThe code the run tool runs sees only these globals:\n\n${declarations(globals)}`,
+			instructions: `${instructions}\n\nThe code the run tool runs sees only these globals:\n\n${globalDeclarations}`,
 			tools: [{
 				name: "run", idempotent: false, writes: true,
 				description: [

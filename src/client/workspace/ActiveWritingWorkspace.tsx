@@ -156,7 +156,7 @@ export function ActiveWritingWorkspace({
 
 	// @approved
 	// Settings stays reachable during Prompt Plan inspection; it cannot change the captured plan.
-	const inspectionLocked = assemblyActive || generation.inspectionPreparing;
+	const { inspectionLocked } = generation;
 	const panelAccess = useRef({ inspecting: inspectionLocked, swiping: story.preview !== null });
 	panelAccess.current = { inspecting: inspectionLocked, swiping: story.preview !== null };
 	const requestPrimaryPanel = useCallback((panel: PrimaryPanelName, action: () => void) => {
@@ -342,7 +342,7 @@ export function ActiveWritingWorkspace({
 				onOpenInspector={(inspector: SplitInspector) => {
 					if (!assemblyActive) dispatchPanel({ type: "inspector-opened", inspector });
 				}}
-				mutationsDisabled={story.preview !== null}
+				mutationsDisabled={story.preview !== null || inspectionLocked}
 				onOpenPanel={togglePanel}
 				onOpenWindow={boxWindows.open}
 			/>

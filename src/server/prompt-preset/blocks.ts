@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { promptPresetBlockTable } from "../database/schema";
 import { resequence } from "../database/resequence";
-import { boxBlockRefusal, boxIdOf, boxMetadata, boxReference, isBoxReference, type BoxId } from "../../shared/contract/box";
+import { boxBlockRefusal, boxIdOf, boxMetadata, boxReference, isBoxReference, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
+import { chatBox, chatBoxes } from "../box/registry";
 import {
 	defaultOutgoingRole,
 	isSingleUseReference,
@@ -201,8 +202,8 @@ export const savePromptPresetBlockPatches = (
 		patches.forEach((patch) => applyBlockPatch(db, patch));
 	});
 
-const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: PromptBlockReference): number[] => {
-	const refusal = boxBlockRefusal(reference);
+const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: PromptBlockReference, box?: BoxDescriptor): number[] => {
+	const refusal = boxBlockRefusal(reference, box);
 	if (refusal !== undefined) throw new InvalidPromptPresetOperationError(refusal);
 	assertNoSecondUniqueBlock(reference, recipe.slots.some((slot) => slot.reference === reference));
 	const ordered = recipe.slots.map((slot) => slot.id);
@@ -210,8 +211,7 @@ const placeBlock = (db: RecipeDatabase, recipe: PromptPresetRecipe, reference: P
 	const identity = recipe.slots.find((slot) => slot.reference === identityReference);
 	const role = identityReference === null ? undefined
 		: identity?.reference === "human-identity" || identity?.reference === "model-identity" ? identity.role : defaultOutgoingRole(identityReference);
-	const occurrence: Parameters<typeof insertOccurrence>[3] = { reference, enabled: true };
-	if (role !== undefined) occurrence.role = role;
+	const occurrence = { reference, enabled: true, role: box?.role ?? role, content: box?.instructions };
 	const inserted = insertOccurrence(db, recipe.id, ordered.length + 1, occurrence);
 	if (!isBoxReference(reference)) return [...ordered, inserted];
 	const historyIndex = recipe.slots.findLastIndex((slot) => slot.reference === "history");
@@ -224,8 +224,17 @@ export const addPromptPresetBlock = (
 	database: Database,
 	presetId: number,
 	reference: PromptBlockReference,
+	conversationId?: number,
 ): PromptPresetRecipe =>
-	withRecipe(database, presetId, (db, recipe) => placeBlock(db, recipe, reference));
+	withRecipe(database, presetId, (db, recipe) => {
+		if (conversationId === undefined) return placeBlock(db, recipe, reference);
+		if (readConversationPromptPresetRecipeFromConnection(db, conversationId)?.id !== presetId) {
+			throw new InvalidPromptPresetOperationError("This Chat no longer uses that Prompt Preset.");
+		}
+		const id = boxIdOf(reference);
+		const box = id === undefined ? undefined : chatBox(db, conversationId, id)?.descriptor;
+		return placeBlock(db, recipe, reference, box);
+	});
 
 // @approved
 //  A Box On in a Chat whose preset has no block for it would run every turn
@@ -234,11 +243,14 @@ export const addPromptPresetBlock = (
 //  Other Chats on the same preset are unaffected: a block runs only where its
 //  Box is On.
 export const installBoxBlocks = (db: PromptPresetDatabase, conversationId: number, boxes: readonly BoxId[]): void => {
+	const loaded = chatBoxes(db, conversationId);
 	for (const box of boxes) {
-		if (boxMetadata(box).prompt === false) continue;
+		const descriptor = loaded.get(box)?.descriptor;
+		if (descriptor?.prompt === false) continue;
 		const recipe = readConversationPromptPresetRecipeFromConnection(db, conversationId)!;
 		if (recipe.slots.some((slot) => slot.reference === boxReference(box))) continue;
-		resequence(db, promptPresetBlockTable, promptPresetBlockTable.preset_id, recipe.id, placeBlock(db, recipe, boxReference(box)));
+		const order = placeBlock(db, recipe, boxReference(box), descriptor);
+		resequence(db, promptPresetBlockTable, promptPresetBlockTable.preset_id, recipe.id, order);
 	}
 };
 

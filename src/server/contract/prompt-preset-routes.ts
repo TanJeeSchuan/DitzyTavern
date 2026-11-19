@@ -171,7 +171,7 @@ export const createPromptPresetRoutes = (database: Database) =>
 			"/api/prompt-presets/:presetId/blocks",
 			({ params, body }) =>
 				recipeResponse(() =>
-						addPromptPresetBlock(database, params.presetId, body.reference)),
+						addPromptPresetBlock(database, params.presetId, body.reference, body.conversationId)),
 			{
 				params: presetIdParams,
 				body: addPromptPresetBlockBody,

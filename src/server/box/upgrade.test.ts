@@ -14,6 +14,7 @@ import { captureModelFetch, key, readConversation, withProfile } from "../contra
 import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { createCharacterLibraryModule } from "../character-library";
+import { addPromptPresetBlock, readConversationPromptPresetRecipeFromConnection, removePromptPresetBlock } from "../prompt-preset";
 
 const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 const integer = { type: "integer" };
@@ -99,6 +100,31 @@ test("the pin is written on first insertion, kept on removal, used on reinsertio
 	const summary = readConversationSummary(database, chat.id)!; // @approved Created above.
 	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: summary.revision, at: { through: chat.messages[0]!.id }, name: "Fork", trimVariants: false }); // @approved The opening exists.
 	expect(fork.conversation.boxVersions).toEqual({ tally: box.v1 });
+});
+
+test("Box block insertion follows the Chat's pin when the latest version opts out", async () => {
+	const box = await versioned(tally({ prompt: false, moves: undefined }, { moves: "" }));
+	const pinned = createChat();
+	setBoxState(database, pinned.id, "tally", "enabled");
+	const recipe = () => readConversationPromptPresetRecipeFromConnection(drizzle(database), pinned.id)!;
+	const reference = "box:tally";
+	const slot = () => recipe().slots.find((candidate) => candidate.reference === reference);
+	const remove = () => removePromptPresetBlock(database, recipe().id, slot()!.id);
+	remove();
+
+	await writeLatest(box.home, box.v2);
+	installVersion("tally", box.home, box.v2, await checkSandboxedFolder(versionFolder(box.home, box.v2), "tally", unversionedBoxIds()));
+	const fresh = createChat();
+	setBoxState(database, fresh.id, "tally", "enabled");
+	expect(slot()).toBeUndefined();
+	expect(() => addPromptPresetBlock(database, recipe().id, reference, fresh.id)).toThrow("has no Prompt Preset block");
+
+	setBoxState(database, pinned.id, "tally", "disabled");
+	setBoxState(database, pinned.id, "tally", "enabled");
+	expect(slot()).toBeDefined();
+	remove();
+	addPromptPresetBlock(database, recipe().id, reference, pinned.id);
+	expect(slot()).toBeDefined();
 });
 
 test("a passing upgrade writes only the pin and advances the revision, keeping the instance so the records still fold", async () => {

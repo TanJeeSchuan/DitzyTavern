@@ -1,4 +1,4 @@
-export type ThoughtSegment = { readonly kind: "prose"; readonly text: string } | { readonly kind: "thought"; readonly text: string };
+type ThoughtSegment = { readonly kind: "prose"; readonly text: string } | { readonly kind: "thought"; readonly text: string };
 
 const openThought = /<thought\s*>/.source;
 const closeThought = /<\/thought>/.source;

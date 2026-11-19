@@ -146,6 +146,25 @@ test("what the code logs comes back with its final value, and a guest error is t
 	]);
 });
 
+test("Promise callbacks run before the tool returns and their state reaches the next call", async () => {
+	chooseModel();
+	replies.push(
+		{ run: 'Promise.resolve(7).then((value) => { globalThis.answer = value; console.log(value); }); "queued"' },
+		{ run: "globalThis.answer" },
+		{ submit: { name: "Maren" } },
+	);
+	expect(await run()).toEqual({ name: "Maren" });
+	expect(activities.map(({ output }) => output)).toEqual(['Logged:\n7\n\nReturned:\n"queued"', "Returned:\n7"]);
+});
+
+test("a function global that declares two parameters is refused before contacting the model", async () => {
+	chooseModel();
+	const schema = Type.Function([Type.Integer(), Type.Integer()], Type.Boolean());
+	const supplied = { ...globals, equal: { description: "Compares values.", schema, value: () => false } };
+	await expect(run({ globals: supplied })).rejects.toThrow("at most one JSON input");
+	expect(bodies).toHaveLength(0);
+});
+
 test("the agent sees empty tuples and JSON strings and keys without losing their contents", async () => {
 	chooseModel();
 	const text = "A\u0000B\uD800";
@@ -197,6 +216,12 @@ test("a runaway allocation fails the run with the heap reason, and an endless lo
 	await expect(run()).rejects.toThrow("The drafter Box's code ran past its 2000 ms limit.");
 	expect(performance.now() - started).toBeLessThan(10_000);
 	expect(activities.at(-1)?.output).toBe("The drafter Box's code ran past its 2000 ms limit.");
+});
+
+test("a Promise chain that keeps queuing jobs hits the run deadline", async () => {
+	chooseModel();
+	replies.push({ run: "function again() { Promise.resolve().then(again); } again();" });
+	await expect(run()).rejects.toThrow("The drafter Box's code ran past its 2000 ms limit.");
 });
 
 test("a submit outside the schema or the Box's own check returns a tool error, and the first valid one ends the run", async () => {
@@ -280,13 +305,21 @@ test("a global function refuses an argument that is not JSON, before the host se
 	]);
 });
 
-test("the declarations quote a key that is not an identifier and group a union inside an array", async () => {
+test("the declarations quote a key that is not an identifier and group unions in arrays and intersections", async () => {
 	chooseModel();
 	const exportsSchema = Type.Object({ "world-clock": Type.Object({ seasons: Type.Array(Type.Union([Type.String(), Type.Null()])) }) });
 	replies.push({ submit: { name: "Maren" } });
-	expect(await run({ globals: { ...globals, exports: { description: "Other Boxes.", schema: exportsSchema, value: { "world-clock": { seasons: ["spring", null] } } } } })).toEqual({ name: "Maren" });
+	const locatable = Type.Union([Type.Object({ room: Type.String() }), Type.Object({ street: Type.String() })]);
+	const location = Type.Intersect([locatable, Type.Object({ name: Type.String() })]);
+	const supplied = {
+		...globals,
+		exports: { description: "Other Boxes.", schema: exportsSchema, value: { "world-clock": { seasons: ["spring", null] } } },
+		location: { description: "The current location.", schema: location, value: { room: "kitchen", name: "Maren's" } },
+	};
+	expect(await run({ globals: supplied })).toEqual({ name: "Maren" });
 	const described = instructionsOf(bodies[0]);
 	expect(described).toContain(encoded('declare const exports: { "world-clock": { seasons: (string | null)[] } };'));
+	expect(described).toContain(encoded("declare const location: ({ room: string } | { street: string }) & { name: string };"));
 });
 
 test("an off default delegate refuses the run with what to choose, even beside a model set for the Box itself; a broken one with its reason", async () => {

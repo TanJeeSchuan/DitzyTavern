@@ -221,7 +221,7 @@ export function useGenerationController({
 
 	const {
 		assembly,
-		inspectionPreparing,
+		inspectionLocked,
 		assemblyAvailable,
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,
@@ -369,7 +369,7 @@ export function useGenerationController({
 		retryGeneration,
 		acknowledgeGenerationError,
 		assembly,
-		inspectionPreparing,
+		inspectionLocked,
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,
 		cancelPromptPlanPreview,

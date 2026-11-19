@@ -230,7 +230,7 @@ export function useAssemblyController({
 
 	return {
 		assembly,
-		inspectionPreparing: start.phase === "preparing" && start.inspect,
+		inspectionLocked: assembly !== null || (start.phase === "preparing" && start.inspect),
 		directStartError: start.phase === "idle" ? start.error : null,
 		acknowledgeDirectStartError: () => void transition({ type: "error-acknowledged", visit: signal }),
 		assemblyAvailable: canStartAssembly({

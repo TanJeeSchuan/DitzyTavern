@@ -77,12 +77,12 @@ export const isBoxReference = (reference: string): reference is PromptBoxReferen
 	return id !== undefined && installed.has(id);
 };
 /** @approved Why a preset refuses a Box block, if the reference names an unavailable block. */
-export const boxBlockRefusal = (reference: string): string | undefined => {
+export const boxBlockRefusal = (reference: string, descriptor?: BoxMetadata): string | undefined => {
 	const id = boxIdOf(reference);
 	if (id === undefined) return undefined;
-	const box = installed.get(id);
+	const box = descriptor ?? installed.get(id)?.metadata;
 	if (box === undefined) return `There is no Box for ${reference}.`;
-	if (box.metadata.prompt === false) return `The ${box.metadata.label} Box has no Prompt Preset block.`;
+	if (box.prompt === false) return `The ${box.label} Box has no Prompt Preset block.`;
 	return undefined;
 };
 /** @approved Whether `id` is a registered digesting Box, the only kind with a Decision Model selection and a passage timeline. */

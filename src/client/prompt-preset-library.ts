@@ -144,9 +144,10 @@ const applyRecipeOperation = (request: RecipeOperationRequest) =>
 export function addPromptPresetReference(
 	presetId: number,
 	reference: PromptBlockReference,
+	conversationId?: number,
 ): Promise<PromptPresetOperationOutcome> {
 	return applyRecipeOperation(
-		api.api["prompt-presets"]({ presetId }).blocks.post({ reference })
+		api.api["prompt-presets"]({ presetId }).blocks.post({ reference, conversationId })
 	);
 }
 

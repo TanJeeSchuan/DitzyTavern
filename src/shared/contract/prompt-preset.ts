@@ -477,7 +477,7 @@ export const promptPresetCommandErrors = Type.Union([
 // occurrence, toggling one occurrence, duplicating one occurrence, or removing
 // one occurrence. The Prompt Preset editor sends toggles and authored fields through
 // the patch batch; the single-toggle route also serves Lorebooks.
-export const addPromptPresetBlockBody = Type.Object({ reference: promptBlockReference });
+export const addPromptPresetBlockBody = Type.Object({ reference: promptBlockReference, conversationId: Type.Optional(Type.Integer()) });
 export const movePromptPresetBlockBody = Type.Object({
 	toPosition: Type.Integer({ minimum: 1 }),
 });
