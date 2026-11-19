@@ -1,6 +1,6 @@
 import type { LoreEntryFields } from "../../shared/contract/lorebook";
 
-export const loreEntry = (overrides: Partial<LoreEntryFields> = {}): LoreEntryFields => ({
+export const loreEntryFixture = (overrides: Partial<LoreEntryFields> = {}): LoreEntryFields => ({
 	title: "Entry",
 	content: "The fact.",
 	keywords: [],

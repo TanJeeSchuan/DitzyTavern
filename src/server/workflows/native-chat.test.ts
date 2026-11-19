@@ -1,5 +1,5 @@
 import { emptyPromptChannels } from "../../shared/definition";
-import { requireSnapshot } from "../test-fixtures/conversation";
+import { requireSnapshot, participantDefinition } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -63,7 +63,7 @@ describe("Native New Chat workflow", () => {
 	});
 	const adHoc = (name: string, openings: string[] = []) => ({
 		type: "adhoc" as const,
-		definition: { name, prompt: prompt(), sendAppearanceImages: true, openings },
+		definition: participantDefinition(name, { prompt: prompt(), openings }),
 	});
 
 	test("creates a playable Conversation from two ad-hoc Participants atomically", () => {

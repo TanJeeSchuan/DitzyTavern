@@ -1,4 +1,4 @@
-import { conversationSummary } from "./test-fixtures/conversation";
+import { conversationSummary as summary } from "./test-fixtures/conversation";
 import { describe, expect, test } from "bun:test";
 import {
 	CONVERSATION_REVISION_UNAVAILABLE_NOTICE,
@@ -9,11 +9,6 @@ import {
 	type ConversationCommandSurface,
 } from "./conversation-command-runner";
 import type { CommandOutcome } from "./conversation";
-import type { ConversationSummary } from "../shared/contract/conversation-schema";
-
-// A minimal authoritative snapshot: the runner only forwards snapshots, so
-// the fixture carries the contract shape without populating Cast details.
-const summary = (overrides: Partial<ConversationSummary> = {}): ConversationSummary => conversationSummary({ ...overrides });
 
 // The fake surface records every side effect in order, so the tests observe
 // adoption, notices, and their sequencing without React or global state.

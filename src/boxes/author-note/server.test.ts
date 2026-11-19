@@ -1,4 +1,4 @@
-import { loreEntry } from "../../server/lorebook/fixtures";
+import { loreEntryFixture } from "../../server/lorebook/fixtures";
 import { readConversationGenerationSettings } from "../../server/conversation";
 import { openObservedDatabase } from "../../server/test-fixtures/conversation";
 import { createLorebookRoutes } from "../../server/contract/lorebook-routes";
@@ -180,7 +180,7 @@ test("a keyword only in the Author Note activates no Lore Entry", async () => {
 	const chat = createChat(database);
 	const lore = createLorebookRoutes(database);
 	const imported = await lore.handle(new Request("http://localhost/api/lorebooks/import", {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Secrets", description: "", entries: [loreEntry({ title: "Dragon", content: "A dragon sleeps here.", keywords: ["dragon"] })] }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Secrets", description: "", entries: [loreEntryFixture({ title: "Dragon", content: "A dragon sleeps here.", keywords: ["dragon"] })] }),
 	}));
 	expect(imported.status).toBe(200);
 	const app = createConversationRoutes(database);

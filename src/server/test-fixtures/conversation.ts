@@ -47,10 +47,15 @@ export const participantSeed = (name: string, { sourceCharacterId, ...definition
 	return seed;
 };
 
+type PairChatOptions = Omit<ConversationCreationInput, "name" | "participants" | "control"> & (
+	| { prompt?: ParticipantDefinition["prompt"]; participants?: never }
+	| { prompt?: never; participants: readonly [ConversationParticipantSeed, ConversationParticipantSeed] }
+);
+
 export const pairChat = (
 	database: Database,
 	name: string,
-	{ prompt, participants = [participantSeed("Writer", { prompt }), participantSeed("Maren", { prompt })], ...overrides }: Omit<ConversationCreationInput, "name"> & { prompt?: ParticipantDefinition["prompt"] } = {},
+	{ prompt, participants = [participantSeed("Writer", { prompt }), participantSeed("Maren", { prompt })], ...overrides }: PairChatOptions = {},
 ): TestConversationSnapshot =>
 	createConversationWithHistory(database, { name, participants, control: { human: 0, model: 1 }, ...overrides });
 
@@ -66,7 +71,7 @@ export const shortReplyPrompt = (overrides: Partial<ParticipantDefinition["promp
 export const acceptTestGeneration = (
 	database: Database,
 	chat: ConversationSummary,
-	target: Parameters<typeof acceptGeneration>[2],
+	target: Exclude<Parameters<typeof acceptGeneration>[2], { kind: "sibling" }>,
 	{ timestamp, seed = "test-generation-seed", ...capture }: Pick<GenerationAcceptanceCapture, "timestamp"> &
 		Partial<Pick<GenerationAcceptanceCapture, "seed" | "boxRecords" | "boxTraces" | "promptPlan" | "promptInspection" | "loreActivation" | "provenance">>,
 ): ReturnType<typeof acceptGeneration> => {

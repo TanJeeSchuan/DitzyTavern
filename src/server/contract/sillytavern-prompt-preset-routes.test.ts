@@ -413,7 +413,7 @@ describe("SillyTavern Prompt Preset import transport", () => {
 				//  SAFETY: the conversation route sends this exact JSON request body
 				// to the configured ModelFetch implementation.
 				captured = JSON.parse(String(init?.body)) as CapturedGenerationRequest;
-				return sseReply([{ content: "Done." }]);
+				return sseReply([{ content: "Done." }], { singleChunk: true });
 			}) satisfies ModelFetch,
 		});
 		let captured: CapturedGenerationRequest = { messages: [] };

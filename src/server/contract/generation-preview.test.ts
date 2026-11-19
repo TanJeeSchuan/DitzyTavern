@@ -228,7 +228,7 @@ describe("Prompt Plan inspection", () => {
 				if (requests.length === 1) {
 					return new Response(JSON.stringify({ error: { message: "unsupported image input" } }), { status: 400 });
 				}
-				return sseReply([{ content: "Recovered." }]);
+				return sseReply([{ content: "Recovered." }], { singleChunk: true });
 			},
 		});
 		const body: GenerationTarget = { kind: "send", content: "The next scene begins." };

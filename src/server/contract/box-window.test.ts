@@ -156,8 +156,6 @@ test("a Variant still generating takes no Writer override, so its own record can
 	const chat = createClockChat();
 	const app = createContract(database);
 	insertBox(database, chat.id, "race");
-	const [human, model] = chat.cast;
-	if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 	const accepted = acceptTestGeneration(database, chat, { kind: "send", expectedRevision: chat.revision, content: "Go." }, {
 		seed: "override-seed",
 		timestamp: "2026-08-27T00:00:00.000Z",

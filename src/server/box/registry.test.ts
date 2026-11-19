@@ -220,8 +220,6 @@ test("a Generation holding a record of a Box no longer loaded still settles on r
 		} })]);
 		const conversation = createChat(database);
 		const instance = insertBox(database, conversation.id, "lantern");
-		const [human, model] = conversation.cast;
-		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		const accepted = acceptTestGeneration(database, conversation, { kind: "send", expectedRevision: conversation.revision, content: "Light it." }, {
 			seed: "lantern-seed",
 			timestamp: "2026-10-14T00:00:00.000Z",

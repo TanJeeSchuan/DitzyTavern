@@ -16,16 +16,10 @@ import {
 	ParticipantNotRemovableError,
 	SiblingVariantUnavailableError,
 	type ConversationAction,
-	type ParticipantDefinition,
 } from ".";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 import { runGenerationLifecycle } from "../workflows/generate";
 import { createFakeModelClient } from "../model-client";
-
-const adHoc = (
-	name: string,
-	openings: string[] = [],
-): ParticipantDefinition => participantDefinition(name, { openings });
 
 const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);
@@ -60,8 +54,8 @@ describe("Participant removal", () => {
 		const snapshot = createConversationWithHistory(module, {
 			name: "Removal Conversation",
 			participants: [
-				{ definition: adHoc("Writer") },
-				{ definition: adHoc("Maren Voss", ["The lamp turns."]) },
+				participantSeed("Writer"),
+				participantSeed("Maren Voss", { openings: ["The lamp turns."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -82,7 +76,7 @@ describe("Participant removal", () => {
 	) => {
 		const withThird = append(module, snapshot, {
 			type: "add-participant",
-			definition: adHoc("Juno Ashfeld"),
+			definition: participantDefinition("Juno Ashfeld"),
 		});
 		const thirdId = withThird.cast[2]?.id ?? 0;
 		return append(module, withThird, {
@@ -98,7 +92,7 @@ describe("Participant removal", () => {
 	) => {
 		const withThird = append(module, snapshot, {
 			type: "add-participant",
-			definition: adHoc("Juno Ashfeld"),
+			definition: participantDefinition("Juno Ashfeld"),
 		});
 		const thirdId = withThird.cast[2]?.id ?? 0;
 		return append(module, withThird, {
@@ -145,8 +139,8 @@ describe("Participant removal", () => {
 		const other = createConversationWithHistory(database, {
 			name: "Other",
 			participants: [
-				{ definition: adHoc("Outsider") },
-				{ definition: adHoc("Local") },
+				participantSeed("Outsider"),
+				participantSeed("Local"),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -180,7 +174,7 @@ describe("Participant removal", () => {
 		// Unseated Participants with no references derive a hard delete.
 		const added = append(module, unseated, {
 			type: "add-participant",
-			definition: adHoc("Bram Okafor"),
+			definition: participantDefinition("Bram Okafor"),
 		});
 		expect(added.cast.at(-1)?.removal).toEqual({
 			eligible: true,
@@ -201,11 +195,11 @@ describe("Participant removal", () => {
 		const { module, snapshot } = setup();
 		const withThird = append(module, snapshot, {
 			type: "add-participant",
-			definition: adHoc("Juno Ashfeld"),
+			definition: participantDefinition("Juno Ashfeld"),
 		});
 		const withFourth = append(module, withThird, {
 			type: "add-participant",
-			definition: adHoc("Bram Okafor"),
+			definition: participantDefinition("Bram Okafor"),
 		});
 		const junoId = withFourth.cast[2]?.id ?? 0;
 
@@ -266,7 +260,7 @@ describe("Participant removal", () => {
 		const snapshot = createConversationWithHistory(module, {
 			name: "Forked Removal",
 			participants: [
-				{ definition: adHoc("Writer") },
+				participantSeed("Writer"),
 				participantSeed(source.name, { prompt: source.prompt, openings: [...source.openings], sourceCharacterId: source.id }),
 			],
 			control: { human: 0, model: 1 },
@@ -339,8 +333,8 @@ describe("Participant removal", () => {
 		const snapshot = createConversationWithHistory(module, {
 			name: "Composed History",
 			participants: [
-				{ definition: adHoc("Writer") },
-				{ definition: adHoc("Maren Voss") },
+				participantSeed("Writer"),
+				participantSeed("Maren Voss"),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -482,7 +476,7 @@ describe("Participant removal", () => {
 		// Re-adding the same name through the raw command.
 		const reAdded = append(module, removed, {
 			type: "add-participant",
-			definition: adHoc("Maren Voss", ["A fresh start."]),
+			definition: participantDefinition("Maren Voss", { openings: ["A fresh start."] }),
 		});
 		const freshParticipant = reAdded.cast.at(-1);
 		expect(freshParticipant?.id).not.toBe(modelId);
@@ -596,7 +590,7 @@ describe("Participant removal", () => {
 		const snapshot = createConversationWithHistory(module, {
 			name: "Source Deleted",
 			participants: [
-				{ definition: adHoc("Writer") },
+				participantSeed("Writer"),
 				participantSeed(source.name, { prompt: source.prompt, openings: [...source.openings], sourceCharacterId: source.id }),
 			],
 			control: { human: 0, model: 1 },
@@ -651,8 +645,8 @@ describe("Participant removal", () => {
 		const snapshot = createConversationWithHistory(module, {
 			name: "Final Reference",
 			participants: [
-				{ definition: adHoc("Writer") },
-				{ definition: adHoc("Juno Ashfeld") },
+				participantSeed("Writer"),
+				participantSeed("Juno Ashfeld"),
 				participantSeed(source.name, { prompt: source.prompt, sourceCharacterId: source.id }),
 			],
 			control: { human: 0, model: 1 },
@@ -697,7 +691,7 @@ describe("Participant removal", () => {
 		const snapshot = createConversationWithHistory(module, {
 			name: "Collected Source",
 			participants: [
-				{ definition: adHoc("Writer") },
+				participantSeed("Writer"),
 				participantSeed(source.name, { prompt: source.prompt, openings: [...source.openings], sourceCharacterId: source.id }),
 			],
 			control: { human: 0, model: 1 },

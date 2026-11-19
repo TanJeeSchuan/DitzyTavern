@@ -53,3 +53,5 @@ Report 24.
 - Slice a uses the shared prompt constructor and fixture builders for Participants, Chats, Generation acceptance, Connection Profiles, SSE replies, Lore entries, migration cutoffs, and client tests.
 - The prompt field search went from 73 test files to nine. No tests or assertions were removed or changed. A static comparison against the base checked 999 test declarations and 3,442 assertions in the edited tests.
 - Changed-file lint and `git diff --check` passed. GitHub Actions runs the test suites and typecheck.
+- Migration tests stage their journals under `.scratch/`. The responsiveness test still drives a 20,000-event pull stream. Acceptance tests that exercise a historical Control pair construct their own capture.
+- The first CI run caught two fixture caller types. The Generation runner now passes only the Generation ID to the target builder, and the Connection Settings test adapts fetch inputs to URL strings.

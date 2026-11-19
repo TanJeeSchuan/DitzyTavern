@@ -97,7 +97,7 @@ const runnerWith = (stream: FakeStream, spy: Host) =>
 	});
 
 const observeTargets = (generationIds: readonly number[]) =>
-	({ type: "targets-observed", conversationId: 42, targets: generationIds.map(target) }) as const;
+	({ type: "targets-observed", conversationId: 42, targets: generationIds.map((id) => target(id)) }) as const;
 
 describe("the Generation session runner", () => {
 	beforeEach(() => { jest.useFakeTimers(); });

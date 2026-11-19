@@ -64,7 +64,7 @@ describe("Text-only Models", () => {
 			fetch: async (_url, init) => {
 				// SAFETY: the controlled fake receives the adapter's JSON request body.
 				requests.push(JSON.parse(String(init?.body)) as Wire);
-				return sseReply([{ content: "Seen." }]);
+				return sseReply([{ content: "Seen." }], { singleChunk: true });
 			},
 		});
 		const revision = readConversationRevision(database, conversationId) ?? 0;
@@ -161,7 +161,7 @@ describe("Text-only Models", () => {
 		await requested.promise;
 		started.runtime.dispatch({ type: "request-stop" });
 		started.runtime.dispatch({ type: "release-stop" });
-		response.resolve(sseReply([{ content: "Seen." }]));
+		response.resolve(sseReply([{ content: "Seen." }], { singleChunk: true }));
 		await expect(started.result).rejects.toMatchObject({ kind: "cancelled" });
 		const state = started.runtime.state;
 		if (state.status !== "failed") throw new Error(`Expected a failed Generation, got ${state.status}.`);
@@ -195,7 +195,7 @@ describe("Text-only Models", () => {
 		let requests = 0;
 		const started = await createGenerationCoordinator(database, {
 			masterKey: key,
-			fetch: async () => { requests += 1; return sseReply([{ content: "Seen." }]); },
+			fetch: async () => { requests += 1; return sseReply([{ content: "Seen." }], { singleChunk: true }); },
 		}).startGeneration({target: { kind: "continuation" }, conversationId, expectedRevision: configured.revision });
 		await expect(started.result).rejects.toMatchObject({ kind: "protocol" });
 		expect(requests).toBe(0);

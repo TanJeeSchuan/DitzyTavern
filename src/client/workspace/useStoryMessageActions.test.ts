@@ -1,4 +1,4 @@
-import { variant, historyMessage, historyPage, conversationSummary, installFetch, type FetchHandler } from "../test-fixtures/conversation";
+import { historyVariant, historyMessage, historyPage, conversationSummary, installFetch, type FetchHandler } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { Dispatch, SetStateAction } from "react";
 import type { ChatHistoryPage } from "../chat-history";
@@ -47,10 +47,10 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => historyPage({
 	messages: [historyMessage({
 		author: { participantId: 20, capturedName: "Author", inCast: true },
 		variants: [
-			variant({ content: "First" }),
-			variant({ id: 101, position: 2, content: "Second", timestamp: "2026-01-01T00:00:01.000Z", selected: false }),
-			variant({ id: 102, position: 3, content: "Third", timestamp: "2026-01-01T00:00:02.000Z", selected: false }),
-			variant({ id: 103, position: 4, content: "Fourth", timestamp: "2026-01-01T00:00:03.000Z", selected: false }),
+			historyVariant({ content: "First" }),
+			historyVariant({ id: 101, position: 2, content: "Second", timestamp: "2026-01-01T00:00:01.000Z", selected: false }),
+			historyVariant({ id: 102, position: 3, content: "Third", timestamp: "2026-01-01T00:00:02.000Z", selected: false }),
+			historyVariant({ id: 103, position: 4, content: "Fourth", timestamp: "2026-01-01T00:00:03.000Z", selected: false }),
 		],
 	}), ...(withLaterMessage ? [historyMessage({
 		id: 11,
@@ -58,7 +58,7 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => historyPage({
 		timestamp: "2026-01-01T00:00:03.000Z",
 		authorRole: "human",
 		author: { participantId: 10, capturedName: "Writer", inCast: true },
-		variants: [variant({ id: 110, content: "Later", timestamp: "2026-01-01T00:00:03.000Z" })],
+		variants: [historyVariant({ id: 110, content: "Later", timestamp: "2026-01-01T00:00:03.000Z" })],
 	})] : [])],
 });
 

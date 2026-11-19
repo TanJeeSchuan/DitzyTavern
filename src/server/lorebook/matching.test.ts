@@ -1,10 +1,10 @@
-import { loreEntry } from "./fixtures";
+import { loreEntryFixture } from "./fixtures";
 import { describe, expect, test } from "bun:test";
 import type { LoreEntryFields } from "../../shared/contract/lorebook";
 import { InvalidLorebookExpressionError } from "./errors";
 import { matchLoreEntry } from "./matching";
 
-const entry = (overrides: Partial<LoreEntryFields> = {}): LoreEntryFields => loreEntry({ keywords: ["Silver Keep"], ...overrides });
+const entry = (overrides: Partial<LoreEntryFields> = {}): LoreEntryFields => loreEntryFixture({ keywords: ["Silver Keep"], ...overrides });
 
 describe("lore entry matching", () => {
 	test("matches case-insensitive whole-word phrases inside one Message", () => {

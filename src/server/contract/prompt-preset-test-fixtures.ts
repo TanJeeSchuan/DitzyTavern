@@ -54,26 +54,31 @@ export const profile: ConnectionProfileDraftPayload = {
 	systemPlacement: "none",
 };
 
+type SseReplyOptions = {
+	finish?: { reason: string } | { error: { message: string; type: string; code: string } };
+	beforeDeltas?: Promise<void>;
+} & ({ singleChunk: true; beforeFinish?: never } | { singleChunk?: false; beforeFinish?: Promise<void> });
+
 export const sseReply = (
 	deltas: readonly ({ content: string } | { reasoning_content: string })[],
-	{ finish = { reason: "stop" }, beforeDeltas, beforeFinish }: {
-		finish?: { reason: string } | { error: { message: string; type: string; code: string } };
-		beforeDeltas?: Promise<void>;
-		beforeFinish?: Promise<void>;
-	} = {},
+	{ finish = { reason: "stop" }, beforeDeltas, beforeFinish, singleChunk }: SseReplyOptions = {},
 ): Response => {
 	const encoder = new TextEncoder();
+	const frame = (data: string) => `data: ${data}\n\n`;
+	const deltaFrames = deltas.map((delta) => frame(JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })));
+	const finishFrames = "error" in finish
+		? [frame(JSON.stringify(finish))]
+		: [frame(JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish.reason }] })), frame("[DONE]")];
 	return new Response(new ReadableStream({
 		async start(controller) {
-			const emit = (data: string) => controller.enqueue(encoder.encode(`data: ${data}\n\n`));
+			const emit = (chunk: string) => controller.enqueue(encoder.encode(chunk));
 			if (beforeDeltas !== undefined) await beforeDeltas;
-			for (const delta of deltas) emit(JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] }));
-			if (beforeFinish !== undefined) await beforeFinish;
-			if ("error" in finish) {
-				emit(JSON.stringify(finish));
+			if (singleChunk) {
+				emit(deltaFrames.join("") + finishFrames.join(""));
 			} else {
-				emit(JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish.reason }] }));
-				emit("[DONE]");
+				deltaFrames.forEach(emit);
+				if (beforeFinish !== undefined) await beforeFinish;
+				finishFrames.forEach(emit);
 			}
 			controller.close();
 		},
@@ -295,7 +300,7 @@ export const captureModelFetch = (
 	// @approved
 	//  SAFETY: this test's fake owns the request body shape.
 	onCapture(JSON.parse(String(init?.body)) as CapturedRequest);
-	return sseReply([{ content: "Done." }], { beforeDeltas: waitFor });
+	return sseReply([{ content: "Done." }], { beforeDeltas: waitFor, singleChunk: true });
 };
 
 export const startGeneration = async (

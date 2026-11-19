@@ -334,9 +334,6 @@ describe("Resumable generation transport", () => {
 	test("restart recovery exposes checkpointed output as a terminal interrupted Variant", async () => {
 		const conversationModule = database;
 		const conversation = pairChat(conversationModule, "Restart Recovery Chat", { prompt });
-		const human = conversation.cast[0];
-		const model = conversation.cast[1];
-		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		const accepted = acceptTestGeneration(database, conversation, { kind: "send", expectedRevision: conversation.revision, content: "Keep the recovered scene." }, { timestamp: "2026-08-27T00:00:00.000Z" });
 		checkpointFromStart(database, {
 			conversationId: conversation.id,

@@ -33,7 +33,7 @@ export const historyPage = (
 
 const timestamp = "2026-01-01T00:00:00.000Z";
 
-export const variant = (overrides: Partial<ChatHistoryVariant> = {}): ChatHistoryVariant => ({
+export const historyVariant = (overrides: Partial<ChatHistoryVariant> = {}): ChatHistoryVariant => ({
 	id: 100, position: 1, content: "Once", empty: false, hasReasoning: false, selected: true, timestamp,
 	...overrides,
 });
@@ -45,7 +45,7 @@ export const historyMessage = (overrides: Partial<ChatHistoryMessage> = {}): Cha
 	continuable: true,
 	swipe: { eligible: true, reason: null },
 	author: { participantId: 1, capturedName: "Writer", inCast: true },
-	variants: [variant()],
+	variants: [historyVariant()],
 	moves: {},
 	...overrides,
 });

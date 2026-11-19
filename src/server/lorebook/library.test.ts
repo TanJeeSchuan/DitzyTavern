@@ -1,4 +1,4 @@
-import { loreEntry } from "./fixtures";
+import { loreEntryFixture } from "./fixtures";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -43,7 +43,7 @@ describe("Lorebook entry resequencing", () => {
 	beforeEach(() => { database = openInitializedDatabase({ path: ":memory:" }); });
 	afterEach(() => database.close());
 
-	const fields = (title: string): LoreEntryFields => loreEntry({ title, content: `${title} content` });
+	const fields = (title: string): LoreEntryFields => loreEntryFixture({ title, content: `${title} content` });
 
 	const asBook = (applied: Lorebook | { deleted: number }): Lorebook => {
 		if (!("entries" in applied)) throw new Error("The Lorebook entry command deleted the book.");

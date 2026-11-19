@@ -420,7 +420,7 @@ describe("Generation transport contract", () => {
 				providerRequest += 1;
 				const content = `Alternative ${providerRequest}.`;
 				await paused;
-				return sseReply([{ content: content }]);
+				return sseReply([{ content }]);
 			},
 		});
 		const startSibling = () => app.handle(new Request(

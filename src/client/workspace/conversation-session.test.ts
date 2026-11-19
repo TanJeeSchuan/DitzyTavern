@@ -1,4 +1,4 @@
-import { variant, historyMessage, historyPage, conversationSummary, installFetch } from "../test-fixtures/conversation";
+import { historyVariant, historyMessage, historyPage, conversationSummary, installFetch } from "../test-fixtures/conversation";
 import type { StoryState } from "../story";
 import { afterEach, expect, test } from "bun:test";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
@@ -25,7 +25,7 @@ const page = (id = 1, index = 1, revision = 5): ChatHistoryPage => historyPage({
 		continuable: false,
 		swipe: { eligible: false, reason: "conversation-not-playable" },
 		author: null,
-		variants: [variant({ id: 1000 + i, content: "Before" })],
+		variants: [historyVariant({ id: 1000 + i, content: "Before" })],
 	})),
 	page: { index, totalMessages: 6, totalPages: 3, hasOlder: index < 3, hasNewer: index > 1 },
 });

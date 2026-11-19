@@ -112,9 +112,6 @@ describe("permanent Lore Activation Records", () => {
 	test("retains evidence on interrupted output but cleans it up with zero-output targets", () => {
 		const created = pairChat(database, "Interrupted lore", { prompt });
 		const module = database;
-		const human = created.cast[0];
-		const model = created.cast[1];
-		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
 		const accepted = acceptTestGeneration(module, created, { kind: "send", expectedRevision: created.revision, content: "Mention the tower." }, {
 			timestamp: "2026-09-17T10:00:00Z",
 			loreActivation: evidence,

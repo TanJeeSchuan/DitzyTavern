@@ -1,4 +1,4 @@
-import { variant as historyVariant, historyMessage as message, historyPage as page } from "./test-fixtures/conversation";
+import { historyVariant, historyMessage as message, historyPage as page } from "./test-fixtures/conversation";
 import { describe, expect, test } from "bun:test";
 import type { ChatHistoryPage } from "./chat-history";
 import {
