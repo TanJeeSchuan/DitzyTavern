@@ -23,7 +23,7 @@ new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run(
 		],
 		invalid: [
 			{ filename: server, code: "fetch(url);", errors: [{ messageId: "rawFetch" }] },
-			{ filename: server, code: "globalThis.fetch(url);", errors: [{ messageId: "rawFetch" }] },
+			{ filename: server, code: "globalThis!.fetch(url);", errors: [{ messageId: "rawFetch" }] },
 			{ filename: server, code: 'globalThis["fetch"]?.(url);', errors: [{ messageId: "rawFetch" }] },
 			{ filename: server, code: "const send = fetch; send(url);", errors: [{ messageId: "rawFetch" }] },
 		],

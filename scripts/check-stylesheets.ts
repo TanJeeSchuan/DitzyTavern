@@ -15,7 +15,16 @@ const scanner = new Scanner({});
 const declared = new Set<string>();
 const references = new Map<string, Set<string>>();
 const errors: string[] = [];
-const noFallback = /"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?<![\w-])var\(\s*(--[\p{L}\p{N}_-]+)\s*\)/giu;
+const cssEscape = /\\(?:(?<hex>[\da-f]{1,6})(?:\r\n|[ \t\r\n\f])?|(?<literal>[^\r\n\f]))/gi;
+const noFallback = new RegExp(String.raw`"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?<![\w-])var\(\s*((?:${cssEscape.source}|[^\\\s,()'"])+)\s*\)`, "giu");
+
+function cssIdentifier(value: string): string {
+	return value.replace(cssEscape, (_, hex: string | undefined, literal: string | undefined) => {
+		if (hex === undefined) return literal ?? "";
+		const code = Number.parseInt(hex, 16);
+		return code === 0 || code > 0x10ffff || (code >= 0xd800 && code <= 0xdfff) ? "\ufffd" : String.fromCodePoint(code);
+	});
+}
 
 function checkDarkUtilities(content: string, extension: string, filename: string, firstLine = 1) {
 	if (!content.includes("dark:")) return;
@@ -40,14 +49,24 @@ for (const path of [...files.scanSync()].sort()) {
 	const sheet = parse(content, { from: filename });
 	const required = new Set<string>();
 	sheet.walkDecls(({ prop, value, parent }) => {
-		if (prop.startsWith("--")) declared.add(prop);
-		if (prop === "initial-value" && parent?.type === "atrule" && parent.name === "property") declared.add(parent.params);
-		for (const [, name] of value.matchAll(noFallback)) if (name !== undefined) required.add(name);
+		const property = cssIdentifier(prop);
+		if (property.startsWith("--")) declared.add(property);
+		if (property.toLowerCase() === "initial-value" && parent?.type === "atrule" && parent.name.toLowerCase() === "property") {
+			declared.add(cssIdentifier(parent.params));
+		}
+		for (const [, name] of value.matchAll(noFallback)) {
+			if (name === undefined) continue;
+			const identifier = cssIdentifier(name);
+			if (identifier.startsWith("--")) required.add(identifier);
+		}
 	});
 	sheet.walkAtRules("import", (rule) => {
 		if (/^["']tailwindcss(?:\/theme\.css)?["']/.test(rule.params)) importsDefaultTheme = true;
 	});
-	sheet.walkAtRules("apply", (rule) => checkDarkUtilities(rule.params, extension, filename, rule.source?.start?.line));
+	sheet.walkAtRules("apply", (rule) => {
+		const firstLine = (rule.source?.start?.line ?? 1) + (rule.raws.afterName?.match(/\n/g)?.length ?? 0);
+		checkDarkUtilities(rule.params, extension, filename, firstLine);
+	});
 	references.set(filename, required);
 }
 

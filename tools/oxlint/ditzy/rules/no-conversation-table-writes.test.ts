@@ -14,6 +14,8 @@ new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run(
 		valid: [
 			{ filename: outside, code: selection + "db.select().from(conversationPromptPresetTable);" },
 			{ filename: outside, code: selection + "const selected = new Set([conversationPromptPresetTable]); selected.delete(conversationPromptPresetTable);" },
+			{ filename: outside, code: selection + "const groups = Map.groupBy([], value => value); groups.delete(conversationPromptPresetTable);" },
+			{ filename: outside, code: selection + "function remove(tables: Set<unknown>) { tables.delete(conversationPromptPresetTable); }" },
 			{ filename: outside, code: selection + "const f = (conversationPromptPresetTable) => db.update(conversationPromptPresetTable);" },
 			{ filename: outside, code: 'import { characterTable } from "../database/schema"; db.insert(characterTable);' },
 			{ filename: "src/server/conversation/commands/paint.ts", code: selection + "db.update(conversationPromptPresetTable);" },
@@ -21,6 +23,7 @@ new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run(
 			{ filename: "src/server/prompt-preset/recipe.ts", code: selection + "db.insert(conversationPromptPresetTable);" },
 		],
 		invalid: [
+			{ filename: outside, code: selection + "let receiver: Set<unknown> | Database = new Set(); receiver = database; receiver.delete(conversationPromptPresetTable).run();", errors: [{ messageId: "directWrite" }] },
 			{ filename: outside, code: selection + "db.update(conversationPromptPresetTable).set({ paint_preset_id: id });", errors: [{ messageId: "directWrite" }] },
 			{ filename: outside, code: 'import { participantDataTable as data } from "@/server/database/schema"; tx.insert(data);', errors: [{ messageId: "directWrite" }] },
 			{ filename: outside, code: 'import * as schema from "../database/schema.ts"; db["delete"](schema.artifactTable);', errors: [{ messageId: "directWrite" }] },

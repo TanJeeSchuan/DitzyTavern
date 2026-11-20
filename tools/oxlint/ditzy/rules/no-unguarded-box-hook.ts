@@ -17,7 +17,7 @@ const existingCalls = new Map<string, readonly string[]>([
 
 const boxReceiver = (expression: ESTree.Expression): boolean => {
 	const node = unwrapExpression(expression);
-	if (node.type === "Identifier") return node.name === "box" || node.name === "host" || node.name.endsWith("Box");
+	if (node.type === "Identifier") return node.name === "box" || node.name.endsWith("Box");
 	return node.type === "MemberExpression" && memberName(node) === "box";
 };
 

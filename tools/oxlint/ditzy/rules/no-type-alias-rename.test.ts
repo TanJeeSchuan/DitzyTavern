@@ -12,6 +12,7 @@ new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run(
 		valid: [
 			"type Id = Brand<string>;",
 			"export type Identity<T> = T;",
+			"function sample<T>(input: T) { type Value = T; return input as Value; }",
 			"type Row = Schema.Row;",
 			"export { read };",
 			{ filename: "src/box-sdk/client.ts", code: 'export type { Portrait as PortraitImage } from "./image";' },

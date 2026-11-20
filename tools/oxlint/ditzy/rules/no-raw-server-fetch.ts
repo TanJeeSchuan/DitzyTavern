@@ -1,5 +1,5 @@
 import { defineRule, type ESTree, type SourceCode } from "@oxlint/plugins";
-import { memberName } from "../members.ts";
+import { memberName, unwrapExpression } from "../members.ts";
 import { isTestFile, repositoryPath } from "../path.ts";
 import { referenceOf } from "../scope.ts";
 
@@ -37,7 +37,7 @@ export const noRawServerFetchRule = defineRule({
 				}
 			},
 			MemberExpression(node) {
-				const root = node.object;
+				const root = unwrapExpression(node.object);
 				if (root.type === "Identifier" && (root.name === "globalThis" || root.name === "global") &&
 					memberName(node) === "fetch" && isGlobalRead(context.sourceCode, root)) {
 					context.report({ node, messageId: "rawFetch" });

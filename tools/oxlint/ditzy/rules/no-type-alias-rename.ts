@@ -1,4 +1,5 @@
 import { defineRule } from "@oxlint/plugins";
+import { lexicalTypeParameterNames } from "../../anti-slop/shared/lexical-type-parameters.ts";
 import { moduleExportName } from "../imports.ts";
 import { repositoryPath } from "../path.ts";
 
@@ -119,7 +120,7 @@ export const noTypeAliasRenameRule = defineRule({
 				const target = node.typeAnnotation;
 				if (target.type !== "TSTypeReference" || target.typeName.type !== "Identifier" || target.typeArguments != null) return;
 				const targetName = target.typeName.name;
-				if (node.typeParameters?.params.some((parameter) => parameter.name.name === targetName) ||
+				if (lexicalTypeParameterNames(node, context.sourceCode.visitorKeys).has(targetName) ||
 					exceptions?.includes(`${node.id.name} = ${targetName}`)) return;
 				context.report({ node, messageId: "typeRename" });
 			},

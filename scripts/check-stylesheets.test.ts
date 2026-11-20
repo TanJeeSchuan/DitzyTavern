@@ -14,9 +14,9 @@ test("the stylesheet gate resolves cross-file declarations and checks fallback v
 		await mkdir(join(root, "src", "theme"), { recursive: true });
 		await write("theme/tokens.css", `
 			@import "tailwindcss";
-			@theme inline { --color-*: initial; --accent: red; @keyframes fade { from { opacity: 0; } } }
+			@theme inline { --color-*: initial; --\\61 ccent: red; @keyframes fade { from { opacity: 0; } } }
 			@utility tone { --tone: blue; }
-			@property --registered { syntax: "<color>"; initial-value: red; inherits: true; }
+			@PROPERTY --registered { syntax: "<color>"; INITIAL-VALUE: red; inherits: true; }
 			/* --input: black; */
 		`);
 		await write("app.css", '.item { color: var(--accent); border-color: var(--optional, var(--accent)); outline-color: var(--registered); fill: var(--tone); padding: var(--spacing); content: "var(--ignored)"; }');

@@ -46,9 +46,18 @@ const collectionConstructors = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
 
 function isCollection(source: SourceCode, expression: ESTree.Expression): boolean {
 	const receiver = unwrapExpression(expression);
-	const binding = receiver.type === "Identifier" ? referenceOf(source, receiver)?.resolved?.defs[0]?.node : undefined;
-	const value = binding?.type === "VariableDeclarator" && binding.init !== null ? unwrapExpression(binding.init) : receiver;
-	return value.type === "NewExpression" && value.callee.type === "Identifier" && collectionConstructors.has(value.callee.name);
+	const variable = receiver.type === "Identifier" ? referenceOf(source, receiver)?.resolved : undefined;
+	if (variable?.references.some((reference) => reference.isWrite() && !reference.init)) return false;
+	const binding = variable?.defs[0];
+	const annotation = binding?.name.type === "Identifier" ? binding.name.typeAnnotation?.typeAnnotation : undefined;
+	if (annotation?.type === "TSTypeReference" && annotation.typeName.type === "Identifier" && collectionConstructors.has(annotation.typeName.name)) return true;
+
+	const node = binding?.node;
+	const value = node?.type === "VariableDeclarator" && node.init !== null ? unwrapExpression(node.init) : receiver;
+	if (value.type === "NewExpression" && value.callee.type === "Identifier") return collectionConstructors.has(value.callee.name);
+	if (value.type !== "CallExpression" || value.callee.type !== "MemberExpression") return false;
+	const factory = value.callee;
+	return factory.object.type === "Identifier" && factory.object.name === "Map" && memberName(factory) === "groupBy";
 }
 
 export const noConversationTableWritesRule = defineRule({
