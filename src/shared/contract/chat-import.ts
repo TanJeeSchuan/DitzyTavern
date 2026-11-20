@@ -136,7 +136,6 @@ const importReceiptParticipant = Type.Object({
 	sourceCharacterId: Type.Union([Type.Null(), Type.Integer()]),
 });
 
-export type ChatImportReceiptParticipant = Static<typeof importReceiptParticipant>;
 
 // Compact post-commit receipt; the committed Conversation summary is
 // returned too so the client can open the new Chat immediately without a
@@ -176,7 +175,6 @@ const importDetailsArtifactAvailability = Type.Union([
 	}),
 ]);
 
-export type ImportDetailsArtifactAvailability = Static<typeof importDetailsArtifactAvailability>;
 
 // @approved
 //  The committed metadata of one preserved exact-source artifact:

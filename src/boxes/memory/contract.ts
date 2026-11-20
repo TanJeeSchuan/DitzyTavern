@@ -177,7 +177,6 @@ export const memoryActivationRecord = Type.Object({
 });
 
 export type MemoryActivationRecord = Static<typeof memoryActivationRecord>;
-export type MemoryRelevanceScore = Static<typeof memoryRelevanceScore>;
 export type MemoryRecallCandidateRecord = Static<typeof memoryRecallCandidate>;
 
 // @approved

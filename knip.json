@@ -36,9 +36,6 @@
 		"src/shared/contract/box-row-reference.ts": ["ParticipantId"], // Public Row Reference schema re-exported by the Box SDK.
 		"src/server/box/versions.ts": ["installedLatest"], // Production Box export and submission CLIs inspect installed versions.
 
-		// HTTP and stored-value surface for owner review.
-		"src/shared/contract/chat-import.ts": ["ChatImportReceiptParticipant", "ImportDetailsArtifactAvailability"], // Name the participant receipt and artifact states returned by Chat import.
-		"src/boxes/memory/contract.ts": ["MemoryRelevanceScore"], // Names the relevance enum written into each Memory trace.
 
 		// Existing tests import these live production seams to assert outcomes, identities and typed fixture inputs.
 		"src/server/artifact/index.ts": ["ArtifactStoreError", "attachmentDisposition", "ArtifactModule"], // Tests distinguish store failures and verify the HTTP download header.
@@ -108,11 +105,11 @@
 		"src/client/generation-sessions.ts": ["MAX_SESSION_RECONNECTS", "GenerationSessionTarget", "GenerationSessionTerminal"], // Generation tests construct sessions and verify bounded reconnects.
 		"src/client/prompt-preset-editor-state.ts": ["draftToPatch"], // Preset editor tests verify the actual draft conversion.
 
-		// HTTP command and stored-value surface for owner review.
-		"src/shared/contract/authoring.ts": ["authoringEvent"], // Event schema for Creator Mode's streamed activity.
-		"src/shared/contract/conversation-schema.ts": ["activeGenerationDetails", "chatHistoryPage", "generationSettingsUpdate", "forkConversationResponse", "generationPreview", "generationAccepted", "generationStopped", "generationsStopped", "conversationDeleted", "conversationAppliedResponse", "characterAppliedResponse", "generationConflictResponse", "conversationCommandConflict", "castCharacterConflict"], // Chat, history and Generation command request and response schemas.
-		"src/shared/contract/prompt-preset.ts": ["SillyTavernImportApplied", "PromptPresetListResponse", "PromptPresetConflict", "sillyTavernImportApplied", "promptPresetCreateCommand", "promptPresetRenameCommand", "promptPresetDuplicateCommand", "promptPresetDeleteCommand", "promptPresetDeletionResult"], // Prompt Preset HTTP commands and their outcomes.
-		"src/shared/contract/macro-variables.ts": ["MacroVariablesEditBody", "macroVariables", "macroVariablesAppliedResponse"], // The edit command and Macro Variable responses.
+		// Contract schemas the routes use; tests and the action profiler import them to type and check responses.
+		"src/shared/contract/authoring.ts": ["authoringEvent"], // Creator Mode session tests decode streamed events.
+		"src/shared/contract/conversation-schema.ts": ["activeGenerationDetails", "chatHistoryPage", "generationPreview", "generationAccepted", "generationConflictResponse"], // Box, workflow and error tests check Chat and Generation responses; profile-actions reads acceptances.
+		"src/shared/contract/prompt-preset.ts": ["SillyTavernImportApplied", "PromptPresetListResponse", "PromptPresetConflict"], // Prompt Preset route tests and fixtures type responses.
+		"src/shared/contract/macro-variables.ts": ["MacroVariablesEditBody", "macroVariables", "macroVariablesAppliedResponse"], // Macro Variable route tests type the edit body and responses.
 
 		// Server SDK and tested runtime limits.
 		"src/server/box/code-agent.ts": ["CODE_AGENT_STEPS", "CODE_AGENT_OUTPUT_BYTES", "CodeAgentFunction", "CodeAgentValue"], // Server SDK exports the call types and agent tests assert the production limits.

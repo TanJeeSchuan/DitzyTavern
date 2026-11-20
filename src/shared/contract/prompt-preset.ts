@@ -303,7 +303,7 @@ const promptPresetSummary = Type.Object({
 });
 export type PromptPresetSummary = Static<typeof promptPresetSummary>;
 
-export const sillyTavernImportApplied = Type.Object({
+const sillyTavernImportApplied = Type.Object({
 	name: Type.String(),
 	native: nativePromptPreset,
 	diagnostics: Type.Array(sillyTavernImportDiagnostic),
@@ -319,7 +319,7 @@ export type PromptPresetListResponse = Static<typeof promptPresetListResponse[20
 
 // Creation names a blank recipe; the recipe stays empty until the editor
 // tickets add block operations.
-export const promptPresetCreateCommand = Type.Object({
+const promptPresetCreateCommand = Type.Object({
 	type: Type.Literal("create"),
 	name: Type.String(),
 });
@@ -330,14 +330,14 @@ export const promptPresetCreateCommand = Type.Object({
 // carries the new preset's name so naming stays an explicit library operation.
 // Block patches are occurrence-addressed and travel the recipe route, so every
 // command here is revision-guarded.
-export const promptPresetRenameCommand = Type.Object({
+const promptPresetRenameCommand = Type.Object({
 	type: Type.Literal("rename"),
 	presetId: Type.Integer(),
 	expectedRevision: Type.Integer(),
 	name: Type.String(),
 });
 
-export const promptPresetDuplicateCommand = Type.Object({
+const promptPresetDuplicateCommand = Type.Object({
 	type: Type.Literal("duplicate"),
 	presetId: Type.Integer(),
 	expectedRevision: Type.Integer(),
@@ -349,7 +349,7 @@ export const promptPresetDuplicateCommand = Type.Object({
 // and the confirmed affected-Conversation count guards the deletion impact:
 // both must match the authoritative values the author confirmed. The outcome
 // derives the reassignment from the selections present at command time.
-export const promptPresetDeleteCommand = Type.Object({
+const promptPresetDeleteCommand = Type.Object({
 	type: Type.Literal("delete"),
 	presetId: Type.Integer(),
 	expectedRevision: Type.Integer(),
@@ -400,7 +400,7 @@ export type PromptPresetCommand = Static<typeof promptPresetCommandBody>;
 // @approved
 //  Outcome of a confirmed deletion: the reassignment count is derived
 // from the selections present at command time, never guessed by the client.
-export const promptPresetDeletionResult = Type.Object({
+const promptPresetDeletionResult = Type.Object({
 	presetId: Type.Integer(),
 	reassignedConversationCount: Type.Integer(),
 });

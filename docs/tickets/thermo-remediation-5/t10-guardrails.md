@@ -58,15 +58,10 @@ In [PR #293](https://github.com/TanJeeSchuan/DitzyTavern/pull/293), `bun run che
 
 The Knip triage removed unused internal exports, type aliases and helpers and made same-file declarations private, including the unused Oxlint dictionary helper. The network-free Model Client lives in test fixtures. The Macro Variables workflow test sets initial values through the production edit command. Box version tests inspect the installed version folders directly. Existing cross-module test consumers of live production code have symbol-specific exceptions. The existing `@ai-sdk/provider` import now has a direct dependency, and the stream preview uses the declared Playwright package.
 
-Knip findings kept for owner review
+Knip findings kept
 
-- Box SDK exports `useBoxStatus`, `BoxExport`, `boxSdkVersion`, `ParticipantId`, `CodeAgentFunction`, `CodeAgentValue`.
-- Chat and Generation HTTP schemas `activeGenerationDetails`, `chatHistoryPage`, `generationSettingsUpdate`, `forkConversationResponse`, `generationPreview`, `generationAccepted`, `generationStopped`, `generationsStopped`, `conversationDeleted`, `conversationAppliedResponse`, `characterAppliedResponse`, `generationConflictResponse`, `conversationCommandConflict`, `castCharacterConflict`.
-- Macro Variable HTTP declarations `MacroVariablesEditBody`, `macroVariables`, `macroVariablesAppliedResponse`.
-- Prompt Preset HTTP declarations `SillyTavernImportApplied`, `PromptPresetListResponse`, `PromptPresetConflict`, `sillyTavernImportApplied`, `promptPresetCreateCommand`, `promptPresetRenameCommand`, `promptPresetDuplicateCommand`, `promptPresetDeleteCommand`, `promptPresetDeletionResult`.
-- Chat import HTTP types `ChatImportReceiptParticipant`, `ImportDetailsArtifactAvailability`.
-- Creator Mode streamed activity schema `authoringEvent`.
-- Stored Memory trace relevance type `MemoryRelevanceScore`.
+- Box SDK exports `useBoxStatus`, `BoxExport`, `boxSdkVersion`, `ParticipantId`, `CodeAgentFunction`, `CodeAgentValue` (kept surface).
+- None of the flagged contract schemas was dead code. Each one backs a live route in its own module. The orchestrator removed `export` from the 15 that nothing outside their module imports, and deleted the 3 unused type aliases `ChatImportReceiptParticipant`, `ImportDetailsArtifactAvailability` and `MemoryRelevanceScore`. The rest stay exported because tests or `scripts/profile-actions.ts` import them. Nothing here is surface for the owner to decide.
 
 The Box host loads the built-in Box default exports by folder. Knip allowlists those live entry exports by name.
 

@@ -505,7 +505,7 @@ const deleteDataAction = Type.Object({
 // fields. The Conversation module still fills defaults when it creates
 // settings server-side, but an update always states every field, so adding
 // a canonical field automatically participates in the update command.
-export const generationSettingsUpdate = Value.Clone(canonicalGenerationSettings);
+const generationSettingsUpdate = Value.Clone(canonicalGenerationSettings);
 
 const updateGenerationSettingsAction = Type.Object({
 	type: Type.Literal("update-generation-settings"),
@@ -656,7 +656,7 @@ export const conversationCommandBody = Type.Object({
 	action: conversationCommandAction,
 });
 
-export const forkConversationResponse = Type.Object({
+const forkConversationResponse = Type.Object({
 	outcome: Type.Literal("applied"), conversation: conversationSummary, omittedBoxes: Type.Array(Type.String()),
 	rewind: Type.Optional(Type.Object({ content: Type.String(), moves: boxMoves })),
 });
@@ -741,13 +741,13 @@ export const generationAccepted = Type.Object({
 	variantId: Type.Integer(),
 });
 
-export const generationStopped = Type.Object({
+const generationStopped = Type.Object({
 	outcome: Type.Literal("stopped"),
 	generationId: Type.Integer(),
 	conversation: conversationSummary,
 });
 
-export const generationsStopped = Type.Object({
+const generationsStopped = Type.Object({
 	outcome: Type.Literal("stopped"),
 	generationIds: Type.Array(Type.Integer()),
 	conversation: conversationSummary,
@@ -759,7 +759,7 @@ export const generationsStopped = Type.Object({
 
 export const conversationIdParams = Type.Object({ id: numericWire });
 
-export const conversationDeleted = Type.Object({ outcome: Type.Literal("deleted") });
+const conversationDeleted = Type.Object({ outcome: Type.Literal("deleted") });
 
 export const generationIdParams = Type.Object({
 	id: numericWire,
@@ -787,12 +787,12 @@ export const generationEventsQuery = Type.Object({
 	after: Type.Optional(numericWire),
 });
 
-export const conversationAppliedResponse = Type.Object({
+const conversationAppliedResponse = Type.Object({
 	outcome: Type.Literal("applied"),
 	conversation: conversationSummary,
 });
 
-export const characterAppliedResponse = Type.Object({
+const characterAppliedResponse = Type.Object({
 	outcome: Type.Literal("applied"),
 	character: characterSnapshot,
 });
@@ -802,13 +802,13 @@ export const generationConflictResponse = Type.Union([
 	notPlayableOutcome,
 ]);
 
-export const conversationCommandConflict = Type.Union([
+const conversationCommandConflict = Type.Union([
 	conversationConflict,
 	notPlayableOutcome,
 	notRemovableOutcome,
 ]);
 
-export const castCharacterConflict = Type.Union([
+const castCharacterConflict = Type.Union([
 	characterConflict,
 	conversationConflict,
 ]);
