@@ -16,7 +16,7 @@ new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run(
 			{ filename: "src/server/box/setup.ts", code: "box.setupError?.(setup, previous);" },
 			{ filename: "src/server/box/registry.ts", code: "box.moves.render(move, author);" },
 			{ filename: "src/server/box/sandboxed.ts", code: "box.advance.run(input);" },
-			{ filename: "src/server/workflows/generate.ts", code: "pipeline.run(); database.read(); if (box.setupError) handle(box);" },
+			{ filename: "src/server/workflows/generate.ts", code: "pipeline.run(); database.read(); if (box.setupError) handle(box); form.setupError(); document.moves.render();" },
 		],
 		invalid: [
 			{ filename: scenario, code: "box.setupError?.(setup, previous);", errors: [{ messageId: "unguarded" }] },

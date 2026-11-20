@@ -12,15 +12,21 @@ test("the stylesheet gate resolves cross-file declarations and checks fallback v
 
 	try {
 		await mkdir(join(root, "src", "theme"), { recursive: true });
-		await write("theme/tokens.css", '@theme inline { --accent: red; @keyframes fade { from { opacity: 0; } } } /* --input: black; */');
-		await write("app.css", '.item { color: var(--accent); border-color: var(--optional, var(--accent)); content: "var(--ignored)"; }');
-		await write("app.tsx", '<div className="bg-panel data-[theme=dark]:text-white" />');
+		await write("theme/tokens.css", `
+			@import "tailwindcss";
+			@theme inline { --color-*: initial; --accent: red; @keyframes fade { from { opacity: 0; } } }
+			@utility tone { --tone: blue; }
+			@property --registered { syntax: "<color>"; initial-value: red; inherits: true; }
+			/* --input: black; */
+		`);
+		await write("app.css", '.item { color: var(--accent); border-color: var(--optional, var(--accent)); outline-color: var(--registered); fill: var(--tone); padding: var(--spacing); content: "var(--ignored)"; }');
+		await write("app.tsx", `<div className="bg-panel data-[theme=dark]:text-white [&_.dark:hover]:text-white before:content-['dark:mode']" />`);
 		const passing = run();
 		expect(passing.stderr.toString()).toBe("");
 		expect(passing.exitCode).toBe(0);
 
 		await write("app.css", '.item { color: var(--input, var(--missing)); @apply dark:bg-panel; } .other { color: var(--input); }');
-		await write("app.tsx", '<div className="md:dark:hover:bg-panel" />');
+		await write("app.tsx", '<div className="md:dark:@md:hover:bg-panel" />');
 		const failing = run();
 		expect(failing.exitCode).toBe(1);
 		expect(failing.stderr.toString()).toContain("src/app.css: undeclared custom property --input");

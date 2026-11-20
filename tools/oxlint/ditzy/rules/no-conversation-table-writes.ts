@@ -42,6 +42,15 @@ const schemaTable = (source: SourceCode, path: string, argument: ESTree.Expressi
 	return undefined;
 };
 
+const collectionConstructors = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
+
+function isCollection(source: SourceCode, expression: ESTree.Expression): boolean {
+	const receiver = unwrapExpression(expression);
+	const binding = receiver.type === "Identifier" ? referenceOf(source, receiver)?.resolved?.defs[0]?.node : undefined;
+	const value = binding?.type === "VariableDeclarator" && binding.init !== null ? unwrapExpression(binding.init) : receiver;
+	return value.type === "NewExpression" && value.callee.type === "Identifier" && collectionConstructors.has(value.callee.name);
+}
+
 export const noConversationTableWritesRule = defineRule({
 	meta: {
 		type: "problem",
@@ -58,7 +67,8 @@ export const noConversationTableWritesRule = defineRule({
 				const argument = node.arguments[0];
 				if (method === undefined || !mutations.has(method) || argument === undefined || argument.type === "SpreadElement") return;
 				const table = schemaTable(context.sourceCode, path, argument);
-				if (table === undefined || !conversationTables.has(table) || existingWrites.get(path)?.includes(`${method} ${table}`)) return;
+				if (table === undefined || !conversationTables.has(table) || existingWrites.get(path)?.includes(`${method} ${table}`) ||
+					(method === "delete" && isCollection(context.sourceCode, callee.object))) return;
 				context.report({ node, messageId: "directWrite", data: { table } });
 			},
 		};

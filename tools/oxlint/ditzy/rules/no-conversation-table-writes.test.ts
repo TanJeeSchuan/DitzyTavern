@@ -13,6 +13,7 @@ new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run(
 	{
 		valid: [
 			{ filename: outside, code: selection + "db.select().from(conversationPromptPresetTable);" },
+			{ filename: outside, code: selection + "const selected = new Set([conversationPromptPresetTable]); selected.delete(conversationPromptPresetTable);" },
 			{ filename: outside, code: selection + "const f = (conversationPromptPresetTable) => db.update(conversationPromptPresetTable);" },
 			{ filename: outside, code: 'import { characterTable } from "../database/schema"; db.insert(characterTable);' },
 			{ filename: "src/server/conversation/commands/paint.ts", code: selection + "db.update(conversationPromptPresetTable);" },

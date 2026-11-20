@@ -117,8 +117,10 @@ export const noTypeAliasRenameRule = defineRule({
 		return {
 			TSTypeAliasDeclaration(node) {
 				const target = node.typeAnnotation;
-				if (target.type !== "TSTypeReference" || target.typeName.type !== "Identifier" || target.typeArguments != null ||
-					exceptions?.includes(`${node.id.name} = ${target.typeName.name}`)) return;
+				if (target.type !== "TSTypeReference" || target.typeName.type !== "Identifier" || target.typeArguments != null) return;
+				const targetName = target.typeName.name;
+				if (node.typeParameters?.params.some((parameter) => parameter.name.name === targetName) ||
+					exceptions?.includes(`${node.id.name} = ${targetName}`)) return;
 				context.report({ node, messageId: "typeRename" });
 			},
 			ExportSpecifier(node) {
