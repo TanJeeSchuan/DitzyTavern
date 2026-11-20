@@ -41,7 +41,7 @@ export function Composer({
 	const revealEditor = (action: (editor: ProseEditorHandle) => void) => {
 		const editor = editorRef.current;
 		if (editor === null) return;
-		if (formRef.current?.inert === false) action(editor);
+		if (formRef.current?.closest("[inert]") === null) action(editor);
 		else {
 			pendingReveal.current = action;
 			setFocused(true);
@@ -49,8 +49,10 @@ export function Composer({
 	};
 	useLayoutEffect(() => {
 		const action = pendingReveal.current;
+		const editor = editorRef.current;
+		if (action === null || editor === null || formRef.current?.closest("[inert]") !== null) return;
 		pendingReveal.current = null;
-		if (action !== null && editorRef.current !== null) action(editorRef.current);
+		action(editor);
 	});
 	useImperativeHandle(ref, () => ({ insertReference: (name, hash) => revealEditor((editor) => editor.insertReference(name, hash)) }), []);
 	// @approved

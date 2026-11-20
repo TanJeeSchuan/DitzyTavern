@@ -55,7 +55,7 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		});
 		return { ...session, ...commands };
 	}, client, strict);
-	Object.assign(window, { requestAnimationFrame: (callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 0; } });
+	Object.assign(window, { requestAnimationFrame: (callback: FrameRequestCallback) => { queueMicrotask(() => callback(0)); return 0; }, cancelAnimationFrame: () => {} });
 	await flushHook();
 	return { hook, client, requests, switchTo: async (id: number) => { await hook.act(async () => hook.current.selectChat(String(id))); await flushHook(); } };
 }
@@ -173,18 +173,22 @@ test("a newer source position aborts the old window and never scrolls to its lat
 
 test("a source request can open before the first transcript page arrives", async () => {
 	const first = Promise.withResolvers<Response>();
-	const h = await harness(async ({ url }) => {
-		if (!url.pathname.endsWith("history")) return Response.json(summary());
-		return url.searchParams.has("aroundMessageId") ? Response.json(page(1, 3)) : first.promise;
-	});
-	const scrolls: string[] = [];
-	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: (selector: string) => ({ scrollIntoView: () => scrolls.push(selector) }) } });
-	let jump = Promise.resolve();
-	await h.hook.act(async () => { jump = h.hook.current.navigateToSourceMessage(101); });
-	await h.hook.act(async () => { first.resolve(Response.json(page())); await jump; });
-	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
-	expect(scrolls).toEqual(['[data-message-id="101"]']);
+	try {
+		const h = await harness(async ({ url }) => {
+			if (!url.pathname.endsWith("history")) return Response.json(summary());
+			return url.searchParams.has("aroundMessageId") ? Response.json(page(1, 3)) : withDeadline(first.promise, "the initial history page", 1_000);
+		});
+		const scrolls: string[] = [];
+		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: (selector: string) => ({ scrollIntoView: () => scrolls.push(selector) }) } });
+		let jump = Promise.resolve();
+		await h.hook.act(async () => { jump = h.hook.current.navigateToSourceMessage(101); });
+		await h.hook.act(async () => { first.resolve(Response.json(page())); await withDeadline(jump, "the source jump", 1_000); });
+		await flushHook();
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+		expect(scrolls).toEqual(['[data-message-id="101"]']);
+	} finally {
+		first.resolve(Response.json(page()));
+	}
 });
 
 test("source navigation checks the committed window before React renders it", async () => {
@@ -216,14 +220,18 @@ test("a newer source request retires the initial source's pending scroll", async
 	const frame = async () => h.hook.act(async () => { for (const callback of frames.splice(0)) callback(0); });
 	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: (selector: string) => ({ scrollIntoView: () => scrolls.push(selector) }) } });
 	Object.assign(window, { requestAnimationFrame: (callback: FrameRequestCallback) => frames.push(callback) });
-	await h.hook.act(async () => h.hook.current.selectChat("2", 201));
-	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([201, 202]);
-	let jump = Promise.resolve();
-	await h.hook.act(async () => { jump = h.hook.current.navigateToSourceMessage(202); });
-	for (let i = 0; i < 4; i++) await frame();
-	await jump;
-	expect(scrolls).toEqual(['[data-message-id="202"]']);
+	try {
+		await h.hook.act(async () => h.hook.current.selectChat("2", 201));
+		await flushHook();
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([201, 202]);
+		let jump = Promise.resolve();
+		await h.hook.act(async () => { jump = h.hook.current.navigateToSourceMessage(202); });
+		for (let i = 0; i < 4; i++) await frame();
+		await withDeadline(jump, "the newer source scroll", 1_000);
+		expect(scrolls).toEqual(['[data-message-id="202"]']);
+	} finally {
+		for (let i = 0; i < 4 && frames.length > 0; i++) await frame();
+	}
 });
 
 test("a failed source jump leaves the current transcript readable", async () => {
@@ -241,40 +249,48 @@ test("a failed source jump leaves the current transcript readable", async () => 
 test("a failed off-window jump leaves the applied write's history refresh running", async () => {
 	const fresh = Promise.withResolvers<Response>();
 	let written = false;
-	const h = await harness(async ({ url }) => {
-		if (url.searchParams.has("aroundMessageId")) return Response.json({ error: "Server bug" }, { status: 500 });
-		if (!url.pathname.endsWith("history")) return Response.json(summary());
-		return written ? fresh.promise.then((response) => response.clone()) : Response.json(page());
-	});
-	written = true;
-	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
-	await flushHook();
-	await h.hook.act(async () => { await expect(h.hook.current.navigateToSourceMessage(101)).rejects.toBeInstanceOf(Error); });
-	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
-	await h.hook.act(async () => fresh.resolve(Response.json(page(1, 1, 6))));
-	await flushHook();
-	expect(readyStory(h.hook.current.story).revision).toBe(6);
+	try {
+		const h = await harness(async ({ url }) => {
+			if (url.searchParams.has("aroundMessageId")) return Response.json({ error: "Server bug" }, { status: 500 });
+			if (!url.pathname.endsWith("history")) return Response.json(summary());
+			return written ? withDeadline(fresh.promise, "the applied history refresh", 1_000).then((response) => response.clone()) : Response.json(page());
+		});
+		written = true;
+		await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
+		await flushHook();
+		await h.hook.act(async () => { await expect(h.hook.current.navigateToSourceMessage(101)).rejects.toBeInstanceOf(Error); });
+		await flushHook();
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+		await h.hook.act(async () => fresh.resolve(Response.json(page(1, 1, 6))));
+		await flushHook();
+		expect(readyStory(h.hook.current.story).revision).toBe(6);
+	} finally {
+		fresh.resolve(Response.json(page(1, 1, 6)));
+	}
 });
 
 test("a failed source jump leaves an earlier source read eligible to commit", async () => {
 	const earlier = Promise.withResolvers<Response>();
-	const h = await harness(async ({ url }) => {
-		if (!url.pathname.endsWith("history")) return Response.json(summary());
-		const source = url.searchParams.get("aroundMessageId");
-		if (source === "101") return earlier.promise;
-		if (source === "103") return Response.json({ error: "Server bug" }, { status: 500 });
-		return Response.json(page());
-	});
-	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
-	let jump = Promise.resolve();
-	await h.hook.act(async () => { jump = h.hook.current.navigateToSourceMessage(101); });
-	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(103).catch(() => undefined));
-	await flushHook();
-	expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
-	await h.hook.act(async () => { earlier.resolve(Response.json(page(1, 3))); await jump; });
-	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+	try {
+		const h = await harness(async ({ url }) => {
+			if (!url.pathname.endsWith("history")) return Response.json(summary());
+			const source = url.searchParams.get("aroundMessageId");
+			if (source === "101") return withDeadline(earlier.promise, "the earlier source page", 1_000);
+			if (source === "103") return Response.json({ error: "Server bug" }, { status: 500 });
+			return Response.json(page());
+		});
+		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+		let jump = Promise.resolve();
+		await h.hook.act(async () => { jump = h.hook.current.navigateToSourceMessage(101); });
+		await h.hook.act(async () => h.hook.current.navigateToSourceMessage(103).catch(() => undefined));
+		await flushHook();
+		expect(readyStory(h.hook.current.story).historyFailed).toBe(true);
+		await h.hook.act(async () => { earlier.resolve(Response.json(page(1, 3))); await withDeadline(jump, "the earlier source jump", 1_000); });
+		await flushHook();
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+	} finally {
+		earlier.resolve(Response.json(page(1, 3)));
+	}
 });
 
 test("a write-triggered refresh retries a stale page and shows the applied revision", async () => {
@@ -319,29 +335,33 @@ test("a source jump cannot replace the displayed window with an older revision",
 test("Delete uses the displayed history revision after a source jump", async () => {
 	let revision = 5;
 	const refreshed = Promise.withResolvers<Response>();
-	const h = await harness(async ({ url, init }) => {
-		if (init?.method === "POST") return Response.json({ outcome: "invalid", reason: "Test command" }, { status: 422 });
-		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
-		if (url.searchParams.has("aroundMessageId")) {
-			if (revision === 7) return refreshed.promise;
-			revision = 6;
-			return Response.json(page(1, 3, 6));
-		}
-		return Response.json(page());
-	});
-	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
-	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
-	await flushHook();
-	revision = 7;
-	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 7)));
-	await flushHook();
-	expect(h.hook.current.conversation?.revision).toBe(7);
-	expect(readyStory(h.hook.current.story).revision).toBe(6);
-	await h.hook.act(async () => h.hook.current.deleteStoryMessage(101, 6));
-	const command = h.requests.find(({ init }) => init?.method === "POST");
-	expect(JSON.parse(String(command?.init?.body))).toMatchObject({ expectedRevision: 6, action: { type: "delete-message", messageId: 101 } });
-	await h.hook.act(async () => refreshed.resolve(Response.json(page(1, 3, 7))));
-	await flushHook();
+	try {
+		const h = await harness(async ({ url, init }) => {
+			if (init?.method === "POST") return Response.json({ outcome: "invalid", reason: "Test command" }, { status: 422 });
+			if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+			if (url.searchParams.has("aroundMessageId")) {
+				if (revision === 7) return withDeadline(refreshed.promise, "the refreshed source page", 1_000);
+				revision = 6;
+				return Response.json(page(1, 3, 6));
+			}
+			return Response.json(page());
+		});
+		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+		await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+		await flushHook();
+		revision = 7;
+		await h.hook.act(async () => h.hook.current.setConversation(summary(1, 7)));
+		await flushHook();
+		expect(h.hook.current.conversation?.revision).toBe(7);
+		expect(readyStory(h.hook.current.story).revision).toBe(6);
+		await h.hook.act(async () => h.hook.current.deleteStoryMessage(101, 6));
+		const command = h.requests.find(({ init }) => init?.method === "POST");
+		expect(JSON.parse(String(command?.init?.body))).toMatchObject({ expectedRevision: 6, action: { type: "delete-message", messageId: 101 } });
+		await h.hook.act(async () => refreshed.resolve(Response.json(page(1, 3, 7))));
+		await flushHook();
+	} finally {
+		refreshed.resolve(Response.json(page(1, 3, 7)));
+	}
 });
 
 test("a history refresh that returns 404 reports failure and keeps the loaded transcript", async () => {
@@ -405,7 +425,7 @@ test("newer paging extends a detached window and generation refresh retains that
 	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
 });
 
-test("a refresh follows the source when an append shifts its tail-counted page", async () => {
+for (const loadedLatest of [false, true]) test(`a refresh keeps the source ${loadedLatest ? "and latest edge" : "in a detached window"} when an append shifts pages`, async () => {
 	let appended = false;
 	const h = await harness(async ({ url }) => {
 		const revision = appended ? 6 : 5;
@@ -424,14 +444,15 @@ test("a refresh follows the source when an append shifts its tail-counted page",
 	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
 	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
 	await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
+	if (loadedLatest) await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
 	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104]);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual(loadedLatest ? [101, 102, 103, 104, 105, 106] : [101, 102, 103, 104]);
 
 	appended = true;
 	await h.hook.act(async () => h.hook.current.refreshStory(1));
 	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103]);
-	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(true);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual(loadedLatest ? [101, 102, 103, 104, 105, 106, 107] : [101, 102, 103]);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(!loadedLatest);
 });
 
 test("newer paging preserves the anchor for deleted-source recovery", async () => {
@@ -511,45 +532,54 @@ test("a Conversation write supersedes a pending older page at the latest anchor"
 	const late = Promise.withResolvers<Response>();
 	const fresh = Promise.withResolvers<Response>();
 	let written = false;
-	const h = await harness(async ({ url }) => {
-		if (!url.pathname.endsWith("history")) return Response.json(summary());
-		if (url.searchParams.get("page") === "2") return late.promise;
-		return written ? fresh.promise.then((response) => response.clone()) : Response.json(page());
-	});
-	let paging = Promise.resolve();
-	await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(); });
-	const pending = h.requests.at(-1);
-	expect(pending?.url.search).toBe("?page=2");
-	written = true;
-	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
-	await h.hook.act(async () => late.resolve(Response.json(page(1, 2))));
-	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
-	await h.hook.act(async () => { fresh.resolve(Response.json(page(1, 1, 6))); await paging; });
-	await flushHook();
-	expect(readyStory(h.hook.current.story).revision).toBe(6);
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	try {
+		const h = await harness(async ({ url }) => {
+			if (!url.pathname.endsWith("history")) return Response.json(summary());
+			if (url.searchParams.get("page") === "2") return withDeadline(late.promise, "the pending older page", 1_000);
+			return written ? withDeadline(fresh.promise, "the refreshed latest page", 1_000).then((response) => response.clone()) : Response.json(page());
+		});
+		let paging = Promise.resolve();
+		await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(); });
+		const pending = h.requests.at(-1);
+		expect(pending?.url.search).toBe("?page=2");
+		written = true;
+		await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
+		await h.hook.act(async () => late.resolve(Response.json(page(1, 2))));
+		await flushHook();
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+		await h.hook.act(async () => { fresh.resolve(Response.json(page(1, 1, 6))); await withDeadline(paging, "superseded paging", 1_000); });
+		await flushHook();
+		expect(readyStory(h.hook.current.story).revision).toBe(6);
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+	} finally {
+		late.resolve(Response.json(page(1, 2)));
+		fresh.resolve(Response.json(page(1, 1, 6)));
+	}
 });
 
 test("jumping to a visible Message preserves the history refresh from an applied write", async () => {
 	const fresh = Promise.withResolvers<Response>();
 	let written = false;
-	const h = await harness(async ({ url }) => {
-		if (!url.pathname.endsWith("history")) return Response.json(summary());
-		return written ? fresh.promise : Response.json(page());
-	});
-	written = true;
-	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
-	await flushHook();
-	expect(h.hook.current.conversation?.revision).toBe(6);
-	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
-	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(105));
-	const updated = page(1, 1, 6);
-	updated.messages[0]!.variants[0]!.content = "Applied edit";
-	await h.hook.act(async () => fresh.resolve(Response.json(updated)));
-	await flushHook();
-	expect(readyStory(h.hook.current.story).revision).toBe(6);
-	expect(h.hook.current.story.messages[0]?.swipes[0]?.content).toBe("Applied edit");
+	try {
+		const h = await harness(async ({ url }) => {
+			if (!url.pathname.endsWith("history")) return Response.json(summary());
+			return written ? withDeadline(fresh.promise, "the applied edit history", 1_000) : Response.json(page());
+		});
+		written = true;
+		await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
+		await flushHook();
+		expect(h.hook.current.conversation?.revision).toBe(6);
+		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+		await h.hook.act(async () => h.hook.current.navigateToSourceMessage(105));
+		const updated = page(1, 1, 6);
+		updated.messages[0]!.variants[0]!.content = "Applied edit";
+		await h.hook.act(async () => fresh.resolve(Response.json(updated)));
+		await flushHook();
+		expect(readyStory(h.hook.current.story).revision).toBe(6);
+		expect(h.hook.current.story.messages[0]?.swipes[0]?.content).toBe("Applied edit");
+	} finally {
+		fresh.resolve(Response.json(page(1, 1, 6)));
+	}
 });
 
 test("refresh retries a history page older than the Conversation revision", async () => {
@@ -590,35 +620,40 @@ for (const direction of ["older", "newer"] as const) {
 		const fresh = Promise.withResolvers<Response>();
 		let holdPage = false;
 		let revision = 5;
-		const h = await harness(({ url }) => {
-			if (!url.pathname.endsWith("history")) return Promise.resolve(Response.json(summary(1, revision)));
-			if (url.searchParams.has("aroundMessageId")) return revision === 5 ? Promise.resolve(Response.json(page(1, 2))) : fresh.promise;
-			const index = Number(url.searchParams.get("page"));
-			return holdPage && index === adjacent ? late.promise : Promise.resolve(Response.json(page(1, index, revision)));
-		});
-		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
-		await h.hook.act(async () => h.hook.current.navigateToSourceMessage(103));
-		holdPage = true;
-		let paging = Promise.resolve();
-		await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(direction); });
-		expect(h.requests.at(-1)?.url.search).toBe(`?page=${adjacent}`);
+		try {
+			const h = await harness(({ url }) => {
+				if (!url.pathname.endsWith("history")) return Promise.resolve(Response.json(summary(1, revision)));
+				if (url.searchParams.has("aroundMessageId")) return revision === 5 ? Promise.resolve(Response.json(page(1, 2))) : withDeadline(fresh.promise, "the refreshed source page", 1_000);
+				const index = Number(url.searchParams.get("page"));
+				return holdPage && index === adjacent ? withDeadline(late.promise, "the adjacent history page", 1_000) : Promise.resolve(Response.json(page(1, index, revision)));
+			});
+			Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+			await h.hook.act(async () => h.hook.current.navigateToSourceMessage(103));
+			holdPage = true;
+			let paging = Promise.resolve();
+			await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(direction); });
+			expect(h.requests.at(-1)?.url.search).toBe(`?page=${adjacent}`);
 
-		revision = 6;
-		holdPage = false;
-		await h.hook.act(async () => late.resolve(Response.json(page(1, adjacent, 6))));
-		await flushHook();
-		expect(h.requests.at(-1)?.url.search).toBe("?aroundMessageId=103");
-		expect(readyStory(h.hook.current.story).revision).toBe(5);
-		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104]);
+			revision = 6;
+			holdPage = false;
+			await h.hook.act(async () => late.resolve(Response.json(page(1, adjacent, 6))));
+			await flushHook();
+			expect(h.requests.at(-1)?.url.search).toBe("?aroundMessageId=103");
+			expect(readyStory(h.hook.current.story).revision).toBe(5);
+			expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104]);
 
-		await h.hook.act(async () => { fresh.resolve(Response.json(page(1, 2, 6))); await paging; });
-		await flushHook();
-		expect(readyStory(h.hook.current.story).revision).toBe(6);
-		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104]);
+			await h.hook.act(async () => { fresh.resolve(Response.json(page(1, 2, 6))); await withDeadline(paging, "paging after the refresh", 1_000); });
+			await flushHook();
+			expect(readyStory(h.hook.current.story).revision).toBe(6);
+			expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104]);
 
-		await h.hook.act(async () => h.hook.current.loadMoreHistory(direction));
-		await flushHook();
-		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual(direction === "older" ? [101, 102, 103, 104] : [103, 104, 105, 106]);
+			await h.hook.act(async () => h.hook.current.loadMoreHistory(direction));
+			await flushHook();
+			expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual(direction === "older" ? [101, 102, 103, 104] : [103, 104, 105, 106]);
+		} finally {
+			fresh.resolve(Response.json(page(1, 2, 6)));
+			late.resolve(Response.json(page(1, adjacent, 6)));
+		}
 	});
 }
 
@@ -868,28 +903,32 @@ for (const operation of ["edit", "save as new", "Moves"] as const) test(`${opera
 	let revision = 5;
 	let stored = "Other tab's work";
 	const history = Promise.withResolvers<Response>();
-	const h = await harness(async ({ url, init }) => {
-		if (init?.method === "POST") {
-			const { expectedRevision } = JSON.parse(String(init.body));
-			if (expectedRevision !== revision) return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: revision, current: summary(1, revision) }, { status: 409 });
-			stored = "Overwritten";
-			return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
-		}
-		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
-		return revision === 5 ? Response.json(page()) : history.promise.then((response) => response.clone());
-	});
-	revision = 6;
-	await h.hook.act(async () => h.hook.current.setConversation(summary(1, revision)));
-	await flushHook();
-	await h.hook.act(async () => {
-		if (operation === "Moves") await h.hook.current.setMessageMoves(105, {}, 5);
-		else expect(await h.hook.current.editStoryMessage(105, 1000, "Edited", operation === "save as new", 5)).toBe(false);
-	});
-	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).expectedRevision)).toEqual([5]);
-	expect(stored).toBe("Other tab's work");
-	await h.hook.act(async () => history.resolve(Response.json(page(1, 1, 6))));
-	await flushHook();
-	expect(readyStory(h.hook.current.story).revision).toBe(6);
+	try {
+		const h = await harness(async ({ url, init }) => {
+			if (init?.method === "POST") {
+				const { expectedRevision } = JSON.parse(String(init.body));
+				if (expectedRevision !== revision) return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: revision, current: summary(1, revision) }, { status: 409 });
+				stored = "Overwritten";
+				return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
+			}
+			if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+			return revision === 5 ? Response.json(page()) : withDeadline(history.promise, "history for the new revision", 1_000).then((response) => response.clone());
+		});
+		revision = 6;
+		await h.hook.act(async () => h.hook.current.setConversation(summary(1, revision)));
+		await flushHook();
+		await h.hook.act(async () => {
+			if (operation === "Moves") await h.hook.current.setMessageMoves(105, {}, 5);
+			else expect(await h.hook.current.editStoryMessage(105, 1000, "Edited", operation === "save as new", 5)).toBe(false);
+		});
+		expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).expectedRevision)).toEqual([5]);
+		expect(stored).toBe("Other tab's work");
+		await h.hook.act(async () => history.resolve(Response.json(page(1, 1, 6))));
+		await flushHook();
+		expect(readyStory(h.hook.current.story).revision).toBe(6);
+	} finally {
+		history.resolve(Response.json(page(1, 1, 6)));
+	}
 });
 
 test("a retained transcript command keeps its displayed revision before React renders", async () => {
@@ -1006,21 +1045,26 @@ test("a cancelled page cannot clear the replacement page's loading indicator", a
 	const old = Promise.withResolvers<Response>();
 	const replacement = Promise.withResolvers<Response>();
 	let pages = 0;
-	const h = await harness(async ({ url }) => url.searchParams.get("page") === "2"
-		? (++pages === 1 ? old : replacement).promise : Response.json(url.pathname.endsWith("history") ? page() : summary()));
-	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
-	let first = Promise.resolve();
-	let second = Promise.resolve();
-	await h.hook.act(async () => { first = h.hook.current.loadMoreHistory(); });
-	expect(readyStory(h.hook.current.story).loadingMore).toBe(true);
-	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(105));
-	expect(readyStory(h.hook.current.story).loadingMore).toBe(false);
-	await h.hook.act(async () => { second = h.hook.current.loadMoreHistory(); });
-	await h.hook.act(async () => { old.resolve(Response.json(page(1, 2))); await first; });
-	expect(readyStory(h.hook.current.story).loadingMore).toBe(true);
-	await h.hook.act(async () => { replacement.resolve(Response.json(page(1, 2))); await second; });
-	expect(readyStory(h.hook.current.story).loadingMore).toBe(false);
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
+	try {
+		const h = await harness(async ({ url }) => url.searchParams.get("page") === "2"
+			? withDeadline((++pages === 1 ? old : replacement).promise, "the held older page", 1_000) : Response.json(url.pathname.endsWith("history") ? page() : summary()));
+		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+		let first = Promise.resolve();
+		let second = Promise.resolve();
+		await h.hook.act(async () => { first = h.hook.current.loadMoreHistory(); });
+		expect(readyStory(h.hook.current.story).loadingMore).toBe(true);
+		await h.hook.act(async () => h.hook.current.navigateToSourceMessage(105));
+		expect(readyStory(h.hook.current.story).loadingMore).toBe(false);
+		await h.hook.act(async () => { second = h.hook.current.loadMoreHistory(); });
+		await h.hook.act(async () => { old.resolve(Response.json(page(1, 2))); await withDeadline(first, "the cancelled paging request", 1_000); });
+		expect(readyStory(h.hook.current.story).loadingMore).toBe(true);
+		await h.hook.act(async () => { replacement.resolve(Response.json(page(1, 2))); await withDeadline(second, "the replacement paging request", 1_000); });
+		expect(readyStory(h.hook.current.story).loadingMore).toBe(false);
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
+	} finally {
+		old.resolve(Response.json(page(1, 2)));
+		replacement.resolve(Response.json(page(1, 2)));
+	}
 });
 
 
@@ -1028,20 +1072,24 @@ test("accepted authority supersedes a Summary reconciliation without stranding i
 	const late = Promise.withResolvers<Response>();
 	let summaries = 0;
 	let histories = 0;
-	const h = await harness(async ({ url }) => {
-		if (!url.pathname.endsWith("history")) return ++summaries === 1 ? Response.json(summary()) : late.promise;
-		return Response.json(page(1, 1, [5, 7, 8][histories++] ?? 8));
-	});
-	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
-	await flushHook();
-	expect(summaries).toBe(2);
-	await h.hook.act(async () => h.hook.current.setConversation(summary(1, 8)));
-	await flushHook();
-	expect(readyStory(h.hook.current.story).revision).toBe(8);
-	await h.hook.act(async () => late.resolve(Response.json(summary(1, 7))));
-	await flushHook();
-	expect(h.hook.current.conversation?.revision).toBe(8);
-	expect(readyStory(h.hook.current.story).revision).toBe(8);
+	try {
+		const h = await harness(async ({ url }) => {
+			if (!url.pathname.endsWith("history")) return ++summaries === 1 ? Response.json(summary()) : withDeadline(late.promise, "the superseded Summary", 1_000);
+			return Response.json(page(1, 1, [5, 7, 8][histories++] ?? 8));
+		});
+		await h.hook.act(async () => h.hook.current.setConversation(summary(1, 6)));
+		await flushHook();
+		expect(summaries).toBe(2);
+		await h.hook.act(async () => h.hook.current.setConversation(summary(1, 8)));
+		await flushHook();
+		expect(readyStory(h.hook.current.story).revision).toBe(8);
+		await h.hook.act(async () => late.resolve(Response.json(summary(1, 7))));
+		await flushHook();
+		expect(h.hook.current.conversation?.revision).toBe(8);
+		expect(readyStory(h.hook.current.story).revision).toBe(8);
+	} finally {
+		late.resolve(Response.json(summary(1, 7)));
+	}
 });
 
 
@@ -1117,44 +1165,52 @@ test("a successful newer source jump reads its destination once without a spurio
 	const oldRefresh = Promise.withResolvers<Response>();
 	let revision = 5;
 	let sources = 0;
-	const h = await harness(async ({ url }) => {
-		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
-		if (url.searchParams.has("aroundMessageId")) {
-			revision = 6;
-			return ++sources === 1 ? Response.json(page(1, 3, revision)) : Response.json({ outcome: "not-found" }, { status: 404 });
-		}
-		return revision === 5 ? Response.json(page()) : oldRefresh.promise.then((response) => response.clone());
-	});
-	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
-	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
-	await flushHook();
-	await h.hook.act(async () => oldRefresh.resolve(Response.json(page(1, 1, 6))));
-	await flushHook();
-	expect(sources).toBe(1);
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
-	expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+	try {
+		const h = await harness(async ({ url }) => {
+			if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+			if (url.searchParams.has("aroundMessageId")) {
+				revision = 6;
+				return ++sources === 1 ? Response.json(page(1, 3, revision)) : Response.json({ outcome: "not-found" }, { status: 404 });
+			}
+			return revision === 5 ? Response.json(page()) : withDeadline(oldRefresh.promise, "the superseded history refresh", 1_000).then((response) => response.clone());
+		});
+		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+		await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+		await flushHook();
+		await h.hook.act(async () => oldRefresh.resolve(Response.json(page(1, 1, 6))));
+		await flushHook();
+		expect(sources).toBe(1);
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
+		expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+	} finally {
+		oldRefresh.resolve(Response.json(page(1, 1, 6)));
+	}
 });
 
 test("Jump to latest survives cancellation of an unrelated refresh sharing its Summary", async () => {
 	const shared = Promise.withResolvers<Response>();
 	let summaries = 0;
-	const h = await harness(async ({ url }) => url.pathname.endsWith("history")
-		? Response.json(page(1, url.searchParams.has("aroundMessageId") ? 3 : 1))
-		: ++summaries === 1 ? Response.json(summary()) : shared.promise.then((response) => response.clone()));
-	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
-	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
-	const owner = new AbortController();
-	let refresh: Promise<unknown> = Promise.resolve();
-	let jump: Promise<unknown> = Promise.resolve();
-	await h.hook.act(async () => { refresh = h.hook.current.refreshStory(1, owner.signal).catch(() => null); });
-	await flushHook();
-	await h.hook.act(async () => { jump = h.hook.current.jumpToLatest().catch(() => null); });
-	await flushHook();
-	await h.hook.act(async () => { owner.abort(); shared.resolve(Response.json(summary())); await Promise.all([refresh, jump]); });
-	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
-	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
-	expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+	try {
+		const h = await harness(async ({ url }) => url.pathname.endsWith("history")
+			? Response.json(page(1, url.searchParams.has("aroundMessageId") ? 3 : 1))
+			: ++summaries === 1 ? Response.json(summary()) : withDeadline(shared.promise, "the shared Summary", 1_000).then((response) => response.clone()));
+		Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+		await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+		const owner = new AbortController();
+		let refresh: Promise<unknown> = Promise.resolve();
+		let jump: Promise<unknown> = Promise.resolve();
+		await h.hook.act(async () => { refresh = h.hook.current.refreshStory(1, owner.signal).catch(() => null); });
+		await flushHook();
+		await h.hook.act(async () => { jump = h.hook.current.jumpToLatest().catch(() => null); });
+		await flushHook();
+		await h.hook.act(async () => { owner.abort(); shared.resolve(Response.json(summary())); await withDeadline(Promise.all([refresh, jump]), "the latest jump and cancelled refresh", 1_000); });
+		await flushHook();
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
+		expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
+		expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+	} finally {
+		shared.resolve(Response.json(summary()));
+	}
 });
 
 test("a missing initial source on the final consistency attempt still opens latest", async () => {
@@ -1211,22 +1267,26 @@ test("paging survives a same-revision refresh that changes the live checkpoint",
 	const pending = Promise.withResolvers<Response>();
 	let refreshed = false;
 	let pages = 0;
-	const h = await harness(async ({ url }) => {
-		if (!url.pathname.endsWith("history")) return Response.json(summary());
-		if (url.searchParams.get("page") === "2") return ++pages === 1 ? pending.promise : Response.json(page(1, 2));
-		const current = page();
-		if (refreshed) current.messages[0]!.variants[0]!.content = "Live checkpoint";
-		return Response.json(current);
-	});
-	let paging = Promise.resolve();
-	await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(); });
-	refreshed = true;
-	await h.hook.act(async () => { await h.hook.current.refreshStory(1); });
-	await h.hook.act(async () => { pending.resolve(Response.json(page(1, 2))); await paging; });
-	await flushHook();
-	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
-	expect(h.hook.current.story.messages.find(({ id }) => id === 105)?.swipes[0]?.content).toBe("Live checkpoint");
-	expect(pages).toBe(1);
+	try {
+		const h = await harness(async ({ url }) => {
+			if (!url.pathname.endsWith("history")) return Response.json(summary());
+			if (url.searchParams.get("page") === "2") return ++pages === 1 ? withDeadline(pending.promise, "the older page during refresh", 1_000) : Response.json(page(1, 2));
+			const current = page();
+			if (refreshed) current.messages[0]!.variants[0]!.content = "Live checkpoint";
+			return Response.json(current);
+		});
+		let paging = Promise.resolve();
+		await h.hook.act(async () => { paging = h.hook.current.loadMoreHistory(); });
+		refreshed = true;
+		await h.hook.act(async () => { await h.hook.current.refreshStory(1); });
+		await h.hook.act(async () => { pending.resolve(Response.json(page(1, 2))); await withDeadline(paging, "paging after the checkpoint refresh", 1_000); });
+		await flushHook();
+		expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([103, 104, 105, 106]);
+		expect(h.hook.current.story.messages.find(({ id }) => id === 105)?.swipes[0]?.content).toBe("Live checkpoint");
+		expect(pages).toBe(1);
+	} finally {
+		pending.resolve(Response.json(page(1, 2)));
+	}
 });
 
 test("selectChat retires a queued command before dispatch and leaves the replacement visit usable", async () => {
@@ -1235,10 +1295,65 @@ test("selectChat retires a queued command before dispatch and leaves the replace
 		? Response.json({ outcome: "invalid", reason: "No change" }, { status: 422 })
 		: Response.json(url.pathname.endsWith("history") ? page(Number(url.pathname.split("/")[3])) : summary(Number(url.pathname.split("/")[3]))));
 	const gate = Promise.withResolvers<void>();
-	const blocker = queueConversationCommand(1, async () => { await gate.promise; return false; });
-	let abandoned = Promise.resolve();
-	await h.hook.act(async () => { abandoned = h.hook.current.deleteStoryMessage(105, 5); h.hook.current.selectChat("2"); });
-	await h.switchTo(1);
-	await h.hook.act(async () => { gate.resolve(); await Promise.all([blocker, abandoned]); await h.hook.current.deleteStoryMessage(106, 5); });
-	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).action.messageId)).toEqual([106]);
+	const blocker = queueConversationCommand(1, async () => { await withDeadline(gate.promise, "release of the command queue", 1_000); return false; });
+	try {
+		let abandoned = Promise.resolve();
+		await h.hook.act(async () => { abandoned = h.hook.current.deleteStoryMessage(105, 5); h.hook.current.selectChat("2"); });
+		await h.switchTo(1);
+		await h.hook.act(async () => { gate.resolve(); await withDeadline(Promise.all([blocker, abandoned]), "the retired command queue", 1_000); await h.hook.current.deleteStoryMessage(106, 5); });
+		expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).action.messageId)).toEqual([106]);
+	} finally {
+		gate.resolve();
+	}
+});
+
+test("retiring a visit releases a queued Swipe even when the renderer stops drawing frames", async () => {
+	let revision = 5;
+	const h = await harness(async ({ url, init }) => {
+		const id = Number(url.pathname.split("/")[3]);
+		if (init?.method === "POST") return Response.json({ outcome: "applied", conversation: summary(id, ++revision) });
+		if (!url.pathname.endsWith("history")) return Response.json(summary(id, revision));
+		const history = page(id, 1, revision);
+		const older = history.messages[0]!;
+		older.authorRole = "human";
+		older.moves = revision === 5 ? { phone: [{ to: "Mara", text: "Wait." }] } : {};
+		history.messages.at(-1)!.variants.push(historyVariant({ id: 1099, position: 2, selected: false }));
+		return Response.json(history);
+	});
+	const frameRequested = Promise.withResolvers<void>();
+	const frames = new Map<number, FrameRequestCallback>();
+	let nextFrame = 0;
+	Object.assign(window, {
+		requestAnimationFrame: (callback: FrameRequestCallback) => {
+			frameRequested.resolve();
+			frames.set(++nextFrame, callback);
+			return nextFrame;
+		},
+		cancelAnimationFrame: (id: number) => frames.delete(id),
+	});
+	let moves = Promise.resolve();
+	let swipe = Promise.resolve();
+	try {
+		await h.hook.act(async () => {
+			moves = h.hook.current.setMessageMoves(105, {}, 5);
+			swipe = h.hook.current.selectSwipe(106, 1099);
+		});
+		await withDeadline(frameRequested.promise, "a queued Swipe's first frame", 1_000);
+		await h.switchTo(2);
+		await h.switchTo(1);
+		await h.hook.act(async () => {
+			await withDeadline(h.hook.current.deleteStoryMessage(105, 6), "the replacement visit's Delete", 1_000);
+		});
+		const writes = h.requests.filter(({ init }) => init?.method === "POST");
+		expect(writes.map(({ init }) => JSON.parse(String(init?.body)).action.type)).toEqual(["set-message-moves", "delete-message"]);
+	} finally {
+		await h.hook.act(async () => {
+			while (frames.size > 0) {
+				const pending = [...frames.values()];
+				frames.clear();
+				for (const frame of pending) frame(0);
+			}
+			await withDeadline(Promise.all([moves, swipe]), "the original visit's commands", 1_000);
+		});
+	}
 });

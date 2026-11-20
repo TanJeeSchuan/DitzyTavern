@@ -138,20 +138,21 @@ test("accepted Moves stay visible until history catches up and permits another e
 	expect(shownMessage(changedElsewhere, changedElsewhere.messages[0]!).moves).toEqual({});
 });
 
-test("a refused Swipe reveals the earlier accepted Variant before history catches up", () => {
+test("a refused queued Swipe reveals the earlier selection after history catches up", () => {
 	const messageId = older.id;
 	const first = { value: 101 };
 	const second = { value: 100 };
 	let overlays = reduceStoryOverlays(createStoryOverlays(), { type: "selection-requested", messageId, request: first });
 	overlays = reduceStoryOverlays(overlays, { type: "selection-requested", messageId, request: second });
 	overlays = reduceStoryOverlays(overlays, { type: "selection-settled", messageId, request: first, revision: 4 });
-	const pending = read(overlays, history([older]));
+	const applied = { ...older, variants: [historyVariant({ selected: false }), historyVariant({ id: 101, position: 2 })] };
+	const refreshed = history([applied], 4);
+	overlays = retireStoryOverlays(overlays, refreshed, null);
+	const pending = read(overlays, refreshed);
 	expect(displayedVariantId(pending, pending.messages[0]!)).toBe(100);
 	overlays = reduceStoryOverlays(overlays, { type: "selection-settled", messageId, request: second, revision: null });
-	const refused = read(overlays, history([older]));
+	const refused = read(overlays, refreshed);
 	expect(displayedVariantId(refused, refused.messages[0]!)).toBe(101);
-	const refreshed = read(overlays, history([older], 5));
-	expect(displayedVariantId(refreshed, refreshed.messages[0]!)).toBe(100);
 });
 
 test("a refused Moves edit reveals the latest persisted Moves", () => {

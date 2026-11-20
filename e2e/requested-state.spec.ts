@@ -195,9 +195,10 @@ test("accepted writes disable transcript controls until displayed history catche
 	await expect(reply.getByRole("button", { name: "Previous Swipe", exact: true })).toBeEnabled();
 	await reply.getByRole("button", { name: "Cancel", exact: true }).click();
 	await guard.getByRole("button", { name: "Discard", exact: true }).click();
-	const secondApplied = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok());
-	await moves.getByRole("button", { name: "Remove To Theodora Kline: B" }).click();
-	await secondApplied;
+	await Promise.all([
+		page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok(), { timeout: 5_000 }),
+		moves.getByRole("button", { name: "Remove To Theodora Kline: B" }).click(),
+	]);
 	await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: C" })).toBeEnabled();
 	await page.reload();
 	await expect(story(page).locator("article[data-message-id]").nth(-2).getByRole("list", { name: "Phone Moves" }).getByRole("listitem"))

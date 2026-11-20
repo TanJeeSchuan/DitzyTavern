@@ -482,7 +482,7 @@ export function ActiveWritingWorkspace({
 				/>
 			)}
 			</CoveredLayer>
-			{newChatOpen && <NewChatSurface onCreated={() => saveNavigation.requestChatLeave(onNewChatCreated)} onClose={onNewChatClose} />}
+			{newChatOpen && <NewChatSurface beforeCreate={saveNavigation.requestChatLeave} onCreated={onNewChatCreated} onClose={onNewChatClose} />}
 		</div>
 		<GenerationErrorToast
 			error={generation.generationError}

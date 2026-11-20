@@ -169,8 +169,10 @@ function OpeningsField({
 }
 
 export function NewChatPanel({
+	beforeCreate,
 	onCreated,
 }: {
+	beforeCreate: (create: () => void) => void;
 	onCreated: (conversationId: number) => void;
 }) {
 	const [name, setName] = useState("");
@@ -194,9 +196,7 @@ export function NewChatPanel({
 			: characters.some((character) => character.id === modelSeat.characterId);
 	const ready = name.trim() !== "" && humanReady && modelReady && !pending;
 
-	const submit = async () => {
-		setValidationRevealed(true);
-		if (!ready) return;
+	const create = async () => {
 		setPending(true);
 		setProblem(null);
 		try {
@@ -269,7 +269,10 @@ export function NewChatPanel({
 				className="primary-button"
 				type="button"
 				disabled={pending}
-				onClick={() => void submit()}
+				onClick={() => {
+					setValidationRevealed(true);
+					if (ready) beforeCreate(() => void create());
+				}}
 			>
 				<Plus aria-hidden="true" /> Create Chat
 			</button>

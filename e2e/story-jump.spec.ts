@@ -80,9 +80,10 @@ test("a missing Inspector source opens latest; jumping to a source reads one win
 
 	for (let step = 1; step < 50; step++) await coverage.press("ArrowRight");
 	await page.route(`**${historyUrl}?aroundMessageId=${target.id}`, (route) => route.fulfill({ status: 404, json: { outcome: "not-found" } }));
-	const fallback = page.waitForResponse((response) => response.url().endsWith(`${historyUrl}?page=1`) && response.ok());
-	await coverage.press("Enter");
-	await fallback;
+	await Promise.all([
+		page.waitForResponse((response) => response.url().endsWith(`${historyUrl}?page=1`) && response.ok(), { timeout: 5_000 }),
+		coverage.press("Enter"),
+	]);
 	await expect(latestReply).toBeInViewport();
 	await expect(jumpToLatest).toBeHidden();
 });

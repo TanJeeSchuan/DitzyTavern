@@ -65,7 +65,7 @@ export function inlineMessageDrafts({
 			return false;
 		}
 		const confirmed = !revalidate && draft.acknowledged?.revision === revision && draft.acknowledged.content === content && draft.acknowledged.asNew === asNew;
-		if (!confirmed && ((!asNew && content !== draft.baseContent) || (!revalidate && revision !== draft.baseRevision))) {
+		if (!confirmed && content !== draft.baseContent && (!asNew || !revalidate)) {
 			const conflict = revalidate ? "Changed elsewhere. Review this draft before saving."
 				: asNew ? "Changed elsewhere. Save as new Swipe again to keep both versions." : "Changed elsewhere. Save again to overwrite.";
 			const acknowledged = revalidate ? draft.acknowledged : { revision, content, asNew };

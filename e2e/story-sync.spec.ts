@@ -17,6 +17,62 @@ const focus = (page: Page, visibilityState: "hidden" | "visible") => page.evalua
 	window.dispatchEvent(new Event("visibilitychange"));
 }, visibilityState);
 
+test("an inline Save uses refreshed history after an unrelated write", async ({ page, request }) => {
+	const { activeChatId } = await (await request.get("/api/workspace")).json();
+	const url = `/api/conversations/${activeChatId}`;
+	const conversation = await (await request.get(url)).json();
+	await page.goto("/");
+	const message = story(page).locator("article[data-message-id]").last();
+	await message.hover();
+	await message.getByRole("button", { name: "Edit", exact: true }).click();
+	await message.getByRole("textbox", { name: "Edit Message" }).fill("One click saves this draft.");
+	const renamed = await request.post(`${url}/commands`, { data: {
+		expectedRevision: conversation.revision, action: { type: "rename-conversation", name: "Renamed elsewhere" },
+	} });
+	expect(renamed.ok()).toBe(true);
+	const { conversation: changed } = await renamed.json();
+	await focus(page, "hidden");
+	await Promise.all([
+		page.waitForResponse((response) => new URL(response.url()).pathname === `${url}/history` && response.ok(), { timeout: 5_000 }),
+		focus(page, "visible"),
+	]);
+	await expect(story(page).getByRole("heading", { name: "Renamed elsewhere" })).toBeVisible();
+	const [saved] = await Promise.all([
+		page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok(), { timeout: 5_000 }),
+		message.getByRole("button", { name: "Save", exact: true }).click(),
+	]);
+	expect(saved.request().postDataJSON()).toMatchObject({ expectedRevision: changed.revision, action: { type: "edit-variant" } });
+	await expect(message.getByText("One click saves this draft.", { exact: true })).toBeVisible();
+});
+
+test("New Chat checks an inline draft before creating anything", async ({ page, request }) => {
+	const name = "Guarded new Chat";
+	const createdCount = async () => {
+		const { chats } = await (await request.get("/api/workspace")).json();
+		return chats.filter((chat: { name: string }) => chat.name === name).length;
+	};
+	await page.goto("/");
+	const message = story(page).locator("article[data-message-id]").last();
+	await message.hover();
+	await message.getByRole("button", { name: "Edit", exact: true }).click();
+	await message.getByRole("textbox", { name: "Edit Message" }).fill("Keep this inline draft.");
+	await page.getByRole("button", { name: "Chats", exact: true }).click();
+	await page.getByRole("button", { name: "New", exact: true }).click();
+	await page.getByRole("textbox", { name: "Chat name", exact: true }).fill(name);
+	await page.locator('[data-seat="human"]').getByRole("textbox", { name: "Name", exact: true }).fill("Writer");
+	await page.locator('[data-seat="model"]').getByRole("textbox", { name: "Name", exact: true }).fill("Narrator");
+	const create = page.getByRole("button", { name: "Create Chat", exact: true });
+	const guard = page.getByRole("dialog", { name: "Unsaved changes" });
+	await create.click();
+	await guard.getByRole("button", { name: "Keep editing" }).click();
+	expect(await createdCount()).toBe(0);
+	await expect(create).toBeEnabled();
+	await create.click();
+	await guard.getByRole("button", { name: "Discard", exact: true }).click();
+	await expect(story(page).getByRole("heading", { name, exact: true })).toBeVisible();
+	expect(await createdCount()).toBe(1);
+});
+
 test("Save and leave cannot retarget a draft after another tab selects a different Swipe", async ({ page, request }) => {
 	const { activeChatId } = await (await request.get("/api/workspace")).json();
 	const url = `/api/conversations/${activeChatId}`;
@@ -374,9 +430,10 @@ test.describe(() => {
 		await expect(story(page).getByRole("alert").filter({ hasText: "The Chat history could not be loaded." })).toBeVisible();
 		await expect(story(page).getByRole("button", { name: "Jump to latest", exact: true })).toBeVisible();
 		await page.getByRole("button", { name: "Chats", exact: true }).click();
-		const retried = page.waitForResponse((response) => response.url().includes(`${url}/history`) && response.status() === 500);
-		await page.locator('button[aria-current="true"]').click();
-		await retried;
+		await Promise.all([
+			page.waitForResponse((response) => response.url().includes(`${url}/history`) && response.status() === 500, { timeout: 5_000 }),
+			page.locator('button[aria-current="true"]').click(),
+		]);
 		await expect(articles).toHaveCount(count);
 		await expect(draft).toHaveText("Unsent guidance survives retry.");
 		await page.unroute(`**${url}/history*`);

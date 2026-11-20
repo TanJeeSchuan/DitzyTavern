@@ -73,7 +73,7 @@ async function readHistoryWindow(
 	const anchor = await readHistoryPage(id, start, signal);
 	const before = start.aroundMessageId === undefined ? 0 :
 		Math.max(0, base?.pages.findIndex(({ messages }) => messages.some(({ id }) => id === start.aroundMessageId)) ?? 0);
-	const first = Math.max(1, anchor.page.index - before);
+	const first = base?.pages[0].page.index === 1 ? 1 : Math.max(1, anchor.page.index - before);
 	const last = Math.min(anchor.page.totalPages, anchor.page.index + (base?.pages.length ?? 1) - before - 1);
 	const pages: HistorySnapshot["pages"] = [anchor];
 	for (let index = first; index <= last; index++) {
@@ -138,7 +138,20 @@ async function readAndCommitHistory({
 	}
 }
 
-const afterRender = () => new Promise<void>((resolve) => window.requestAnimationFrame(() => window.requestAnimationFrame(() => resolve())));
+const afterRender = (signal: AbortSignal) => new Promise<void>((resolve, reject) => {
+	signal.throwIfAborted();
+	let frame = window.requestAnimationFrame(() => {
+		frame = window.requestAnimationFrame(() => {
+			signal.removeEventListener("abort", abort);
+			resolve();
+		});
+	});
+	const abort = () => {
+		window.cancelAnimationFrame(frame);
+		reject(signal.reason);
+	};
+	signal.addEventListener("abort", abort, { once: true });
+});
 
 function scrollToLatest() {
 	const root = document.querySelector<HTMLElement>(".story-scroll");
@@ -313,11 +326,11 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 			const alreadyShown = committed?.pages.some((page) => page.messages.some((message) => message.id === messageId)) === true;
 			const opened = alreadyShown ? undefined : await openWindow({ kind: "jump", start: { aroundMessageId: messageId }, refreshSummary: false }, jump, navigationSignal);
 			if (alreadyShown) finishNavigation(jump);
-			await afterRender();
+			await afterRender(navigationSignal);
 			navigationSignal.throwIfAborted();
 			if (!alreadyShown && opened?.sourceMessageId === undefined) scrollToLatest();
 			else document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "instant", block: "center" });
-			await afterRender();
+			await afterRender(navigationSignal);
 		} catch (error) { if (!navigationSignal.aborted) throw error; }
 		finally { navigation.current.jumps.delete(jump); }
 	};
@@ -327,9 +340,9 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		pendingMessage.current = null;
 		if (!story.messages.some((message) => message.id === messageId)) return;
 		const initialScroll = navigation.current.initialScroll.signal;
-		void afterRender().then(() => {
+		void afterRender(AbortSignal.any([signal, initialScroll])).then(() => {
 			if (!signal.aborted && !initialScroll.aborted) document.querySelector<HTMLElement>(`[data-message-id="${messageId}"]`)?.scrollIntoView({ behavior: "instant", block: "center" });
-		});
+		}, () => undefined);
 	}, [story.status, story.messages, signal]);
 
 	const refreshStory = useCallback(async (id: number, external?: AbortSignal) => {
@@ -355,7 +368,7 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		if (revision < requiredRevision()) {
 			await client.refetchQueries({ queryKey: refreshKey, type: "active" }, { cancelRefetch: false, throwOnError: true });
 		}
-		await afterRender();
+		await afterRender(signal);
 		signal.throwIfAborted();
 		const displayed = currentSession().story;
 		if (!isStoryReady(displayed) || displayed.revision < requiredRevision()) throw new Error("The Chat history could not be loaded.");
@@ -368,7 +381,7 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		const navigationSignal = AbortSignal.any([signal, jump.signal]);
 		try {
 			await openWindow({ kind: "jump", start: { page: 1 }, refreshSummary: true }, jump, navigationSignal);
-			await afterRender();
+			await afterRender(navigationSignal);
 			navigationSignal.throwIfAborted();
 			scrollToLatest();
 			return client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
