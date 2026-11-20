@@ -4,15 +4,17 @@ import {
 	macroWritesToData,
 	readMacroWrites,
 } from "./state";
-import { variantDataCodecs } from "../../shared/variant-data-codecs";
-import { macroInitialValuesToData } from "../test-fixtures/macro-variables";
+import { MACRO_DATA_NAMESPACE, variantDataCodecs } from "../../shared/variant-data-codecs";
 
 const decodedRecords = (entry: { key: string; value: string } | null) =>
 	entry === null ? [] : [{ key: entry.key, writes: variantDataCodecs.macroWrites.decodeOptional(entry.value) ?? [] }];
 
 describe("Macro state persistence", () => {
 	test("applies selected Variant writes in order while ignoring unselected siblings", () => {
-		const initialData = macroInitialValuesToData(4, { turn: 5, old: "kept" });
+		const initialData = [
+			{ namespace: MACRO_DATA_NAMESPACE, key: "initial:4:turn", value: "5" },
+			{ namespace: MACRO_DATA_NAMESPACE, key: "initial:4:old", value: '"kept"' },
+		];
 		const selected = macroWritesToData(4, [
 			{ name: "turn", operation: "set", value: 6 },
 			{ name: "old", operation: "delete", value: undefined },

@@ -3,10 +3,9 @@ import { readTestConversationSnapshot, createConversationWithHistory, checkpoint
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { acceptGeneration } from "../conversation";
+import { acceptGeneration, editMacroVariables } from "../conversation";
 import { resolveConversationGeneration } from "../conversation";
 import { readMacroWrites } from "../prompt-macros";
-import { macroInitialValuesToData } from "../test-fixtures/macro-variables";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { readVariantData } from "../conversation";
 import { captureGeneration } from "./generate-capture";
@@ -23,7 +22,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 	afterEach(() => database.close());
 
 	test("threads recipe writes and carries only the selected Variant's resolved journal", async () => {
-		const conversation = createConversationWithHistory(database, {
+		const initial = createConversationWithHistory(database, {
 			name: "Macro variables",
 			participants: [
 				participantSeed("Writer", { prompt: {
@@ -38,8 +37,10 @@ describe("Conversation-persistent prompt macro variables", () => {
 						} }),
 			],
 			control: { human: 0, model: 1 },
-			data: macroInitialValuesToData(1, { turn: 5, enabled: true }),
 		});
+		const scope = { conversationId: initial.id, promptPresetId: 1, position: 0, operation: "set" } as const;
+		const turn = editMacroVariables(database, { ...scope, expectedRevision: initial.revision, name: "turn", value: 5 });
+		const { conversation } = editMacroVariables(database, { ...scope, expectedRevision: turn.conversation.revision, name: "enabled", value: true });
 
 		const first = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: conversation.id });
 		expect(first.plan.promptPlan.blocks.map((block) => block.content)).toContain("turn=6");

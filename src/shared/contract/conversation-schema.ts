@@ -28,7 +28,6 @@ import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 import { scopedLorebookAttachment } from "./lorebook";
 
-
 const promptHistoryRole = Type.Union([
 	Type.Literal("human"),
 	Type.Literal("model"),

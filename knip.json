@@ -7,24 +7,37 @@
 		"src/server/database/{seed,teardown}.ts!",
 		"src/box-sdk/*.ts!", // Public SDK for third-party Boxes.
 		"src/boxes/*/{server.ts,shared-descriptor.ts,client.tsx,logic.ts,ui.ts}!", // Loaded from Box folders at runtime.
-		"scripts/**/*.{js,mjs,ts,tsx}!",
-		"e2e/**/*.{ts,tsx}!",
-		"tools/**/*.ts!",
-		"!**/*.{test,spec}.{ts,tsx}!"
+		"e2e/server.ts", // Spawned by the browser harness. Its imports never satisfy production reachability.
+		"e2e/fixtures/boxes/*/{server.ts,shared-descriptor.ts,client.tsx}", // Loaded by the Box host in browser tests.
+		"scripts/{check-clones,publish-docker,write-build-metadata}.ts",
+		"scripts/stream-eyes/{eyes.mjs,preview.tsx,server.ts}", // Standalone trace CLI, Vite preview page and spawned preview server.
+		"tools/oxlint/*/index.ts" // Loaded by Oxlint.
 	],
 	"project": [
-		"{src,scripts,e2e,tools}/**/*.{js,mjs,ts,tsx}!",
+		"src/**/*.{js,ts,tsx}!",
+		"{scripts,e2e,tools}/**/*.{js,mjs,ts,tsx}",
 		"!**/*.{test,spec}.{ts,tsx}!",
 		"!e2e/fixtures/boxes/*/**/*.js", // Guest scripts and vendored packages loaded by the Box host.
 		"!src/**/{test-fixtures.ts,test-fixtures/**}!", // Intentional test support.
 		"!src/server/contract/*-test-fixtures.ts!",
 		"!src/server/{image/image-fixtures,lorebook/fixtures,sillytavern/fixtures}.ts!"
 	],
+	"includeEntryExports": true,
+	"ignoreIssues": {
+		"src/box-sdk/*.ts": ["exports", "types"] // Box authors import any SDK export.
+	},
 	"node": false, // Node's test-* discovery misclassifies the live Test Connection endpoint.
 	"ignoreExportsUsedInFile": true, // The declaration already has a production caller in its own module.
 	"ignoreUnresolved": ["e2e/server.ts"], // The harness spawns it relative to the repo root.
 	"preprocessor": "./scripts/knip-allowlist.ts",
 	"preprocessorOptions": {
+		"src/boxes/*/{server.ts,shared-descriptor.ts,client.tsx,logic.ts,ui.ts}": ["default"], // Runtime Box entry points are discovered by folder and load their default exports.
+		"e2e/fixtures/boxes/*/{server.ts,shared-descriptor.ts,client.tsx}": ["default"], // Browser test Boxes use the same runtime loading.
+		"tools/oxlint/*/index.ts": ["default"], // Oxlint reads each configured plugin's default export.
+		"src/shared/contract/box-row-reference.ts": ["ParticipantId"], // Public Row Reference schema re-exported by the Box SDK.
+		"src/server/authoring/candidate.ts": ["AUTHORED_ID"], // Production Box export and submission CLIs validate saved ids.
+		"src/server/box/versions.ts": ["installedLatest"], // Production Box export and submission CLIs inspect installed versions.
+
 		// HTTP and stored-value surface for owner review.
 		"src/shared/contract/macro-variables.ts": ["MacroVariablesEditBody"], // Names the input of the Macro Variable edit command.
 		"src/shared/contract/prompt-preset.ts": ["SillyTavernImportApplied", "PromptPresetListResponse", "PromptPresetConflict"], // Name these HTTP outcomes for consumers of the Prompt Preset API.
