@@ -1,46 +1,11 @@
-import type { Dispatch } from "react";
-import type { ConversationSummary } from "../conversation";
-import { runConversationCommand } from "../conversation-command-runner";
-import {
-	type StoryAction,
-	type StoryState,
-	isStoryReady,
-} from "../story";
+import { requestVariantSelection, type VariantSelectionSurface } from "../variant-selection";
 
-type PreviewControllerOptions = {
-	signal: AbortSignal;
-	story: StoryState;
-	dispatchStory: Dispatch<StoryAction>;
-	setConversation: (conversation: ConversationSummary | null) => void;
-};
-
-export function usePreviewController({
-	signal,
-	story,
-	dispatchStory,
-	setConversation,
-}: PreviewControllerOptions) {
-	const surface = {
-		revision: () => isStoryReady(story) ? story.revision : null,
-		exact: true,
-		onConversationChange: setConversation,
-		setNotice: () => undefined,
-		isCurrent: () => !signal.aborted,
-	};
-
+export function usePreviewController(surface: VariantSelectionSurface) {
+	const { story, dispatchStory } = surface;
 	const cancelPreview = () => dispatchStory({ type: "preview-changed", preview: null });
-
 	const confirmPreview = async () => {
 		const preview = story.preview;
-		if (preview === null || !isStoryReady(story)) return;
-		const { messageId, variantId } = preview;
-		const request = { value: variantId };
-		dispatchStory({ type: "preview-confirmed", messageId, request });
-		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId }, { type: "select-variant", messageId, variantId }, {
-			onApplied: (result) => dispatchStory({ type: "selection-settled", messageId, request, revision: result.revision }),
-		});
-		if (!applied && !signal.aborted) dispatchStory({ type: "selection-settled", messageId, request, revision: null });
+		if (preview !== null) await requestVariantSelection(surface, preview.messageId, preview.variantId, { kind: "confirm" });
 	};
-
 	return { cancelPreview, confirmPreview };
 }

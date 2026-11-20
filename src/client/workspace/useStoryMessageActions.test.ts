@@ -42,7 +42,7 @@ const firstPage = (withLaterMessage = false, withMoves = false): ChatHistoryPage
 		authorRole: "human",
 		author: { participantId: 10, capturedName: "Writer", inCast: true },
 		moves: { phone: [{ to: "Model", text: "Wait." }] },
-		variants: [historyVariant({ id: 90 })],
+		variants: [historyVariant({ id: 90 }), historyVariant({ id: 91, position: 2, selected: false })],
 	})] : []), historyMessage({
 		position: withMoves ? 2 : 1,
 		author: { participantId: 20, capturedName: "Author", inCast: true },
@@ -93,6 +93,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false, withMoves = 
 	let beforeHistory: () => Promise<void> = async () => {};
 	let removedVariant: number | undefined;
 	let laterMessage = withLaterMessage;
+	let latestOnly = false;
 	let gate: Promise<void> = Promise.resolve();
 
 	const handler: FetchHandler = async (input, init) => {
@@ -137,7 +138,8 @@ function createHarness(mode: CommandMode, withLaterMessage = false, withMoves = 
 		conversation = value;
 	};
 	const publishHistory = (variantId: number) => {
-		const page = firstPage(laterMessage, withMoves).messages.map((message) => message.id === 10 ? {
+		const messages = firstPage(laterMessage, withMoves).messages;
+		const page = (latestOnly ? messages.slice(-1) : messages).map((message) => message.id === 10 ? {
 			...message, variants: message.variants.filter((variant) => variant.id !== removedVariant).map((variant) => ({ ...variant, selected: variant.id === variantId })),
 		} : message);
 		window = { ...window, revision, page: firstPage(laterMessage, withMoves).page, messages: page.map(toStoryMessage) };
@@ -150,10 +152,10 @@ function createHarness(mode: CommandMode, withLaterMessage = false, withMoves = 
 		story: story(),
 		dispatchStory,
 		setConversation,
+		waitForHistory: async () => { await beforeHistory(); publishHistory(appliedVariant); return story(); },
 	});
 	const actions = () => useStoryMessageActions({
 		...surface(),
-		waitForHistory: async () => { await beforeHistory(); publishHistory(appliedVariant); return story(); },
 		queueSwipeScroll() {},
 		canEnterPreview: true,
 		onEnterPreview: (enter) => {
@@ -194,6 +196,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false, withMoves = 
 		hold,
 		story,
 		publishHistory,
+		jumpToLatest: () => { latestOnly = true; publishHistory(appliedVariant); },
 		waitForRefresh: (wait: () => Promise<void>) => { beforeHistory = wait; },
 		removeVariant: (id: number) => { removedVariant = id; },
 		appendMessage: () => {
@@ -313,6 +316,33 @@ describe("Requested selection", () => {
 		expect(harness.previewEntries()).toBe(0);
 	});
 
+	test("opening an older Preview drops a queued ordinary Swipe", async () => {
+		const harness = createHarness({ kind: "applied" }, false, true);
+		const release = harness.hold();
+		const moves = harness.removeMoves();
+		const swipe = harness.swipe(10, 1);
+		await harness.select(9, 91);
+		release();
+		await Promise.all([moves, swipe]);
+
+		expect(harness.commands.map(({ action }) => action.type)).toEqual(["set-message-moves"]);
+		expect(harness.shownVariantId()).toBe(100);
+		expect(harness.previewEntries()).toBe(1);
+	});
+
+	test("a failed preceding command leaves the queued Swipe blocked by Preview", async () => {
+		const harness = createHarness({ kind: "applied" }, false, true);
+		const outcome = Promise.withResolvers<false>();
+		const preceding = queueConversationCommand(1, () => withDeadline(outcome.promise, "the failed preceding command", 1_000));
+		const swipe = harness.swipe(10, 1);
+		await harness.select(9, 91);
+		outcome.resolve(false);
+		await Promise.all([preceding, swipe]);
+
+		expect(harness.commands).toEqual([]);
+		expect(harness.shownVariantId()).toBe(100);
+	});
+
 	test("a queued Swipe drops a Variant absent from refreshed history", async () => {
 		const harness = createHarness({ kind: "applied" });
 		const release = harness.hold();
@@ -368,6 +398,71 @@ describe("Requested selection", () => {
 			expect(harness.shownVariantId()).toBe(100);
 			expect(harness.activeVariantId()).toBe(100);
 		}
+	});
+
+	test("Confirm Change queued behind a Moves write uses its revision", async () => {
+		const harness = createHarness({ kind: "applied" }, true, true);
+		const release = harness.hold();
+		const moves = harness.removeMoves();
+		await harness.swipe(10, 1);
+		const confirming = harness.confirm();
+		release();
+		await Promise.all([moves, confirming]);
+		expect(harness.commands.map(({ expectedRevision, action }) => [expectedRevision, action.type, action.messageId, action.variantId])).toEqual([
+			[5, "set-message-moves", 9, undefined],
+			[6, "select-variant", 10, 101],
+		]);
+		expect(harness.shownVariantId()).toBe(101);
+	});
+
+	test("jumping to latest keeps a queued Confirm Change for an older Message", async () => {
+		const harness = createHarness({ kind: "applied" }, true, true);
+		const release = harness.hold();
+		const moves = harness.removeMoves();
+		await harness.swipe(10, 1);
+		const confirming = harness.confirm();
+		harness.jumpToLatest();
+		release();
+		await Promise.all([moves, confirming]);
+
+		expect(harness.commands.at(-1)).toEqual({
+			expectedRevision: 6, action: { type: "select-variant", messageId: 10, variantId: 101 },
+		});
+		expect(harness.story().messages.map(({ id }) => id)).toEqual([11]);
+	});
+
+	test("queued Confirm Change releases later commands while rendering is paused", async () => {
+		const harness = createHarness({ kind: "applied" }, true, true);
+		const release = harness.hold();
+		const rendering = Promise.withResolvers<void>();
+		harness.waitForRefresh(() => withDeadline(rendering.promise, "history to render", 3_000));
+		const moves = harness.removeMoves();
+		await harness.swipe(10, 1);
+		const confirming = harness.confirm();
+		const following = queueConversationCommand(1, async (revision) => revision);
+		release();
+		try {
+			expect(await withDeadline(following, "the command after Confirm Change", 1_000)).toBe(7);
+		} finally {
+			rendering.resolve();
+			await Promise.all([moves, confirming, following]);
+		}
+	});
+
+	test("a new Preview stays open while an earlier Confirm Change persists", async () => {
+		const harness = createHarness({ kind: "applied" }, true, true);
+		const release = harness.hold();
+		const moves = harness.removeMoves();
+		await harness.swipe(10, 1);
+		const confirming = harness.confirm();
+		await harness.select(9, 91);
+		release();
+		await Promise.all([moves, confirming]);
+
+		expect(harness.commands.at(-1)).toEqual({
+			expectedRevision: 6, action: { type: "select-variant", messageId: 10, variantId: 101 },
+		});
+		expect(harness.story().preview?.variantId).toBe(91);
 	});
 
 	test("Preview blocks a later Swipe and sends only the older Variant confirmed by the writer", async () => {

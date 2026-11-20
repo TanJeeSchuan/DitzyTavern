@@ -1,18 +1,11 @@
+import { requestVariantSelection, type SelectionHistory, type VariantSelectionSurface } from "../variant-selection";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { Dispatch } from "react";
-import {
-	applyConversationCommand,
-	type ConversationSummary,
-} from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import {
 	classifyVariantSelection,
 	canWriteMessage,
 	displayedVariantId,
 	previewOnMessage,
-	type RequestedWrite,
-	type StoryAction,
-	type StoryState,
 	isStoryReady,
 } from "../story";
 
@@ -32,16 +25,8 @@ const STORY_COMMAND_NOTICES = {
 // outcomes, made explicit so the runner never flattens them for this surface.
 const noPresentation = () => undefined;
 
-type RequestedSelection = { baseRevision: number; messageId: number; request: RequestedWrite<number> };
-type SelectionSlot = { selection: RequestedSelection; claimed: boolean };
-const selections = new WeakMap<AbortSignal, SelectionSlot>();
-
-type StoryMessageActionsOptions = {
-	signal: AbortSignal;
-	story: StoryState;
-	dispatchStory: Dispatch<StoryAction>;
-	setConversation: (conversation: ConversationSummary | null) => void;
-	waitForHistory: (minimumRevision?: number) => Promise<StoryState>;
+type StoryMessageActionsOptions = VariantSelectionSurface & {
+	waitForHistory: SelectionHistory;
 	queueSwipeScroll: (messageId: number) => void;
 	canEnterPreview: boolean;
 	onEnterPreview: (enter: () => void) => void;
@@ -67,42 +52,6 @@ export function useStoryMessageActions({
 		if (!isStoryReady(story) || story.revision !== revision || !canWriteMessage(story, messageId)) return undefined;
 		const message = story.messages.find((entry) => entry.id === messageId);
 		return message === undefined ? undefined : { message, commandSurface: { ...surface, conversationId: story.conversationId, revision: () => revision } };
-	};
-	const requestSelection = async (conversationId: number, messageId: number, variantId: number, baseRevision: number) => {
-		const requested = { baseRevision, messageId, request: { value: variantId } };
-		const previousSlot = selections.get(signal);
-		if (previousSlot !== undefined && !previousSlot.claimed) {
-			dispatchStory({ type: "selection-settled", ...previousSlot.selection, revision: null });
-			previousSlot.selection = requested;
-			dispatchStory({ type: "selection-requested", ...requested });
-			return;
-		}
-		const slot: SelectionSlot = { selection: requested, claimed: false };
-		selections.set(signal, slot);
-		dispatchStory({ type: "selection-requested", ...requested });
-		try {
-			const applied = await runConversationCommand({ ...surface, conversationId, revision: async (previous) => {
-				const minimum = previous ?? 0;
-				const needsHistory = previousSlot !== undefined || minimum > slot.selection.baseRevision;
-				const refreshed = needsHistory ? await waitForHistory(minimum).catch(() => undefined) : null;
-				slot.claimed = true;
-				const { baseRevision, messageId, request } = slot.selection;
-				if (refreshed === null) return baseRevision;
-				if (refreshed === undefined || !isStoryReady(refreshed) || refreshed.revision < baseRevision) return null;
-				const persisted = { ...refreshed, requestedSelections: new Map() };
-				const selection = classifyVariantSelection(persisted, messageId, request.value);
-				return selection.kind === "immediate" ? refreshed.revision : null;
-			} }, (expectedRevision) => {
-				const { messageId, request } = slot.selection;
-				return applyConversationCommand(conversationId, expectedRevision, { type: "select-variant", messageId, variantId: request.value });
-			}, {
-				notices: STORY_COMMAND_NOTICES,
-				onApplied: ({ revision }) => dispatchStory({ type: "selection-settled", ...slot.selection, revision }),
-			});
-			if (!applied && !signal.aborted) dispatchStory({ type: "selection-settled", ...slot.selection, revision: null });
-		} finally {
-			if (selections.get(signal) === slot) selections.delete(signal);
-		}
 	};
 
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
@@ -139,7 +88,7 @@ export function useStoryMessageActions({
 		}
 
 		queueSwipeScroll(selection.messageId);
-		await requestSelection(story.conversationId, selection.messageId, selection.variantId, story.revision);
+		await requestVariantSelection({ signal, story, dispatchStory, setConversation }, selection.messageId, selection.variantId, { kind: "swipe", waitForHistory });
 	};
 
 	// @approved

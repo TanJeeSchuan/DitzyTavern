@@ -1,5 +1,5 @@
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useSyncExternalStore, type Dispatch, type RefObject } from "react";
+import { useSyncExternalStore, type Dispatch, type RefObject } from "react";
 import {
 	previewConversationGeneration,
 	startConversationGeneration,
@@ -9,20 +9,14 @@ import {
 import type { GenerationPreview, PromptPlan } from "../../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../../shared/contract/generation-events";
 import { canStartAssembly } from "../assembly";
-import { store } from "../lib/store";
 import { useConversationVisit } from "../lib/visit";
 import { hasMoves, pickMoves, seatBound } from "../../shared/contract/box-generation";
 import { chatBoxDescriptor } from "../box-windows/registry";
 import { queueConversationCommand } from "../conversation-command-runner";
 import type { StoryAction } from "../story";
 import { isAssemblyPending, type AssemblySession, type AssemblySessionPhase } from "../assembly-session";
-import { generationStartAt, reduceGenerationStart, type GenerationStart, type GenerationStartEvent, type StartRequest } from "../generation-start";
-
-type GenerationStartLifecycle = {
-	begin: () => number;
-	settle: (startId: number) => void;
-	accepted: (startId: number, target: GenerationAttemptTarget) => void;
-};
+import { generationStartAt, type GenerationStartEvent, type StartRequest } from "../generation-start";
+import type { GenerationSessionRunner } from "../generation-session-runner";
 
 type AssemblyControllerOptions = {
 	signal: AbortSignal;
@@ -34,7 +28,7 @@ type AssemblyControllerOptions = {
 	variantPreviewActive: boolean;
 	inspectPromptPlanBeforeGenerating: boolean;
 	beforeInspect: (inspect: () => void) => void;
-	generationStart: GenerationStartLifecycle;
+	generations: GenerationSessionRunner;
 	dispatchStory: Dispatch<StoryAction>;
 	// @approved
 	//  Empties the composer for a Send and returns how to put its text and staged Moves back if the Send fails while its visit is current.
@@ -64,8 +58,8 @@ const loadPreview = async (request: StartRequest, signal: AbortSignal): Promise<
 };
 
 /** @approved
- * Owns a Generation start: the generation-start reducer holds its phase, react-query holds the Prompt Plan preview read
- * keyed by its request, and the story and pending starts hear of each start, acceptance and failure the reducer allows.
+ * Prepares and sends requests through the Generation session owner. React Query holds the Prompt Plan preview
+ * keyed by its request; the story holds only the requested transcript placeholder.
  */
 export function useAssemblyController({
 	signal: selection,
@@ -77,21 +71,14 @@ export function useAssemblyController({
 	variantPreviewActive,
 	inspectPromptPlanBeforeGenerating,
 	beforeInspect,
-	generationStart,
+	generations,
 	dispatchStory,
 	takeComposer,
 }: AssemblyControllerOptions) {
 	const client = useQueryClient();
 	const signal = useConversationVisit(selection, conversation?.id);
-	// @approved
-	//  A store rather than state: a second call in the same tick must see the transition the first one made.
-	const [machine] = useState(() => store<GenerationStart>({ visit: signal, last: null, phase: "idle", error: null }));
-	const start = generationStartAt(useSyncExternalStore(machine.subscribe, machine.get), signal);
-	const transition = (event: GenerationStartEvent) => {
-		const previous = machine.get();
-		machine.set(reduceGenerationStart(previous, event));
-		return machine.get() !== previous;
-	};
+	const start = generationStartAt(useSyncExternalStore(generations.subscribe, () => generations.getSnapshot().start), signal);
+	const transition = (event: GenerationStartEvent) => generations.dispatch({ type: "start-event", event });
 	const inspecting = start.phase === "inspecting" ? start : null;
 	const assemblyRequest = inspecting?.request ?? null;
 
@@ -150,18 +137,16 @@ export function useAssemblyController({
 	//  lands, and the story holds the output it streams until the refresh
 	//  places its Variant.
 	const launch = (request: StartRequest, preview?: GenerationStartSubmission["preview"]) => {
-		const startId = generationStart.begin();
+		generations.dispatch({ type: "errors-acknowledged" });
 		dispatchStory({ type: "generation-requested", request: request.request.target });
 		const restoreComposer = request.request.target.kind === "send" ? takeComposer() : undefined;
 		issueGeneration({ ...request, signal, preview }).then(({ target, sentRevision }) => {
-			if (!transition({ type: "start-accepted", visit: signal })) return;
+			if (!transition({ type: "start-accepted", visit: signal, target })) return;
 			dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });
-			generationStart.accepted(startId, target);
 			void refreshStory(request.conversationId, signal).catch(() => null);
 		}, (error: Error) => {
 			if (!transition({ type: "failed", visit: signal, error: error.message })) return;
 			restoreComposer?.();
-			generationStart.settle(startId);
 			dispatchStory({ type: "generation-request-failed" });
 		});
 	};

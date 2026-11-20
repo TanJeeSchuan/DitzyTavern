@@ -1,6 +1,6 @@
 # T8: Client state
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: T7
 
@@ -65,7 +65,8 @@ Report 06, finding 1; report 05, findings 3 and 5.
 - [x] Slices a and b, one PR, ADR 0036 amended
 - [x] Slice c overlay model approved
 - [x] Slice c owner revision decision, invariant fixes and regression verification
-- [ ] Slice d (Astra), fixes (Sol), PR
+- [x] Slice d first implementation and focused checks (Astra)
+- [x] Slice d review fixes, full verification and PR (Sol)
 
 ## Acceptance
 
@@ -126,3 +127,29 @@ Round nine BuildBuddy verification passed typecheck, 151 focused unit tests and 
 Round ten verified that a refused New Chat preserves the inline draft after Discard, and that an accepted write recovers a failed joined history read both with and without a committed transcript. Both behaviours failed on `8d978fe3`. Typecheck, 153 focused unit tests and 31 browser tests passed on BuildBuddy. Changed-file lint and `git diff --check` passed locally. [Baseline regressions](https://app.buildbuddy.io/invocation/2d117f5e-117c-4cf1-b738-f14ae30fbfbd), [final verification](https://app.buildbuddy.io/invocation/a3e65743-df6a-47a3-afd3-12ba9133e266).
 
 Round eleven verified that canceling Fork or declining the Rewind composer confirmation preserves the inline draft after Discard. The command queue test verified that a Send waits for a pending Swipe to apply its latest coalesced choice. All three regressions failed on `72e7e8dd`. BuildBuddy passed typecheck, 154 focused unit tests and 33 browser tests. Changed-file lint and `git diff --check` passed locally. [Baseline regressions](https://app.buildbuddy.io/invocation/5e14d4a9-79e0-4fae-8056-52f8b2344d1c) · [Passing run](https://app.buildbuddy.io/invocation/65d3ec89-942f-4c45-a675-63efae30b6be)
+
+
+### Slice d
+
+[PR #292](https://github.com/TanJeeSchuan/DitzyTavern/pull/292) carries the Generation owner and Swipe transaction changes.
+
+- The Generation session owner holds the local request through preparation and acceptance. Acceptance installs the session keyed by Generation id in that same transition. The assembly controller reads that owner's start state; the pending-start reducer, acceptance handoff and retirement effect are deleted. Stream observations still go through the per-Variant store.
+- Ordinary Swipe and Confirm Change use `requestVariantSelection` for the requested overlay, command queue and settlement. A queued ordinary Swipe reads the committed history from the query cache after a preceding command, including after a refusal or conflict. An open Preview blocks it. Confirm sends the approved Message and Variant at the queue's revision. The server validates those IDs even when the writer has opened another Preview or jumped to a different page.
+- The controller no longer returns `stopGeneration` or `activeGenerationMessageIds`. Its old-visit Stop regression calls `cancelGeneration`. Leaving a Chat drops its visit's pending Stop flag as well as its stream cursor; the old response still cannot settle a replacement visit.
+
+Focused coverage:
+
+- `generation-session-runner.test.ts`: `a refresh that has not placed an accepted Generation cannot discard its stream` now drives the local request through acceptance before checking off-window streamed text. `a recovered active snapshot resumes the saved event cursor` and both `returning after an explicit/implicit Chat switch replays discarded text` cases cover cursor ownership.
+- `generation-sessions.test.ts`: `reconnection attempts are bounded and re-armed by observed liveness` preserves the reconnect cap.
+- `assembly-session.test.ts`: `acceptance subscribes while the story refresh is still in flight` uses the real owner and a fake stream transport. Existing acceptance, failure, retry and old-visit tests use the same owner.
+- `conversation-session.test.ts`: `an old Stop mutation cannot settle a newer Stop after A to B to A` now visits a Chat without any Generation before returning, so it also rejects carrying the first visit's pending Stop into the second.
+- `conversation-session.test.ts`: `a queued Swipe after a 422/409 write revalidates while rendering is paused` checks that the queued Swipe and the following command finish without animation frames at both the existing and a refreshed revision. `retiring a visit releases a queued Swipe waiting for history` exercises cancellation with a held refresh.
+- `useStoryMessageActions.test.ts`: `Confirm Change queued behind a Moves write uses its revision` covers the shared transaction's explicit historical selection. `opening an older Preview drops a queued ordinary Swipe` and `a failed preceding command leaves the queued Swipe blocked by Preview` cover the Preview guard after both preceding outcomes. `a new Preview stays open while an earlier Confirm Change persists`, `jumping to latest keeps a queued Confirm Change for an older Message` and `queued Confirm Change releases later commands while rendering is paused` verify that later navigation and rendering leave the confirmed command independent.
+
+The queued Confirm and strengthened old-Stop probes fail with the corresponding baseline behavior restored. The new Swipe and Preview regressions fail before their fixes and pass afterward. GitHub's Check workflow runs typecheck, full unit tests and the e2e suite. See the [PR checks](https://github.com/TanJeeSchuan/DitzyTavern/pull/292/checks).
+
+The seeded browser on port 3100 accepted a Send, streamed its reply, switched Chats mid-stream, and replayed the reply on return. Explicit Stop preserved the partial reply. The browser also generated a sibling, persisted an ordinary Swipe, and confirmed an older Preview. Reload retained the confirmed Variant and later reply.
+
+The [full Doherty run](https://app.buildbuddy.io/invocation/1539a059-40cd-42f5-a08b-765f283cc0a9) exposed failures under delayed APIs. Master reproduced those failures in the [core flows](https://app.buildbuddy.io/invocation/c06e4507-6b6d-4357-8b2e-2ed189ad411e), including long Chat paging, the Swipe browser and focus during source navigation, and in the [Race and World Clock flows](https://app.buildbuddy.io/invocation/1473f3be-08ab-41af-8e33-cacccb15c0bb).
+
+The regular e2e run also hit an intermittent focus failure after selecting a tall Swipe. It reproduced on [master without API delay](https://app.buildbuddy.io/invocation/77181be0-9e65-4cda-9837-bec4ee7c49a3).

@@ -50,7 +50,7 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		const commands = useStoryMessageActions({
 			signal: session.signal, story: session.story,
 			dispatchStory: session.dispatchStory, setConversation: session.setConversation,
-			waitForHistory: session.waitForHistory,
+			waitForHistory: session.readSelectionHistory,
 			queueSwipeScroll() {}, canEnterPreview: true, onEnterPreview: (enter) => enter(),
 		});
 		return { ...session, ...commands };
@@ -755,7 +755,8 @@ test("an old Stop mutation cannot settle a newer Stop after A to B to A", async 
 		if (String(input).endsWith("/stop")) return responses[stops++]!.promise;
 		return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("Detached")), { once: true }));
 	});
-	let conversation = { ...summary(), activeGenerations: [{ generationId: 7, messageId: 105, variantId: 1005, startedAt: "2026-01-01T00:00:00.000Z" }] };
+	const activeGenerations = [{ generationId: 7, messageId: 105, variantId: 1005, startedAt: "2026-01-01T00:00:00.000Z" }];
+	let conversation = { ...summary(), activeGenerations };
 	const activeChatIdRef = { current: "1" };
 	const dispatchStory = () => {};
 	let visit = new AbortController();
@@ -766,13 +767,13 @@ test("an old Stop mutation cannot settle a newer Stop after A to B to A", async 
 		inspectPromptPlanBeforeGenerating: false,
 	}), client);
 	let older: Promise<void> = Promise.resolve();
-	await hook.act(async () => { older = hook.current.stopGeneration(7); });
-	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 2 }; activeChatIdRef.current = "2"; });
+	await hook.act(async () => { older = hook.current.cancelGeneration(); });
+	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 2, activeGenerations: [] }; activeChatIdRef.current = "2"; });
 	await hook.rerender();
-	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 1 }; activeChatIdRef.current = "1"; });
+	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 1, activeGenerations }; activeChatIdRef.current = "1"; });
 	await hook.rerender();
 	let newer: Promise<void> = Promise.resolve();
-	await hook.act(async () => { newer = hook.current.stopGeneration(7); });
+	await hook.act(async () => { newer = hook.current.cancelGeneration(); });
 	expect(stops).toBe(2);
 	expect(hook.current.stopPending).toBe(true);
 	await hook.act(async () => { responses[0]!.resolve(Response.json({ outcome: "stopped", generationId: 7 })); await older; });
@@ -1345,28 +1346,27 @@ test("selectChat retires a queued command before dispatch and leaves the replace
 	}
 });
 
-test("retiring a visit releases a queued Swipe even when the renderer stops drawing frames", async () => {
+test.each([422, 409])("a queued Swipe after a %i write revalidates while rendering is paused", async (status) => {
+	const { queueConversationCommand } = await import("../conversation-command-runner");
 	let revision = 5;
 	const h = await harness(async ({ url, init }) => {
-		const id = Number(url.pathname.split("/")[3]);
-		if (init?.method === "POST") return Response.json({ outcome: "applied", conversation: summary(id, ++revision) });
-		if (!url.pathname.endsWith("history")) return Response.json(summary(id, revision));
-		const history = page(id, 1, revision);
-		const older = history.messages[0]!;
-		older.authorRole = "human";
-		older.moves = revision === 5 ? { phone: [{ to: "Mara", text: "Wait." }] } : {};
+		if (init?.method === "POST") {
+			if (JSON.parse(String(init.body)).action.type === "set-message-moves") {
+				if (status === 422) return Response.json({ outcome: "invalid", reason: "Moves refused." }, { status });
+				return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: ++revision, current: summary(1, revision) }, { status });
+			}
+			return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
+		}
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+		const history = page(1, 1, revision);
+		history.messages[0]!.moves = { phone: [{ to: "Mara", text: "Wait." }] };
 		history.messages.at(-1)!.variants.push(historyVariant({ id: 1099, position: 2, selected: false }));
 		return Response.json(history);
 	});
-	const frameRequested = Promise.withResolvers<void>();
 	const frames = new Map<number, FrameRequestCallback>();
 	let nextFrame = 0;
 	Object.assign(window, {
-		requestAnimationFrame: (callback: FrameRequestCallback) => {
-			frameRequested.resolve();
-			frames.set(++nextFrame, callback);
-			return nextFrame;
-		},
+		requestAnimationFrame: (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; },
 		cancelAnimationFrame: (id: number) => frames.delete(id),
 	});
 	let moves = Promise.resolve();
@@ -1375,8 +1375,52 @@ test("retiring a visit releases a queued Swipe even when the renderer stops draw
 		await h.hook.act(async () => {
 			moves = h.hook.current.setMessageMoves(105, {}, 5);
 			swipe = h.hook.current.selectSwipe(106, 1099);
+			const following = queueConversationCommand(1, async (revision) => revision);
+			expect(await withDeadline(following, "the command after the queued Swipe", 1_000)).toBe(status === 409 ? 7 : 6);
 		});
-		await withDeadline(frameRequested.promise, "a queued Swipe's first frame", 1_000);
+		const writes = h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)));
+		expect(writes.map(({ action, expectedRevision }) => [action.type, expectedRevision])).toEqual([["set-message-moves", 5], ["select-variant", status === 409 ? 6 : 5]]);
+	} finally {
+		await h.hook.act(async () => {
+			while (frames.size > 0) {
+				const pending = [...frames.values()];
+				frames.clear();
+				for (const frame of pending) frame(0);
+			}
+			await withDeadline(Promise.all([moves, swipe]), "the queued Swipe to settle", 1_000);
+		});
+	}
+});
+
+test("retiring a visit releases a queued Swipe waiting for history", async () => {
+	let revision = 5;
+	const refreshRequested = Promise.withResolvers<void>();
+	const heldRefresh = Promise.withResolvers<Response>();
+	let waiting = false;
+	const h = await harness(async ({ url, init }) => {
+		const id = Number(url.pathname.split("/")[3]);
+		if (init?.method === "POST") return Response.json({ outcome: "applied", conversation: summary(id, ++revision) });
+		if (!url.pathname.endsWith("history")) return Response.json(summary(id, revision));
+		if (id === 1 && revision === 6 && !waiting) {
+			waiting = true;
+			refreshRequested.resolve();
+			return withDeadline(heldRefresh.promise, "release of the retired history read", 3_000);
+		}
+		const history = page(id, 1, revision);
+		const older = history.messages[0]!;
+		older.authorRole = "human";
+		older.moves = revision === 5 ? { phone: [{ to: "Mara", text: "Wait." }] } : {};
+		history.messages.at(-1)!.variants.push(historyVariant({ id: 1099, position: 2, selected: false }));
+		return Response.json(history);
+	});
+	let moves = Promise.resolve();
+	let swipe = Promise.resolve();
+	try {
+		await h.hook.act(async () => {
+			moves = h.hook.current.setMessageMoves(105, {}, 5);
+			swipe = h.hook.current.selectSwipe(106, 1099);
+		});
+		await withDeadline(refreshRequested.promise, "the queued Swipe's history refresh", 1_000);
 		await h.switchTo(2);
 		await h.switchTo(1);
 		await h.hook.act(async () => {
@@ -1385,12 +1429,8 @@ test("retiring a visit releases a queued Swipe even when the renderer stops draw
 		const writes = h.requests.filter(({ init }) => init?.method === "POST");
 		expect(writes.map(({ init }) => JSON.parse(String(init?.body)).action.type)).toEqual(["set-message-moves", "delete-message"]);
 	} finally {
+		heldRefresh.resolve(Response.json(page(1, 1, 6)));
 		await h.hook.act(async () => {
-			while (frames.size > 0) {
-				const pending = [...frames.values()];
-				frames.clear();
-				for (const frame of pending) frame(0);
-			}
 			await withDeadline(Promise.all([moves, swipe]), "the original visit's commands", 1_000);
 		});
 	}

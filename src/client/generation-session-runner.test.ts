@@ -232,7 +232,11 @@ describe("the Generation session runner", () => {
 		const spy = host();
 		const runner = runnerWith(stream, spy);
 		runner.dispatch(observeTargets([]));
-		runner.dispatch({ type: "generation-accepted", target: { ...target(7), conversationId: 42 } });
+		const visit = new AbortController().signal;
+		runner.dispatch({ type: "start-event", event: { type: "requested", visit, request: { conversationId: 42, seat: null, versions: {}, request: { target: { kind: "continuation" } } }, inspect: false } });
+		runner.dispatch({ type: "start-event", event: { type: "prepared", visit } });
+		expect(hasActiveGenerationSessions(runner.getSnapshot())).toBe(true);
+		runner.dispatch({ type: "start-event", event: { type: "start-accepted", visit, target: { ...target(7), conversationId: 42 } } });
 		stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("One.") });
 		runner.dispatch(observeTargets([]));
 		stream.requests[0]!.onEvent({ eventId: 2, event: contentEvent(" Two.") });
