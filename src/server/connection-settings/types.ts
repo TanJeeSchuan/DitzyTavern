@@ -15,11 +15,8 @@ export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 export type ChatApiFormat = Exclude<ConnectionApiFormat, "embeddings" | "system-one" | "images">;
 export type SystemPlacement = ConnectionProfileDraftPayload["systemPlacement"];
 
-export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];
 
-export type ConnectionAdapter = ConnectionProfileDraftPayload["adapter"];
 
-export type OutputTokenRepresentation = ConnectionProfileDraftPayload["outputTokenRepresentation"];
 
 export type ConnectionHeaderOperation = ConnectionHeaderOperationPayload;
 
@@ -27,7 +24,6 @@ export type ConnectionHeaderOperation = ConnectionHeaderOperationPayload;
 // quiet interval, not a total Generation duration.
 export type ConnectionProfileDraft = ConnectionProfileDraftPayload;
 
-export type RedactedHeader = ConnectionProfilePayload["headers"][number];
 
 export type ConnectionProfile = ConnectionProfilePayload;
 

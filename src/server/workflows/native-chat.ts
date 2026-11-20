@@ -25,10 +25,6 @@ import type {
 // schema so the workflow can never drift from the transport contract.
 export type NewChatSeat = Static<typeof newChatSeatSchema>;
 
-export type CharacterForkSeat = Extract<NewChatSeat, { type: "character" }>;
-
-export type AdHocSeat = Extract<NewChatSeat, { type: "adhoc" }>;
-
 // @approved
 //  The input derives from the canonical native-conversation wire
 // schema (ADR-0032); `createdAt` stays workflow-owned because the transport

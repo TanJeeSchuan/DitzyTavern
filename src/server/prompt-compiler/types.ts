@@ -11,7 +11,6 @@ import type { SystemPlacement } from "../connection-settings/types";
 export type {
 	AttemptEnvironment,
 	MacroAttemptState,
-	MacroEnvironment,
 } from "../../shared/prompt-macro-engine";
 export type {
 	GenerationIntent,

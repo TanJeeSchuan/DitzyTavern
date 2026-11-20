@@ -92,12 +92,6 @@ export const otherBoxTags = (tag: string): string[] =>
 	[...installed.values()].flatMap(({ metadata: { lens, delegate } }) => [lens, delegate?.tag].flatMap((other) => other === undefined || other === tag ? [] : [other]));
 /** @approved Whether `id` is a registered delegating Box, the only kind with a delegate setting. */
 export const isDelegateBox = (id: BoxId): boolean => installed.get(id)?.metadata.delegate !== undefined;
-/** @approved Each registered Box whose descriptor declares `key`, in registry order, with that key's value. */
-export const boxesWith = <Key extends keyof BoxDescriptor>(key: Key): [BoxId, NonNullable<BoxDescriptor[Key]>][] =>
-	[...boxDescriptors()].flatMap(([id, descriptor]) => {
-		const value = descriptor[key];
-		return value === undefined ? [] : [[id, value]];
-	});
 /** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
 export const defaultBoxIds = (): BoxId[] => [...boxDescriptors()].flatMap(([id, { startsEnabled }]) => startsEnabled ? [id] : []);
 

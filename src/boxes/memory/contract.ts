@@ -71,7 +71,6 @@ export const memoryExtractionResponse = Type.Object({
 }, { additionalProperties: false });
 export type MemoryExtractionResponse = Static<typeof memoryExtractionResponse>;
 export type MemoryCandidate = MemoryExtractionResponse["candidates"][number];
-export type MemoryEvidence = MemoryCandidate["evidence"][number];
 /** @approved A Message as extraction reads it: `speaker` is its captured author name. */
 export type CapturedMemoryMessage = { readonly messageId: number; readonly speaker: string | null; readonly content: string };
 

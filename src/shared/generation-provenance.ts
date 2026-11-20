@@ -24,16 +24,6 @@ export interface GenerationProvenanceDataEntry {
 	value: string;
 }
 
-export const generationJsonObject = (
-	value: GenerationJsonValue | undefined,
-): GenerationJsonObject | null => {
-	if (Object.prototype.toString.call(value) !== "[object Object]") return null;
-	// @approved
-	//  SAFETY: the object tag check establishes the JSON object shape before the
-	// value is used as a named-field map.
-	return value as GenerationJsonObject;
-};
-
 export const parseGenerationJson = (
 	value: string,
 	fallback: GenerationJsonValue,

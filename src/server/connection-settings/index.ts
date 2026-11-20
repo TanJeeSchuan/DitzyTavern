@@ -12,8 +12,6 @@ import {
 import { guardRevision, StaleRevisionError } from "../revision";
 import {
 	ConnectionCredentialConfirmationError,
-	ConnectionProfileNameConflictError,
-	ConnectionProfileNotFoundError,
 	InvalidConnectionProfileError,
 } from "./errors";
 import {
@@ -389,28 +387,15 @@ export {
 	applyConnectionHeaderOperations,
 	connectionProfileDraftOf,
 	ConnectionCredentialConfirmationError,
-	ConnectionProfileNameConflictError,
-	ConnectionProfileNotFoundError,
 	InvalidConnectionProfileError,
 	listConnectionPresets,
 	validateConnectionProfileDraft,
 };
 export type {
-	ApplyConnectionProfileInput,
-	ConnectionAdapter,
-	ChatApiFormat,
-	ConnectionApiFormat,
 	ConnectionPreset,
 	ConnectionProfile,
 	ConnectionProfileDraft,
-	ConnectionHeaderOperation,
 	ConnectionProfileSecretSnapshot,
 	ConnectionSettingsModule,
 	ConnectionSettingsSnapshot,
-	CreateConnectionProfileInput,
-	DeleteConnectionProfileInput,
-	ModelBackend,
-	OutputTokenRepresentation,
-	ResetConnectionCredentialInput,
-	SetConnectionCredentialInput,
 } from "./types";

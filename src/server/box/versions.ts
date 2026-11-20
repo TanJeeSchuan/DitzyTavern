@@ -65,10 +65,6 @@ export const writeLatest = async (home: string, version: string): Promise<void> 
 	await replaceFile(join(home, "latest"), `${version}\n`);
 };
 
-/** @approved Every version folder the Box holds, by hash. */
-export const listVersions = async (home: string): Promise<string[]> =>
-	(await readdir(join(home, "versions")).catch(() => [])).filter((name) => VERSION_PATTERN.test(name)).sort();
-
 // @approved
 //  Creates a version from a candidate folder: its files are copied into a
 // staging folder beside the versions, which the loader's own check builds,

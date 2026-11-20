@@ -23,20 +23,14 @@ export type {
 	PromptLoreEntry,
 	CompilePromptInput,
 	GenerationIntent,
-	MacroEnvironment,
 	MacroAttemptState,
 	PromptBlock,
 	PromptContextEntry,
 	LiteralPromptMessage,
-	PromptHistoryRole,
-	PromptImage,
 	PromptPlan,
 	PromptWarning,
 } from "./types";
 export type {
-	PromptBudgetBreakdown,
-	PromptBudgetInput,
 	PromptBudgetMeasurement,
-	PromptBudgetMeasurementInput,
 	TokenEstimator,
 } from "./budget";

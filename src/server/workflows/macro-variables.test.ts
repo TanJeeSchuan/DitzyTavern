@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { acceptGeneration } from "../conversation";
 import { resolveConversationGeneration } from "../conversation";
-import { macroInitialValuesToData, readMacroWrites } from "../prompt-macros";
-import type { MacroValue } from "../../shared/prompt-macro-engine";
+import { readMacroWrites } from "../prompt-macros";
+import { macroInitialValuesToData } from "../test-fixtures/macro-variables";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { readVariantData } from "../conversation";
 import { captureGeneration } from "./generate-capture";
@@ -38,7 +38,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 						} }),
 			],
 			control: { human: 0, model: 1 },
-			data: macroInitialValuesToData(1, new Map<string, MacroValue>([["turn", 5], ["enabled", true]])),
+			data: macroInitialValuesToData(1, { turn: 5, enabled: true }),
 		});
 
 		const first = await captureGeneration(database, { kind: "send", content: "Hello" }, {connection: null, conversationId: conversation.id });

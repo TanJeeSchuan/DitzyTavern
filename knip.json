@@ -1,0 +1,51 @@
+{
+	"$schema": "./node_modules/knip/schema.json",
+	"entry": [
+		"src/server/index.ts!",
+		"src/client/main.tsx!",
+		"src/client/box-windows/frame.ts!", // Built by Bun on the first Box frame request.
+		"src/server/database/{seed,teardown}.ts!",
+		"src/box-sdk/*.ts!", // Public SDK for third-party Boxes.
+		"src/boxes/*/{server.ts,shared-descriptor.ts,client.tsx,logic.ts,ui.ts}!", // Loaded from Box folders at runtime.
+		"scripts/**/*.{js,mjs,ts,tsx}!",
+		"e2e/**/*.{ts,tsx}!",
+		"tools/**/*.ts!",
+		"!**/*.{test,spec}.{ts,tsx}!"
+	],
+	"project": [
+		"{src,scripts,e2e,tools}/**/*.{js,mjs,ts,tsx}!",
+		"!**/*.{test,spec}.{ts,tsx}!",
+		"!e2e/fixtures/boxes/*/**/*.js", // Guest scripts and vendored packages loaded by the Box host.
+		"!src/**/{test-fixtures.ts,test-fixtures/**}!", // Intentional test support.
+		"!src/server/contract/*-test-fixtures.ts!",
+		"!src/server/{image/image-fixtures,lorebook/fixtures,sillytavern/fixtures}.ts!"
+	],
+	"node": false, // Node's test-* discovery misclassifies the live Test Connection endpoint.
+	"ignoreExportsUsedInFile": true, // The declaration already has a production caller in its own module.
+	"ignoreUnresolved": ["e2e/server.ts"], // The harness spawns it relative to the repo root.
+	"preprocessor": "./scripts/knip-allowlist.ts",
+	"preprocessorOptions": {
+		// HTTP and stored-value surface for owner review.
+		"src/shared/contract/box.ts": ["boxMetadataSchema"], // Listed Box metadata.
+		"src/shared/contract/conversation-schema.ts": ["effectiveGenerationSettings", "LoreActivationRecord"], // Generation inspection fields.
+		"src/shared/contract/macro-variables.ts": ["macroValue", "macroVariableName", "macroVariableWrite", "MacroVariablesEditBody"], // Macro Variable command and stored writes.
+		"src/shared/contract/prompt-preset.ts": ["SillyTavernImportApplied", "PromptPresetListResponse", "PromptPresetConflict"], // Prompt Preset HTTP responses.
+		"src/shared/contract/chat-import.ts": ["ChatImportReceiptParticipant", "ImportDetailsArtifactAvailability"], // Chat import receipt and artifact availability.
+		"src/boxes/memory/contract.ts": ["MemoryRelevanceScore", "memorySettings|memorySettingsResponse"], // Stored Memory trace and the Memory Settings response schema.
+
+		// Existing test consumers of production seams and the network-free Model Client.
+		"src/server/artifact/index.ts": ["ArtifactStoreError", "attachmentDisposition", "ArtifactModule"], // Artifact storage and download tests.
+		"src/server/character-library/index.ts": ["CharacterNotFoundError", "InvalidCharacterCommandError", "InvalidCharacterDefinitionError", "CharacterCommand"], // Character command tests.
+		"src/server/connection-secrets/index.ts": ["bootstrapConnectionSecretKey", "ConnectionSecretBootstrapError", "CONNECTION_SECRET_KEY_ENV", "CONNECTION_SECRET_FORMAT_VERSION"], // Bootstrap and rotation tests.
+		"src/server/conversation/index.ts": [
+			"ConversationWriteObserverMissingError", "ContinuationUnavailableError", "InvalidConversationCreationError", "ParticipantNotRemovableError",
+			"SiblingVariantUnavailableError", "deriveMessageSwipeEligibility", "DEFAULT_HISTORY_PAGE_SIZE", "MAX_HISTORY_PAGE_SIZE", "readSelectedHistory",
+			"ContinuationUnavailableReason", "AuthorStampSnapshot", "ConversationArtifactSeed", "ConversationCommand", "MessageSwipeEligibility"
+		], // Conversation command, capability and history tests.
+		"src/server/model-client/fake.ts": ["createFakeModelClient"], // Workflow test double.
+		"src/server/model-client/index.ts": ["createFakeModelClient", "TEST_CONNECTION_MAX_OUTPUT_TOKENS", "TEST_CONNECTION_PROMPT"], // Workflow and Test Connection tests.
+		"src/server/prompt-compiler/index.ts": ["CompilePromptInput", "PromptBlock"], // Compiler fixture types.
+		"src/server/prompt-preset/index.ts": ["InvalidPromptPresetOperationError", "PromptPresetDeletionImpactChangedError"], // Prompt Preset command tests.
+		"src/server/workflows/index.ts": ["runGenerationLifecycle", "StartGenerationRuntimeInput"] // Generation lifecycle fixtures and tests.
+	}
+}

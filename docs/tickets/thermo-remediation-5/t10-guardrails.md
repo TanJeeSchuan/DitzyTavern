@@ -1,6 +1,6 @@
 # T10: Guardrails against the debt round 5 removed
 
-Status: READY
+Status: IN PROGRESS
 
 Blocked By: T8
 
@@ -43,7 +43,7 @@ One script step in `check`:
 
 ## TODO
 
-- [ ] Slice a, PR (knip triage findings that are surface raised to the owner)
+- [x] Slice a, PR (knip triage findings that are surface raised to the owner)
 - [ ] Slices b, c and d, one PR
 
 ## Acceptance
@@ -51,3 +51,18 @@ One script step in `check`:
 `bun run check` runs knip, the clone check, the new rules and the stylesheet step, and passes on master. Each new rule's test shows it refusing the pattern it names and accepting the allowlisted case.
 
 ## Outcome
+
+### Slice a
+
+`bun run check` now runs production Knip and `bun run check:clones`. The jscpd baseline records 77 clone occurrences by file pair and fragment fingerprint. New occurrences fail the check even when an old clone disappears. The Knip triage removed unused internal exports, type aliases and helpers. Box version and macro state tests now construct or inspect their fixtures directly. Existing test consumers of production exports have symbol-specific exceptions in `knip.json`.
+
+Knip findings kept for owner review
+
+- Box metadata schema re-export `boxMetadataSchema`.
+- Generation inspection fields `effectiveGenerationSettings` and `LoreActivationRecord`.
+- Macro Variable command and stored write declarations `macroValue`, `macroVariableName`, `macroVariableWrite` and `MacroVariablesEditBody`.
+- Prompt Preset response types `SillyTavernImportApplied`, `PromptPresetListResponse` and `PromptPresetConflict`.
+- Chat import receipt and artifact types `ChatImportReceiptParticipant` and `ImportDetailsArtifactAvailability`.
+- Memory trace type `MemoryRelevanceScore` and the Memory Settings schema aliases `memorySettings` and `memorySettingsResponse`.
+
+Production Knip and the clone check passed on the slice. A temporary module imported only by its test failed Knip, and a temporary pair of identical functions failed the clone check. All eight focused Box version and macro state tests passed. The GitHub Check workflow runs the full suite and e2e. Slices b, c and d remain open.

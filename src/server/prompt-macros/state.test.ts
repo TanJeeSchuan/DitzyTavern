@@ -1,19 +1,18 @@
 import { describe, expect, test } from "bun:test";
 import {
 	deriveMacroState,
-	macroInitialValuesToData,
 	macroWritesToData,
 	readMacroWrites,
 } from "./state";
 import { variantDataCodecs } from "../../shared/variant-data-codecs";
-import type { MacroValue } from "../../shared/prompt-macro-engine";
+import { macroInitialValuesToData } from "../test-fixtures/macro-variables";
 
 const decodedRecords = (entry: { key: string; value: string } | null) =>
 	entry === null ? [] : [{ key: entry.key, writes: variantDataCodecs.macroWrites.decodeOptional(entry.value) ?? [] }];
 
 describe("Macro state persistence", () => {
 	test("applies selected Variant writes in order while ignoring unselected siblings", () => {
-		const initialData = macroInitialValuesToData(4, new Map<string, MacroValue>([["turn", 5], ["old", "kept"]]));
+		const initialData = macroInitialValuesToData(4, { turn: 5, old: "kept" });
 		const selected = macroWritesToData(4, [
 			{ name: "turn", operation: "set", value: 6 },
 			{ name: "old", operation: "delete", value: undefined },

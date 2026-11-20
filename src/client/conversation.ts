@@ -31,26 +31,16 @@ export type {
 	CastParticipant,
 	ConversationAction,
 	ConversationControl,
-	ConversationControlValidity,
 	ConversationGenerationSettings,
 	ConversationSummary,
 	ContinuationPrefillSuffix,
 	GenerationInspectionStatus,
 	GenerationProvenance,
 	GenerationRequestOverrides,
-	ParticipantDefinition,
 	VariantDetails,
-	LoreActivationRecord,
 } from "../shared/contract/conversation-schema";
-export type { MacroVariable, MacroVariables, MacroVariablesEditBody } from "../shared/contract/macro-variables";
+export type { MacroVariable, MacroVariables } from "../shared/contract/macro-variables";
 export type { GenerationPreview, GenerationPreviewBody } from "../shared/contract/conversation-schema";
-export type { PromptChannels } from "../shared/contract/prompt-schema";
-export type {
-	GenerationStreamDelta,
-	GenerationStreamResult,
-	GenerationStreamState,
-} from "./conversation-stream";
-export { subscribeConversationGeneration } from "./conversation-stream";
 
 export async function loadConversation(
 	conversationId: number,

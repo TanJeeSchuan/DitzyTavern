@@ -10,7 +10,6 @@
 import type {
 	ImportCleanupReason,
 	ImportDetailsArtifact,
-	ImportDetailsArtifactAvailability,
 } from "../../shared/contract/chat-import";
 
 // The two ways an Exact Source Artifact copy can be missing content; missing
@@ -20,7 +19,6 @@ export type ArtifactUnavailableReason = ImportCleanupReason;
 // Derived, never stored: whether the physical copy currently satisfies the
 // committed metadata. A missing or corrupt file is reported as cleaned up so
 // provenance loss never makes the native Conversation look corrupt.
-export type ArtifactAvailability = ImportDetailsArtifactAvailability;
 
 // The committed metadata of one stored artifact: the wire artifact shape
 // without the derived availability.

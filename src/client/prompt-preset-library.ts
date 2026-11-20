@@ -16,12 +16,10 @@ import type {
 	NativePromptPreset,
 	PromptBlockReference,
 	PromptPresetBlockPatch,
-	SillyTavernImportApplied,
 	SillyTavernImportPreview,
 	SillyTavernImportRequest,
 	SillyTavernJsonValue,
 	PromptPresetCommand,
-	PromptPresetDeletionResult,
 	PromptPresetSummary,
 } from "../shared/contract/prompt-preset";
 
@@ -35,10 +33,8 @@ import type {
 
 export type {
 	PromptPresetCommand,
-	PromptPresetDeletionResult,
 	NativePromptPreset,
 	SillyTavernImportPreview,
-	SillyTavernImportApplied,
 	SillyTavernImportRequest,
 	SillyTavernJsonValue,
 	PromptPresetSummary,

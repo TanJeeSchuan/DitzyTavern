@@ -4,7 +4,6 @@ import type { BoxRecords } from "../../shared/contract/box-generation";
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { Static } from "@sinclair/typebox";
 import type { GenerationJsonValue } from "../../shared/contract/json-value";
-import type { GenerationProvenance as SharedGenerationProvenance } from "../../shared/contract/generation-provenance";
 import type { artifactMetadata } from "../../shared/contract/chat-import";
 import type {
 	GenerationBudgetInspection,
@@ -34,9 +33,6 @@ import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
-import type {
-	MacroVariables as SharedMacroVariables,
-} from "../../shared/contract/macro-variables";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
 
@@ -54,8 +50,6 @@ export interface ConversationDataEntry {
 // persistence seams. Keeping this closed recursive type avoids admitting
 // provider classes, credentials, or unserializable runtime values.
 export type ConversationJsonValue = GenerationJsonValue;
-
-export type MacroVariables = SharedMacroVariables;
 
 // Conversation-local generation controls derive from the canonical
 // Generation Settings declaration (ADR-0032) instead of restating its
@@ -145,9 +139,6 @@ export type ParticipantRemovalEligibility = CastParticipantSnapshot["removal"];
 export type ParticipantRemovalBlockReason =
 	NonNullable<ParticipantRemovalEligibility["reason"]>;
 
-export type ParticipantDeletionMode =
-	NonNullable<ParticipantRemovalEligibility["deletionMode"]>;
-
 // Derived, never stored. A Conversation is playable only when two distinct
 // Cast Participants occupy the human and model seats; Control validity is
 // the same rule stated explicitly so clients do not reproduce it.
@@ -167,9 +158,6 @@ export type ControlValidityReason =
 export type CapabilityAvailability = SharedCapabilityAvailability;
 
 export type ConversationCapabilities = SharedConversationCapabilities;
-
-export type CapabilityBlockReason =
-	NonNullable<CapabilityAvailability["reason"]>;
 
 // Derived, never stored. Whether a new sibling Variant may be generated for
 // one Message. Conversation playability gates every play action; without a
@@ -257,11 +245,6 @@ export interface ConversationCommand {
 // snapshots and history pages; they exist only while the active/replay
 // lifecycle retains the generation row.
 export type ActiveGenerationDetails = SharedActiveGenerationDetails;
-
-// Compact terminal provenance is the only Generation detail that survives
-// Active Generation cleanup. It has a positive allow-list by design: no
-// request overrides, URLs, headers, credentials, or raw provider payloads.
-export type GenerationProvenance = SharedGenerationProvenance;
 
 // On-demand details for a terminal Variant. Derived from the canonical
 // shared schema (ADR-0032) so the compact provenance contract cannot drift

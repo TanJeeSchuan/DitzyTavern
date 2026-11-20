@@ -54,63 +54,33 @@ export {
 	removeRetainedGenerationInspection,
 } from "./generation-retention";
 export type {
-	CapabilityAvailability,
-	CapabilityBlockReason,
 	CastParticipantSnapshot,
 	AuthorStampSnapshot,
-	ChatHistoryMessage,
-	ChatHistoryPage,
-	ChatHistoryPageRequest,
-	ChatHistoryVariant,
 	GenerationAcceptanceCapture,
 	CapturedGenerationTarget,
 	AcceptedGeneration,
 	ConversationAction,
 	ConversationArtifactSeed,
-	ConversationCapabilities,
 	ConversationCommand,
 	ConversationControlSeed,
-	ConversationControlSnapshot,
-	ConversationControlValidity,
 	ConversationCreationInput,
 	ConversationCreationMessage,
 	ConversationCreationVariant,
 	ConversationDataEntry,
-	MacroVariables,
-	ConversationJsonValue,
-	ConversationDataRead,
-	ConversationDataReadFilter,
-	ActiveGenerationDetails,
-	GenerationProvenance,
-	VariantDetails,
-	CheckpointGenerationInput,
 	ConversationGenerationSettings,
-	ConversationGenerationSettingsInput,
-	ContinuationPrefillSuffix,
 	GenerationRecoveryCause,
-	StopGenerationInput,
-	StopGenerationsInput,
-	StoppedGenerations,
-	ResolveGenerationInput,
-	ConversationDataScope,
 	ConversationParticipantSeed,
 	ConversationSummary,
-	ControlValidityReason,
 	HistoricalControlSnapshot,
-	MessageSwipeBlockReason,
 	MessageSwipeEligibility,
 	ParticipantDefinition,
-	ParticipantDeletionMode,
-	ParticipantRemovalBlockReason,
-	ParticipantRemovalEligibility,
 } from "./types";
 
-export { authorRoleOf, continuationEligibility } from "./continuation";
+export { authorRoleOf } from "./continuation";
 
 export type { ConversationDatabase } from "./internal";
 export { deleteConversation } from "./delete";
-export type { EditMacroVariablesInput, EditedMacroVariables, ReadMacroVariablesInput } from "./macro-variables";
-export type { SelectedHistoryMessage, SelectedHistoryRead, SelectedHistoryReadRequest, SelectedHistoryVariant } from "./selected-history";
+export type { SelectedHistoryRead } from "./selected-history";
 export { createConversation } from "./create";
 export { conversationExists, readConversationSummary, readConversationSummaryFromConnection } from "./snapshot";
 export { readConversationGenerationSettings, readConversationGenerationSettingsFromConnection } from "./generation-settings";
@@ -122,7 +92,6 @@ export { stopConversationGeneration, stopConversationGenerations } from "./comma
 export { runConversationReadTransaction } from "./commands/transaction";
 export { findConversation, readActiveCast, readControlAssignment } from "./internal";
 export { readChatVariantData, readActiveVariantIds, readChatVariantIds, readChatVariants, readExistingSources, readMessageAuthors, readParticipants, readSelectedPassages } from "./variant-read";
-export type { ChatParticipant, ChatVariant } from "./variant-read";
 
 export { readActiveGenerationsForRecovery } from "./generation-details";
 
@@ -131,7 +100,6 @@ export { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings"
 
 
 export { readVariantData } from "./variant-data";
-export type { VariantDataRecords } from "./variant-data";
 
 export { forkConversation } from "./commands/fork-conversation";
 export { checkBoxValuesInChats } from "./box-values";

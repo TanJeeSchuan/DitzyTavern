@@ -8,7 +8,6 @@ import {
 } from "../shared/contract/semantic-trigger-settings";
 
 export type SemanticTriggerSettings = SemanticTriggerSettingsPayload;
-export type SemanticTriggerSettingsResult = Awaited<ReturnType<typeof saveSemanticTriggerSettings>>;
 
 export async function loadSemanticTriggerSettings(): Promise<SemanticTriggerSettings> {
 	return requestData(api.api["semantic-trigger-settings"].get(), semanticTriggerSettingsReadResponse[200]);

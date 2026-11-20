@@ -1,20 +1,16 @@
 import type { ConversationSummary } from "../../conversation";
 import type {
 	ChatImportCommitBody,
-	ChatImportDuplicateMatch,
 	ChatImportGroup as ChatImportGroupContract,
 	ChatImportPreview as ChatImportPreviewContract,
 	ChatImportReceipt as ChatImportReceiptContract,
-	ChatImportReceiptParticipant as ChatImportReceiptParticipantContract,
 	ChatImportResolvedParticipant,
 	ChatImportSuggestion,
-	ImportResolutionOutcome as ImportResolutionOutcomeContract,
 } from "../../../shared/contract/chat-import";
 
 // Compact post-commit receipt shared with the HTTP contract.
 export type ChatImportReceipt = ChatImportReceiptContract;
-export type ChatImportReceiptParticipant = ChatImportReceiptParticipantContract;
-export type { ChatImportDuplicateMatch, ChatImportSuggestion };
+export type { ChatImportSuggestion };
 export type SuggestionMatchKind = ChatImportSuggestion["match"];
 
 export type ChatImportGroup = ChatImportGroupContract;
@@ -28,13 +24,6 @@ export interface StagedChatImportResult {
 	preview: ChatImportPreview;
 }
 
-// The three resolution outcomes a resulting Participant may take: fork an
-// existing Actor Profile into an independent Conversation-local Participant,
-// create a Participant together with a minimal new Actor Profile, or keep a
-// complete Chat-only Participant. No skip, source-role inference, or later
-// re-assignment alternative exists.
-export type ImportResolutionOutcome = ImportResolutionOutcomeContract;
-
 // One resulting Participant in the user-confirmed resolution plan. Whole
 // Messages are referenced by their 1-based record positions; every retained
 // Message must belong to exactly one Participant and none may be skipped.
@@ -43,8 +32,6 @@ export type ImportResolutionOutcome = ImportResolutionOutcomeContract;
 export type ChatImportResolvedParticipantPlan = ChatImportResolvedParticipant;
 
 export type ChatImportCommitInput = ChatImportCommitBody;
-
-export type ChatImportResolvedOutcome = ChatImportReceiptParticipant["outcome"];
 
 export interface ChatImportCommitResult {
 	conversation: ConversationSummary;

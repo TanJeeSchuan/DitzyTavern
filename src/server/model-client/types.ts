@@ -13,14 +13,12 @@ import type { ChatApiFormat, SystemPlacement } from "../connection-settings/type
 import type {
 	GenerationEvent,
 	GenerationFailureKind,
-	GenerationFinishReason,
 	GenerationUsage,
 } from "../../shared/contract/generation-events";
 import type { ModelClientGenerationSettings } from "./generation-settings";
 
 export type ModelClientEvent = GenerationEvent;
 export type ModelClientUsage = GenerationUsage;
-export type ModelClientFinishReason = GenerationFinishReason;
 export type ModelClientFailureKind = GenerationFailureKind;
 
 export interface ModelClientGenerationInput {
