@@ -21,7 +21,7 @@ export const CONVERSATION_CONFLICT_RELOAD_NOTICE =
 //  latest-wins guard evaluated before every effect.
 export interface ConversationCommandSurface {
 	conversationId: number;
-	revision: (previous: number | null) => number | null | Promise<number | null>;
+	revision: (previous: number | null, queued: boolean) => number | null | Promise<number | null>;
 	/** @approved A draft's save sends its own base revision, not one a command queued ahead produced. */
 	exact?: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
@@ -64,9 +64,10 @@ const queues = new Map<number, Promise<number | null>>();
  * Runs `command` after every command this client already queued for the Conversation. It receives the revision
  * the last of them produced. A failed command leaves that revision available to the next command.
  */
-export function queueConversationCommand(conversationId: number, command: (revision: number | null) => Promise<Settled>): Promise<Settled> {
-	const previous = queues.get(conversationId) ?? Promise.resolve(null);
-	const settled = previous.then(command).catch(() => false as const);
+export function queueConversationCommand(conversationId: number, command: (revision: number | null, queued: boolean) => Promise<Settled>): Promise<Settled> {
+	const preceding = queues.get(conversationId);
+	const previous = preceding ?? Promise.resolve(null);
+	const settled = previous.then((revision) => command(revision, preceding !== undefined)).catch(() => false as const);
 	const revision = settled.then((result) => result === false ? previous : result);
 	queues.set(conversationId, revision);
 	void revision.then(() => { if (queues.get(conversationId) === revision) queues.delete(conversationId); });
@@ -87,7 +88,7 @@ export async function runConversationCommand<TOperation = never>(
 		const conversationId = surface.conversationId;
 		send = (revision) => applyConversationCommand(conversationId, revision, command);
 	} else send = command;
-	const run = (previous: number | null) => executeConversationCommand(surface, send, options, previous);
+	const run = (previous: number | null, queued: boolean) => executeConversationCommand(surface, send, options, previous, queued);
 	return await queueConversationCommand(surface.conversationId, run) !== false;
 }
 
@@ -96,12 +97,13 @@ async function executeConversationCommand<TOperation>(
 	command: ConversationCommandSend<TOperation>,
 	options: ConversationCommandRunOptions<TOperation>,
 	previous: number | null,
+	queued: boolean,
 ): Promise<Settled> {
 	if (surface.isCurrent?.() === false) return false;
 	const effect = (apply: () => void) => {
 		if (surface.isCurrent?.() !== false) apply();
 	};
-	const revision = surface.revision(previous);
+	const revision = surface.revision(previous, queued);
 	const known = revision instanceof Promise ? await revision : revision;
 	if (surface.isCurrent?.() === false) return false;
 	const expectedRevision = surface.exact === true || previous === null ? known : known === null ? previous : Math.max(known, previous);

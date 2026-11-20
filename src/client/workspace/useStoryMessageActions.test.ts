@@ -327,6 +327,19 @@ describe("Requested selection", () => {
 		expect(harness.previewEntries()).toBe(1);
 	});
 
+	test("a failed preceding command leaves the queued Swipe blocked by Preview", async () => {
+		const harness = createHarness({ kind: "applied" }, false, true);
+		const outcome = Promise.withResolvers<false>();
+		const preceding = queueConversationCommand(1, () => withDeadline(outcome.promise, "the failed preceding command", 1_000));
+		const swipe = harness.swipe(10, 1);
+		await harness.select(9, 91);
+		outcome.resolve(false);
+		await Promise.all([preceding, swipe]);
+
+		expect(harness.commands).toEqual([]);
+		expect(harness.shownVariantId()).toBe(100);
+	});
+
 	test("a queued Swipe drops a Variant absent from refreshed history", async () => {
 		const harness = createHarness({ kind: "applied" });
 		const release = harness.hold();
@@ -398,6 +411,22 @@ describe("Requested selection", () => {
 			[6, "select-variant", 10, 101],
 		]);
 		expect(harness.shownVariantId()).toBe(101);
+	});
+
+	test("a new Preview stays open while an earlier Confirm Change persists", async () => {
+		const harness = createHarness({ kind: "applied" }, true, true);
+		const release = harness.hold();
+		const moves = harness.removeMoves();
+		await harness.swipe(10, 1);
+		const confirming = harness.confirm();
+		await harness.select(9, 91);
+		release();
+		await Promise.all([moves, confirming]);
+
+		expect(harness.commands.at(-1)).toEqual({
+			expectedRevision: 6, action: { type: "select-variant", messageId: 10, variantId: 101 },
+		});
+		expect(harness.story().preview?.variantId).toBe(91);
 	});
 
 	test("Preview blocks a later Swipe and sends only the older Variant confirmed by the writer", async () => {

@@ -1,15 +1,11 @@
-import { requestVariantSelection } from "../variant-selection";
+import { requestVariantSelection, type VariantSelectionSurface } from "../variant-selection";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { Dispatch } from "react";
-import type { ConversationSummary } from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import {
 	classifyVariantSelection,
 	canWriteMessage,
 	displayedVariantId,
 	previewOnMessage,
-	type StoryAction,
-	type StoryState,
 	isStoryReady,
 } from "../story";
 
@@ -29,12 +25,7 @@ const STORY_COMMAND_NOTICES = {
 // outcomes, made explicit so the runner never flattens them for this surface.
 const noPresentation = () => undefined;
 
-type StoryMessageActionsOptions = {
-	signal: AbortSignal;
-	story: StoryState;
-	dispatchStory: Dispatch<StoryAction>;
-	setConversation: (conversation: ConversationSummary | null) => void;
-	waitForHistory: (minimumRevision?: number) => Promise<StoryState>;
+type StoryMessageActionsOptions = VariantSelectionSurface & {
 	queueSwipeScroll: (messageId: number) => void;
 	canEnterPreview: boolean;
 	onEnterPreview: (enter: () => void) => void;

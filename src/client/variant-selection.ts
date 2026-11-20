@@ -37,15 +37,14 @@ export async function requestVariantSelection(
 	selections.set(signal, slot);
 	dispatchStory({ type: confirmed ? "preview-confirmed" : "selection-requested", ...requested });
 	try {
-		const applied = await runConversationCommand({ ...surface, conversationId, revision: async (previous) => {
-			const minimum = previous ?? 0;
-			const needsHistory = previousSlot !== undefined || minimum > slot.selection.baseRevision;
-			const refreshed = needsHistory ? await waitForHistory(minimum).catch(() => undefined) : null;
+		const applied = await runConversationCommand({ ...surface, conversationId, revision: async (previous, queued) => {
+			const needsHistory = previousSlot !== undefined || queued;
+			const refreshed = needsHistory ? await waitForHistory(previous ?? 0).catch(() => undefined) : null;
 			slot.claimed = true;
 			const { baseRevision, messageId, request, confirmed } = slot.selection;
 			if (refreshed === null) return baseRevision;
 			if (refreshed === undefined || !isStoryReady(refreshed) || refreshed.revision < baseRevision) return null;
-			const persisted = { ...refreshed, requestedSelections: new Map() };
+			const persisted = { ...refreshed, preview: confirmed ? null : refreshed.preview, requestedSelections: new Map() };
 			const selection = classifyVariantSelection(persisted, messageId, request.value);
 			return selection.kind === "immediate" || (confirmed && selection.kind === "preview") ? refreshed.revision : null;
 		} }, (expectedRevision) => {

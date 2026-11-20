@@ -1,6 +1,6 @@
 # T8: Client state
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: T7
 
@@ -66,7 +66,7 @@ Report 06, finding 1; report 05, findings 3 and 5.
 - [x] Slice c overlay model approved
 - [x] Slice c owner revision decision, invariant fixes and regression verification
 - [x] Slice d first implementation and focused checks (Astra)
-- [ ] Slice d review fixes, full verification and PR (Sol)
+- [x] Slice d review fixes, full verification and PR (Sol)
 
 ## Acceptance
 
@@ -131,10 +131,10 @@ Round eleven verified that canceling Fork or declining the Rewind composer confi
 
 ### Slice d
 
-Current phase: first implementation complete; Sonnet 5.5 high review and Sol fixes/full verification remain before PR.
+[PR #292](https://github.com/TanJeeSchuan/DitzyTavern/pull/292) carries the Generation owner and Swipe transaction changes.
 
 - The Generation session owner holds the local request through preparation and acceptance. Acceptance installs the session keyed by Generation id in that same transition. The assembly controller reads that owner's start state; the pending-start reducer, acceptance handoff and retirement effect are deleted. Stream observations still go through the per-Variant store.
-- Ordinary Swipe and Confirm Change use `requestVariantSelection` for the requested overlay, command queue, refreshed history validation and settlement. Confirm permits the historical choice the writer approved; ordinary Swipes still refuse a choice that now needs Preview.
+- Ordinary Swipe and Confirm Change use `requestVariantSelection` for the requested overlay, command queue, refreshed history validation and settlement. A queued ordinary Swipe revalidates even when the preceding command fails and stops if the writer has opened a Preview. Confirm preserves the writer's approved historical choice when another Preview opens while it waits.
 - The controller no longer returns `stopGeneration` or `activeGenerationMessageIds`. Its old-visit Stop regression calls `cancelGeneration`. Leaving a Chat drops its visit's pending Stop flag as well as its stream cursor; the old response still cannot settle a replacement visit.
 
 Focused coverage:
@@ -143,6 +143,10 @@ Focused coverage:
 - `generation-sessions.test.ts`: `reconnection attempts are bounded and re-armed by observed liveness` preserves the reconnect cap.
 - `assembly-session.test.ts`: `acceptance subscribes while the story refresh is still in flight` uses the real owner and a fake stream transport. Existing acceptance, failure, retry and old-visit tests use the same owner.
 - `conversation-session.test.ts`: `an old Stop mutation cannot settle a newer Stop after A to B to A` now visits a Chat without any Generation before returning, so it also rejects carrying the first visit's pending Stop into the second.
-- `useStoryMessageActions.test.ts`: `Confirm Change queued behind a Moves write selects the older Variant from refreshed history` covers the shared transaction's explicit historical selection. Existing rapid Swipe, displaced selection, Preview and failed-command coverage stays in place.
+- `useStoryMessageActions.test.ts`: `Confirm Change queued behind a Moves write selects the older Variant from refreshed history` covers the shared transaction's explicit historical selection. `opening an older Preview drops a queued ordinary Swipe` and `a failed preceding command leaves the queued Swipe blocked by Preview` cover the Preview guard after both preceding outcomes. `a new Preview stays open while an earlier Confirm Change persists` keeps the earlier confirmation and the later Preview independent.
 
-Verification: 158 focused tests passed across those five files, and typecheck passed. Both the queued Confirm and strengthened old-Stop probes fail with the corresponding baseline behavior restored. Changed-file lint passed with the two existing unapproved-comment warnings in `useAssemblyController.ts`; `git diff --check` passed. Full unit, e2e/Doherty, manual browser verification, review fixes and CI are left to Sol under the first-writer handoff. No servers were started.
+The queued Confirm and strengthened old-Stop probes fail with the corresponding baseline behavior restored. The three new Preview regressions fail before their fixes and pass afterward. GitHub's Check workflow runs typecheck, full unit tests and the e2e suite. See the [PR checks](https://github.com/TanJeeSchuan/DitzyTavern/pull/292/checks).
+
+The seeded browser on port 3100 accepted a Send, streamed its reply, switched Chats mid-stream, and replayed the reply on return. Explicit Stop preserved the partial reply. The browser also generated a sibling, persisted an ordinary Swipe, and confirmed an older Preview. Reload retained the confirmed Variant and later reply.
+
+The [full Doherty run](https://app.buildbuddy.io/invocation/1539a059-40cd-42f5-a08b-765f283cc0a9) exposed failures under delayed APIs. The [master comparison](https://app.buildbuddy.io/invocation/c06e4507-6b6d-4357-8b2e-2ed189ad411e) reproduced the core failures, including long Chat paging, the Swipe browser and focus during source navigation.
