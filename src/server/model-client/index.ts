@@ -6,7 +6,6 @@ export {
 	collectModelClientGeneration,
 	ModelClientGenerationError,
 } from "./client";
-export { createFakeModelClient } from "./fake";
 export { shouldSendImages } from "./types";
 export {
 	projectModelClientGenerationSettings,
@@ -25,11 +24,7 @@ export {
 	normalizeUsage,
 	ModelClientTransportError,
 } from "./chat-completions";
-export {
-	testConnection,
-	TEST_CONNECTION_MAX_OUTPUT_TOKENS,
-	TEST_CONNECTION_PROMPT,
-} from "./test-connection";
+export { testConnection } from "./test-connection";
 export {
 	discoverModels,
 } from "./discovery";

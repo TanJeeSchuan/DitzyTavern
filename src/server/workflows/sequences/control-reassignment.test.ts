@@ -1,3 +1,4 @@
+import { createFakeModelClient } from "../../test-fixtures/model-client";
 import { emptyPromptChannels } from "../../../shared/definition";
 import { readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../../test-fixtures/conversation";
 import { executeConversationCommand} from "../../conversation";
@@ -5,7 +6,7 @@ import { openObservedDatabase } from "../../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { type ParticipantDefinition } from "../../conversation";
-import { createFakeModelClient, type ModelClientGenerationInput } from "../../model-client";
+import { type ModelClientGenerationInput } from "../../model-client";
 import {
 	runGenerationLifecycle,
 } from "..";

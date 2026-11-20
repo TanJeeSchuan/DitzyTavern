@@ -12,7 +12,7 @@ import {
 	type ParticipantDefinition,
 } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
-import { createFakeModelClient } from "../model-client";
+import { createFakeModelClient } from "../test-fixtures/model-client";
 import {
 	runGenerationLifecycle,
 	startServerOwnedGeneration,

@@ -28,7 +28,7 @@ export type BoxState = Static<typeof boxState>;
 export const boxStates = Type.Record(Type.String(), boxState);
 export type BoxStates = Static<typeof boxStates>;
 export type { BoxDescriptor } from "./box-descriptor";
-export { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
+export type { BoxMetadata } from "./box-metadata";
 
 // @approved
 //  A loaded Box: the metadata the server lists, and its descriptor, which the

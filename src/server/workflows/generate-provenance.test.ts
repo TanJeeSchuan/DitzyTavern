@@ -1,3 +1,4 @@
+import { createFakeModelClient } from "../test-fixtures/model-client";
 import { emptyPromptChannels } from "../../shared/definition";
 import { createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import { executeConversationCommand, readConversationGenerationSettings } from "../conversation";
@@ -8,7 +9,6 @@ import type { ParticipantDefinition } from "../conversation";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import type { PromptPlan } from "../prompt-compiler";
 import {
-	createFakeModelClient,
 	projectModelClientGenerationSettings,
 	type ModelClientGenerationInput,
 } from "../model-client";

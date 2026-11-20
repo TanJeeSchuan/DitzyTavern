@@ -27,9 +27,7 @@ import { generationProvenance } from "./generation-provenance";
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 import { scopedLorebookAttachment } from "./lorebook";
-export type { LoreActivationRecord } from "./lore-activation";
 
-export { effectiveGenerationSettings } from "./generation-settings";
 
 const promptHistoryRole = Type.Union([
 	Type.Literal("human"),

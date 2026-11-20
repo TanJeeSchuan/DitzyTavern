@@ -15,15 +15,11 @@ export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 export type ChatApiFormat = Exclude<ConnectionApiFormat, "embeddings" | "system-one" | "images">;
 export type SystemPlacement = ConnectionProfileDraftPayload["systemPlacement"];
 
-
-
-
 export type ConnectionHeaderOperation = ConnectionHeaderOperationPayload;
 
 // Null or zero disables inactivity expiry. A positive value is the maximum
 // quiet interval, not a total Generation duration.
 export type ConnectionProfileDraft = ConnectionProfileDraftPayload;
-
 
 export type ConnectionProfile = ConnectionProfilePayload;
 

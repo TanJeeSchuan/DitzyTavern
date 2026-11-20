@@ -26,26 +26,22 @@
 	"preprocessor": "./scripts/knip-allowlist.ts",
 	"preprocessorOptions": {
 		// HTTP and stored-value surface for owner review.
-		"src/shared/contract/box.ts": ["boxMetadataSchema"], // Listed Box metadata.
-		"src/shared/contract/conversation-schema.ts": ["effectiveGenerationSettings", "LoreActivationRecord"], // Generation inspection fields.
-		"src/shared/contract/macro-variables.ts": ["macroValue", "macroVariableName", "macroVariableWrite", "MacroVariablesEditBody"], // Macro Variable command and stored writes.
-		"src/shared/contract/prompt-preset.ts": ["SillyTavernImportApplied", "PromptPresetListResponse", "PromptPresetConflict"], // Prompt Preset HTTP responses.
-		"src/shared/contract/chat-import.ts": ["ChatImportReceiptParticipant", "ImportDetailsArtifactAvailability"], // Chat import receipt and artifact availability.
-		"src/boxes/memory/contract.ts": ["MemoryRelevanceScore", "memorySettings|memorySettingsResponse"], // Stored Memory trace and the Memory Settings response schema.
+		"src/shared/contract/macro-variables.ts": ["MacroVariablesEditBody"], // Names the input of the Macro Variable edit command.
+		"src/shared/contract/prompt-preset.ts": ["SillyTavernImportApplied", "PromptPresetListResponse", "PromptPresetConflict"], // Name these HTTP outcomes for consumers of the Prompt Preset API.
+		"src/shared/contract/chat-import.ts": ["ChatImportReceiptParticipant", "ImportDetailsArtifactAvailability"], // Name the participant receipt and artifact states returned by Chat import.
+		"src/boxes/memory/contract.ts": ["MemoryRelevanceScore"], // Names the relevance enum written into each Memory trace.
 
-		// Existing test consumers of production seams and the network-free Model Client.
-		"src/server/artifact/index.ts": ["ArtifactStoreError", "attachmentDisposition", "ArtifactModule"], // Artifact storage and download tests.
-		"src/server/character-library/index.ts": ["CharacterNotFoundError", "InvalidCharacterCommandError", "InvalidCharacterDefinitionError", "CharacterCommand"], // Character command tests.
-		"src/server/connection-secrets/index.ts": ["bootstrapConnectionSecretKey", "ConnectionSecretBootstrapError", "CONNECTION_SECRET_KEY_ENV", "CONNECTION_SECRET_FORMAT_VERSION"], // Bootstrap and rotation tests.
+		// Existing tests import these live production seams to assert outcomes, identities and typed fixture inputs.
+		"src/server/artifact/index.ts": ["ArtifactStoreError", "attachmentDisposition", "ArtifactModule"], // Tests distinguish store failures and verify the HTTP download header.
+		"src/server/character-library/index.ts": ["CharacterNotFoundError", "InvalidCharacterCommandError", "InvalidCharacterDefinitionError", "CharacterCommand"], // Tests distinguish Character command failures and submit typed requests.
+		"src/server/connection-secrets/index.ts": ["bootstrapConnectionSecretKey", "ConnectionSecretBootstrapError", "CONNECTION_SECRET_KEY_ENV", "CONNECTION_SECRET_FORMAT_VERSION"], // Tests verify the persisted secret format and reject bootstrap misconfiguration.
 		"src/server/conversation/index.ts": [
 			"ConversationWriteObserverMissingError", "ContinuationUnavailableError", "InvalidConversationCreationError", "ParticipantNotRemovableError",
 			"SiblingVariantUnavailableError", "deriveMessageSwipeEligibility", "DEFAULT_HISTORY_PAGE_SIZE", "MAX_HISTORY_PAGE_SIZE", "readSelectedHistory",
 			"ContinuationUnavailableReason", "AuthorStampSnapshot", "ConversationArtifactSeed", "ConversationCommand", "MessageSwipeEligibility"
-		], // Conversation command, capability and history tests.
-		"src/server/model-client/fake.ts": ["createFakeModelClient"], // Workflow test double.
-		"src/server/model-client/index.ts": ["createFakeModelClient", "TEST_CONNECTION_MAX_OUTPUT_TOKENS", "TEST_CONNECTION_PROMPT"], // Workflow and Test Connection tests.
-		"src/server/prompt-compiler/index.ts": ["CompilePromptInput", "PromptBlock"], // Compiler fixture types.
-		"src/server/prompt-preset/index.ts": ["InvalidPromptPresetOperationError", "PromptPresetDeletionImpactChangedError"], // Prompt Preset command tests.
-		"src/server/workflows/index.ts": ["runGenerationLifecycle", "StartGenerationRuntimeInput"] // Generation lifecycle fixtures and tests.
+		], // Keep the Conversation barrel as the one import path for command, capability and history assertions.
+		"src/server/prompt-compiler/index.ts": ["CompilePromptInput", "PromptBlock"], // Tests type their Prompt Plan and recipe fixtures against the live compiler.
+		"src/server/prompt-preset/index.ts": ["InvalidPromptPresetOperationError", "PromptPresetDeletionImpactChangedError"], // Tests distinguish invalid commands and stale deletion impact.
+		"src/server/workflows/index.ts": ["runGenerationLifecycle", "StartGenerationRuntimeInput"] // Tests drive the same Generation lifecycle and runtime as production.
 	}
 }

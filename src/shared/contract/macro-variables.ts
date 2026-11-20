@@ -8,13 +8,7 @@ import {
 	macroVariableDeleteWrite,
 	macroVariableSetWrite,
 } from "./macro-variable-write";
-export {
-	isMacroValue,
-	isMacroVariableName,
-	macroValue,
-	macroVariableName,
-	macroVariableWrite,
-} from "./macro-variable-write";
+export { isMacroValue, isMacroVariableName } from "./macro-variable-write";
 export type { MacroValue, MacroVariableWrite } from "./macro-variable-write";
 
 const macroVariableLocation = Type.Union([

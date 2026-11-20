@@ -9,7 +9,7 @@ import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { activeGenerationTable } from "../database/schema";
-import { createFakeModelClient } from "../model-client";
+import { createFakeModelClient } from "../test-fixtures/model-client";
 import { runGenerationLifecycle } from ".";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import { observeConversationWrites } from "../conversation";

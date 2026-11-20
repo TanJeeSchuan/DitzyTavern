@@ -96,13 +96,12 @@ export const memorySettingsValue = Type.Object({
 	embeddingModel: Type.String(),
 });
 export type MemorySettingsValue = Static<typeof memorySettingsValue>;
-export const memorySettings = Type.Composite([memorySettingsValue, Type.Object({ revision: Type.Integer() })]);
-export type MemorySettingsPayload = Static<typeof memorySettings>;
+export const memorySettingsResponse = Type.Composite([memorySettingsValue, Type.Object({ revision: Type.Integer() })]);
+export type MemorySettingsPayload = Static<typeof memorySettingsResponse>;
 
-export const memorySettingsResponse = memorySettings;
-export const memorySettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: memorySettings });
+export const memorySettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: memorySettingsResponse });
 export const memorySettingsConflict = Type.Object({
-	outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: memorySettings,
+	outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: memorySettingsResponse,
 });
 
 // @approved

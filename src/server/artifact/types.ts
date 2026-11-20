@@ -16,10 +16,6 @@ import type {
 // or corrupt copies report cleaned up without affecting the Chat.
 export type ArtifactUnavailableReason = ImportCleanupReason;
 
-// Derived, never stored: whether the physical copy currently satisfies the
-// committed metadata. A missing or corrupt file is reported as cleaned up so
-// provenance loss never makes the native Conversation look corrupt.
-
 // The committed metadata of one stored artifact: the wire artifact shape
 // without the derived availability.
 export type ArtifactMetadata = Omit<ImportDetailsArtifact, "availability">;

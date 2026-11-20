@@ -2,8 +2,6 @@ import { describe, expect, test } from "bun:test";
 import type { ConnectionProfileDraft } from "../connection-settings/types";
 import {
 	testConnection,
-	TEST_CONNECTION_MAX_OUTPUT_TOKENS,
-	TEST_CONNECTION_PROMPT,
 	type TestConnectionResult,
 } from ".";
 
@@ -118,7 +116,7 @@ describe("Model Test Connection", () => {
 		expect(request?.headers.get("authorization")).toBe("Custom secret never returned");
 		expect(request?.headers.get("x-route")).toBe("route secret never returned");
 		expect(request?.body.model).toBe("local-model");
-		expect(request?.body.max_tokens).toBe(TEST_CONNECTION_MAX_OUTPUT_TOKENS);
+		expect(request?.body.max_tokens).toBe(8);
 		// The transient result is deliberately free of all credentials and headers.
 		expect(JSON.stringify(result)).not.toContain("secret never returned");
 	});
@@ -152,7 +150,7 @@ describe("Model Test Connection", () => {
 		expect(request?.headers.get("http-referer")).toBeNull();
 		expect(request?.headers.get("x-openrouter-title")).toBeNull();
 		expect(request?.body.model).toBe("deepseek/deepseek-v4-flash");
-		expect(request?.body.max_tokens).toBe(TEST_CONNECTION_MAX_OUTPUT_TOKENS);
+		expect(request?.body.max_tokens).toBe(8);
 		expect(JSON.stringify(result)).not.toContain("openrouter-secret-never-returned");
 	});
 
@@ -182,8 +180,8 @@ describe("Model Test Connection", () => {
 			messages: Array<{ role: string; content: string }>;
 		};
 		expect(body.model).toBe("custom-model-id");
-		expect(body.max_tokens).toBe(TEST_CONNECTION_MAX_OUTPUT_TOKENS);
-		expect(body.messages).toEqual([{ role: "user", content: TEST_CONNECTION_PROMPT }]);
+		expect(body.max_tokens).toBe(8);
+		expect(body.messages).toEqual([{ role: "user", content: "Reply with exactly OK." }]);
 	});
 
 	test("does not retry authentication failures and redacts credentials from diagnostics", async () => {
