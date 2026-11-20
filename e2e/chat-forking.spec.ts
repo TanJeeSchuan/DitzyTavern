@@ -77,11 +77,13 @@ test("forking protects an inline edit and Rewind asks before replacing a draft",
 	await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Keep editing" }).click();
 	await expect(reply.getByRole("textbox", { name: "Edit Message" })).toHaveText("Unsaved edit");
 	await reply.getByRole("button", { name: "Cancel", exact: true }).click();
+	await story(page).locator(".story-scroll").evaluate((element) => element.scrollTo({ top: element.scrollHeight, behavior: "instant" }));
 	await page.getByRole("textbox", { name: "Message draft" }).fill("Existing draft");
 	const human = story(page).locator("article").filter({ hasText: "Original guidance." });
 	await human.hover();
 	page.once("dialog", (dialog) => void dialog.dismiss());
 	await human.getByRole("button", { name: "Rewind" }).click();
+	await story(page).locator(".story-scroll").evaluate((element) => element.scrollTo({ top: element.scrollHeight, behavior: "instant" }));
 	await expect(page.getByRole("textbox", { name: "Message draft" })).toHaveText("Existing draft");
 	await expect(page.getByRole("dialog", { name: "Fork Chat" })).toHaveCount(0);
 });
