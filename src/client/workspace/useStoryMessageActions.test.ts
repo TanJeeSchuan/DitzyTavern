@@ -80,6 +80,9 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	const commands: RecordedCommand[] = [];
 	const fetches: { method: string; url: string }[] = [];
 	let revision = 5;
+	let appliedVariant = 100;
+	let beforeHistory: () => Promise<void> = async () => {};
+	let removedVariant: number | undefined;
 	let gate: Promise<void> = Promise.resolve();
 
 	const handler: FetchHandler = async (input, init) => {
@@ -104,6 +107,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 				);
 			}
 			revision += 1;
+			if (body.action.type === "select-variant" && body.action.messageId === 10) appliedVariant = body.action.variantId ?? appliedVariant;
 			return Response.json({ outcome: "applied", conversation: summary(revision) });
 		}
 		return new Response(null, { status: 404 });
@@ -124,7 +128,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	};
 	const publishHistory = (variantId: number) => {
 		const page = initial.messages.map((message) => message.id === 10 ? {
-			...message, variants: message.variants.map((variant) => ({ ...variant, selected: variant.id === variantId })),
+			...message, variants: message.variants.filter((variant) => variant.id !== removedVariant).map((variant) => ({ ...variant, selected: variant.id === variantId })),
 		} : message);
 		window = { ...window, revision, messages: page.map(toStoryMessage) };
 		overlays = retireStoryOverlays(overlays, window, conversation);
@@ -139,6 +143,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	});
 	const actions = () => useStoryMessageActions({
 		...surface(),
+		waitForHistory: async () => { await beforeHistory(); publishHistory(appliedVariant); return story(); },
 		queueSwipeScroll() {},
 		canEnterPreview: true,
 		onEnterPreview: (enter) => {
@@ -147,7 +152,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		},
 	});
 	const swipe = (messageId: number, direction: -1 | 1) => actions().changeSwipe(messageId, direction);
-	const edit = (messageId: number, content: string) => actions().editStoryMessage(messageId, content, false, window.revision);
+	const edit = (messageId: number, content: string) => actions().editStoryMessage(messageId, 100, content, false, window.revision);
 
 	const activeVariantId = (): number | null => {
 		const message = window.messages.find((entry) => entry.id === 10);
@@ -178,6 +183,8 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		hold,
 		story,
 		publishHistory,
+		waitForRefresh: (wait: () => Promise<void>) => { beforeHistory = wait; },
+		removeVariant: (id: number) => { removedVariant = id; },
 		appendMessage: () => {
 			revision++;
 			conversation = summary(revision);
@@ -209,9 +216,12 @@ describe("Requested selection", () => {
 		expect(harness.shownVariantId()).toBe(102);
 	});
 
-	test("rapid Swipes coalesce without borrowing the preceding write revision", async () => {
+	test("rapid Swipes coalesce and send the last choice from refreshed history", async () => {
 		const harness = createHarness({ kind: "applied" });
 		const release = harness.hold();
+		const refreshing = Promise.withResolvers<void>();
+		const refreshed = Promise.withResolvers<void>();
+		harness.waitForRefresh(async () => { refreshing.resolve(); await refreshed.promise; });
 
 		const first = harness.swipe(10, 1);
 		await Bun.sleep(0);
@@ -220,14 +230,30 @@ describe("Requested selection", () => {
 
 		expect(harness.shownVariantId()).toBe(103);
 		release();
+		await Promise.race([refreshing.promise, Promise.all(swipes)]);
+		expect(harness.commands).toHaveLength(1);
+		refreshed.resolve();
 		await Promise.all(swipes);
 		expect(harness.commands).toEqual([
 			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } },
-			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 103 } },
+			{ expectedRevision: 6, action: { type: "select-variant", messageId: 10, variantId: 103 } },
 		]);
+		expect(harness.shownVariantId()).toBe(103);
+		harness.publishHistory(103);
+		expect(harness.activeVariantId()).toBe(103);
+	});
+
+	test("a queued Swipe drops a Variant absent from refreshed history", async () => {
+		const harness = createHarness({ kind: "applied" });
+		const release = harness.hold();
+		const first = harness.swipe(10, 1);
+		await Bun.sleep(0);
+		const queued = harness.swipe(10, 1);
+		harness.removeVariant(102);
+		release();
+		await Promise.all([first, queued]);
+		expect(harness.commands).toEqual([{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } }]);
 		expect(harness.shownVariantId()).toBe(101);
-		harness.publishHistory(102);
-		expect(harness.shownVariantId()).toBe(102);
 	});
 
 	test("an edit is refused without sending while the Message's Swipe is pending", async () => {

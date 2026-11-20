@@ -33,13 +33,14 @@ const STORY_COMMAND_NOTICES = {
 const noPresentation = () => undefined;
 
 type RequestedSelection = { baseRevision: number; messageId: number; request: RequestedWrite<number> };
-const selections = new WeakMap<AbortSignal, { queued: boolean; requested: RequestedSelection | null }>();
+const selections = new WeakMap<AbortSignal, { running: boolean; pending: RequestedSelection | null }>();
 
 type StoryMessageActionsOptions = {
 	signal: AbortSignal;
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
 	setConversation: (conversation: ConversationSummary | null) => void;
+	waitForHistory: (minimumRevision?: number) => Promise<StoryState>;
 	queueSwipeScroll: (messageId: number) => void;
 	canEnterPreview: boolean;
 	onEnterPreview: (enter: () => void) => void;
@@ -50,6 +51,7 @@ export function useStoryMessageActions({
 	story,
 	dispatchStory,
 	setConversation,
+	waitForHistory,
 	queueSwipeScroll,
 	canEnterPreview,
 	onEnterPreview,
@@ -67,34 +69,46 @@ export function useStoryMessageActions({
 	};
 	const requestSelection = async (conversationId: number, messageId: number, variantId: number, baseRevision: number) => {
 		const requested = { baseRevision, messageId, request: { value: variantId } };
-		const current = selections.get(signal) ?? { queued: false, requested: null };
+		const current = selections.get(signal) ?? { running: false, pending: null };
 		selections.set(signal, current);
-		if (current.requested !== null) dispatchStory({ type: "selection-settled", ...current.requested, revision: null });
-		current.requested = requested;
+		if (current.pending !== null) dispatchStory({ type: "selection-settled", ...current.pending, revision: null });
+		current.pending = requested;
 		dispatchStory({ type: "selection-requested", ...requested });
-		if (current.queued) return;
-		current.queued = true;
-		let sent: RequestedSelection | undefined;
-		const applied = await runConversationCommand({ ...surface, conversationId, revision: () => current.requested?.baseRevision ?? null }, (expectedRevision) => {
-			current.queued = false;
-			sent = current.requested ?? requested;
-			current.requested = null;
-			return applyConversationCommand(conversationId, expectedRevision, {
-				type: "select-variant", messageId: sent.messageId, variantId: sent.request.value,
-			});
-		}, {
-			notices: STORY_COMMAND_NOTICES,
-			onApplied: (result) => {
-				if (sent !== undefined) dispatchStory({ type: "selection-settled", ...sent, revision: result.revision });
-			},
-		});
-		if (applied || signal.aborted) return;
-		const failed = sent ?? current.requested ?? requested;
-		if (sent === undefined) {
-			current.queued = false;
-			current.requested = null;
+		if (current.running) return;
+		current.running = true;
+		let refreshed: StoryState | undefined;
+		try {
+			while (current.pending !== null && !signal.aborted) {
+				let selected = current.pending;
+				let acceptedRevision: number | undefined;
+				const applied = await runConversationCommand({ ...surface, conversationId, revision: () => {
+					const pending = current.pending;
+					if (pending === null) return null;
+					selected = pending;
+					current.pending = null;
+					if (refreshed === undefined) return pending.baseRevision;
+					if (!isStoryReady(refreshed) || refreshed.preview !== null) return null;
+					if (refreshed.revision < pending.baseRevision) return pending.baseRevision;
+					const message = refreshed.messages.find((entry) => entry.id === pending.messageId);
+					return message?.swipes.some((variant) => variant.id === pending.request.value) === true ? refreshed.revision : null;
+				} }, (expectedRevision) => applyConversationCommand(conversationId, expectedRevision, {
+					type: "select-variant", messageId: selected.messageId, variantId: selected.request.value,
+				}), {
+					notices: STORY_COMMAND_NOTICES,
+					onApplied: ({ revision }) => {
+						acceptedRevision = revision;
+						dispatchStory({ type: "selection-settled", ...selected, revision });
+					},
+				});
+				if (!applied && !signal.aborted) dispatchStory({ type: "selection-settled", ...selected, revision: null });
+				if (current.pending !== null && !signal.aborted) refreshed = await waitForHistory(acceptedRevision);
+			}
+		} catch {
+			if (current.pending !== null && !signal.aborted) dispatchStory({ type: "selection-settled", ...current.pending, revision: null });
+		} finally {
+			current.pending = null;
+			current.running = false;
 		}
-		dispatchStory({ type: "selection-settled", ...failed, revision: null });
 	};
 
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
@@ -137,12 +151,11 @@ export function useStoryMessageActions({
 	// @approved
 	//  Saving as new copies the selected Variant, with its edited text, to a new
 	// selected Swipe at the end and leaves the source untouched.
-	const editStoryMessage = async (messageId: number, content: string, asNew: boolean, baseRevision: number) => {
+	const editStoryMessage = async (messageId: number, variantId: number, content: string, asNew: boolean, baseRevision: number) => {
 		const write = messageForWrite(messageId, baseRevision);
 		if (write === undefined) return false;
 		const { message, commandSurface } = write;
-		const variantId = message.swipes[message.activeSwipe]?.id;
-		if (variantId === undefined) return false;
+		if (message.swipes[message.activeSwipe]?.id !== variantId) return false;
 
 		let applied = false;
 		await runConversationCommand(commandSurface, asNew

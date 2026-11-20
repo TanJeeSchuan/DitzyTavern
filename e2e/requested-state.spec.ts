@@ -143,8 +143,7 @@ test("accepted writes disable transcript controls until displayed history catche
 	await reply.getByRole("button", { name: "Edit", exact: true }).click();
 	await reply.getByRole("textbox", { name: "Edit Message" }).fill("Draft kept while history loads.");
 	const held = Promise.withResolvers<void>();
-	const historyRequested = Promise.withResolvers<void>();
-	await page.route(`**${url}/history*`, async (route) => { historyRequested.resolve(); await held.promise; await route.continue(); });
+	await page.route(`**${url}/history*`, async (route) => { await held.promise; await route.continue(); });
 	const applying = holdPost(page, "**/api/conversations/*/commands");
 	const applied = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok());
 	await moves.getByRole("button", { name: "Remove To Theodora Kline: A" }).click();
@@ -158,9 +157,10 @@ test("accepted writes disable transcript controls until displayed history catche
 	await reply.getByRole("button", { name: /browse Swipes/ }).click();
 	const browser = page.getByRole("dialog", { name: "Swipes", exact: true });
 	await expect(browser).toBeVisible();
+	const historyRequested = page.waitForRequest((sent) => new URL(sent.url()).pathname === `${url}/history`, { timeout: 5_000 });
 	await command.continue();
 	await applied;
-	await historyRequested.promise;
+	await historyRequested;
 	await expect(browser.getByRole("button", { name: "Swipe 1 of 2", exact: true })).toBeDisabled();
 	await expect(browser.getByRole("button", { name: "Swipe 2 of 2", exact: true })).toBeDisabled();
 	await browser.press("Escape");

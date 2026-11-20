@@ -119,19 +119,21 @@ describe("Requested Generation", () => {
 	});
 });
 
-test("an earlier Moves settlement leaves a later edit visible until history catches up", () => {
+test("accepted Moves stay visible until history catches up and permits another edit", () => {
 	const messageId = older.id;
 	const olderMoves = { phone: [{ to: "Mara", text: "Wait" }] };
 	const newMoves = { phone: [{ to: "Mara", text: "Go" }] };
 	const first = { value: olderMoves };
 	const second = { value: newMoves };
 	let overlays = reduceStoryOverlays(createStoryOverlays(), { type: "moves-requested", messageId, request: first });
-	overlays = reduceStoryOverlays(overlays, { type: "moves-requested", messageId, request: second });
 	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: first, revision: 4 });
-	const firstApplied = read(overlays, history([{ ...older, moves: olderMoves }], 4));
-	expect(shownMessage(firstApplied, firstApplied.messages[0]!).moves).toEqual(newMoves);
+	const stale = read(overlays);
+	expect(shownMessage(stale, stale.messages[0]!).moves).toEqual(olderMoves);
+	const firstApplied = history([{ ...older, moves: olderMoves }], 4);
+	overlays = retireStoryOverlays(overlays, firstApplied, null);
+	overlays = reduceStoryOverlays(overlays, { type: "moves-requested", messageId, request: second });
 	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: second, revision: 5 });
-	expect(shownMessage(read(overlays), firstApplied.messages[0]!).moves).toEqual(newMoves);
+	expect(shownMessage(read(overlays, firstApplied), firstApplied.messages[0]!).moves).toEqual(newMoves);
 	const changedElsewhere = read(overlays, history([{ ...older, moves: {} }], 6));
 	expect(shownMessage(changedElsewhere, changedElsewhere.messages[0]!).moves).toEqual({});
 });
@@ -152,17 +154,16 @@ test("a refused Swipe reveals the earlier accepted Variant before history catche
 	expect(displayedVariantId(refreshed, refreshed.messages[0]!)).toBe(100);
 });
 
-test("a refused Moves edit reveals the earlier accepted Moves before history catches up", () => {
+test("a refused Moves edit reveals the latest persisted Moves", () => {
 	const messageId = older.id;
 	const first = { value: { phone: [{ to: "Mara", text: "Wait" }] } };
 	const second = { value: { phone: [{ to: "Mara", text: "Go" }] } };
-	let overlays = reduceStoryOverlays(createStoryOverlays(), { type: "moves-requested", messageId, request: first });
-	overlays = reduceStoryOverlays(overlays, { type: "moves-requested", messageId, request: second });
-	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: first, revision: 4 });
-	const pending = read(overlays);
+	const persisted = history([{ ...older, moves: first.value }, later], 4);
+	let overlays = reduceStoryOverlays(createStoryOverlays(), { type: "moves-requested", messageId, request: second });
+	const pending = read(overlays, persisted);
 	expect(shownMessage(pending, pending.messages[0]!).moves).toEqual(second.value);
 	overlays = reduceStoryOverlays(overlays, { type: "moves-settled", messageId, request: second, revision: null });
-	const refused = read(overlays);
+	const refused = read(overlays, persisted);
 	expect(shownMessage(refused, refused.messages[0]!).moves).toEqual(first.value);
 	const refreshed = read(overlays, history([{ ...older, moves: {} }, later], 5));
 	expect(shownMessage(refreshed, refreshed.messages[0]!).moves).toEqual({});

@@ -105,7 +105,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onSelectVariant: (messageId: number, variantId: number) => void;
 	swipeBrowsing: SwipeBrowsing;
-	onEdit: (messageId: number, content: string, asNew: boolean, baseRevision: number) => Promise<boolean>;
+	onEdit: (messageId: number, variantId: number, content: string, asNew: boolean, baseRevision: number) => Promise<boolean>;
 	waitForHistory: () => Promise<void>;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
@@ -124,7 +124,6 @@ export const StoryMessageView = memo(function StoryMessageView({
 	generationControls?: ReactNode;
 	lens?: StoryLens | undefined;
 }) {
-	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
 	const streamed = useStreamedVariant(message.swipes.find((variant) => variant.id === visibleId));
 	const { variant: active, failed: textFailed } = useVariantText(conversationId, message.id, streamed);
@@ -138,41 +137,50 @@ export const StoryMessageView = memo(function StoryMessageView({
 	const [editText, setEditText] = useState("");
 	const authorName = message.authorName ?? "Unknown author";
 
-	const [editBase, setEditBase] = useState<{ variantId: number | undefined; content: string; revision: number }>({ variantId: undefined, content: "", revision: historyRevision });
+	const [editBase, setEditBase] = useState<{ variantId: number; content: string; revision: number } | null>(null);
+	const isEditing = editBase !== null;
+	const [acknowledged, setAcknowledged] = useState<{ content: string; revision: number; asNew: boolean } | null>(null);
 	const [editConflict, setEditConflict] = useState<string | null>(null);
 	const [saveAsNew, setSaveAsNew] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const writesDisabled = mutationsDisabled || contentWritesDisabled;
 	const selected = message.swipes[message.activeSwipe];
 	const canSave = (asNew: boolean) => !writesDisabled && !generationActive && !saving && selected?.content != null &&
-		(!asNew || !saveAsNewDisabled) && (editText.trim() !== "" || (asNew && editText === editBase.content) || hasMoves(message.moves));
+		(!asNew || !saveAsNewDisabled) && (editText.trim() !== "" || (asNew && editText === editBase?.content) || hasMoves(message.moves));
 	const openEditor = () => {
 		if (isEditing || writesDisabled || selected?.content == null) return;
 		setEditText(selected.content);
 		setEditBase({ variantId: selected.id, content: selected.content, revision: historyRevision });
+		setAcknowledged(null);
 		setEditConflict(null);
 		setSaveAsNew(false);
-		setIsEditing(true);
 	};
 	const saveEdit = async (asNew: boolean, revalidate = false) => {
-		if (!canSave(asNew) || selected?.content == null) return false;
+		if (!canSave(asNew) || selected?.content == null || editBase === null) return false;
 		setSaveAsNew(asNew);
+		if (selected.id !== editBase.variantId) {
+			setAcknowledged(null);
+			setEditConflict("Changed elsewhere. Select the Swipe you edited before saving.");
+			return false;
+		}
 		const duplicate = asNew && editText === editBase.content;
 		const value = duplicate ? editBase.content : editText.trim();
-		if (selected.id !== editBase.variantId || (!asNew && selected.content !== editBase.content) || (!revalidate && historyRevision !== editBase.revision)) {
-			if (!revalidate) setEditBase({ variantId: selected.id, content: selected.content, revision: historyRevision });
+		const changed = !asNew && selected.content !== editBase.content;
+		const confirmed = !revalidate && acknowledged?.revision === historyRevision && acknowledged.content === selected.content && acknowledged.asNew === asNew;
+		if (!confirmed && (changed || (!revalidate && historyRevision !== editBase.revision))) {
+			if (!revalidate) setAcknowledged({ revision: historyRevision, content: selected.content, asNew });
 			if (revalidate) setEditConflict("Changed elsewhere. Review this draft before saving.");
 			else setEditConflict(asNew ? "Changed elsewhere. Save as new Swipe again to keep both versions." : "Changed elsewhere. Save again to overwrite.");
 			return false;
 		}
 		setSaving(true);
 		try {
-			const applied = await onEdit(message.id, value, asNew, historyRevision);
-			if (applied) setIsEditing(false);
+			const applied = await onEdit(message.id, editBase.variantId, value, asNew, historyRevision);
+			if (applied) setEditBase(null);
 			return applied;
 		} finally { setSaving(false); }
 	};
-	useSaveGuard({ dirty: isEditing && (saveAsNew || editText !== editBase.content), saving, canSave: canSave(saveAsNew), save: () => saveEdit(saveAsNew, true), waitAfterSave: waitForHistory, discard: () => setIsEditing(false) });
+	useSaveGuard({ dirty: isEditing && (saveAsNew || editText !== editBase.content), saving, canSave: canSave(saveAsNew), save: () => saveEdit(saveAsNew, true), waitAfterSave: waitForHistory, discard: () => setEditBase(null) });
 	const movePrevious = () => {
 		setSwipeDirection("previous");
 		onMoveSwipe(message.id, -1);
@@ -300,7 +308,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 							className="secondary-button"
 							type="button"
 							disabled={saving}
-							onClick={() => setIsEditing(false)}
+							onClick={() => setEditBase(null)}
 						>
 							Cancel
 						</button>

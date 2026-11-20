@@ -49,6 +49,7 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		const commands = useStoryMessageActions({
 			signal: session.signal, story: session.story,
 			dispatchStory: session.dispatchStory, setConversation: session.setConversation,
+			waitForHistory: session.waitForHistory,
 			queueSwipeScroll() {}, canEnterPreview: true, onEnterPreview: (enter) => enter(),
 		});
 		return { ...session, ...commands };
@@ -183,6 +184,25 @@ test("a source request can open before the first transcript page arrives", async
 	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102]);
 	expect(scrolls).toEqual(['[data-message-id="101"]']);
+});
+
+test("source navigation checks the committed window before React renders it", async () => {
+	const h = await harness(async ({ url }) => {
+		if (!url.pathname.endsWith("history")) return Response.json(summary());
+		return Response.json(page(1, url.searchParams.get("aroundMessageId") === "101" ? 3 : 1));
+	});
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	let second: Promise<void> | undefined;
+	const unsubscribe = h.client.getQueryCache().subscribe((event) => {
+		if (second !== undefined || event.type !== "updated" || event.action.type !== "success" || event.query.queryKey[0] !== "history-window") return;
+		second = h.hook.current.navigateToSourceMessage(105);
+	});
+	try {
+		await h.hook.act(async () => { await h.hook.current.navigateToSourceMessage(101); await second; });
+	} finally { unsubscribe(); }
+	await flushHook();
+	expect(h.requests.filter(({ url }) => url.searchParams.has("aroundMessageId")).map(({ url }) => url.searchParams.get("aroundMessageId"))).toEqual(["101", "105"]);
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
 });
 
 test("a newer source request retires the initial source's pending scroll", async () => {
@@ -382,6 +402,27 @@ test("newer paging extends a detached window and generation refresh retains that
 	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104, 105, 106]);
 	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
+});
+
+test("newer paging preserves the anchor for deleted-source recovery", async () => {
+	let deleted = false;
+	const h = await harness(async ({ url }) => {
+		const revision = deleted ? 6 : 5;
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+		if (url.searchParams.has("aroundMessageId")) return deleted ? Response.json({ outcome: "not-found" }, { status: 404 }) : Response.json(page(1, 3));
+		const history = page(1, Number(url.searchParams.get("page")) || 1, revision);
+		if (deleted) history.messages = history.messages.filter(({ id }) => id !== 101);
+		return Response.json(history);
+	});
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+	await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104]);
+	deleted = true;
+	await h.hook.act(async () => h.hook.current.refreshStory(1));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([105, 106]);
 });
 
 test("a reload discards the local Preview even when React Query still has history", async () => {
@@ -812,7 +853,7 @@ for (const operation of ["edit", "save as new", "Moves"] as const) test(`${opera
 	await flushHook();
 	await h.hook.act(async () => {
 		if (operation === "Moves") await h.hook.current.setMessageMoves(105, {}, 5);
-		else expect(await h.hook.current.editStoryMessage(105, "Edited", operation === "save as new", 5)).toBe(false);
+		else expect(await h.hook.current.editStoryMessage(105, 1000, "Edited", operation === "save as new", 5)).toBe(false);
 	});
 	expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).expectedRevision)).toEqual([5]);
 	expect(stored).toBe("Other tab's work");

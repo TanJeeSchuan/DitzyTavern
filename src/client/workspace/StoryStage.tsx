@@ -39,6 +39,7 @@ import type { useGenerationController } from "./useGenerationController";
 import type { usePreviewController } from "./usePreviewController";
 import { useStoryMessageActions } from "./useStoryMessageActions";
 import { useStoryViewport } from "./useStoryViewport";
+import { useNavigationRequest } from "../SaveGuard";
 
 // @approved
 // The story stage: header, preview dock, scrollable message list, and
@@ -101,6 +102,7 @@ export function StoryStage({
 	onFork: (at: { through: number; variantId?: number } | { rewind: number }) => void;
 }) {
 	const readyStory = isStoryReady(story) ? story : null;
+	const requestNavigation = useNavigationRequest();
 	const storyConversationId = "conversationId" in story ? story.conversationId : null;
 	const illustrations = useIllustrations(storyConversationId);
 	const viewport = useStoryViewport({
@@ -113,6 +115,7 @@ export function StoryStage({
 		story,
 		dispatchStory,
 		setConversation: session.setConversation,
+		waitForHistory: session.waitForHistory,
 		queueSwipeScroll: viewport.queueSwipeScroll,
 		canEnterPreview: !assemblyActive,
 		onEnterPreview,
@@ -139,8 +142,8 @@ export function StoryStage({
 		openInspector: (box: string, focus: { messageId: number }) => latest.current.onOpenInspector(box, focus),
 		moveSwipe: (messageId: number, direction: -1 | 1) => void latest.current.storyActions.changeSwipe(messageId, direction),
 		selectVariant: (messageId: number, variantId: number) => void latest.current.storyActions.selectSwipe(messageId, variantId),
-		edit: (messageId: number, content: string, asNew: boolean, baseRevision: number) => latest.current.storyActions.editStoryMessage(messageId, content, asNew, baseRevision),
-		waitForHistory: () => latest.current.session.waitForHistory(),
+		edit: (messageId: number, variantId: number, content: string, asNew: boolean, baseRevision: number) => latest.current.storyActions.editStoryMessage(messageId, variantId, content, asNew, baseRevision),
+		waitForHistory: async () => { await latest.current.session.waitForHistory(); },
 		fork: (messageId: number) => latest.current.onFork({ through: messageId }),
 		rewind: (messageId: number) => latest.current.onFork({ rewind: messageId }),
 		setMoves: (messageId: number, moves: BoxMoves, revision: number) => void latest.current.storyActions.setMessageMoves(messageId, moves, revision),
@@ -291,7 +294,7 @@ export function StoryStage({
 					className="secondary-button"
 					type="button"
 					disabled={previewMode}
-					onClick={() => void session.jumpToLatest().catch(() => undefined)}
+					onClick={() => requestNavigation(() => void session.jumpToLatest().catch(() => undefined))}
 				>
 					Jump to latest
 				</button>
