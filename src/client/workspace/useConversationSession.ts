@@ -41,6 +41,12 @@ function selectHistoryWindow({ pages }: HistorySnapshot) {
 	return { revision: first.revision, page: { ...last.page, hasNewer: first.page.hasNewer }, messages };
 }
 
+const toStoryWindow = (selected: ReturnType<typeof selectHistoryWindow>): StoryWindow => ({
+	revision: selected.revision,
+	page: selected.page,
+	messages: Object.values(selected.messages).sort((a, b) => a.position - b.position),
+});
+
 async function readHistoryPage(id: number, request: ChatHistoryPageRequest, signal: AbortSignal) {
 	const result = await cancellableFetch(signal, (cancellation) => loadHistoryPage(id, request, cancellation));
 	switch (result.outcome) {
@@ -215,9 +221,7 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	}, [client, conversationId, signal]);
 
 	const selected = history.data;
-	const historyWindow = useMemo<StoryWindow | null>(() => selected === undefined ? null : {
-		revision: selected.revision, page: selected.page, messages: Object.values(selected.messages).sort((a, b) => a.position - b.position),
-	}, [selected]);
+	const historyWindow = useMemo(() => selected === undefined ? null : toStoryWindow(selected), [selected]);
 	const currentOverlays = historyWindow === null ? overlays : retireStoryOverlays(overlays, historyWindow, conversation);
 	if (currentOverlays !== overlays) setOverlays(currentOverlays);
 	const story = readStory({ overlays: currentOverlays, window: historyWindow, conversationId, historyFailed, loadingMore: paging !== null });
@@ -362,19 +366,29 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		}
 	}, [client]);
 
-	const waitForHistory = async (minimumRevision?: number) => {
-		const requiredRevision = () => Math.max(minimumRevision ?? 0, client.getQueryData<ConversationSummary | null>(conversationKey(id))?.revision ?? 0);
+	const requiredHistoryRevision = (minimumRevision = 0) =>
+		Math.max(minimumRevision, client.getQueryData<ConversationSummary | null>(conversationKey(id))?.revision ?? 0);
+	const refreshHistoryTo = async (minimumRevision: number) => {
 		signal.throwIfAborted();
-		const current = currentSession().story;
-		if (minimumRevision !== undefined && isStoryReady(current) && current.revision >= requiredRevision()) return current;
 		const revision = client.getQueryData<HistorySnapshot>(windowKey)?.pages[0].revision ?? 0;
-		if (revision < requiredRevision()) {
+		if (revision < requiredHistoryRevision(minimumRevision)) {
 			await client.refetchQueries({ queryKey: refreshKey, type: "active" }, { cancelRefetch: false, throwOnError: true });
 		}
+	};
+	const readSelectionHistory = async (minimumRevision: number) => {
+		await refreshHistoryTo(minimumRevision);
+		signal.throwIfAborted();
+		const displayed = currentSession().story;
+		const committed = client.getQueryData<HistorySnapshot>(windowKey);
+		if (!isStoryReady(displayed) || committed === undefined || committed.pages[0].revision < requiredHistoryRevision(minimumRevision)) throw new Error("The Chat history could not be loaded.");
+		return { ...displayed, ...toStoryWindow(selectHistoryWindow(committed)) };
+	};
+	const waitForHistory = async () => {
+		await refreshHistoryTo(0);
 		await afterRender(signal);
 		signal.throwIfAborted();
 		const displayed = currentSession().story;
-		if (!isStoryReady(displayed) || displayed.revision < requiredRevision()) throw new Error("The Chat history could not be loaded.");
+		if (!isStoryReady(displayed) || displayed.revision < requiredHistoryRevision()) throw new Error("The Chat history could not be loaded.");
 		return displayed;
 	};
 
@@ -398,6 +412,6 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 
 	return {
 		signal, activeChatId, activeChatTitle, conversation, setConversation, activeChatIdRef, story, dispatchStory,
-		selectChat, loadMoreHistory, jumpToLatest, ensureLatest, navigateToSourceMessage, refreshStory, waitForHistory,
+		selectChat, loadMoreHistory, jumpToLatest, ensureLatest, navigateToSourceMessage, refreshStory, readSelectionHistory, waitForHistory,
 	};
 }

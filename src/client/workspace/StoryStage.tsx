@@ -117,7 +117,7 @@ export function StoryStage({
 		story,
 		dispatchStory,
 		setConversation: session.setConversation,
-		waitForHistory: session.waitForHistory,
+		waitForHistory: session.readSelectionHistory,
 		queueSwipeScroll: viewport.queueSwipeScroll,
 		canEnterPreview: !assemblyActive,
 		onEnterPreview,

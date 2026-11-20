@@ -50,7 +50,7 @@ async function harness(handler?: (request: Request) => Promise<Response>, strict
 		const commands = useStoryMessageActions({
 			signal: session.signal, story: session.story,
 			dispatchStory: session.dispatchStory, setConversation: session.setConversation,
-			waitForHistory: session.waitForHistory,
+			waitForHistory: session.readSelectionHistory,
 			queueSwipeScroll() {}, canEnterPreview: true, onEnterPreview: (enter) => enter(),
 		});
 		return { ...session, ...commands };
@@ -1346,13 +1346,20 @@ test("selectChat retires a queued command before dispatch and leaves the replace
 	}
 });
 
-test("a queued Swipe after a refused write uses current history while rendering is paused", async () => {
+test.each([422, 409])("a queued Swipe after a %i write revalidates while rendering is paused", async (status) => {
 	const { queueConversationCommand } = await import("../conversation-command-runner");
 	let revision = 5;
 	const h = await harness(async ({ url, init }) => {
-		if (init?.method === "POST") return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
+		if (init?.method === "POST") {
+			if (JSON.parse(String(init.body)).action.type === "set-message-moves") {
+				if (status === 422) return Response.json({ outcome: "invalid", reason: "Moves refused." }, { status });
+				return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: ++revision, current: summary(1, revision) }, { status });
+			}
+			return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
+		}
 		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
 		const history = page(1, 1, revision);
+		history.messages[0]!.moves = { phone: [{ to: "Mara", text: "Wait." }] };
 		history.messages.at(-1)!.variants.push(historyVariant({ id: 1099, position: 2, selected: false }));
 		return Response.json(history);
 	});
@@ -1362,53 +1369,49 @@ test("a queued Swipe after a refused write uses current history while rendering 
 		requestAnimationFrame: (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; },
 		cancelAnimationFrame: (id: number) => frames.delete(id),
 	});
-	const preceding = Promise.withResolvers<false>();
-	const refused = queueConversationCommand(1, () => withDeadline(preceding.promise, "the refused write", 1_000));
+	let moves = Promise.resolve();
 	let swipe = Promise.resolve();
 	try {
-		await h.hook.act(async () => { swipe = h.hook.current.selectSwipe(106, 1099); });
-		const following = queueConversationCommand(1, async (revision) => revision);
 		await h.hook.act(async () => {
-			preceding.resolve(false);
-			expect(await withDeadline(following, "the command after the queued Swipe", 1_000)).toBe(6);
+			moves = h.hook.current.setMessageMoves(105, {}, 5);
+			swipe = h.hook.current.selectSwipe(106, 1099);
+			const following = queueConversationCommand(1, async (revision) => revision);
+			expect(await withDeadline(following, "the command after the queued Swipe", 1_000)).toBe(status === 409 ? 7 : 6);
 		});
-		expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).action.type)).toEqual(["select-variant"]);
+		const writes = h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)));
+		expect(writes.map(({ action, expectedRevision }) => [action.type, expectedRevision])).toEqual([["set-message-moves", 5], ["select-variant", status === 409 ? 6 : 5]]);
 	} finally {
-		preceding.resolve(false);
 		await h.hook.act(async () => {
 			while (frames.size > 0) {
 				const pending = [...frames.values()];
 				frames.clear();
 				for (const frame of pending) frame(0);
 			}
-			await withDeadline(Promise.all([refused, swipe]), "the queued Swipe to settle", 1_000);
+			await withDeadline(Promise.all([moves, swipe]), "the queued Swipe to settle", 1_000);
 		});
 	}
 });
 
-test("retiring a visit releases a queued Swipe even when the renderer stops drawing frames", async () => {
+test("retiring a visit releases a queued Swipe waiting for history", async () => {
 	let revision = 5;
+	const refreshRequested = Promise.withResolvers<void>();
+	const heldRefresh = Promise.withResolvers<Response>();
+	let waiting = false;
 	const h = await harness(async ({ url, init }) => {
 		const id = Number(url.pathname.split("/")[3]);
 		if (init?.method === "POST") return Response.json({ outcome: "applied", conversation: summary(id, ++revision) });
 		if (!url.pathname.endsWith("history")) return Response.json(summary(id, revision));
+		if (id === 1 && revision === 6 && !waiting) {
+			waiting = true;
+			refreshRequested.resolve();
+			return withDeadline(heldRefresh.promise, "release of the retired history read", 3_000);
+		}
 		const history = page(id, 1, revision);
 		const older = history.messages[0]!;
 		older.authorRole = "human";
 		older.moves = revision === 5 ? { phone: [{ to: "Mara", text: "Wait." }] } : {};
 		history.messages.at(-1)!.variants.push(historyVariant({ id: 1099, position: 2, selected: false }));
 		return Response.json(history);
-	});
-	const frameRequested = Promise.withResolvers<void>();
-	const frames = new Map<number, FrameRequestCallback>();
-	let nextFrame = 0;
-	Object.assign(window, {
-		requestAnimationFrame: (callback: FrameRequestCallback) => {
-			frameRequested.resolve();
-			frames.set(++nextFrame, callback);
-			return nextFrame;
-		},
-		cancelAnimationFrame: (id: number) => frames.delete(id),
 	});
 	let moves = Promise.resolve();
 	let swipe = Promise.resolve();
@@ -1417,7 +1420,7 @@ test("retiring a visit releases a queued Swipe even when the renderer stops draw
 			moves = h.hook.current.setMessageMoves(105, {}, 5);
 			swipe = h.hook.current.selectSwipe(106, 1099);
 		});
-		await withDeadline(frameRequested.promise, "a queued Swipe's first frame", 1_000);
+		await withDeadline(refreshRequested.promise, "the queued Swipe's history refresh", 1_000);
 		await h.switchTo(2);
 		await h.switchTo(1);
 		await h.hook.act(async () => {
@@ -1426,12 +1429,8 @@ test("retiring a visit releases a queued Swipe even when the renderer stops draw
 		const writes = h.requests.filter(({ init }) => init?.method === "POST");
 		expect(writes.map(({ init }) => JSON.parse(String(init?.body)).action.type)).toEqual(["set-message-moves", "delete-message"]);
 	} finally {
+		heldRefresh.resolve(Response.json(page(1, 1, 6)));
 		await h.hook.act(async () => {
-			while (frames.size > 0) {
-				const pending = [...frames.values()];
-				frames.clear();
-				for (const frame of pending) frame(0);
-			}
 			await withDeadline(Promise.all([moves, swipe]), "the original visit's commands", 1_000);
 		});
 	}
