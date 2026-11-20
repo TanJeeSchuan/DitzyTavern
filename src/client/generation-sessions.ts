@@ -38,7 +38,7 @@ export type GenerationSessionTarget = Omit<GenerationAttemptTarget, "conversatio
 //   session keeps its cursor and awaits reconciliation for reattachment.
 // - `terminal`: a terminal outcome was observed; the session is inert until
 //   a Conversation switch garbage-collects it.
-export type GenerationSessionPhase = "subscribing" | "observing" | "detached" | "terminal";
+type GenerationSessionPhase = "subscribing" | "observing" | "detached" | "terminal";
 
 export type GenerationSessionTerminal =
 	| { outcome: "applied" }
@@ -46,7 +46,7 @@ export type GenerationSessionTerminal =
 	| { outcome: "not-found" }
 	| { outcome: "failed"; reason: string; imageModel?: GenerationImageModel };
 
-export interface GenerationSession {
+interface GenerationSession {
 	readonly conversationId: number;
 	readonly generationId: number;
 	readonly messageId: number;
@@ -109,7 +109,7 @@ export type GenerationSessionsAction =
 	//  The user moved on (new start, new Stop): session errors stop being news.
 	| { type: "errors-acknowledged" };
 
-export type GenerationSessionStoryEffect = { kind: "story" } & import("./story/variant-streams").VariantObservation;
+type GenerationSessionStoryEffect = { kind: "story" } & import("./story/variant-streams").VariantObservation;
 
 export type GenerationSessionEffect =
 	// @approved
@@ -142,7 +142,7 @@ export interface GenerationSessionsTransition {
 // @approved
 //  One reconcile/detach step's outcome: the next session map plus the teardown
 // effects its changes require.
-export interface GenerationSessionMapChange {
+interface GenerationSessionMapChange {
 	sessions: Map<number, GenerationSession>;
 	effects: GenerationSessionEffect[];
 }

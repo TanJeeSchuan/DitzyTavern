@@ -6,7 +6,7 @@ import type { BoxItems, BoxResults } from "../box/registry";
 import { boxItemExpansionKey, measurePromptPlan, promptPlanEstimator, toEstimationTranscript } from "../prompt-compiler";
 import type { MacroAttemptState, PromptContextEntry, PromptLoreEntry, PromptPlan } from "../prompt-compiler";
 
-export const estimateDynamicBlockTokens = (
+const estimateDynamicBlockTokens = (
 	kind: "lore" | PromptBoxReference,
 	role: "system" | "human" | "model",
 	content: string,

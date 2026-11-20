@@ -26,7 +26,7 @@ import { PromptPresetNotFoundError } from "./errors";
 // fresh read, so a stale block draft can never overwrite separately saved
 // ordering or toggles — there is no whole-recipe write to do it with.
 
-export class PromptPresetBlockNotFoundError extends Error {
+class PromptPresetBlockNotFoundError extends Error {
 	readonly outcome = "not-found" as const;
 
 	constructor(presetId: number, blockId: number) {

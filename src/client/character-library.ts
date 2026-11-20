@@ -9,7 +9,6 @@ import {
 	type CharacterCommand,
 	type CharacterDeletionImpact,
 	type CharacterDeletionMode,
-	type CharacterDeletionResult,
 	type CharacterLibrarySummary as CharacterSummary,
 	type CharacterSnapshot,
 } from "../shared/contract/character-library";
@@ -25,7 +24,6 @@ export type {
 	CharacterCommand,
 	CharacterDeletionImpact,
 	CharacterDeletionMode,
-	CharacterDeletionResult,
 	CharacterSnapshot,
 	CharacterSummary,
 };

@@ -8,15 +8,10 @@ import type { PromptImageResolution } from "./images";
 import type { BoxItems } from "../box/registry";
 import type { SystemPlacement } from "../connection-settings/types";
 
-export type {
-	AttemptEnvironment,
-	MacroAttemptState,
-	MacroEnvironment,
-} from "../../shared/prompt-macro-engine";
+export type { MacroAttemptState } from "../../shared/prompt-macro-engine";
 export type {
 	GenerationIntent,
 	PromptBlock,
-	PromptHistoryRole,
 	PromptImage,
 	PromptPlan,
 	PromptWarning,

@@ -1,3 +1,4 @@
+import { createFakeModelClient } from "../test-fixtures/model-client";
 import { emptyPromptChannels } from "../../shared/definition";
 import { readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import {
@@ -9,7 +10,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import type { ParticipantDefinition } from "../conversation";
-import { createFakeModelClient, type ModelClientGenerationInput } from "../model-client";
+import { type ModelClientGenerationInput } from "../model-client";
 import type { PromptPlan } from "../prompt-compiler";
 import { runGenerationLifecycle } from ".";
 import { generateTerminalTailFixture } from "./test-fixtures";

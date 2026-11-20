@@ -8,12 +8,8 @@ export {
 	assertGenerationPlan,
 	compileGenerationPlan,
 	continuationIntentFor,
-	effectiveGenerationSettingsFor,
 } from "./compiler";
 export type {
-	CompileGenerationPlanInput,
 	EffectiveGenerationSettings,
-	GenerationConnectionFacts,
 	GenerationPlan,
-	PromptLoreEntry,
 } from "./types";

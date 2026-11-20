@@ -11,7 +11,7 @@ import type { RecordSlot } from "./records";
 import type { EmbeddingConfiguration } from "./embedding";
 
 /** @approved One completion from a chat Connection Profile: `prompt` is the system message, `signal` adds a limit to the Box's own, and `onContent` sees each streamed chunk and may throw to stop it. */
-export type BoxCompletion = {
+type BoxCompletion = {
 	readonly model: string;
 	readonly prompt: string;
 	readonly contextLimit: number;

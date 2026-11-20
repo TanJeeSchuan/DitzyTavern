@@ -61,7 +61,7 @@ export const resolveDecisionProfile = (profile: ConnectionProfileDraft, model: s
 	};
 };
 
-export const resolveDecisionSelection = (database: Database, selection: DecisionSelection, options: ConnectionSettingsModuleOptions = {}): ResolvedDecisionModel | null => {
+const resolveDecisionSelection = (database: Database, selection: DecisionSelection, options: ConnectionSettingsModuleOptions = {}): ResolvedDecisionModel | null => {
 	const profileId = validateDecisionSelection(database, selection);
 	if (profileId === null) return null;
 	const connections = createConnectionSettingsModule(database, options);
@@ -84,7 +84,7 @@ export const tryResolveDecisionSelection = (database: Database, selection: Decis
 	}
 };
 
-export const prettyJson = (text: string) => {
+const prettyJson = (text: string) => {
 	try { return JSON.stringify(JSON.parse(text), null, 2); } catch { return text; }
 };
 

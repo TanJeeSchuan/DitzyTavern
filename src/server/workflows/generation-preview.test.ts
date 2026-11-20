@@ -1,3 +1,4 @@
+import { createFakeModelClient } from "../test-fixtures/model-client";
 import { afterEach, beforeEach, expect, test, setSystemTime } from "bun:test";
 import type { Database } from "bun:sqlite";
 import type { GenerationTarget } from "../../shared/contract/conversation-schema";
@@ -10,7 +11,7 @@ import { configureDecisionModels } from "../contract/decision-model-test-fixture
 import { captureModelFetch, key, withProfile } from "../contract/prompt-preset-test-fixtures";
 import { uploadImage } from "../image";
 import { pngFixture } from "../image/image-fixtures";
-import { createFakeModelClient, ModelClientGenerationError, type ModelClient, type ModelClientConnectionSnapshot } from "../model-client";
+import { ModelClientGenerationError, type ModelClient, type ModelClientConnectionSnapshot } from "../model-client";
 import type { PromptPlan } from "../prompt-compiler";
 import { PromptBudgetExceededError } from "../prompt-compiler";
 import { openObservedDatabase, pairChat, participantSeed } from "../test-fixtures/conversation";

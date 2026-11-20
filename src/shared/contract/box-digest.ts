@@ -18,7 +18,7 @@ export const boxRecordSlot = <Record extends TSchema>(record: Record) => Type.Ob
 //  folds until the new one lands, or a digest that failed on this text, with
 //  whether an earlier result still folds. A failure on an earlier text is no
 //  failure of this one.
-export const boxDigestStatus = Type.Union([
+const boxDigestStatus = Type.Union([
 	Type.Object({ kind: Type.Literal("missing") }),
 	Type.Object({ kind: Type.Literal("fresh") }),
 	Type.Object({ kind: Type.Literal("stale") }),

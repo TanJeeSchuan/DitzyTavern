@@ -8,14 +8,14 @@ import { boxValue, type BoxValue } from "./box-value";
 export const boxRecords = Type.Record(Type.String(), Type.Object({ instance: Type.String(), version: Type.Optional(Type.String()), record: boxValue }));
 export type BoxRecords = Static<typeof boxRecords>;
 
-export const boxAdmission = Type.Union([Type.Literal("admitted"), Type.Literal("allowance"), Type.Literal("oversized"), Type.Literal("context-limit")]);
+const boxAdmission = Type.Union([Type.Literal("admitted"), Type.Literal("allowance"), Type.Literal("oversized"), Type.Literal("context-limit")]);
 export type BoxAdmission = Static<typeof boxAdmission>;
 // @approved
 //  What one captured Box contributed to a Generation, for inspection: its own
 // `trace`, which only the Box reads; its allowance; the host's admission of
 // each item it returned, in its order; and its block's text as budgeted and
 // as sent, which differ once the writer edits the inspected Prompt Plan.
-export const boxTrace = Type.Object({
+const boxTrace = Type.Object({
 	trace: Type.Optional(generationJsonValue),
 	allowance: Type.Optional(Type.Integer()),
 	items: Type.Array(Type.Object({ text: Type.String(), admission: boxAdmission })),

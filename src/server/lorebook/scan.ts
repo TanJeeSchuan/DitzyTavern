@@ -23,7 +23,7 @@ export interface LoreScanWindowMessage {
 	readonly pending: boolean;
 }
 
-export const DEFAULT_LORE_SCAN_DEPTH = 4;
+const DEFAULT_LORE_SCAN_DEPTH = 4;
 
 /** @approved Capture once for an attempt; budgeting must consume this result without rescanning. */
 export const captureLoreScanWindow = (

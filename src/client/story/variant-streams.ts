@@ -24,7 +24,7 @@ const baseOf = (streamed: Streamed | undefined, generationId: number, placed: St
 	return own ?? checkpoint ?? (placed === undefined ? { generationId, eventId: 0, content: "", reasoning: "" } : undefined);
 };
 
-export const applyObservation = (streamed: Streamed | undefined, observation: VariantObservation, placed: StoryVariant | undefined): Streamed | undefined => {
+const applyObservation = (streamed: Streamed | undefined, observation: VariantObservation, placed: StoryVariant | undefined): Streamed | undefined => {
 	const base = baseOf(streamed, observation.generationId, placed);
 	if (base === undefined || observation.eventId <= base.eventId) return undefined;
 	const { generationId, eventId } = observation;

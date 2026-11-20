@@ -1,6 +1,6 @@
 # T10: Guardrails against the debt round 5 removed
 
-Status: READY
+Status: IN PROGRESS
 
 Blocked By: T8
 
@@ -43,7 +43,7 @@ One script step in `check`:
 
 ## TODO
 
-- [ ] Slice a, PR (knip triage findings that are surface raised to the owner)
+- [x] Slice a, PR (knip triage findings that are surface raised to the owner)
 - [ ] Slices b, c and d, one PR
 
 ## Acceptance
@@ -51,3 +51,18 @@ One script step in `check`:
 `bun run check` runs knip, the clone check, the new rules and the stylesheet step, and passes on master. Each new rule's test shows it refusing the pattern it names and accepting the allowlisted case.
 
 ## Outcome
+
+### Slice a
+
+In [PR #293](https://github.com/TanJeeSchuan/DitzyTavern/pull/293), `bun run check` runs Knip's production scan, a scan that includes tooling and the browser harness, and the jscpd baseline. The baseline records the existing cloned ranges by file and token. It accepts surviving subranges after deletions, line shifts and CRLF checkouts, and detects new ranges and changes inside literals. `bun run check:clones` still writes the full jscpd report.
+
+The Knip triage removed unused internal exports, type aliases and helpers and made same-file declarations private, including the unused Oxlint dictionary helper. The network-free Model Client lives in test fixtures. The Macro Variables workflow test sets initial values through the production edit command. Box version tests inspect the installed version folders directly. Existing cross-module test consumers of live production code have symbol-specific exceptions. The existing `@ai-sdk/provider` import now has a direct dependency, and the stream preview uses the declared Playwright package.
+
+Knip findings kept
+
+- Box SDK exports `useBoxStatus`, `BoxExport`, `boxSdkVersion`, `ParticipantId`, `CodeAgentFunction`, `CodeAgentValue` (kept surface).
+- None of the flagged contract schemas was dead code. Each one backs a live route in its own module. The orchestrator removed `export` from the 15 that nothing outside their module imports, and deleted the 3 unused type aliases `ChatImportReceiptParticipant`, `ImportDetailsArtifactAvailability` and `MemoryRelevanceScore`. The rest stay exported because tests or `scripts/profile-actions.ts` import them. Nothing here is surface for the owner to decide.
+
+The Box host loads the built-in Box default exports by folder. Knip allowlists those live entry exports by name.
+
+Both Knip scans, the clone check and focused tests passed. Probes verified that production Knip rejects a module reachable only from the browser harness, and that the scans flag unused named Box and tooling exports and an unreferenced script. The clone regression test covers deletion, shorter surviving ranges, JSX indentation, CRLF and a replacement that changes literal text. GitHub Check runs the full suite and e2e. Slices b, c and d remain open.

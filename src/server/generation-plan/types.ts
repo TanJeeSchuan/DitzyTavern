@@ -14,7 +14,6 @@ import type { LoreActivationRecord } from "../../shared/contract/lore-activation
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { BoxResults } from "../box/registry";
 
-export type { PromptLoreEntry } from "../prompt-compiler";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	CompilePromptDefinition,

@@ -31,7 +31,7 @@ export interface ConversationCommandSurface {
 
 // @approved
 //  The command family's notice wording: the runner owns when, the surface what.
-export interface ConversationCommandNotices {
+interface ConversationCommandNotices {
 	conflict: string;
 	notFound: string;
 	unreachable: string;

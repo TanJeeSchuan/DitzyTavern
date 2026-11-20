@@ -4,7 +4,7 @@ import type { PromptImage, PromptPlan, PromptWarning } from "./types";
 
 export type RepeatedImagePlacement = CanonicalGenerationSettings["repeatedImagePlacement"];
 
-export interface ImageDimensions {
+interface ImageDimensions {
 	readonly width: number;
 	readonly height: number;
 }
@@ -34,7 +34,7 @@ export interface PromptImageResolution {
 const FIT_LONG_EDGE = 1568;
 const PIXELS_PER_TOKEN = 750;
 
-export const imageTokenCost = ({ width, height }: ImageDimensions): number => {
+const imageTokenCost = ({ width, height }: ImageDimensions): number => {
 	const scale = Math.min(1, FIT_LONG_EDGE / Math.max(width, height));
 	return Math.ceil((width * scale * height * scale) / PIXELS_PER_TOKEN);
 };

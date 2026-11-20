@@ -15,10 +15,10 @@ import { boxSnapshot } from "./snapshot";
 /** @approved The JSON a hook call may carry in each direction, checked before the host allocates a guest string. */
 export const SANDBOX_JSON_BYTES = 4 * 1024 * 1024;
 /** @approved Each sandboxed Box's QuickJS heap: the most its WebAssembly memory may grow to. */
-export const SANDBOX_HEAP_BYTES = 64 * 1024 * 1024;
+const SANDBOX_HEAP_BYTES = 64 * 1024 * 1024;
 const WASM_PAGE_BYTES = 64 * 1024;
 /** @approved Guest execution per entry into the guest: evaluating `logic.js`, each hook call and each job pump. */
-export const SANDBOX_ENTRY_MS = 100;
+const SANDBOX_ENTRY_MS = 100;
 /** @approved The limits that stop a sandboxed Box's guest, as its failures are worded. */
 const SANDBOX_LIMITS: GuestLimits = { ms: SANDBOX_ENTRY_MS, heapBytes: SANDBOX_HEAP_BYTES };
 

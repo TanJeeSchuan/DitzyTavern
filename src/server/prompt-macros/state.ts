@@ -50,21 +50,8 @@ export const macroWritesToData = (
 	return { namespace: MACRO_DATA_NAMESPACE, key: macroWritesKey(presetId), value: variantDataCodecs.macroWrites.encode(writes) };
 };
 
-/** @approved Convert initial preset-scoped values into Conversation records. */
-export const macroInitialValuesToData = (
-	presetId: number,
-	values: ReadonlyMap<string, MacroValue> | Readonly<Record<string, MacroValue>>,
-): ConversationDataEntry[] => {
-	const entries = values instanceof Map ? [...values.entries()] : Object.entries(values);
-	return entries.map(([name, value]) => ({
-		namespace: MACRO_DATA_NAMESPACE,
-		key: macroInitialValueKey(presetId, name),
-		value: JSON.stringify(value),
-	}));
-};
-
 /** @approved Read only valid initial values for one Conversation and preset. */
-export const readMacroInitialValues = (
+const readMacroInitialValues = (
 	entries: readonly ConversationDataEntry[],
 	presetId: number,
 ): Map<string, MacroValue> => {

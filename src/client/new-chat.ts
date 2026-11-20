@@ -26,13 +26,6 @@ export type SeatDraft =
 			};
 	  };
 
-// @approved
-// The native-creation route's outcome is the wire's own: the created
-//  Conversation under `available`, the typed 409/404/422 envelopes verbatim,
-// network when the transport could not complete the request, and the shared
-// unusable fallback when the response could not be read.
-export type CreationOutcome = Awaited<ReturnType<typeof createNativeConversation>>;
-
 export const emptySeatDraft = (): Extract<SeatDraft, { type: "adhoc" }> => ({
 	type: "adhoc",
 	definition: { name: "", prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] },

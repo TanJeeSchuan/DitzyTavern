@@ -2,19 +2,18 @@ import type {
 	ModelClient,
 	ModelClientEvent,
 	ModelClientGenerationInput,
-} from "./types";
+} from "../model-client";
 
-export type FakeModelClientEvents =
+type FakeModelClientEvents =
 	| readonly ModelClientEvent[]
 	| AsyncIterable<ModelClientEvent>;
 
-export type FakeModelClientReply = (
+type FakeModelClientReply = (
 	input: ModelClientGenerationInput,
 ) => string | FakeModelClientEvents | Promise<string | FakeModelClientEvents>;
 
 // @approved
-//  Deterministic, network-free Model Client for workflow tests and local
-// callers. The callback receives the exact generation input, which makes it
+//  Deterministic, network-free Model Client for tests. The callback receives the exact generation input, which makes it
 // possible to assert that the Prompt Plan crossed the seam unchanged.
 export function createFakeModelClient(reply: FakeModelClientReply): ModelClient {
 	return {

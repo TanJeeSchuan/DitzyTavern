@@ -37,20 +37,19 @@ write runs through `runConversationTransaction`. `bun run check` is green.
 
 ## Clone and dead-export checks
 
-JSCPD runs as an advisory report, not a gate: `bun run check:clones` writes a
-console and SARIF clone report, but the `check` pipeline does not run it and
-nothing fails on its output. Duplicated syntax is evidence, not a verdict —
-deciding whether a reported clone deserves an abstraction is a human review
-call, because DRY is about duplicated knowledge rather than duplicated syntax.
-There is no blanket percentage threshold; add a ratchet only if the report
-proves to catch high-value regressions over time.
+`bun run check` fails on a clone that is not in `.jscpd-baseline.json`
+(`scripts/check-clones.ts`). Existing clones are recorded, not fixed: a recorded
+clone may shrink or shift within its file, but a new one fails. After a refactor
+that removes duplication or renames a file holding a recorded clone, rewrite the baseline with `bun scripts/check-clones.ts --write-baseline`.
+`bun run check:clones` still writes the full console and SARIF report. Whether a
+reported clone deserves an abstraction is a review call, because DRY is about
+duplicated knowledge rather than duplicated syntax.
 
 Contract schemas, database schemas, CSS, tests, fixtures, snapshots, and
 migrations are excluded from the report because clone detection is not the
 schema ownership mechanism.
 
-Knip was evaluated but is not part of `check`. With the current Bun test and
-barrel-export layout it reports 88 unused files and 176 unused exports, including
-test entrypoints and public barrel exports. Add Knip after defining its entrypoint
-and public-export policy; enabling it now would make dead-export failures noisy
-and easy to ignore.
+`bun run check` runs Knip twice: `knip --production`, which reports code only
+tests reach, and a full `knip` scan that includes tooling and the browser harness.
+`knip.json` lists the entry points. Exports kept on purpose are allowlisted there,
+each with its reason: Box SDK surface, and live seams that tests or scripts import.

@@ -83,7 +83,7 @@ const chatNameFromFilename = (filename: string): string => parse(filename).name;
 // map, and every entry carries its own absolute expiry: the staged handle
 // from its staging time, and the compact committed receipt kept for
 // idempotent retry from its commit.
-export type StagedImportSession =
+type StagedImportSession =
 	| { phase: "staged"; expiresAt: number; record: StagedRecord }
 	| { phase: "committed"; expiresAt: number; receipt: ChatImportReceipt };
 

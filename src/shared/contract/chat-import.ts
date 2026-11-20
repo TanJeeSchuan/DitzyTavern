@@ -43,7 +43,7 @@ export type ChatImportDuplicateMatch = Static<typeof importDuplicateMatch>;
 // Duplicate evidence: the classified Prior imports for one source, exact
 // (matching raw-byte SHA-256) or related (matching only the advisory
 // integrity). Shared by the preview, receipt, and Import Details payloads.
-export const duplicateEvidence = Type.Object({
+const duplicateEvidence = Type.Object({
 	exact: Type.Array(importDuplicateMatch),
 	related: Type.Array(importDuplicateMatch),
 });
@@ -52,7 +52,7 @@ export type ChatImportDuplicateEvidence = Static<typeof duplicateEvidence>;
 
 // The two ways an Exact Source Artifact copy can be missing content;
 // missing or corrupt copies report cleaned up without affecting the Chat.
-export const cleanupReason = Type.Union([
+const cleanupReason = Type.Union([
 	Type.Literal("missing"),
 	Type.Literal("corrupt"),
 ]);
@@ -136,7 +136,6 @@ const importReceiptParticipant = Type.Object({
 	sourceCharacterId: Type.Union([Type.Null(), Type.Integer()]),
 });
 
-export type ChatImportReceiptParticipant = Static<typeof importReceiptParticipant>;
 
 // Compact post-commit receipt; the committed Conversation summary is
 // returned too so the client can open the new Chat immediately without a
@@ -176,7 +175,6 @@ const importDetailsArtifactAvailability = Type.Union([
 	}),
 ]);
 
-export type ImportDetailsArtifactAvailability = Static<typeof importDetailsArtifactAvailability>;
 
 // @approved
 //  The committed metadata of one preserved exact-source artifact:

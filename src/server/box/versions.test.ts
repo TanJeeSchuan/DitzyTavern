@@ -3,9 +3,10 @@ import { readdirSync, renameSync, rmSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { writeBoxFiles, writeVersionedBox } from "../test-fixtures/versioned-box";
 import { discoverBoxes, unversionedBoxIds } from "./registry";
-import { createVersion, listVersions, versionFolder } from "./versions";
+import { createVersion, versionFolder } from "./versions";
 
 const root = join(".scratch", `versions-${crypto.randomUUID()}`);
+const versions = join(root, "plugins", "jar", "versions");
 afterEach(() => rmSync(root, { recursive: true, force: true }));
 
 const descriptor = JSON.stringify({ id: "jar", sdk: 2, label: "Jar", summary: "Holds coins.", role: "system", startsEnabled: false, instructions: "", window: { icon: "coins", size: { width: 10, height: 10 } } });
@@ -22,15 +23,14 @@ test("identical sources make one version, and creating it again leaves it alone"
 	const marker = Bun.file(join(versionFolder(join(root, "plugins", "jar"), first), "logic.js"));
 	const written = (await marker.stat()).mtimeMs;
 	expect(await create("b", files)).toBe(first);
-	expect([await listVersions(join(root, "plugins", "jar")), (await marker.stat()).mtimeMs]).toEqual([[first], written]);
-	expect(readdirSync(join(root, "plugins", "jar", "versions")).filter((name) => name.startsWith("."))).toEqual([]);
+	expect([readdirSync(versions).sort(), (await marker.stat()).mtimeMs]).toEqual([[first], written]);
 });
 
 test("a changed deps.lock.json makes a new version, though no package changed", async () => {
 	const first = await create("a", { ...files, "deps.lock.json": "{}\n" });
 	const second = await create("b", { ...files, "deps.lock.json": "{ }\n" });
 	expect(second).not.toBe(first);
-	expect(await listVersions(join(root, "plugins", "jar"))).toEqual([first, second].sort());
+	expect(readdirSync(versions).sort()).toEqual([first, second].sort());
 });
 
 // @approved

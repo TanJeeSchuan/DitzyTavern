@@ -3,7 +3,7 @@ import { type MacroValue, type MacroVariableWrite } from "./contract/macro-varia
 import { dispatchMacro, type MacroDispatchContext } from "./prompt-macro-dispatch";
 import { parseMacroDocument, unescapeMacroText, type MacroDocumentNode } from "./prompt-macro-syntax";
 
-export type { MacroValue, MacroVariableWrite } from "./contract/macro-variables";
+export type { MacroValue } from "./contract/macro-variables";
 
 // @approved
 //  Immutable inputs for one attempt. The evaluator never reads browser

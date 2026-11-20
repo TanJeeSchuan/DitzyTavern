@@ -19,11 +19,8 @@ import {
 	connectionTextOnlyResponse,
 } from "../shared/contract/connection-settings";
 
-export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
-export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];
 export type ConnectionAdapter = ConnectionProfileDraftPayload["adapter"];
 export type ConnectionHeaderOperation = ConnectionHeaderOperationPayload;
-export type OutputTokenRepresentation = ConnectionProfileDraftPayload["outputTokenRepresentation"];
 export type ConnectionProfileDraft = ConnectionProfileDraftPayload;
 export type ConnectionProfile = ConnectionProfilePayload;
 export type ConnectionSettings = ConnectionSettingsPayload;

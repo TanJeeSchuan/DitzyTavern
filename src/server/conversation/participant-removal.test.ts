@@ -19,7 +19,7 @@ import {
 } from ".";
 import { openObservedDatabase, applyCommand } from "../test-fixtures/conversation";
 import { runGenerationLifecycle } from "../workflows/generate";
-import { createFakeModelClient } from "../model-client";
+import { createFakeModelClient } from "../test-fixtures/model-client";
 
 const castNames = (snapshot: TestConversationSnapshot) =>
 	snapshot.cast.map((participant) => participant.name);

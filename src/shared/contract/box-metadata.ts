@@ -1,7 +1,7 @@
 import { Type, type Static } from "@sinclair/typebox";
 
 /** @approved The element name a Box's markup uses in prose, lowercase words joined by `-`: a delegate's request, or a lens's lifted text. */
-export const boxTag = Type.String({ pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" });
+const boxTag = Type.String({ pattern: "^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$" });
 /** @approved A delegating Box's tag and the copy for its delegate setting, which the catalog carries without the operations schema. */
 export const boxDelegateCopy = Type.Object({ tag: boxTag, summary: Type.String(), description: Type.String(), off: Type.String() });
 

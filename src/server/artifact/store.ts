@@ -55,7 +55,7 @@ export const mediaTypeFromFilename = (filename: string): string => {
 // path is an infrastructure inconsistency (the artifact is unavailable),
 // never silently treated as provenance loss: only absent or corrupt files
 // report the cleaned-up outcome.
-export const resolveManagedPath = (root: string, relativePath: string): string => {
+const resolveManagedPath = (root: string, relativePath: string): string => {
 	const base = resolve(root);
 	const candidate = resolve(base, relativePath);
 	if (candidate !== base && !candidate.startsWith(base + sep)) {
@@ -146,7 +146,7 @@ const sanitizeCharacter = (character: string): string => {
 		: character;
 };
 
-export const sanitizeArtifactFilename = (filename: string): string =>
+const sanitizeArtifactFilename = (filename: string): string =>
 	basename(filename)
 		.split("")
 		.map(sanitizeCharacter)

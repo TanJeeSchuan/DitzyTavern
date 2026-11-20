@@ -27,9 +27,6 @@ import { generationProvenance } from "./generation-provenance";
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 import { scopedLorebookAttachment } from "./lorebook";
-export type { LoreActivationRecord } from "./lore-activation";
-
-export { effectiveGenerationSettings } from "./generation-settings";
 
 const promptHistoryRole = Type.Union([
 	Type.Literal("human"),
@@ -231,9 +228,8 @@ export type ConversationSummary = Static<typeof conversationSummary>;
 // an alias because the HTTP runtime mutates response schemas in place — it
 // injects additionalProperties: false when it compiles a response
 // validator — and the canonical declaration must stay pristine for the
-// adapters that derive from it. The established export name stays for
-// every existing consumer.
-export const conversationGenerationSettings = Type.Object({
+// adapters that derive from it.
+const conversationGenerationSettings = Type.Object({
 	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
 	...Value.Clone(canonicalGenerationSettings).properties,
 });
@@ -244,7 +240,7 @@ export type ContinuationPrefillSuffix = ConversationGenerationSettings["continua
 // @approved
 //  The budget decision made at Generation start, with the whole history
 // entries omitted during preflight.
-export const generationBudgetInspection = Type.Object({
+const generationBudgetInspection = Type.Object({
 	tokenEstimate: Type.Number(),
 	responseBudget: Type.Integer(),
 	safetyAllowance: Type.Integer(),
@@ -285,7 +281,7 @@ export type GenerationInspectionStatus = Static<typeof activeGenerationDetails>[
 export type GenerationBudgetInspection = Static<typeof generationBudgetInspection>;
 export type ActiveGenerationDetails = Static<typeof activeGenerationDetails>;
 
-export const variantDetails = Type.Object({
+const variantDetails = Type.Object({
 	conversationId: Type.Integer(),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
@@ -343,7 +339,7 @@ const chatHistoryVariant = Type.Object({
 
 export type ChatHistoryVariant = Static<typeof chatHistoryVariant>;
 
-export const variantText = Type.Object({ content: Type.String(), reasoning: Type.String() });
+const variantText = Type.Object({ content: Type.String(), reasoning: Type.String() });
 export type VariantText = Static<typeof variantText>;
 
 // Server-owned targeted Swipe eligibility (ADR-0003, ADR-0031): the
@@ -508,7 +504,7 @@ const deleteDataAction = Type.Object({
 // fields. The Conversation module still fills defaults when it creates
 // settings server-side, but an update always states every field, so adding
 // a canonical field automatically participates in the update command.
-export const generationSettingsUpdate = Value.Clone(canonicalGenerationSettings);
+const generationSettingsUpdate = Value.Clone(canonicalGenerationSettings);
 
 const updateGenerationSettingsAction = Type.Object({
 	type: Type.Literal("update-generation-settings"),
@@ -659,7 +655,7 @@ export const conversationCommandBody = Type.Object({
 	action: conversationCommandAction,
 });
 
-export const forkConversationResponse = Type.Object({
+const forkConversationResponse = Type.Object({
 	outcome: Type.Literal("applied"), conversation: conversationSummary, omittedBoxes: Type.Array(Type.String()),
 	rewind: Type.Optional(Type.Object({ content: Type.String(), moves: boxMoves })),
 });
@@ -744,13 +740,13 @@ export const generationAccepted = Type.Object({
 	variantId: Type.Integer(),
 });
 
-export const generationStopped = Type.Object({
+const generationStopped = Type.Object({
 	outcome: Type.Literal("stopped"),
 	generationId: Type.Integer(),
 	conversation: conversationSummary,
 });
 
-export const generationsStopped = Type.Object({
+const generationsStopped = Type.Object({
 	outcome: Type.Literal("stopped"),
 	generationIds: Type.Array(Type.Integer()),
 	conversation: conversationSummary,
@@ -762,7 +758,7 @@ export const generationsStopped = Type.Object({
 
 export const conversationIdParams = Type.Object({ id: numericWire });
 
-export const conversationDeleted = Type.Object({ outcome: Type.Literal("deleted") });
+const conversationDeleted = Type.Object({ outcome: Type.Literal("deleted") });
 
 export const generationIdParams = Type.Object({
 	id: numericWire,
@@ -790,12 +786,12 @@ export const generationEventsQuery = Type.Object({
 	after: Type.Optional(numericWire),
 });
 
-export const conversationAppliedResponse = Type.Object({
+const conversationAppliedResponse = Type.Object({
 	outcome: Type.Literal("applied"),
 	conversation: conversationSummary,
 });
 
-export const characterAppliedResponse = Type.Object({
+const characterAppliedResponse = Type.Object({
 	outcome: Type.Literal("applied"),
 	character: characterSnapshot,
 });
@@ -805,13 +801,13 @@ export const generationConflictResponse = Type.Union([
 	notPlayableOutcome,
 ]);
 
-export const conversationCommandConflict = Type.Union([
+const conversationCommandConflict = Type.Union([
 	conversationConflict,
 	notPlayableOutcome,
 	notRemovableOutcome,
 ]);
 
-export const castCharacterConflict = Type.Union([
+const castCharacterConflict = Type.Union([
 	characterConflict,
 	conversationConflict,
 ]);

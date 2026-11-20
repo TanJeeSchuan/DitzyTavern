@@ -4,7 +4,7 @@ import { runConversationCommand, type ConversationCommandSurface } from "./conve
 // @approved
 //  The wording this surface shows whenever the model-selection command could
 //  not be saved; the runner owns when each notice appears.
-export const MODEL_SELECTION_UNAVAILABLE_NOTICE = "The model selection could not be saved.";
+const MODEL_SELECTION_UNAVAILABLE_NOTICE = "The model selection could not be saved.";
 
 const MODEL_COMMIT_NOTICES = {
 	conflict: "This Conversation changed elsewhere. The model selection was not saved.",

@@ -28,7 +28,7 @@ export type BoxState = Static<typeof boxState>;
 export const boxStates = Type.Record(Type.String(), boxState);
 export type BoxStates = Static<typeof boxStates>;
 export type { BoxDescriptor } from "./box-descriptor";
-export { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
+export type { BoxMetadata } from "./box-metadata";
 
 // @approved
 //  A loaded Box: the metadata the server lists, and its descriptor, which the
@@ -92,19 +92,13 @@ export const otherBoxTags = (tag: string): string[] =>
 	[...installed.values()].flatMap(({ metadata: { lens, delegate } }) => [lens, delegate?.tag].flatMap((other) => other === undefined || other === tag ? [] : [other]));
 /** @approved Whether `id` is a registered delegating Box, the only kind with a delegate setting. */
 export const isDelegateBox = (id: BoxId): boolean => installed.get(id)?.metadata.delegate !== undefined;
-/** @approved Each registered Box whose descriptor declares `key`, in registry order, with that key's value. */
-export const boxesWith = <Key extends keyof BoxDescriptor>(key: Key): [BoxId, NonNullable<BoxDescriptor[Key]>][] =>
-	[...boxDescriptors()].flatMap(([id, descriptor]) => {
-		const value = descriptor[key];
-		return value === undefined ? [] : [[id, value]];
-	});
 /** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
 export const defaultBoxIds = (): BoxId[] => [...boxDescriptors()].flatMap(([id, { startsEnabled }]) => startsEnabled ? [id] : []);
 
 // @approved
 //  A Box window's client-side layout, persisted per Chat: open state,
 //  minimization and position are view state, never Conversation state.
-export const boxWindowLayout = Type.Object({
+const boxWindowLayout = Type.Object({
 	open: Type.Boolean(),
 	minimized: Type.Boolean(),
 	x: Type.Optional(Type.Number()),
@@ -126,7 +120,7 @@ export const heldBoxValues = Type.Record(Type.String(), Type.Array(Type.String()
 export const heldBoxValuesCleared = Type.Object({ outcome: Type.Literal("cleared") });
 export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.String() });
 
-export const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
+const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDecisionSettings = Static<typeof boxDecisionSettings>;
 /** @approved Only a digesting Box has a Decision Model selection, so its routes find no other id. */
 export const boxDecisionSettingsReadResponse = { 200: boxDecisionSettings, 404: notFoundOutcome };
@@ -146,7 +140,7 @@ export const DEFAULT_BOX_DELEGATE = "$default";
 //  A delegating Box's delegate setting: the chat Connection Profile and model
 // its agent runs on. No profile inherits the host default; neither means off.
 export const boxDelegateSelection = Type.Object({ profileId: Type.Union([Type.Integer(), Type.Null()]), model: Type.String() });
-export const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
+const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDelegateSettings = Static<typeof boxDelegateSettings>;
 /** @approved Only a delegating Box and the reserved host default have delegate settings routes. */
 export const boxDelegateSettingsReadResponse = { 200: boxDelegateSettings, 404: notFoundOutcome };

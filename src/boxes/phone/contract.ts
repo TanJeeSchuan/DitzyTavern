@@ -15,7 +15,7 @@ export type PhoneMove = Static<typeof phoneMove>;
 //  One text on the Selected narrative path. `key` is the Variant and the
 //  text's place in it, so a swipe yields new keys and the client can count
 //  what it has not shown yet.
-export const phoneText = Type.Object({ key: Type.String(), from: Type.String(), to: Type.String(), text: Type.String() });
+const phoneText = Type.Object({ key: Type.String(), from: Type.String(), to: Type.String(), text: Type.String() });
 export type PhoneText = Static<typeof phoneText>;
 
 /** @approved One thread per Cast member other than the human-controlled Participant, oldest text first. */

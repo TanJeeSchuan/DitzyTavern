@@ -1,7 +1,7 @@
+import { createFakeModelClient } from "../test-fixtures/model-client";
 import { describe, expect, test } from "bun:test";
 import {
 	collectModelClientGeneration,
-	createFakeModelClient,
 	ModelClientGenerationError,
 } from ".";
 import type { PromptPlan } from "../prompt-compiler";

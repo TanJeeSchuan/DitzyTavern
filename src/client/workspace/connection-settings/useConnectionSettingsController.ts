@@ -30,7 +30,7 @@ import { connectionSettingsKey as settingsKey, publishConnectionSettings, useCon
 import { connectionDraftValidationError } from "../../connection-settings-draft";
 import { resolveRequestUrl } from "../../../shared/connection-url";
 
-export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOperation[] {
+function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOperation[] {
 	return Object.entries(data).map(([name, value]) => {
 		if (value.operation === "replace") return { name, operation: "replace", value: value.replacement };
 		if (value.operation === "remove") return { name, operation: "remove" };

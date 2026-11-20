@@ -42,7 +42,7 @@ const sourceLabel = (variable: MacroVariable): string =>
 		? "Initial value"
 		: `Message ${variable.source.messagePosition} · Variant ${variable.source.variantPosition}`;
 
-export function handleMacroVariableOutcome(
+function handleMacroVariableOutcome(
 	outcome: MacroVariableEditResult,
 	callbacks: {
 		onApplied: (variables: MacroVariables, conversation: ConversationSummary) => void;
@@ -126,7 +126,7 @@ export function MacroVariablesPanel({
 	);
 }
 
-export function MacroVariablesReadyView({
+function MacroVariablesReadyView({
 	conversationId,
 	conversation,
 	variables,

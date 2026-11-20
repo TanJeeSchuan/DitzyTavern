@@ -90,7 +90,7 @@ const continuationOperands = (
 //  The Effective Generation Settings for one attempt. The literal is
 // compile-locked to the canonical vocabulary: adding a canonical field fails
 // typecheck until the compiler states how it participates.
-export const effectiveGenerationSettingsFor = (
+const effectiveGenerationSettingsFor = (
 	settings: CanonicalGenerationSettings,
 	intent: GenerationIntent | undefined,
 	connection: GenerationConnectionFacts | null,

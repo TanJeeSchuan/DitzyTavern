@@ -61,7 +61,7 @@ const scenarioTurn = Type.Object({ moves: Type.Array(Type.String()), items: Type
 // which version, how many turns and swipes ran on it, and, once the Update
 // check passed, each place where the candidate's fold of those records
 // differs from that version's.
-export const scenarioResult = Type.Object({
+const scenarioResult = Type.Object({
 	ok: Type.Boolean(),
 	diagnostics: Type.Array(Type.String()),
 	turns: Type.Array(scenarioTurn),
@@ -83,21 +83,21 @@ export type ScenarioResult = Static<typeof scenarioResult>;
 export const cachedScenarioCheck = Type.Object({ input: scenarioInput, result: scenarioResult });
 
 /** @approved The coding model for one authoring session: a chat Connection Profile and its model. No limits are declared, so libfx sends no output limit and the provider's own default applies. */
-export const codingModel = Type.Object({
+const codingModel = Type.Object({
 	profileId: Type.Integer(),
 	model: Type.String({ minLength: 1 }),
 }, { additionalProperties: false });
 export type CodingModel = Static<typeof codingModel>;
 
 /** @approved Steps per writer message: model requests and tool calls each count against it, and `null` sets no limit. */
-export const authoringSteps = Type.Union([Type.Literal(40), Type.Literal(100), Type.Null()]);
+const authoringSteps = Type.Union([Type.Literal(40), Type.Literal(100), Type.Null()]);
 export type AuthoringSteps = Static<typeof authoringSteps>;
 /** @approved How many more steps Continue gives a paused message. */
 export const CONTINUE_STEPS = 20;
 export const authoringStartBody = Type.Object({ ...codingModel.properties, steps: authoringSteps }, { additionalProperties: false });
 export const authoringStepsBody = Type.Object({ steps: authoringSteps }, { additionalProperties: false });
 
-export const authoringRefused = Type.Object({ outcome: Type.Literal("refused"), reason: Type.String() });
+const authoringRefused = Type.Object({ outcome: Type.Literal("refused"), reason: Type.String() });
 /** @approved A session id names its folder, so it is only ever the UUID the host made. */
 export const authoringSessionParams = Type.Object({ session: Type.String({ pattern: "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$" }) });
 export const authoringPromptBody = Type.Object({ text: Type.String({ minLength: 1, maxLength: 32 * 1024 }) });
@@ -157,7 +157,7 @@ export const authoringLogEntry = Type.Union([
 	authoringEvent,
 ]);
 export type AuthoringLogEntry = Static<typeof authoringLogEntry>;
-export const authoringStarted = Type.Object({ outcome: Type.Literal("started"), session: Type.String(), candidate: Type.String() });
+const authoringStarted = Type.Object({ outcome: Type.Literal("started"), session: Type.String(), candidate: Type.String() });
 export const authoringStart = Type.Union([authoringStarted, authoringRefused]);
 
 // @approved

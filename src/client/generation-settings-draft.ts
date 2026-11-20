@@ -70,7 +70,7 @@ const BUDGET_FIELD_MINIMUM = {
 } as const satisfies Record<BudgetField, number>;
 
 export type BudgetField = keyof typeof BUDGET_FIELD_LABELS;
-export const BUDGET_FIELDS = /* @approved SAFETY: these keys come from the closed field declaration above. */ Object.keys(BUDGET_FIELD_LABELS) as BudgetField[];
+const BUDGET_FIELDS = /* @approved SAFETY: these keys come from the closed field declaration above. */ Object.keys(BUDGET_FIELD_LABELS) as BudgetField[];
 export type BudgetDrafts = Record<BudgetField, string>;
 export type BudgetValues = Pick<ConversationGenerationSettings, BudgetField>;
 export const makeEmptyBudgetDrafts = (): BudgetDrafts => /* @approved SAFETY: mapping every budget key supplies a string for every field. */ Object.fromEntries(BUDGET_FIELDS.map((key) => [key, ""])) as BudgetDrafts;
