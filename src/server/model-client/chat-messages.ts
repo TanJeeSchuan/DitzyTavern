@@ -3,7 +3,7 @@ import type { PromptImage } from "../../shared/contract/conversation-schema";
 import { ModelClientTransportError } from "./errors";
 import type { ModelClientGenerationInput } from "./types";
 
-export interface LoadedImage {
+interface LoadedImage {
 	readonly bytes: Uint8Array;
 	readonly mediaType: string;
 }

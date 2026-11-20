@@ -13,7 +13,7 @@ import type {
 	ConversationSummary,
 } from "../conversation";
 
-export interface ImportedConversationParticipantSeed
+interface ImportedConversationParticipantSeed
 	extends ConversationParticipantSeed {
 	createCharacter?: boolean | undefined;
 }

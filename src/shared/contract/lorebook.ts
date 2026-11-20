@@ -2,16 +2,16 @@ import { Type, type Static } from "@sinclair/typebox";
 import { numericWire } from "./wire";
 import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
 
-export const loreMatchOperator = Type.Union([Type.Literal("and"), Type.Literal("or")]);
-export const loreKeywordMode = Type.Union([Type.Literal("literal"), Type.Literal("regex")]);
-export const participantLoreAttachmentScope = Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]);
-export const loreAttachmentScope = Type.Union([...participantLoreAttachmentScope.anyOf, Type.Literal("chat")]);
+const loreMatchOperator = Type.Union([Type.Literal("and"), Type.Literal("or")]);
+const loreKeywordMode = Type.Union([Type.Literal("literal"), Type.Literal("regex")]);
+const participantLoreAttachmentScope = Type.Union([Type.Literal("controlled-participant"), Type.Literal("cast")]);
+const loreAttachmentScope = Type.Union([...participantLoreAttachmentScope.anyOf, Type.Literal("chat")]);
 export type LoreAttachmentScope = Static<typeof loreAttachmentScope>;
 
 export const scopedLorebookAttachment = { bookId: Type.Integer(), scope: participantLoreAttachmentScope };
 
 export const loreAttachmentQuery = Type.Object({ conversationId: numericWire });
-export const loreAttachmentState = Type.Object({
+const loreAttachmentState = Type.Object({
 	conversationId: Type.Integer(),
 	revision: Type.Integer(),
 	scanDepth: Type.Integer({ minimum: 0 }),
@@ -30,7 +30,7 @@ export const loreAttachmentState = Type.Object({
 export type LoreAttachmentState = Static<typeof loreAttachmentState>;
 
 export const lorebookOwnerAttachmentQuery = Type.Object({ ownerId: numericWire });
-export const lorebookOwnerAttachmentState = Type.Object({
+const lorebookOwnerAttachmentState = Type.Object({
 	owner: Type.Union([Type.Literal("character"), Type.Literal("participant")]),
 	ownerId: Type.Integer(),
 	revision: Type.Integer(),
@@ -42,7 +42,7 @@ export const lorebookOwnerAttachmentState = Type.Object({
 });
 export type LorebookOwnerAttachmentState = Static<typeof lorebookOwnerAttachmentState>;
 
-export const lorebookAttachmentImpact = Type.Object({
+const lorebookAttachmentImpact = Type.Object({
 	bookId: Type.Integer(),
 	attachments: Type.Array(Type.Object({
 		id: Type.Integer(),
@@ -55,7 +55,7 @@ export const lorebookAttachmentImpact = Type.Object({
 });
 export type LorebookAttachmentImpact = Static<typeof lorebookAttachmentImpact>;
 
-export const loreEntryFields = Type.Object({
+const loreEntryFields = Type.Object({
 	title: Type.String(),
 	content: Type.String(),
 	keywords: Type.Array(Type.String()),
@@ -75,13 +75,13 @@ export const loreEntryFields = Type.Object({
 });
 export type LoreEntryFields = Static<typeof loreEntryFields>;
 
-export const loreEntry = Type.Intersect([
+const loreEntry = Type.Intersect([
 	Type.Object({ id: Type.Integer(), position: Type.Integer() }),
 	loreEntryFields,
 ]);
 export type LoreEntry = Static<typeof loreEntry>;
 
-export const lorebook = Type.Object({
+const lorebook = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	description: Type.String(),
@@ -90,7 +90,7 @@ export const lorebook = Type.Object({
 });
 export type Lorebook = Static<typeof lorebook>;
 
-export const lorebookSummary = Type.Object({
+const lorebookSummary = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	description: Type.String(),

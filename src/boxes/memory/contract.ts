@@ -15,19 +15,19 @@ export type MemoryCandidateJudgment = Static<typeof memoryCandidate>;
 /** @approved One Variant's Memory record: the claims its digest kept, or the Writer's whole corrected list. */
 export const memoryRecord = Type.Object({ claims: Type.Array(memoryCandidate) });
 export type MemoryRecord = Static<typeof memoryRecord>;
-export const memoryIdentity = Type.Union([Type.Object({ kind: Type.Literal("themselves") }), Type.Object({ kind: Type.Literal("excluded") }), Type.Object({ kind: Type.Literal("plays"), person: Type.String({ minLength: 1, maxLength: 1024 }) })]);
+const memoryIdentity = Type.Union([Type.Object({ kind: Type.Literal("themselves") }), Type.Object({ kind: Type.Literal("excluded") }), Type.Object({ kind: Type.Literal("plays"), person: Type.String({ minLength: 1, maxLength: 1024 }) })]);
 export type MemoryIdentity = Static<typeof memoryIdentity>;
-export const memoryIdentities = Type.Record(ParticipantKey, memoryIdentity);
+const memoryIdentities = Type.Record(ParticipantKey, memoryIdentity);
 export type MemoryIdentities = Static<typeof memoryIdentities>;
 export const memoryIdentityCommand = Type.Object({ expectedRevision: Type.String(), participantId: Type.Integer(), identity: memoryIdentity });
 export type MemoryIdentityCommand = Static<typeof memoryIdentityCommand>;
-export const memoryLabelMerge = Type.Object({ from: Type.String(), to: Type.String() });
+const memoryLabelMerge = Type.Object({ from: Type.String(), to: Type.String() });
 export type MemoryLabelMerge = Static<typeof memoryLabelMerge>;
-export const memoryLabelMerges = Type.Array(memoryLabelMerge);
+const memoryLabelMerges = Type.Array(memoryLabelMerge);
 // @approved
 //  One Variant as the Memories panel lists it: its effective claims as stored
 // (labels apply when shown) and its slot status.
-export const memorySource = Type.Object({
+const memorySource = Type.Object({
 	messageId: MessageId, variantId: VariantId, selected: Type.Boolean(),
 	claims: Type.Union([Type.Array(memoryCandidate), Type.Null()]), status: boxSlotStatus,
 });
@@ -112,7 +112,7 @@ export const memorySettingsCommandErrors = Type.Union([memorySettingsConflict, i
 export const memorySettingsCommandBody = Type.Composite([Type.Object({ expectedRevision: Type.Integer() }), memorySettingsValue]);
 export type MemorySettingsCommand = Static<typeof memorySettingsCommandBody>;
 
-export const memoryRelevanceScore = Type.Union([
+const memoryRelevanceScore = Type.Union([
 	Type.Literal("irrelevant"),
 	Type.Literal("incidental"),
 	Type.Literal("useful"),
@@ -122,14 +122,14 @@ export const memoryRelevanceScore = Type.Union([
 // @approved
 //  How far recall took a claim: `admitted` ones were offered to the prompt,
 // where the host's admission of their text decides the rest.
-export const memoryAdmissionReason = Type.Union([
+const memoryAdmissionReason = Type.Union([
 	Type.Literal("admitted"),
 	Type.Literal("not-retained"),
 	Type.Literal("duplicate-rendering"),
 	Type.Literal("request-limit"),
 ]);
 
-export const memoryRecallCandidate = Type.Object({
+const memoryRecallCandidate = Type.Object({
 	identity: Type.String(),
 	messageId: MessageId,
 	variantId: VariantId,

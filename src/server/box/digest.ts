@@ -173,7 +173,7 @@ const delegateRecord = async (database: Database, queue: DigestQueue, job: Diges
 };
 
 /** @approved The default deadline for a delegate's `delegate.apply`, well past what a reducer of one batch takes. */
-export const DELEGATE_APPLY_MS = 10_000;
+const DELEGATE_APPLY_MS = 10_000;
 
 const runJob = async (database: Database, queue: DigestQueue, job: DigestJob): Promise<void> => {
 	const { signal } = job.controller;

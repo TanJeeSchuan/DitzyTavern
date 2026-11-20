@@ -3,7 +3,7 @@ import { readTestConversationSnapshot, createConversationWithHistory, checkpoint
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { acceptGeneration, editMacroVariables } from "../conversation";
+import { acceptGeneration, editMacroVariables, readConversationPromptPreset } from "../conversation";
 import { resolveConversationGeneration } from "../conversation";
 import { readMacroWrites } from "../prompt-macros";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -14,7 +14,12 @@ import { recoverActiveGenerations } from "./generation-recovery";
 
 describe("Conversation-persistent prompt macro variables", () => {
 	let database: Database;
-	const macroWritesOf = (variantId: number) => readMacroWrites(readVariantData(drizzle(database), [variantId], ["macroWrites"]).get(variantId)?.macroWrites ?? [], 1);
+	const activePresetId = (conversationId: number) => {
+		const preset = readConversationPromptPreset(database, conversationId);
+		if (preset === undefined) throw new Error("Conversation has no Prompt Preset.");
+		return preset.id;
+	};
+	const macroWritesOf = (variantId: number, presetId: number) => readMacroWrites(readVariantData(drizzle(database), [variantId], ["macroWrites"]).get(variantId)?.macroWrites ?? [], presetId);
 
 	beforeEach(() => {
 		database = openObservedDatabase();
@@ -38,7 +43,8 @@ describe("Conversation-persistent prompt macro variables", () => {
 			],
 			control: { human: 0, model: 1 },
 		});
-		const scope = { conversationId: initial.id, promptPresetId: 1, position: 0, operation: "set" } as const;
+		const promptPresetId = activePresetId(initial.id);
+		const scope = { conversationId: initial.id, promptPresetId, position: 0, operation: "set" } as const;
 		const turn = editMacroVariables(database, { ...scope, expectedRevision: initial.revision, name: "turn", value: 5 });
 		const { conversation } = editMacroVariables(database, { ...scope, expectedRevision: turn.conversation.revision, name: "enabled", value: true });
 
@@ -62,7 +68,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		if (after === undefined) throw new Error("Conversation disappeared.");
 		const generated = after.messages.at(-1)?.variants.find((variant) => variant.selected);
 		if (generated === undefined) throw new Error("Generated Variant disappeared.");
-		expect(macroWritesOf(generated.id)).toEqual([
+		expect(macroWritesOf(generated.id, promptPresetId)).toEqual([
 			{ name: "turn", value: "6", operation: "set" },
 		]);
 
@@ -84,7 +90,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		const greetingVariant = snapshot.messages[0]?.variants[0];
 		if (greetingVariant === undefined) throw new Error("Greeting Variant disappeared.");
 		expect(greetingVariant.content).toBe("Hello");
-		expect(macroWritesOf(greetingVariant.id)).toEqual([
+		expect(macroWritesOf(greetingVariant.id, activePresetId(conversation.id))).toEqual([
 			{ name: "greeted", operation: "set", value: "yes" },
 		]);
 		const capture = await captureGeneration(database, { kind: "send", content: "Again" }, {connection: null, conversationId: snapshot.id });
@@ -115,7 +121,7 @@ describe("Conversation-persistent prompt macro variables", () => {
 		const variant = snapshot.messages.at(-1)?.variants.find((candidate) => candidate.selected);
 		if (variant === undefined) throw new Error("Recovered Variant disappeared.");
 		expect(variant.content).toBe("Partial");
-		expect(macroWritesOf(variant.id)).toEqual([
+		expect(macroWritesOf(variant.id, activePresetId(conversation.id))).toEqual([
 			{ name: "recovered", operation: "set", value: "yes" },
 		]);
 	});

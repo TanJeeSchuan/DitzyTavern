@@ -75,7 +75,7 @@ export const isRaceAutoValid = (setup: RaceSetup): boolean => setup.auto === "on
 export const FATIGUE_ENERGY = 0.35;
 /** @approved A Move's pace change lasts this far into its Stretch, so its effect does not grow with the Stretch length. */
 export const MOVE_METRES = 100;
-export const MAX_RACE_MOVES = 12;
+const MAX_RACE_MOVES = 12;
 
 // @approved
 //  `cost` is energy spent when the Move resolves, refunded when negative.

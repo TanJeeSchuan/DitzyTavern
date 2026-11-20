@@ -8,7 +8,7 @@ export interface MacroContext {
 	other: string;
 }
 
-export type MacroToken =
+type MacroToken =
 	| { kind: "backslash-pair"; end: number }
 	| { kind: "escaped-macro"; name: string; end: number }
 	| { kind: "escaped-comment"; end: number }
@@ -16,7 +16,7 @@ export type MacroToken =
 	| { kind: "macro"; name: string; end: number }
 	| { kind: "char"; end: number };
 
-export const isEscaped = (source: string, index: number): boolean => {
+const isEscaped = (source: string, index: number): boolean => {
 	let slashes = 0;
 	for (let cursor = index - 1; cursor >= 0 && source[cursor] === "\\"; cursor -= 1) slashes += 1;
 	return slashes % 2 === 1;
@@ -86,7 +86,7 @@ const macroEnd = (source: string, start: number, allowEscapedStart = false): num
 // @approved
 //  Prompt Comment recognition includes both supported forms. The scoped
 // close scan is deliberately here rather than in either consumer.
-export const promptCommentEnd = (source: string, start: number): number | null => {
+const promptCommentEnd = (source: string, start: number): number | null => {
 	if (!source.startsWith("{{//", start)) return null;
 	if (source.startsWith("{{//}}", start)) {
 		return macroScanIndex(source).scopedCommentEnds.get(start) ?? null;
@@ -104,7 +104,7 @@ const matchMacro = (source: string, start: number): MacroMatch | null => {
 	return end === null ? null : { name: source.slice(start + 2, end - 2), end };
 };
 
-export const scanMacroToken = (
+const scanMacroToken = (
 	source: string,
 	index: number,
 	recognizes: (name: string) => boolean,
@@ -144,7 +144,7 @@ export const unescapeMacroText = (source: string): string => {
 	return output;
 };
 
-export interface TextNode {
+interface TextNode {
 	readonly kind: "text";
 	readonly text: string;
 	readonly start: number;

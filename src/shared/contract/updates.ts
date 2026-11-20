@@ -1,6 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 
-export const buildIdentity = Type.Union([
+const buildIdentity = Type.Union([
 	Type.Object({ distribution: Type.Literal("custom"), buildNumber: Type.Null(), revision: Type.Null() }),
 	Type.Object({ distribution: Type.Literal("official"), buildNumber: Type.Integer({ minimum: 1 }), revision: Type.String({ pattern: "^[a-f0-9]{40}$" }) }),
 ]);

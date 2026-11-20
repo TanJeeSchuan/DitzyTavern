@@ -6,7 +6,7 @@
 		"src/client/box-windows/frame.ts!", // Built by Bun on the first Box frame request.
 		"src/server/database/{seed,teardown}.ts!",
 		"src/box-sdk/*.ts!", // Public SDK for third-party Boxes.
-		"src/boxes/*/{server.ts,shared-descriptor.ts,client.tsx,logic.ts,ui.ts}!", // Loaded from Box folders at runtime.
+		"src/boxes/*/{server.ts,shared-descriptor.ts,client.tsx,logic.ts,logic.js,ui.ts,ui.js}!", // Loaded from Box folders at runtime.
 		"e2e/server.ts", // Spawned by the browser harness. Its imports never satisfy production reachability.
 		"e2e/fixtures/boxes/*/{server.ts,shared-descriptor.ts,client.tsx}", // Loaded by the Box host in browser tests.
 		"scripts/{check-clones,publish-docker,write-build-metadata}.ts",
@@ -14,8 +14,8 @@
 		"tools/oxlint/*/index.ts" // Loaded by Oxlint.
 	],
 	"project": [
-		"src/**/*.{js,ts,tsx}!",
-		"{scripts,e2e,tools}/**/*.{js,mjs,ts,tsx}",
+		"src/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}!",
+		"{scripts,e2e,tools}/**/*.{js,jsx,mjs,cjs,ts,tsx,mts,cts}",
 		"!**/*.{test,spec}.{ts,tsx}!",
 		"!e2e/fixtures/boxes/*/**/*.js", // Guest scripts and vendored packages loaded by the Box host.
 		"!src/**/{test-fixtures.ts,test-fixtures/**}!", // Intentional test support.
@@ -27,20 +27,16 @@
 		"src/box-sdk/*.ts": ["exports", "types"] // Box authors import any SDK export.
 	},
 	"node": false, // Node's test-* discovery misclassifies the live Test Connection endpoint.
-	"ignoreExportsUsedInFile": true, // The declaration already has a production caller in its own module.
 	"ignoreUnresolved": ["e2e/server.ts"], // The harness spawns it relative to the repo root.
 	"preprocessor": "./scripts/knip-allowlist.ts",
 	"preprocessorOptions": {
-		"src/boxes/*/{server.ts,shared-descriptor.ts,client.tsx,logic.ts,ui.ts}": ["default"], // Runtime Box entry points are discovered by folder and load their default exports.
+		"src/boxes/*/{server.ts,shared-descriptor.ts,client.tsx,logic.ts,logic.js,ui.ts,ui.js}": ["default"], // Runtime Box entry points are discovered by folder and load their default exports.
 		"e2e/fixtures/boxes/*/{server.ts,shared-descriptor.ts,client.tsx}": ["default"], // Browser test Boxes use the same runtime loading.
 		"tools/oxlint/*/index.ts": ["default"], // Oxlint reads each configured plugin's default export.
 		"src/shared/contract/box-row-reference.ts": ["ParticipantId"], // Public Row Reference schema re-exported by the Box SDK.
-		"src/server/authoring/candidate.ts": ["AUTHORED_ID"], // Production Box export and submission CLIs validate saved ids.
 		"src/server/box/versions.ts": ["installedLatest"], // Production Box export and submission CLIs inspect installed versions.
 
 		// HTTP and stored-value surface for owner review.
-		"src/shared/contract/macro-variables.ts": ["MacroVariablesEditBody"], // Names the input of the Macro Variable edit command.
-		"src/shared/contract/prompt-preset.ts": ["SillyTavernImportApplied", "PromptPresetListResponse", "PromptPresetConflict"], // Name these HTTP outcomes for consumers of the Prompt Preset API.
 		"src/shared/contract/chat-import.ts": ["ChatImportReceiptParticipant", "ImportDetailsArtifactAvailability"], // Name the participant receipt and artifact states returned by Chat import.
 		"src/boxes/memory/contract.ts": ["MemoryRelevanceScore"], // Names the relevance enum written into each Memory trace.
 
@@ -55,6 +51,70 @@
 		], // Keep the Conversation barrel as the one import path for command, capability and history assertions.
 		"src/server/prompt-compiler/index.ts": ["CompilePromptInput", "PromptBlock"], // Tests type their Prompt Plan and recipe fixtures against the live compiler.
 		"src/server/prompt-preset/index.ts": ["InvalidPromptPresetOperationError", "PromptPresetDeletionImpactChangedError"], // Tests distinguish invalid commands and stale deletion impact.
-		"src/server/workflows/index.ts": ["runGenerationLifecycle", "StartGenerationRuntimeInput"] // Tests drive the same Generation lifecycle and runtime as production.
+		"src/server/workflows/index.ts": ["runGenerationLifecycle", "StartGenerationRuntimeInput"], // Tests drive the same Generation lifecycle and runtime as production.
+
+		// SDK exports that outside Box authors use.
+		"src/client/box-windows/PassageTimeline.tsx": ["useBoxStatus"], // Client SDK provides Box Status.
+		"src/server/box/contract.ts": ["BoxExport"], // Server SDK types Box Exports.
+		"src/shared/contract/box-descriptor.ts": ["boxSdkVersion"], // Shared SDK exposes the current descriptor major.
+
+		// Existing test and CLI entry points.
+		"src/server/database/database.ts": ["openDatabase", "initializeDatabase"], // Database tests exercise opening and migration directly.
+		"src/server/database/seed.ts": ["adHocPersonas", "seed", "AdHocPersona"], // The browser harness and teardown tests use the seed and its values.
+		"src/server/database/teardown.ts": ["teardown"], // Teardown tests verify seed removal through the CLI's function.
+		"src/server/box/registry.ts": ["discoverBoxes", "installCatalog"], // Box loading and installation tests exercise the production registry.
+		"src/boxes/race/shared-data.ts": ["raceRoster"], // The Race avatar seed CLI matches its files against the roster.
+		"src/server/authoring/candidate.ts": ["AUTHORED_ID", "newId", "withId"], // Creator Mode CLIs create ids, build descriptors and validate saved ids.
+		"src/server/connection-secrets/bootstrap.ts": ["CONNECTION_SECRET_KEY_ENV"], // Secret bootstrap tests assert the supported environment variable.
+		"src/server/connection-secrets/encryption.ts": ["CONNECTION_SECRET_FORMAT_VERSION"], // Rotation tests assert the persisted format version.
+		"src/server/box/embedding.ts": ["readCachedVectors"], // Embedding tests inspect cache reuse through the same reader.
+		"src/boxes/memory/server-extraction.ts": ["validateMemoryCandidates", "judgeMemoryCandidates"], // Memory tests exercise candidate validation and judgment.
+		"src/boxes/memory/server-recall.ts": ["judgeMemoryRecallCandidates", "RecallCandidate"], // Memory tests drive the recall judgment inputs.
+		"src/boxes/race/logic-engine.ts": ["initialRaceState"], // Race tests build real initial Race state.
+		"src/boxes/world-clock/server.ts": ["drawMinutes", "temperature", "clockAt", "clockLine", "clockStatus", "WorldClockState"], // World Clock tests exercise time and weather behavior with real clock state.
+		"src/boxes/character-drafter/server-draft.ts": ["draftRefusal"], // Draft tests verify evidence refusals.
+		"src/server/authoring/index.ts": ["AUTHORING_HEARTBEAT_MS", "budgetSpent"], // Creator Mode tests assert heartbeat and budget behavior.
+		"src/server/authoring/activity.ts": ["SHOWN_BYTES"], // Tool activity tests verify truncation.
+		"src/server/authoring/provider.ts": ["libfxProvider"], // Authoring transport tests drive the existing provider.
+		"src/server/authoring/scenario.ts": ["stateChanges"], // Scenario tests verify the actual state change rendering.
+		"src/server/authoring/tools.ts": ["TOOL_RESULT_BYTES", "fitted"], // Tool tests verify tool result limits and truncation.
+		"src/server/box/sandboxed.ts": ["SANDBOX_JSON_BYTES"], // Sandbox tests reach resource and time limits without forcing them on every Box.
+		"src/server/box/sandboxed-deps.ts": ["BOX_PACKAGES"], // Package tests verify the installed dependency ceiling.
+		"src/server/box/sandboxed-folder.ts": ["SANDBOXED_FOLDER"], // Folder tests exercise sandbox discovery with its own limit.
+		"src/server/box/delegate.ts": ["DELEGATE_STEPS", "DELEGATE_PROMPT_BYTES"], // Delegate tests assert the step and prompt limits.
+		"src/server/box/frame.ts": ["BOX_IMAGE_COUNT", "BOX_IMAGE_BYTES"], // Box upload tests reach the image count and byte ceilings.
+		"src/server/conversation/history.ts": ["DEFAULT_HISTORY_PAGE_SIZE", "MAX_HISTORY_PAGE_SIZE"], // History tests request and verify the supported page sizes.
+		"src/server/connection-settings/index.ts": ["InvalidConnectionProfileError"], // Connection Settings tests distinguish profile validation failures.
+		"src/server/workflows/generate.ts": ["runGenerationLifecycle"], // Workflow tests run the production Generation lifecycle.
+		"src/server/workflows/generation-preview.ts": ["GENERATION_PREVIEW_SESSION_TTL_MS"], // Preview tests advance time beyond the actual token lifetime.
+		"src/server/workflows/generation-runtime.ts": ["CheckpointOutput"], // Runtime tests exercise checkpoint output.
+		"src/server/sillytavern/staged.ts": ["STAGED_IMPORT_SESSION_TTL_MS"], // Staged import tests expire a session past its real lifetime.
+		"src/server/sillytavern/import-details.ts": ["ChatImportDetails"], // Import tests build typed expected details.
+		"src/server/prompt-preset/blocks.ts": ["InvalidPromptPresetOperationError"], // Preset tests distinguish invalid block operations.
+		"src/server/prompt-compiler/images.ts": ["RepeatedImagePlacement"], // Image accounting tests cover repeated placements.
+		"src/client/lib/request-outcome.ts": ["SERVER_UNUSABLE_RESPONSE_NOTICE"], // Request tests distinguish unreadable response feedback.
+		"src/client/conversation-command-runner.ts": ["CONVERSATION_REVISION_UNAVAILABLE_NOTICE"], // Command tests check missing revision feedback.
+		"src/client/workspace.ts": ["resolveWorkspaceActiveChat"], // Workspace tests exercise Chat selection resolution.
+		"src/client/workspace/ConnectionSettingsPanel.tsx": ["BoxSettingsDrafts", "Drafts"], // The settings test renders real Box drafts and edit guards.
+		"src/client/workspace/useGenerationSettingsDraft.ts": ["saveGenerationSettingsDraft", "SaveGenerationSettingsDraftOptions"], // Settings tests call the live draft save operation on typed inputs.
+		"src/client/box-windows/BoxFrame.tsx": ["stagedMoves", "oneAtATime", "newestFrameRead", "completeFrameCommit"], // Frame tests exercise read sequencing, commits and Move staging.
+		"src/client/story.ts": ["EMPTY_VARIANT_PLACEHOLDER"], // Story tests verify the placeholder for a content-free Variant.
+		"src/client/story/prose.tsx": ["renderBlocks", "revealedLength", "settledFloor"], // Prose tests verify rendering, reveal length and settling.
+		"src/client/story/variant-streams.ts": ["streamedVariant", "createVariantStreamReader"], // Stream tests exercise the production reader and streamed Variant.
+		"src/client/NewChatPanel.tsx": ["openingsFromText"], // New Chat tests verify parsing writer-provided openings.
+		"src/client/import-chat.ts": ["discardImport"], // Import tests verify the staged discard path.
+		"src/client/connection-settings-state.ts": ["emptyConnectionProfileDraft", "headerEditorDataFor"], // Settings tests exercise profile drafts and header editing.
+		"src/client/conversation-stream.ts": ["subscribeConversationGeneration", "GenerationStreamDelta", "GenerationStreamState", "GenerationStreamSubscription"], // Stream tests consume the live SSE subscription and its contract.
+		"src/client/generation-sessions.ts": ["MAX_SESSION_RECONNECTS", "GenerationSessionTarget", "GenerationSessionTerminal"], // Generation tests construct sessions and verify bounded reconnects.
+		"src/client/prompt-preset-editor-state.ts": ["draftToPatch"], // Preset editor tests verify the actual draft conversion.
+
+		// HTTP command and stored-value surface for owner review.
+		"src/shared/contract/authoring.ts": ["authoringEvent"], // Event schema for Creator Mode's streamed activity.
+		"src/shared/contract/conversation-schema.ts": ["activeGenerationDetails", "chatHistoryPage", "generationSettingsUpdate", "forkConversationResponse", "generationPreview", "generationAccepted", "generationStopped", "generationsStopped", "conversationDeleted", "conversationAppliedResponse", "characterAppliedResponse", "generationConflictResponse", "conversationCommandConflict", "castCharacterConflict"], // Chat, history and Generation command request and response schemas.
+		"src/shared/contract/prompt-preset.ts": ["SillyTavernImportApplied", "PromptPresetListResponse", "PromptPresetConflict", "sillyTavernImportApplied", "promptPresetCreateCommand", "promptPresetRenameCommand", "promptPresetDuplicateCommand", "promptPresetDeleteCommand", "promptPresetDeletionResult"], // Prompt Preset HTTP commands and their outcomes.
+		"src/shared/contract/macro-variables.ts": ["MacroVariablesEditBody", "macroVariables", "macroVariablesAppliedResponse"], // The edit command and Macro Variable responses.
+
+		// Server SDK and tested runtime limits.
+		"src/server/box/code-agent.ts": ["CODE_AGENT_STEPS", "CODE_AGENT_OUTPUT_BYTES", "CodeAgentFunction", "CodeAgentValue"], // Server SDK exports the call types and agent tests assert the production limits.
 	}
 }

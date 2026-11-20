@@ -127,7 +127,7 @@ export function requireSnapshot(
 	return snapshot;
 }
 
-export interface TestConversationVariant {
+interface TestConversationVariant {
  id: number;
  position: number;
  content: string;
@@ -135,7 +135,7 @@ export interface TestConversationVariant {
  selected: boolean;
  data: ConversationDataEntry[];
 }
-export interface TestConversationMessage {
+interface TestConversationMessage {
  id: number;
  position: number;
  timestamp: string;

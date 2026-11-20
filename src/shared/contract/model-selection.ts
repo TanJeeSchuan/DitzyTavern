@@ -3,7 +3,7 @@ import type { ConnectionProfilePayload } from "./connection-settings";
 import { invalidOutcome, revisionConflict } from "./outcomes";
 
 export const modelSelection = Type.Object({ profileId: Type.Union([Type.Integer(), Type.Null()]), model: Type.String() });
-export const modelSelectionSettings = Type.Composite([modelSelection, Type.Object({ revision: Type.Integer() })]);
+const modelSelectionSettings = Type.Composite([modelSelection, Type.Object({ revision: Type.Integer() })]);
 export const modelSelectionCommand = Type.Composite([modelSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
 export const modelSelectionReadResponse = { 200: modelSelectionSettings };
 export const modelSelectionCommandResponse = {

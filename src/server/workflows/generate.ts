@@ -24,7 +24,7 @@ import { consumeGenerationPreview, captureGenerationPreview, type GenerationPrev
 import { assertGenerationPlan } from "../generation-plan";
 import type { GenerationTarget } from "../../shared/contract/conversation-schema";
 
-export type { GenerationAttemptInput, ServerOwnedGenerationControl, ServerOwnedGeneration, ServerOwnedGenerationCallbacks } from "./generate-server-owned";
+export type { ServerOwnedGenerationControl, ServerOwnedGeneration, ServerOwnedGenerationCallbacks } from "./generate-server-owned";
 
 export interface GenerationInput extends GenerationAttemptInput {
 	readonly target: GenerationTarget;

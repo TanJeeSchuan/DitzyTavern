@@ -14,7 +14,7 @@ import type {
 
 // The two ways an Exact Source Artifact copy can be missing content; missing
 // or corrupt copies report cleaned up without affecting the Chat.
-export type ArtifactUnavailableReason = ImportCleanupReason;
+type ArtifactUnavailableReason = ImportCleanupReason;
 
 // The committed metadata of one stored artifact: the wire artifact shape
 // without the derived availability.

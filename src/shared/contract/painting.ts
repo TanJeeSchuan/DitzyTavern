@@ -11,7 +11,7 @@ const paintingInput = Type.Object({ brief: Type.String(), ask: Type.String(), im
 export const illustration = Type.Composite([paintingInput, Type.Object({ image: Type.String({ pattern: "^image:[0-9a-f]{64}$" }) })]);
 export const keptImage = Type.Union([illustration, Type.Object({ image: illustration.properties.image, name: Type.String() })]);
 const paintingBase = Type.Composite([paintingInput, Type.Object({ id: Type.String(), variantId: Type.Integer() })]);
-export const painting = Type.Union([
+const painting = Type.Union([
 	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("painting") })]),
 	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("failed"), message: Type.String() })]),
 	Type.Composite([paintingBase, Type.Object({ kind: Type.Literal("illustration"), image: illustration.properties.image })]),
@@ -19,13 +19,13 @@ export const painting = Type.Union([
 export type Painting = Static<typeof painting>;
 export const DEFAULT_BRIEF_MESSAGE_COUNT = 5;
 
-export const paintPresetSettings = Type.Object({
+const paintPresetSettings = Type.Object({
 	paintPresetId: Type.Integer(),
 	briefMessageCount,
 	paintPresets: Type.Array(Type.Object({ id: Type.Integer(), name: Type.String() })),
 });
 export type PaintPresetSettings = Static<typeof paintPresetSettings>;
-export const illustrationsRead = Type.Object({ ...paintPresetSettings.properties, aspectRatio: paintingAspectRatio, paintings: Type.Array(painting) });
+const illustrationsRead = Type.Object({ ...paintPresetSettings.properties, aspectRatio: paintingAspectRatio, paintings: Type.Array(painting) });
 export type IllustrationsRead = Static<typeof illustrationsRead>;
 export const paintingCommand = Type.Union([
 	Type.Object({ type: Type.Literal("paint"), variantId: Type.Integer(), brief: Type.String({ minLength: 1 }), ask: Type.String(), aspectRatio: paintingAspectRatio }),
@@ -46,7 +46,7 @@ export type BriefRequest = Static<typeof briefRequest>;
 
 export const briefResponse = { 404: notFoundOutcome, 409: notPlayableOutcome, 422: invalidOutcome };
 
-export const galleryRead = Type.Array(Type.Object({ hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String(), keptId: Type.Optional(Type.String()),
+const galleryRead = Type.Array(Type.Object({ hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String(), keptId: Type.Optional(Type.String()),
 	painted: Type.Optional(Type.Object({ brief: Type.String(), ask: Type.String() })),
 }));
 export type GalleryRead = Static<typeof galleryRead>;

@@ -19,7 +19,7 @@ export type ChatImportGroup = ChatImportGroupContract;
 // native or global domain record.
 export type ChatImportPreview = ChatImportPreviewContract;
 
-export interface StagedChatImportResult {
+interface StagedChatImportResult {
 	token: string;
 	preview: ChatImportPreview;
 }
@@ -33,12 +33,12 @@ export type ChatImportResolvedParticipantPlan = ChatImportResolvedParticipant;
 
 export type ChatImportCommitInput = ChatImportCommitBody;
 
-export interface ChatImportCommitResult {
+interface ChatImportCommitResult {
 	conversation: ConversationSummary;
 	receipt: ChatImportReceipt;
 }
 
-export interface ChatImportStageInput {
+interface ChatImportStageInput {
 	// The exact bytes streamed straight from the client; the flow never
 	// receives or reopens a browser filesystem path.
 	bytes: ReadableStream<Uint8Array>;

@@ -9,7 +9,7 @@ import { scopedLorebookAttachment } from "./lorebook";
 // Routes stay thin adapters: persistence and validation rules live behind
 // the deep module, never here.
 
-export const characterLibrarySummary = Type.Object({
+const characterLibrarySummary = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -23,7 +23,7 @@ export const characterLibrarySummary = Type.Object({
 	provenanceReferenceCount: Type.Integer(),
 });
 
-export const characterDeletionMode = Type.Union([
+const characterDeletionMode = Type.Union([
 	Type.Literal("hard-delete"),
 	Type.Literal("tombstone"),
 ]);
@@ -31,7 +31,7 @@ export const characterDeletionMode = Type.Union([
 // @approved
 //  Derived deletion impact presented with every authoritative read so the
 // confirmation flow can show the exact consequence before any command.
-export const characterDeletionImpact = Type.Object({
+const characterDeletionImpact = Type.Object({
 	provenanceReferenceCount: Type.Integer(),
 	deletionMode: characterDeletionMode,
 });
@@ -52,7 +52,7 @@ export const characterSnapshot = Type.Object({
 
 // Outcome of a confirmed deletion: the mode is derived from the reference
 // count at command time, never guessed by the client.
-export const characterDeletionResult = Type.Object({
+const characterDeletionResult = Type.Object({
 	characterId: Type.Integer(),
 	deletionMode: characterDeletionMode,
 });

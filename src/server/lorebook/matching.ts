@@ -10,7 +10,7 @@ export interface LoreScanMessage {
 	readonly content: string;
 }
 
-export interface LoreSemanticMatch {
+interface LoreSemanticMatch {
 	readonly trigger: string;
 	readonly score: number;
 }
@@ -23,7 +23,7 @@ export interface LoreSemanticEvaluation {
 	readonly fallbackReason?: string;
 }
 
-export interface LoreConditionEvidence {
+interface LoreConditionEvidence {
 	readonly matched: boolean;
 	readonly matchedExpressions: readonly string[];
 	readonly missingExpressions: readonly string[];

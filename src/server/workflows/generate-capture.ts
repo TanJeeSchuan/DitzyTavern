@@ -76,7 +76,7 @@ export interface PreparationSnapshot extends PreparationFields {
 	readonly boxes: BoxInputs;
 }
 
-export interface Preparation extends PreparationFields {
+interface Preparation extends PreparationFields {
 	readonly boxes: BoxResults;
 	readonly boxRecords: BoxRecords;
 	readonly fingerprint: string;
@@ -324,7 +324,7 @@ function snapshotGenerationInputs(db: ConversationDatabase, input: PrepareGenera
  * receives a Promise, including the no-semantic-work path, so Send, Continuation,
  * Sibling, and inspected Prompt Plan preparation share one asynchronous seam.
  */
-export const prepareGenerationInputsAsync = (input: PrepareGenerationInputs): Promise<Preparation> =>
+const prepareGenerationInputsAsync = (input: PrepareGenerationInputs): Promise<Preparation> =>
 	withGenerationBoxOperations(input, async () => {
 	const signal = generationRuntimeFor(input.database).shutdownSignal;
 	signal.throwIfAborted();

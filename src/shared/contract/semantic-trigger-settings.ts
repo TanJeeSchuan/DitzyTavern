@@ -2,7 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { decisionSelection } from "./decision-model";
 import { invalidOutcome, revisionConflict } from "./outcomes";
 
-export const semanticTriggerSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer(), triggerThreshold: Type.Number() })]);
+const semanticTriggerSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer(), triggerThreshold: Type.Number() })]);
 export type SemanticTriggerSettingsPayload = Static<typeof semanticTriggerSettings>;
 export const semanticTriggerSettingsReadResponse = { 200: semanticTriggerSettings };
 export const semanticTriggerSettingsCommandResponse = {

@@ -9,10 +9,10 @@ import { replaceFile, type SandboxedFiles } from "./sandboxed-folder";
 /** @approved Where a sandboxed Box's packages come from, each as one prebundled ES module. */
 export const esmOrigin = "https://esm.sh";
 /** @approved The most one package may hold: one bigger than the UI bundle's cap could never ship. */
-export const PACKAGE_BYTES = 4 * 1024 * 1024;
+const PACKAGE_BYTES = 4 * 1024 * 1024;
 /** @approved The most packages, and package bytes, one Box may declare, shipped in `deps/` or fetched. */
 export const BOX_PACKAGES = 16;
-export const BOX_PACKAGE_BYTES = 8 * 1024 * 1024;
+const BOX_PACKAGE_BYTES = 8 * 1024 * 1024;
 const INDIRECTIONS = 4;
 const FETCH_MS = 30_000;
 const mebibytes = (bytes: number) => `${bytes / 1024 / 1024} MiB`;

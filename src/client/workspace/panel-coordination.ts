@@ -4,7 +4,7 @@ import type { GenerationDetailsTarget } from "../GenerationDetailsPanel";
 import type { PrimaryPanel, PrimaryPanelName } from "./types";
 
 export type SplitInspector = "generation";
-export type DetailsSurface = "paint" | "chat-info" | "generation-details" | "macro-variables" | PromptBoxReference;
+type DetailsSurface = "paint" | "chat-info" | "generation-details" | "macro-variables" | PromptBoxReference;
 
 export interface PanelCoordinationState {
 	primaryPanel: PrimaryPanel;

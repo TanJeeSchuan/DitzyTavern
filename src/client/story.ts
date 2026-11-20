@@ -66,7 +66,7 @@ type WriteOverlay<Value> = {
 	accepted: { value: Value; revision: number } | undefined;
 };
 
-export type RequestedGeneration =
+type RequestedGeneration =
 	| { kind: "send"; content: string; moves?: BoxMoves | undefined }
 	| { kind: "continuation" }
 	| { kind: "sibling"; messageId: number };

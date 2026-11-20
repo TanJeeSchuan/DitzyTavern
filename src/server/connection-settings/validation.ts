@@ -79,7 +79,7 @@ export function applyHeaderOperations(
 	return next;
 }
 
-export function normalizeDisplayName(value: string): string {
+function normalizeDisplayName(value: string): string {
 	const normalized = value.trim().replace(/\s+/g, " ");
 	if (normalized.length === 0) {
 		throw new InvalidConnectionProfileError("A Connection Profile display name is required.");

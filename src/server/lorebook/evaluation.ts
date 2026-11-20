@@ -21,7 +21,7 @@ export interface ScopedLoreEvaluation {
 	readonly sources?: ScopedLoreSources;
 }
 
-export interface ScopedLoreMatch {
+interface ScopedLoreMatch {
 	readonly bookId: number;
 	readonly bookName: string;
 	readonly entryId: number;
@@ -29,7 +29,7 @@ export interface ScopedLoreMatch {
 	readonly match: LoreEntryMatch;
 }
 
-export interface ScopedLoreBookSource {
+interface ScopedLoreBookSource {
 	readonly book: Lorebook;
 	/** @approved All eligible uses retained for the existing eligibility evidence. */
 	readonly attachmentIds: readonly number[];
@@ -39,7 +39,7 @@ export interface ScopedLoreBookSource {
 	readonly deduplicatedAttachmentIds: readonly number[];
 }
 
-export interface LoreBookAttachmentSelectionEvidence {
+interface LoreBookAttachmentSelectionEvidence {
 	readonly [key: string]: GenerationJsonValue;
 	readonly selectedAttachmentId: number;
 	readonly deduplicatedAttachmentIds: readonly number[];

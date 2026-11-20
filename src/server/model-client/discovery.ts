@@ -13,7 +13,7 @@ import { compareModelIds } from "../../shared/model-identifier";
 const MAX_DISCOVERY_RESPONSE_BYTES = 2 * 1024 * 1024;
 const DISCOVERY_TIMEOUT_MS = 10_000;
 
-export type DiscoveryFailureKind =
+type DiscoveryFailureKind =
 	| "authentication"
 	| "endpoint"
 	| "timeout"
@@ -111,7 +111,7 @@ export async function discoverModels(
 	}
 }
 
-export function normalizeDiscoveryCatalog(models: readonly ModelCatalogEntry[]): string[] {
+function normalizeDiscoveryCatalog(models: readonly ModelCatalogEntry[]): string[] {
 	const unique = new Set<string>();
 	for (const model of models) {
 		const normalized = model.id.trim();

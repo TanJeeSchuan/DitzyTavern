@@ -385,10 +385,7 @@ export function createConnectionSettingsModule(
 
 export {
 	applyConnectionHeaderOperations,
-	connectionProfileDraftOf,
-	ConnectionCredentialConfirmationError,
 	InvalidConnectionProfileError,
-	listConnectionPresets,
 	validateConnectionProfileDraft,
 };
 export type {

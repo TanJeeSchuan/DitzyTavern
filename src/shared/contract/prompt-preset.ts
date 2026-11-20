@@ -28,16 +28,16 @@ const referencedDefinitionBlockKinds = [
 	Type.Literal("model-post-history-instruction"),
 ] as const;
 
-export const referencedDefinitionBlock = Type.Union([...referencedDefinitionBlockKinds]);
+const referencedDefinitionBlock = Type.Union([...referencedDefinitionBlockKinds]);
 export type ReferencedDefinitionBlock = Static<typeof referencedDefinitionBlock>;
 
-export const promptBriefInstructionReference = Type.Literal("brief-instruction");
-export type PromptBriefInstructionReference = Static<typeof promptBriefInstructionReference>;
+const promptBriefInstructionReference = Type.Literal("brief-instruction");
+type PromptBriefInstructionReference = Static<typeof promptBriefInstructionReference>;
 
-export const promptCastAppearanceReference = Type.Literal("cast-appearance");
-export type PromptCastAppearanceReference = Static<typeof promptCastAppearanceReference>;
+const promptCastAppearanceReference = Type.Literal("cast-appearance");
+type PromptCastAppearanceReference = Static<typeof promptCastAppearanceReference>;
 
-export const promptLoreReference = Type.Literal("lore");
+const promptLoreReference = Type.Literal("lore");
 export type PromptLoreReference = Static<typeof promptLoreReference>;
 
 export type PromptSingleUseReference = PromptLoreReference | PromptBoxReference | PromptBriefInstructionReference | PromptCastAppearanceReference;
@@ -87,7 +87,7 @@ const fixedOutgoingRoles = {
 export const defaultOutgoingRole = (reference: ReferencedDefinitionBlock | PromptSingleUseReference): PromptOutgoingRole =>
 	isBoxReference(reference) ? boxDescriptor(boxIdOf(reference)).role : fixedOutgoingRoles[reference];
 
-export const promptBlockReference = Type.Union([
+const promptBlockReference = Type.Union([
 	...referencedDefinitionBlockKinds,
 	Type.Literal("history"),
 	promptLoreReference,
@@ -102,13 +102,13 @@ export type PromptBlockReference = Static<typeof promptBlockReference>;
 // Prompt Block: its text is owned by the preset, edited in the block editor,
 // and expanded with the Conversation's current Control pair rather than a
 // Definition owner.
-export const promptInstructionReference = Type.Literal("instruction");
-export type PromptInstructionReference = Static<typeof promptInstructionReference>;
+const promptInstructionReference = Type.Literal("instruction");
+type PromptInstructionReference = Static<typeof promptInstructionReference>;
 
 // @approved
 //  Every stored slot reference a recipe row can carry, for validation and
 // reads that must not silently drop a future slot kind.
-export const promptPresetBlockReference = Type.Union([
+const promptPresetBlockReference = Type.Union([
 	promptBlockReference,
 	promptInstructionReference,
 ]);
@@ -126,7 +126,7 @@ const briefInstructionSlot = Type.Object({ reference: promptBriefInstructionRefe
 // and a Brief instruction carries text and a role that Generations skip.
 // Enablement lives on the slot so a disabled slot keeps its place in the
 // order instead of disappearing from it.
-export const promptPresetSlot = Type.Union([
+const promptPresetSlot = Type.Union([
 	briefInstructionSlot,
 	Type.Object({
 		reference: referencedDefinitionBlock,
@@ -175,14 +175,14 @@ export const hasEnabledLoreSlot = (slots: readonly Pick<PromptPresetSlot, "refer
 //  A stored occurrence derives from the canonical slot and adds only local
 // database identity. Deliberate duplicates are separate occurrences, so
 // editor operations address one row by `id` instead of by reference.
-export const promptPresetBlockOccurrence = Type.Intersect([
+const promptPresetBlockOccurrence = Type.Intersect([
 	Type.Object({ id: Type.Integer() }),
 	promptPresetSlot,
 ]);
 export type PromptPresetBlockOccurrence = Static<typeof promptPresetBlockOccurrence>;
 
 /** A stored Prompt Preset: the ordered recipe Generation assembles through. */
-export const promptPresetRecipe = Type.Object({
+const promptPresetRecipe = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	slots: Type.Array(promptPresetBlockOccurrence),
@@ -213,21 +213,21 @@ export const sillyTavernImportRequest = Type.Object({
 });
 export type SillyTavernImportRequest = Static<typeof sillyTavernImportRequest>;
 
-export const sillyTavernImportDiagnostic = Type.Object({
+const sillyTavernImportDiagnostic = Type.Object({
 	code: Type.String(),
 	message: Type.String(),
 	identifier: Type.Optional(Type.String()),
 });
 export type SillyTavernImportDiagnostic = Static<typeof sillyTavernImportDiagnostic>;
 
-export const sillyTavernOrderChoice = Type.Object({
+const sillyTavernOrderChoice = Type.Object({
 	id: Type.String(),
 	label: Type.String(),
 	entryCount: Type.Integer(),
 });
 export type SillyTavernOrderChoice = Static<typeof sillyTavernOrderChoice>;
 
-export const sillyTavernImportPreview = Type.Object({
+const sillyTavernImportPreview = Type.Object({
 	name: Type.String(),
 	native: nativePromptPreset,
 	diagnostics: Type.Array(sillyTavernImportDiagnostic),
@@ -244,7 +244,7 @@ export type SillyTavernImportPreview = Static<typeof sillyTavernImportPreview>;
 // of selected narrative path entries it contributes, because its content is
 // Messages rather than authored text. `sourceName` is null when the
 // Conversation has no Participant in that Control seat.
-export const resolvedPromptPresetSlot = Type.Union([
+const resolvedPromptPresetSlot = Type.Union([
 	Type.Composite([Type.Object({ id: Type.Integer() }), briefInstructionSlot]),
 	Type.Object({ id: Type.Integer(), reference: promptBoxReference, enabled: Type.Boolean(), role: promptOutgoingRole, content: Type.String() }),
 	Type.Object({ id: Type.Integer(), reference: Type.Union([promptLoreReference, promptCastAppearanceReference]), enabled: Type.Boolean(), role: promptOutgoingRole }),
@@ -280,7 +280,7 @@ export type ResolvedPromptPresetSlot = Static<typeof resolvedPromptPresetSlot>;
 
 export const conversationPromptPresetQuery = Type.Object({ presetId: Type.Optional(numericWire) });
 
-export const conversationPromptPreset = Type.Object({
+const conversationPromptPreset = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	slots: Type.Array(resolvedPromptPresetSlot),
@@ -294,7 +294,7 @@ export const conversationPromptPresetResponse = { 200: conversationPromptPreset,
 // the Character Library's provenance reference count: the confirmation flow
 // shows how many Conversations move to Default before any command, while the
 // command itself derives the authoritative reassignment at execution time.
-export const promptPresetSummary = Type.Object({
+const promptPresetSummary = Type.Object({
 	id: Type.Integer(),
 	name: Type.String(),
 	revision: Type.Integer(),
@@ -360,7 +360,7 @@ export const promptPresetDeleteCommand = Type.Object({
 //  One occurrence-addressed patch saves block fields and enablement
 // without rewriting ordering or another occurrence. A content patch names an
 // authored instruction and never a Box block, which has no name.
-export const promptPresetBlockPatch = Type.Union([
+const promptPresetBlockPatch = Type.Union([
 	Type.Object({
 		occurrenceId: Type.Integer(),
 		type: Type.Literal("role"),

@@ -15,9 +15,9 @@ import {
 import type { LoreAttachmentScope } from "../../shared/contract/lorebook";
 import { findConversation, readActiveCast, readControlAssignment } from "../conversation";
 
-export type LoreAttachmentOwner = "character" | "participant" | "conversation";
+type LoreAttachmentOwner = "character" | "participant" | "conversation";
 
-export interface LoreAttachment {
+interface LoreAttachment {
 	readonly id: number;
 	readonly owner: LoreAttachmentOwner;
 	readonly ownerId: number;

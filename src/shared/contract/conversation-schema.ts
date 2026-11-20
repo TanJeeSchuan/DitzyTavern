@@ -230,7 +230,7 @@ export type ConversationSummary = Static<typeof conversationSummary>;
 // validator — and the canonical declaration must stay pristine for the
 // adapters that derive from it. The established export name stays for
 // every existing consumer.
-export const conversationGenerationSettings = Type.Object({
+const conversationGenerationSettings = Type.Object({
 	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
 	...Value.Clone(canonicalGenerationSettings).properties,
 });
@@ -241,7 +241,7 @@ export type ContinuationPrefillSuffix = ConversationGenerationSettings["continua
 // @approved
 //  The budget decision made at Generation start, with the whole history
 // entries omitted during preflight.
-export const generationBudgetInspection = Type.Object({
+const generationBudgetInspection = Type.Object({
 	tokenEstimate: Type.Number(),
 	responseBudget: Type.Integer(),
 	safetyAllowance: Type.Integer(),
@@ -282,7 +282,7 @@ export type GenerationInspectionStatus = Static<typeof activeGenerationDetails>[
 export type GenerationBudgetInspection = Static<typeof generationBudgetInspection>;
 export type ActiveGenerationDetails = Static<typeof activeGenerationDetails>;
 
-export const variantDetails = Type.Object({
+const variantDetails = Type.Object({
 	conversationId: Type.Integer(),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
@@ -340,7 +340,7 @@ const chatHistoryVariant = Type.Object({
 
 export type ChatHistoryVariant = Static<typeof chatHistoryVariant>;
 
-export const variantText = Type.Object({ content: Type.String(), reasoning: Type.String() });
+const variantText = Type.Object({ content: Type.String(), reasoning: Type.String() });
 export type VariantText = Static<typeof variantText>;
 
 // Server-owned targeted Swipe eligibility (ADR-0003, ADR-0031): the

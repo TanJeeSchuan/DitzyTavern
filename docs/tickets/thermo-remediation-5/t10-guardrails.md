@@ -54,16 +54,20 @@ One script step in `check`:
 
 ### Slice a
 
-In [PR #293](https://github.com/TanJeeSchuan/DitzyTavern/pull/293), `bun run check` runs Knip's production scan, a scan that includes tooling and the browser harness, and the jscpd baseline. The baseline records 143 source occurrences from 77 reported pairs by file and token fingerprint. It tolerates line shifts and removal of a copy, and detects new occurrences when an old clone disappears. `bun run check:clones` still writes the full jscpd report.
+In [PR #293](https://github.com/TanJeeSchuan/DitzyTavern/pull/293), `bun run check` runs Knip's production scan, a scan that includes tooling and the browser harness, and the jscpd baseline. The baseline records the existing cloned ranges by file and token. It accepts surviving subranges after deletions, line shifts and CRLF checkouts, and detects new ranges and changes inside literals. `bun run check:clones` still writes the full jscpd report.
 
-The Knip triage removed unused internal exports, type aliases and helpers, including the unused Oxlint dictionary helper. The network-free Model Client lives in test fixtures. The Macro Variables workflow test sets initial values through the production edit command. Box version tests inspect the installed version folders directly. Existing cross-module test consumers of live production code have symbol-specific exceptions. The existing `@ai-sdk/provider` import now has a direct dependency, and the stream preview uses the declared Playwright package.
+The Knip triage removed unused internal exports, type aliases and helpers and made same-file declarations private, including the unused Oxlint dictionary helper. The network-free Model Client lives in test fixtures. The Macro Variables workflow test sets initial values through the production edit command. Box version tests inspect the installed version folders directly. Existing cross-module test consumers of live production code have symbol-specific exceptions. The existing `@ai-sdk/provider` import now has a direct dependency, and the stream preview uses the declared Playwright package.
 
 Knip findings kept for owner review
 
-- Public Box SDK Row Reference schema `ParticipantId`. Built-in Box default exports are also allowlisted because the host loads them by folder.
-- Macro Variable edit request type `MacroVariablesEditBody`.
-- Prompt Preset response types `SillyTavernImportApplied`, `PromptPresetListResponse` and `PromptPresetConflict`.
-- Chat import receipt and artifact types `ChatImportReceiptParticipant` and `ImportDetailsArtifactAvailability`.
+- Box SDK exports `useBoxStatus`, `BoxExport`, `boxSdkVersion`, `ParticipantId`, `CodeAgentFunction`, `CodeAgentValue`.
+- Chat and Generation HTTP schemas `activeGenerationDetails`, `chatHistoryPage`, `generationSettingsUpdate`, `forkConversationResponse`, `generationPreview`, `generationAccepted`, `generationStopped`, `generationsStopped`, `conversationDeleted`, `conversationAppliedResponse`, `characterAppliedResponse`, `generationConflictResponse`, `conversationCommandConflict`, `castCharacterConflict`.
+- Macro Variable HTTP declarations `MacroVariablesEditBody`, `macroVariables`, `macroVariablesAppliedResponse`.
+- Prompt Preset HTTP declarations `SillyTavernImportApplied`, `PromptPresetListResponse`, `PromptPresetConflict`, `sillyTavernImportApplied`, `promptPresetCreateCommand`, `promptPresetRenameCommand`, `promptPresetDuplicateCommand`, `promptPresetDeleteCommand`, `promptPresetDeletionResult`.
+- Chat import HTTP types `ChatImportReceiptParticipant`, `ImportDetailsArtifactAvailability`.
+- Creator Mode streamed activity schema `authoringEvent`.
 - Stored Memory trace relevance type `MemoryRelevanceScore`.
 
-Both Knip scans, the clone check and focused tests passed. Probes verified that production Knip rejects a module reachable only from the browser harness, and that the scans flag unused named Box and tooling exports and an unreferenced script. The clone regression test covers deletion of one of three copies and a replacement that changes whitespace inside a string. GitHub Check runs the full suite and e2e. Slices b, c and d remain open.
+The Box host loads the built-in Box default exports by folder. Knip allowlists those live entry exports by name.
+
+Both Knip scans, the clone check and focused tests passed. Probes verified that production Knip rejects a module reachable only from the browser harness, and that the scans flag unused named Box and tooling exports and an unreferenced script. The clone regression test covers deletion, shorter surviving ranges, JSX indentation, CRLF and a replacement that changes literal text. GitHub Check runs the full suite and e2e. Slices b, c and d remain open.

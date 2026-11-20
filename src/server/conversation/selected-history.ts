@@ -26,13 +26,13 @@ import type {
 } from "./types";
 import { ConversationNotFoundError, InvalidConversationCommandError } from "./errors";
 
-export interface SelectedHistoryVariant {
+interface SelectedHistoryVariant {
 	id: number;
 	position: number;
 	content: string;
 }
 
-export interface SelectedHistoryMessage {
+interface SelectedHistoryMessage {
 	id: number;
 	position: number;
 	author: AuthorStampSnapshot | null;

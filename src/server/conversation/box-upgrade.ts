@@ -47,7 +47,7 @@ const remappedPlaces = (schema: TSchema | undefined, path: string): string[] => 
 	return here;
 };
 /** @approved Every place a version's schemas name a row Fork remaps. */
-export const remappedRowPlaces = ({ setup, values, record, moves }: BoxDescriptor): string[] => [
+const remappedRowPlaces = ({ setup, values, record, moves }: BoxDescriptor): string[] => [
 	...remappedPlaces(setup?.schema, "setup"),
 	...Object.entries(values?.chat ?? {}).flatMap(([key, schema]) => remappedPlaces(schema, `chat value ${encodeURIComponent(key)}`)),
 	...Object.entries(values?.participant ?? {}).flatMap(([key, schema]) => remappedPlaces(schema, `participant value ${encodeURIComponent(key)}`)),

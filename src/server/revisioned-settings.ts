@@ -4,7 +4,7 @@ import { drizzle } from "drizzle-orm/bun-sqlite";
 import type { AnySQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { guardRevision, type CurrentByAggregate } from "./revision";
 
-export const SETTINGS_ID = 1;
+const SETTINGS_ID = 1;
 
 export class InvalidSettingsError extends Error {
 	readonly outcome = "invalid" as const;

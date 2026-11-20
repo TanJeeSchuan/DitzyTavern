@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
 	deriveMacroState,
+	macroInitialValueKey,
 	macroWritesToData,
 	readMacroWrites,
 } from "./state";
@@ -12,8 +13,9 @@ const decodedRecords = (entry: { key: string; value: string } | null) =>
 describe("Macro state persistence", () => {
 	test("applies selected Variant writes in order while ignoring unselected siblings", () => {
 		const initialData = [
-			{ namespace: MACRO_DATA_NAMESPACE, key: "initial:4:turn", value: "5" },
-			{ namespace: MACRO_DATA_NAMESPACE, key: "initial:4:old", value: '"kept"' },
+			{ namespace: MACRO_DATA_NAMESPACE, key: macroInitialValueKey(4, "turn"), value: "5" },
+			{ namespace: MACRO_DATA_NAMESPACE, key: macroInitialValueKey(4, "old"), value: '"discarded"' },
+			{ namespace: MACRO_DATA_NAMESPACE, key: macroInitialValueKey(4, "enabled"), value: "true" },
 		];
 		const selected = macroWritesToData(4, [
 			{ name: "turn", operation: "set", value: 6 },
@@ -28,7 +30,7 @@ describe("Macro state persistence", () => {
 				{ selected: false, macroWrites: decodedRecords(unselected) },
 			],
 		});
-		expect(state).toEqual(new Map([["turn", 6]]));
+		expect(state).toEqual(new Map<string, number | boolean>([["turn", 6], ["enabled", true]]));
 	});
 
 	test("compacts durable writes to each variable's final assignment or deletion", () => {

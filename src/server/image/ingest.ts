@@ -3,7 +3,7 @@ import { transformExif } from "@uwx/exif-be-gone-web";
 import { MAX_IMAGE_BYTES } from "../../shared/contract/image";
 import { InvalidImageError } from "./errors";
 
-export type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+type ImageMediaType = "image/png" | "image/jpeg" | "image/webp" | "image/gif";
 
 export interface IngestedImage {
 	hash: string;

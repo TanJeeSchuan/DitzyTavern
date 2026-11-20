@@ -44,7 +44,6 @@ export type ModelFetch = (
 // The Model Client settings input derives from the canonical Generation
 // Settings declaration through the named exhaustive projection in
 // ./generation-settings; this seam re-states no settings fields of its own.
-export type { ModelClientGenerationSettings };
 
 // Safe connection identity only. URLs, credentials, and custom header values
 // are intentionally absent so this shape is safe for events and provenance.

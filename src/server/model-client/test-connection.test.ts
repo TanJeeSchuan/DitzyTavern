@@ -5,6 +5,8 @@ import {
 	type TestConnectionResult,
 } from ".";
 
+const expectedOutputTokenLimit = 8;
+
 const profile: ConnectionProfileDraft = {
 	displayName: "DeepSeek",
 	apiFormat: "chat-completions",
@@ -116,7 +118,7 @@ describe("Model Test Connection", () => {
 		expect(request?.headers.get("authorization")).toBe("Custom secret never returned");
 		expect(request?.headers.get("x-route")).toBe("route secret never returned");
 		expect(request?.body.model).toBe("local-model");
-		expect(request?.body.max_tokens).toBe(8);
+		expect(request?.body.max_tokens).toBe(expectedOutputTokenLimit);
 		// The transient result is deliberately free of all credentials and headers.
 		expect(JSON.stringify(result)).not.toContain("secret never returned");
 	});
@@ -150,7 +152,7 @@ describe("Model Test Connection", () => {
 		expect(request?.headers.get("http-referer")).toBeNull();
 		expect(request?.headers.get("x-openrouter-title")).toBeNull();
 		expect(request?.body.model).toBe("deepseek/deepseek-v4-flash");
-		expect(request?.body.max_tokens).toBe(8);
+		expect(request?.body.max_tokens).toBe(expectedOutputTokenLimit);
 		expect(JSON.stringify(result)).not.toContain("openrouter-secret-never-returned");
 	});
 
@@ -180,7 +182,7 @@ describe("Model Test Connection", () => {
 			messages: Array<{ role: string; content: string }>;
 		};
 		expect(body.model).toBe("custom-model-id");
-		expect(body.max_tokens).toBe(8);
+		expect(body.max_tokens).toBe(expectedOutputTokenLimit);
 		expect(body.messages).toEqual([{ role: "user", content: "Reply with exactly OK." }]);
 	});
 

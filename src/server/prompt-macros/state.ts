@@ -51,7 +51,7 @@ export const macroWritesToData = (
 };
 
 /** @approved Read only valid initial values for one Conversation and preset. */
-export const readMacroInitialValues = (
+const readMacroInitialValues = (
 	entries: readonly ConversationDataEntry[],
 	presetId: number,
 ): Map<string, MacroValue> => {

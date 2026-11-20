@@ -17,7 +17,7 @@ const TEST_CONNECTION_MAX_OUTPUT_TOKENS = 8;
 const TEST_CONNECTION_TIMEOUT_MS = 10_000;
 const TEST_CONNECTION_PROMPT = "Reply with exactly OK.";
 
-export type TestConnectionFailureKind =
+type TestConnectionFailureKind =
 	| "authentication"
 	| "endpoint"
 	| "timeout"

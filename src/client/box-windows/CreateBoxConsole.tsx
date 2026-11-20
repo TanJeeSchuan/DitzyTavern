@@ -46,7 +46,7 @@ export const withEvent = (entries: readonly Entry[], event: AuthoringLogEntry, i
 
 const written = new Map([["write_descriptor", "descriptor.json"], ["write_logic", "logic.js"], ["write_ui", "ui.js"], ["write_css", "ui.css"]]);
 const fileContent = authoredContent("");
-export const languageOf = (file: string): CodeLanguage => file.endsWith(".js") ? "javascript" : file.endsWith(".json") ? "json" : "text";
+const languageOf = (file: string): CodeLanguage => file.endsWith(".js") ? "javascript" : file.endsWith(".json") ? "json" : "text";
 const size = (text: string) => {
 	const bytes = new TextEncoder().encode(text).byteLength;
 	return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KiB`;

@@ -98,7 +98,7 @@ export const defaultBoxIds = (): BoxId[] => [...boxDescriptors()].flatMap(([id, 
 // @approved
 //  A Box window's client-side layout, persisted per Chat: open state,
 //  minimization and position are view state, never Conversation state.
-export const boxWindowLayout = Type.Object({
+const boxWindowLayout = Type.Object({
 	open: Type.Boolean(),
 	minimized: Type.Boolean(),
 	x: Type.Optional(Type.Number()),
@@ -120,7 +120,7 @@ export const heldBoxValues = Type.Record(Type.String(), Type.Array(Type.String()
 export const heldBoxValuesCleared = Type.Object({ outcome: Type.Literal("cleared") });
 export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.String() });
 
-export const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
+const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDecisionSettings = Static<typeof boxDecisionSettings>;
 /** @approved Only a digesting Box has a Decision Model selection, so its routes find no other id. */
 export const boxDecisionSettingsReadResponse = { 200: boxDecisionSettings, 404: notFoundOutcome };
@@ -140,7 +140,7 @@ export const DEFAULT_BOX_DELEGATE = "$default";
 //  A delegating Box's delegate setting: the chat Connection Profile and model
 // its agent runs on. No profile inherits the host default; neither means off.
 export const boxDelegateSelection = Type.Object({ profileId: Type.Union([Type.Integer(), Type.Null()]), model: Type.String() });
-export const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
+const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDelegateSettings = Static<typeof boxDelegateSettings>;
 /** @approved Only a delegating Box and the reserved host default have delegate settings routes. */
 export const boxDelegateSettingsReadResponse = { 200: boxDelegateSettings, 404: notFoundOutcome };

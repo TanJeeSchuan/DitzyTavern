@@ -14,7 +14,7 @@ import { delegateReadKey, useDelegateRead } from "./useBoxRead";
 // @approved
 //  A preset is shared, so a block a Box adds or enables shows in every Chat's
 //  preset editor and notice, not only this Chat's.
-export const refreshPresetReads = (client: QueryClient) => Promise.all([
+const refreshPresetReads = (client: QueryClient) => Promise.all([
 	client.invalidateQueries({ queryKey: ["conversation-preset"] }),
 	client.invalidateQueries({ queryKey: ["prompt-preset-editor"] }),
 ]);

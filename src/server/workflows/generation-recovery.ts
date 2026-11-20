@@ -55,7 +55,7 @@ export function recoverActiveGenerations(
 }
 
 /** @approved Terminalize local Active Generations before a graceful database close. */
-export const shutdownActiveGenerations = (database: Database): GenerationRecoverySummary =>
+const shutdownActiveGenerations = (database: Database): GenerationRecoverySummary =>
 	recoverActiveGenerations(database, { cause: "server-shutdown" });
 
 /** @approved Stop preparation and providers, terminalize persisted rows, then join detached work before closing the database. */

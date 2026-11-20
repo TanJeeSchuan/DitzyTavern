@@ -97,7 +97,7 @@ export interface GenerationOutcome {
 // generations: preserve visible output when a stream fails after producing it,
 // but leave zero-output failures to the caller. Keeping that policy here means
 // commit paths only decide which Conversation operation receives the outcome.
-export async function runGeneration(
+async function runGeneration(
 	modelClient: ModelClient,
 	input: ModelClientGenerationInput,
 	onEvent: GenerationAttemptInput["onEvent"],

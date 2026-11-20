@@ -25,7 +25,7 @@ import type {
 	ImportResolutionOutcome,
 } from "../shared/contract/chat-import";
 
-export type ChatImportPhase =
+type ChatImportPhase =
 	| "choose"
 	| "staging"
 	| "preview"
@@ -34,7 +34,7 @@ export type ChatImportPhase =
 	| "success"
 	| "closing";
 
-export interface ImportMessageRecord {
+interface ImportMessageRecord {
 	position: number;
 	variantCount: number;
 	isBlankSource: boolean;

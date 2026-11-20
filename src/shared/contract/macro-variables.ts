@@ -22,7 +22,7 @@ const macroVariableLocation = Type.Union([
 	}),
 ]);
 
-export const macroVariable = Type.Object({
+const macroVariable = Type.Object({
 	name: macroVariableName,
 	value: macroValue,
 	source: macroVariableLocation,

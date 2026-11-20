@@ -10,7 +10,7 @@ import type {
 //  The shared wire contract is the canonical declaration of every Connection
 // Settings shape; the server-side types below derive from it so the two
 // representations can no longer drift apart.
-export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
+type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 
 export type ChatApiFormat = Exclude<ConnectionApiFormat, "embeddings" | "system-one" | "images">;
 export type SystemPlacement = ConnectionProfileDraftPayload["systemPlacement"];

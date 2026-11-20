@@ -9,7 +9,7 @@ import { boxDelegateCopy, boxMetadataSchema } from "./box-metadata";
 import { ParticipantKey } from "./box-row-reference";
 
 /** @approved The icons a sandboxed Box may name for its window, its launcher and its dock button. */
-export const sandboxedBoxIcon = Type.Union([
+const sandboxedBoxIcon = Type.Union([
 	Type.Literal("box"), Type.Literal("coins"), Type.Literal("dice"), Type.Literal("drama"), Type.Literal("flag"), Type.Literal("gauge"),
 	Type.Literal("heart"), Type.Literal("map"), Type.Literal("scroll"), Type.Literal("sparkles"), Type.Literal("star"),
 ]);
@@ -29,8 +29,8 @@ const json = boxValue;
 // version, so a name and version always mean the same esm.sh module. A range,
 // tag, alias, or `file:`, `link:`, `workspace:`, Git or URL specifier fails
 // the pattern. Both patterns are the host's own, fixed here.
-export const sandboxedPackageName = Type.String({ pattern: "^(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*$", maxLength: 214 });
-export const sandboxedPackageVersion = Type.String({ pattern: "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$" });
+const sandboxedPackageName = Type.String({ pattern: "^(?:@[a-z0-9~-][a-z0-9._~-]*/)?[a-z0-9~-][a-z0-9._~-]*$", maxLength: 214 });
+const sandboxedPackageVersion = Type.String({ pattern: "^(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)\\.(?:0|[1-9][0-9]*)$" });
 export const sandboxedDescriptorFile = Type.Object({
 	...Type.Omit(boxDescriptorSchema, ["setup", "values", "record", "moves", "delegate"]).properties,
 	setup: Type.Optional(Type.Object({ schema: json, initial: boxValue }, { additionalProperties: false })),
@@ -51,7 +51,7 @@ export type SandboxedDescriptorFile = Static<typeof sandboxedDescriptorFile>;
 
 /** @approved The loaded Boxes, in registry order, each with the metadata the server projects from its descriptor and, for a trusted Box, the URL its client module loads from, or, for a sandboxed one, its descriptor file. */
 /** @approved A version of a versioned Box: the sha256 its folder is named for. */
-export const boxVersion = Type.String({ pattern: "^[0-9a-f]{64}$" });
+const boxVersion = Type.String({ pattern: "^[0-9a-f]{64}$" });
 // @approved
 //  The catalog: each Box with its metadata and its client module's URL, or a
 // sandboxed Box's descriptor file; a versioned Box's entry is its `latest`,
@@ -84,7 +84,7 @@ const isObject = (value: BoxValue | undefined): value is JsonObject => typeof va
 // primitives and literals inside them are accepted, each with the keywords
 // listed for it and no pattern of the Box's own; anything else is refused
 // with its path.
-export const sandboxedSchema = (schema: BoxValue | undefined, path: string): TSchema => {
+const sandboxedSchema = (schema: BoxValue | undefined, path: string): TSchema => {
 	if (!isObject(schema)) throw new Error(`Its schema at ${path} is not a schema object.`);
 	const options = (structure: readonly string[], keywords: readonly string[] = []): SchemaOptions => {
 		const unknown = Object.keys(schema).filter((key) => ![...structure, ...keywords, ...annotations].includes(key));

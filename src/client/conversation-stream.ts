@@ -51,7 +51,7 @@ export type GenerationStreamState = GenerationStatePayload;
 //  satisfies: the production SSE adapter below, and the fake adapters used by
 // the session runner and wiring tests. The adapter owns transport framing;
 // the session machine owns what the observations mean.
-export interface GenerationStreamObservation {
+interface GenerationStreamObservation {
 	// @approved
 	// The stream position the event was observed at; the session machine
 	//  keeps it as the reconnection cursor.
@@ -249,4 +249,4 @@ export const generationStreamAdapter: GenerationStreamAdapter = {
 // transport seams' parse target before shared contract schemas decode the
 // payload into trusted data.
 
-export type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };

@@ -33,7 +33,7 @@ export const generationFinishReason = Type.Union([
 
 export type GenerationFinishReason = Static<typeof generationFinishReason>;
 
-export const generationFailureKind = Type.Union([
+const generationFailureKind = Type.Union([
 	Type.Literal("cancelled"),
 	Type.Literal("inactivity"),
 	Type.Literal("transport"),
@@ -45,7 +45,7 @@ export type GenerationFailureKind = Static<typeof generationFailureKind>;
 
 // The model a failed Generation sent Images to, so the writer can mark it as a
 // Text-only Model from the failure.
-export const generationImageModel = Type.Object({
+const generationImageModel = Type.Object({
 	connectionProfileId: Type.Integer(),
 	modelId: Type.String(),
 });
@@ -74,7 +74,7 @@ export type GenerationEvent = Static<typeof generationEvent>;
 // Stable identity of one accepted Generation attempt and its Provisional
 // Variant. Every state or terminal frame carries the complete target so a
 // client observing concurrent attempts can reject a frame from another one.
-export const generationAttemptTarget = Type.Object({
+const generationAttemptTarget = Type.Object({
 	conversationId: Type.Integer(),
 	generationId: Type.Integer(),
 	messageId: Type.Integer(),
