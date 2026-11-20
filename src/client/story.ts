@@ -1,18 +1,5 @@
-// @approved
-//  Pure state transitions for reading a Chat's native history. The view
-// feeds typed history pages and command outcomes into this reducer, so page
-// accumulation, selected-Variant updates, and empty-Variant placeholders are
-// testable without a browser or a frontend framework.
-// Imported Chats use exactly this model: their Messages came through the
-// same paginated read seam and their Swipe navigation is the same
-// revisioned Variant-selection behavior as every other Chat. Empty and
-// duplicate Variants stay separate navigable positions; an exact empty
-// Variant renders a presentation-only placeholder and its stored text is
-// never modified.
-
 import type { ChatHistoryMessage, ChatHistoryPage, ChatHistoryVariant } from "./chat-history";
 import { sameMoves, type BoxMoves } from "../shared/contract/box-generation";
-import { replaceEqualDeep } from "@tanstack/react-query";
 
 // @approved
 //  A reading view of one Variant: the stored content plus whether the
@@ -69,91 +56,76 @@ export interface StoryMessage {
 	swipes: StoryVariant[];
 }
 
-export interface StoryPreviewState {
-	messageId: number;
-	targetPosition: number;
-	variantId: number;
-	priorVariantId: number | null;
-}
+type Preview = { messageId: number; variantId: number };
+type StoryPreviewState = Preview & { targetPosition: number };
+
+export type RequestedWrite<Value> = { value: Value };
+
+type WriteOverlay<Value> = {
+	pending: RequestedWrite<Value> | undefined;
+	accepted: { value: Value; revision: number } | undefined;
+};
 
 export type RequestedGeneration =
 	| { kind: "send"; content: string; moves?: BoxMoves | undefined }
 	| { kind: "continuation" }
 	| { kind: "sibling"; messageId: number };
 
-export interface StoryPaging {
-	index: number;
-	pageSize: number;
-	totalMessages: number;
-	totalPages: number;
-	hasOlder: boolean;
-	hasNewer: boolean;
-}
+export type InlineMessageDraft = {
+	variantId: number;
+	baseContent: string;
+	baseRevision: number;
+	text: string;
+	asNew: boolean;
+	saving: boolean;
+	acknowledged?: { revision: number; content: string; asNew: boolean } | undefined;
+	conflict?: string | undefined;
+};
 
-interface StoryContent {
-	title: string;
-	// @approved
-	//  Accumulated stable chronological Messages, deduplicated by Message id.
-	// One contiguous page window: older pages prepend and newer pages append.
-	messages: StoryMessage[];
+export type StoryOverlays = {
+	preview: Preview | null;
+	inlineDrafts: ReadonlyMap<number, InlineMessageDraft>;
+	requestedSelections: ReadonlyMap<number, WriteOverlay<number>>;
+	requestedMoves: ReadonlyMap<number, WriteOverlay<BoxMoves>>;
+	requestedGeneration: {
+		request: RequestedGeneration;
+		accepted: { generationId: number; variantId: number; sentRevision: number } | null;
+	} | null;
+};
+
+export type StoryWindow = {
+	revision: number;
+	page: ChatHistoryPage["page"];
+	messages: readonly StoryMessage[];
+};
+
+export type StoryState = Omit<StoryOverlays, "preview"> & {
 	preview: StoryPreviewState | null;
-	// Requested selections by Message id: each Variant shown in place of the persisted selection until its command settles.
-	requestedSelections: ReadonlyMap<number, number>;
-	// @approved
-	//  Requested Moves by Message id: shown in place of the Message's persisted Moves until their command settles, so
-	// a second edit builds on the first.
-	requestedMoves: ReadonlyMap<number, BoxMoves>;
-	// A Generation start the server has not accepted yet, and once it has, its accepted target. A page placing the
-	// target's Variant, or authority showing the Generation ended, retires it.
-	requestedGeneration: { request: RequestedGeneration; accepted: { generationId: number; variantId: number; sentRevision: number } | null } | null;
-}
-
-export type StoryState = StoryContent & (
+	messages: readonly StoryMessage[];
+} & (
 	| { status: "idle" }
 	| { status: "loading-first" | "error"; conversationId: number }
-	| { status: "ready"; loadingMore: boolean; historyFailed: boolean; conversationId: number; revision: number; page: StoryPaging }
+	| { status: "ready"; loadingMore: boolean; historyFailed: boolean; conversationId: number; revision: number; page: StoryWindow["page"] }
 );
 
 export const isStoryReady = (state: StoryState): state is Extract<StoryState, { status: "ready" }> =>
 	state.status === "ready";
 
 export type StoryAction =
-	// @approved
-	//  A different Chat is being opened (or the current one re-requested);
-	// the reader resets and loads the first page fresh.
-	| { type: "chat-opened"; conversationId: number }
-	| { type: "window-received"; page: ChatHistoryPage; activeGenerationIds?: readonly number[] }
-	// @approved
-	//  The view requested an adjacent page; further requests are ignored until
-	// it arrives or fails.
-	| { type: "load-more-started" }
-	| { type: "paging-cancelled" }
-	| { type: "history-failed" }
-	| { type: "selection-requested"; messageId: number; variantId: number }
-	// The select-variant command applied: the persisted selection moves and a matching Requested selection retires.
-	| { type: "swipe-selected"; messageId: number; variantId: number }
-	| { type: "selection-dropped"; messageId: number }
-	| { type: "moves-requested"; messageId: number; moves: BoxMoves }
-	// @approved
-	//  The set-message-moves command applied: the persisted Moves change and matching Requested Moves retire.
-	| { type: "moves-set"; messageId: number; moves: BoxMoves }
-	| { type: "moves-dropped"; messageId: number }
+	| { type: "inline-draft-changed"; messageId: number; draft: InlineMessageDraft | undefined; expected?: InlineMessageDraft | undefined }
+	| { type: "preview-changed"; preview: Preview | null }
+	| { type: "preview-confirmed"; messageId: number; request: RequestedWrite<number> }
+	| { type: "selection-requested"; messageId: number; request: RequestedWrite<number> }
+	| { type: "selection-settled"; messageId: number; request: RequestedWrite<number>; revision: number | null }
+	| { type: "moves-requested"; messageId: number; request: RequestedWrite<BoxMoves> }
+	| { type: "moves-settled"; messageId: number; request: RequestedWrite<BoxMoves>; revision: number | null }
 	| { type: "generation-requested"; request: RequestedGeneration }
 	| { type: "generation-request-accepted"; generationId: number; variantId: number; sentRevision: number }
-	| { type: "generation-request-failed" }
-	| { type: "preview-started"; messageId: number; variantId: number }
-	// @approved
-	//  Swiping the already-previewed Message moves the local Preview to another
-	// Variant of the same Message without any server command.
-	| { type: "preview-retargeted"; messageId: number; variantId: number }
-	| { type: "preview-cancelled" }
-	| { type: "preview-confirmed" };
+	| { type: "generation-request-failed" };
 
-export const createStoryState = (): StoryState => ({
-	title: "",
-	messages: [],
-	status: "idle",
+export const createStoryOverlays = (): StoryOverlays => ({
 	preview: null,
+	inlineDrafts: new Map(),
 	requestedSelections: new Map(),
 	requestedMoves: new Map(),
 	requestedGeneration: null,
@@ -180,7 +152,7 @@ const toStoryVariant = (variant: ChatHistoryVariant): StoryVariant => {
 	};
 };
 
-const toStoryMessage = (message: ChatHistoryPage["messages"][number]): StoryMessage => ({
+export const toStoryMessage = (message: ChatHistoryMessage): StoryMessage => ({
 	id: message.id,
 	position: message.position,
 	timestamp: message.timestamp,
@@ -237,71 +209,35 @@ export const canOfferSiblingGeneration = ({
 	!previewActive &&
 	activeGenerationMessageIds.every((messageId) => messageId === message.id);
 
-export function reduceStory(state: StoryState, action: StoryAction): StoryState {
+export function reduceStoryOverlays(state: StoryOverlays, action: StoryAction): StoryOverlays {
 	switch (action.type) {
-		case "chat-opened":
-			return {
-				...createStoryState(),
-				conversationId: action.conversationId,
-				status: "loading-first",
-			};
-		case "window-received":
-			if (state.status === "idle" || ("conversationId" in state && state.conversationId !== action.page.conversationId) || (isStoryReady(state) && action.page.revision < state.revision)) return state;
-			const priorMessages = new Map(state.messages.map((message) => [message.id, message]));
-			const activeGenerationIds = new Set(action.activeGenerationIds ?? []);
-			const accepted = state.requestedGeneration?.accepted ?? null;
-			const previewed = action.page.messages.find((message) => message.id === state.preview?.messageId);
-			const selectedId = previewed?.variants.find((variant) => variant.selected)?.id ?? null;
-			const preview = state.preview !== null && selectedId !== state.preview.variantId && previewed?.variants.some((variant) => variant.id === state.preview?.variantId)
-				? { ...state.preview, priorVariantId: selectedId }
-				: null;
-			return {
-				...state,
-				conversationId: action.page.conversationId,
-				title: action.page.name,
-				revision: action.page.revision,
-				messages: action.page.messages.map((message) => replaceEqualDeep(priorMessages.get(message.id), toStoryMessage(message))),
-				page: action.page.page,
-				status: "ready",
-				loadingMore: false,
-				historyFailed: false,
-				preview,
-				requestedGeneration: accepted !== null && (
-					action.page.messages.some((message) => message.variants.some((variant) => variant.id === accepted.variantId)) ||
-					(action.page.revision > accepted.sentRevision && action.activeGenerationIds !== undefined && !activeGenerationIds.has(accepted.generationId))
-				) ? null : state.requestedGeneration,
-			};
-		case "load-more-started":
-			return isStoryReady(state) && (state.page.hasOlder || state.page.hasNewer)
-				? { ...state, loadingMore: true, historyFailed: false }
-				: state;
-		case "paging-cancelled":
-			return isStoryReady(state) ? { ...state, loadingMore: false } : state;
-		case "history-failed":
-			if (isStoryReady(state)) return state.historyFailed && !state.loadingMore ? state : { ...state, loadingMore: false, historyFailed: true };
-			return state.status === "loading-first" ? { ...state, status: "error" } : state;
+		case "inline-draft-changed": {
+			const { messageId, draft, expected } = action;
+			const current = state.inlineDrafts.get(messageId);
+			if (current === draft || (expected !== undefined && current !== expected)) return state;
+			const inlineDrafts = draft === undefined ? without(state.inlineDrafts, messageId) : new Map(state.inlineDrafts).set(messageId, draft);
+			return { ...state, inlineDrafts };
+		}
+		case "preview-changed":
+			return { ...state, preview: action.preview };
+		case "preview-confirmed":
 		case "selection-requested":
-			return state.messages.some((message) => message.id === action.messageId && message.swipes.some((variant) => variant.id === action.variantId))
-				? { ...state, requestedSelections: new Map(state.requestedSelections).set(action.messageId, action.variantId) }
-				: state;
-		case "selection-dropped":
-			return state.requestedSelections.has(action.messageId) ? { ...state, requestedSelections: without(state.requestedSelections, action.messageId) } : state;
-		case "moves-requested":
-			return { ...state, requestedMoves: new Map(state.requestedMoves).set(action.messageId, action.moves) };
-		case "moves-set":
 			return {
 				...state,
-				requestedMoves: sameMoves(state.requestedMoves.get(action.messageId), action.moves) ? without(state.requestedMoves, action.messageId) : state.requestedMoves,
-				messages: state.messages.map((message) => message.id === action.messageId ? { ...message, moves: action.moves } : message),
+				preview: action.type === "preview-confirmed" ? null : state.preview,
+				requestedSelections: requestWrite(state.requestedSelections, action.messageId, action.request),
 			};
-		case "moves-dropped":
-			return state.requestedMoves.has(action.messageId) ? { ...state, requestedMoves: without(state.requestedMoves, action.messageId) } : state;
+		case "selection-settled":
+			return { ...state, requestedSelections: settleWrite(state.requestedSelections, action) };
+		case "moves-requested":
+			return { ...state, requestedMoves: requestWrite(state.requestedMoves, action.messageId, action.request) };
+		case "moves-settled":
+			return { ...state, requestedMoves: settleWrite(state.requestedMoves, action) };
 		case "generation-requested":
 			return {
 				...state,
 				requestedGeneration: { request: action.request, accepted: null },
-				// A Requested Swipe's Variant replaces the Requested selection it was swiped from.
-				requestedSelections: action.request.kind === "sibling" ? without(state.requestedSelections, action.request.messageId) : state.requestedSelections,
+				requestedSelections: action.request.kind === "sibling" ? requestWrite(state.requestedSelections, action.request.messageId, undefined) : state.requestedSelections,
 			};
 		case "generation-request-accepted":
 			return state.requestedGeneration === null
@@ -309,68 +245,83 @@ export function reduceStory(state: StoryState, action: StoryAction): StoryState 
 				: { ...state, requestedGeneration: { ...state.requestedGeneration, accepted: { generationId: action.generationId, variantId: action.variantId, sentRevision: action.sentRevision } } };
 		case "generation-request-failed":
 			return { ...state, requestedGeneration: null };
-		case "swipe-selected":
-			return {
-				...state,
-				requestedSelections: state.requestedSelections.get(action.messageId) === action.variantId
-					? without(state.requestedSelections, action.messageId)
-					: state.requestedSelections,
-				messages: state.messages.map((message) => {
-					if (message.id !== action.messageId) return message;
-					const index = message.swipes.findIndex(
-						(variant) => variant.id === action.variantId,
-					);
-					if (index === -1) return message;
-					return { ...message, activeSwipe: index };
-				}),
-			};
-		case "preview-started": {
-			if (state.preview !== null) return state;
-			const message = state.messages.find((entry) => entry.id === action.messageId);
-			if (message === undefined) return state;
-			const previewVariant = message.swipes.find(
-				(variant) => variant.id === action.variantId,
-			);
-			if (previewVariant === undefined) return state;
-			if (message.swipes[message.activeSwipe]?.id === previewVariant.id) return state;
-			return {
-				...state,
-				preview: {
-					messageId: message.id,
-					targetPosition: message.position,
-					variantId: previewVariant.id,
-					priorVariantId: message.swipes[message.activeSwipe]?.id ?? null,
-				},
-			};
-		}
-		case "preview-retargeted": {
-			if (state.preview === null) return state;
-			if (state.preview.messageId !== action.messageId) return state;
-			const message = state.messages.find((entry) => entry.id === action.messageId);
-			if (message === undefined) return state;
-			const variant = message.swipes.find(
-				(entry) => entry.id === action.variantId,
-			);
-			if (variant === undefined) return state;
-			if (variant.id === state.preview.variantId) return state;
-			// @approved
-			//  Cycling back to the server-selected Variant ends the local Preview:
-			// there is no longer a divergent selection to confirm or cancel.
-			if (variant.id === state.preview.priorVariantId) {
-				return { ...state, preview: null };
-			}
-			return {
-				...state,
-				preview: { ...state.preview, variantId: variant.id },
-			};
-		}
-		case "preview-cancelled":
-			return state.preview === null ? state : { ...state, preview: null };
-		case "preview-confirmed":
-			return state.preview === null
-				? state
-				: { ...state, preview: null, requestedSelections: new Map(state.requestedSelections).set(state.preview.messageId, state.preview.variantId) };
 	}
+}
+
+function setWrite<Value>(writes: ReadonlyMap<number, WriteOverlay<Value>>, messageId: number, overlay: WriteOverlay<Value>) {
+	const previous = writes.get(messageId);
+	if (previous?.pending === overlay.pending && previous?.accepted === overlay.accepted) return writes;
+	if (overlay.pending === undefined && overlay.accepted === undefined) return without(writes, messageId);
+	return new Map(writes).set(messageId, overlay);
+}
+
+function requestWrite<Value>(writes: ReadonlyMap<number, WriteOverlay<Value>>, messageId: number, pending: RequestedWrite<Value> | undefined) {
+	return setWrite(writes, messageId, { pending, accepted: writes.get(messageId)?.accepted });
+}
+
+function settleWrite<Value>(
+	writes: ReadonlyMap<number, WriteOverlay<Value>>,
+	{ messageId, request, revision }: { messageId: number; request: RequestedWrite<Value>; revision: number | null },
+) {
+	const previous = writes.get(messageId);
+	const pending = previous?.pending === request ? undefined : previous?.pending;
+	const accepted = revision !== null && (previous?.accepted === undefined || previous.accepted.revision < revision)
+		? { value: request.value, revision } : previous?.accepted;
+	return setWrite(writes, messageId, { pending, accepted });
+}
+
+function observedWrites<Value>(writes: ReadonlyMap<number, WriteOverlay<Value>>, revision: number) {
+	let next = writes;
+	for (const [id, { pending, accepted }] of writes) {
+		if (accepted !== undefined && accepted.revision <= revision) next = setWrite(next, id, { pending, accepted: undefined });
+	}
+	return next;
+}
+
+export function previewOnMessage(message: StoryMessage, variantId: number): Preview | null {
+	return message.swipes[message.activeSwipe]?.id !== variantId && message.swipes.some((variant) => variant.id === variantId)
+		? { messageId: message.id, variantId }
+		: null;
+}
+
+export function retireStoryOverlays(
+	state: StoryOverlays,
+	window: StoryWindow,
+	authority: { revision: number; activeGenerations: readonly { generationId: number }[] } | null,
+): StoryOverlays {
+	const { preview: requestedPreview } = state;
+	const previewed = requestedPreview && window.messages.find((message) => message.id === requestedPreview.messageId);
+	const preview = previewed && requestedPreview && previewOnMessage(previewed, requestedPreview.variantId) ? requestedPreview : null;
+	const requestedSelections = observedWrites(state.requestedSelections, window.revision);
+	const requestedMoves = observedWrites(state.requestedMoves, window.revision);
+	const accepted = state.requestedGeneration?.accepted;
+	const placed = accepted && window.messages.some((message) => message.swipes.some((variant) => variant.id === accepted.variantId));
+	const ended = accepted && authority && authority.revision >= window.revision && window.revision > accepted.sentRevision &&
+		!authority.activeGenerations.some((target) => target.generationId === accepted.generationId);
+	const requestedGeneration = placed || ended ? null : state.requestedGeneration;
+	return preview === state.preview && requestedSelections === state.requestedSelections && requestedMoves === state.requestedMoves && requestedGeneration === state.requestedGeneration
+		? state
+		: { ...state, preview, requestedSelections, requestedMoves, requestedGeneration };
+}
+
+const noMessages: readonly StoryMessage[] = [];
+
+export function readStory({
+	overlays, window, conversationId, historyFailed, loadingMore,
+}: {
+	overlays: StoryOverlays;
+	window: StoryWindow | null;
+	conversationId: number | null;
+	historyFailed: boolean;
+	loadingMore: boolean;
+}): StoryState {
+	const { preview: requestedPreview } = overlays;
+	const message = requestedPreview && window?.messages.find((entry) => entry.id === requestedPreview.messageId);
+	const preview = message && requestedPreview ? { ...requestedPreview, targetPosition: message.position } : null;
+	const base = { ...overlays, preview, messages: window?.messages ?? noMessages };
+	if (conversationId === null) return { ...base, status: "idle" };
+	if (window === null) return { ...base, conversationId, status: historyFailed ? "error" : "loading-first" };
+	return { ...base, ...window, status: "ready", conversationId, historyFailed, loadingMore };
 }
 
 // @approved
@@ -403,25 +354,25 @@ export const classifyVariantSelection = (
 	if (message === undefined) return { kind: "blocked" };
 	const target = message.swipes.find((variant) => variant.id === variantId);
 	if (target === undefined) return { kind: "blocked" };
-	if (displayedVariantId(message, null, state.requestedSelections) === target.id) return { kind: "noop" };
+	if (displayedVariantId(state, message) === target.id) return { kind: "noop" };
 	if (!state.page.hasNewer && !state.messages.some((later) => later.position > message.position)) return { kind: "immediate", messageId, variantId };
 	return state.requestedSelections.has(messageId) ? { kind: "blocked" } : { kind: "preview", messageId, variantId };
 };
 
-// The visible Variant: the Preview's while Preview mode targets the Message, else a Requested selection's,
-// else the persisted selection.
 export const displayedVariantId = (
+	state: Pick<StoryState, "preview" | "requestedSelections" | "requestedGeneration">,
 	message: StoryMessage,
-	preview: StoryPreviewState | null,
-	requested: ReadonlyMap<number, number> = new Map(),
 ): number | null => {
-	if (preview?.messageId === message.id) return preview.variantId;
-	return requested.get(message.id) ?? message.swipes[message.activeSwipe]?.id ?? null;
+	if (state.preview?.messageId === message.id) return state.preview.variantId;
+	if (hasRequestedSwipe(state, message.id)) return requestedSwipeId;
+	const selection = state.requestedSelections.get(message.id);
+	const requested = selection?.pending?.value ?? selection?.accepted?.value;
+	if (requested !== undefined && message.swipes.some((variant) => variant.id === requested)) return requested;
+	return message.swipes[message.activeSwipe]?.id ?? null;
 };
 
-// The Variant the writer sees and acts on, including a Requested selection.
 export const shownVariant = (state: StoryState, message: StoryMessage): StoryVariant | undefined => {
-	const id = displayedVariantId(message, null, state.requestedSelections);
+	const id = displayedVariantId(state, message);
 	return message.swipes.find((variant) => variant.id === id);
 };
 
@@ -435,14 +386,21 @@ const without = <Value>(requested: ReadonlyMap<number, Value>, messageId: number
 //  The Message the writer sees, with its Requested Moves in place of the persisted ones and, during a Requested
 // Swipe, an empty Variant selected at the end until a page places the real one.
 export const shownMessage = (state: StoryState, message: StoryMessage): StoryMessage => {
-	const moves = state.requestedMoves.get(message.id);
+	const overlay = state.requestedMoves.get(message.id);
+	const moves = overlay?.pending?.value ?? overlay?.accepted?.value;
 	const shown = moves === undefined ? message : { ...message, moves };
 	if (!hasRequestedSwipe(state, message.id)) return shown;
-	const requested = { id: -1, position: message.swipes.length + 1, content: "", hasReasoning: false, empty: true };
+	const requested = { id: requestedSwipeId, position: message.swipes.length + 1, content: "", hasReasoning: false, empty: true };
 	return { ...shown, activeSwipe: message.swipes.length, swipes: [...message.swipes, requested] };
 };
 
-export const hasRequestedSwipe = (state: StoryState, messageId: number): boolean =>
+const requestedSwipeId = -1;
+
+export const canWriteMessage = (state: StoryState, messageId: number) =>
+	state.preview === null && state.inlineDrafts.get(messageId)?.saving !== true &&
+	!hasRequestedSwipe(state, messageId) && !state.requestedSelections.has(messageId) && !state.requestedMoves.has(messageId);
+
+export const hasRequestedSwipe = (state: Pick<StoryOverlays, "requestedGeneration">, messageId: number): boolean =>
 	state.requestedGeneration?.request.kind === "sibling" && state.requestedGeneration.request.messageId === messageId;
 
 // @approved

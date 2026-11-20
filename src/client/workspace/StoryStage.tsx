@@ -16,13 +16,14 @@ import { BoxWindowLayer } from "../box-windows/BoxWindowLayer";
 import type { BoxWindowsController } from "../box-windows/useBoxWindows";
 import {
 	displayedVariantId,
+	canWriteMessage,
 	isModelAuthoredMessage,
 	isPreviewDownstream,
 	hasRequestedSwipe,
-	reusesTrailingHumanMessage,
 	shownMessage,
 	type StoryAction,
 	type StoryState,
+	type StoryVariant,
 } from "../story";
 import { BackgroundImage } from "../ChatBackground";
 import { Composer } from "../story/Composer";
@@ -39,6 +40,8 @@ import type { useGenerationController } from "./useGenerationController";
 import type { usePreviewController } from "./usePreviewController";
 import { useStoryMessageActions } from "./useStoryMessageActions";
 import { useStoryViewport } from "./useStoryViewport";
+import { useNavigationRequest } from "../SaveGuard";
+import { InlineMessageDraftGuard, inlineDraftScope, inlineMessageDrafts } from "./inline-message-drafts";
 
 // @approved
 // The story stage: header, preview dock, scrollable message list, and
@@ -101,6 +104,7 @@ export function StoryStage({
 	onFork: (at: { through: number; variantId?: number } | { rewind: number }) => void;
 }) {
 	const readyStory = isStoryReady(story) ? story : null;
+	const requestNavigation = useNavigationRequest();
 	const storyConversationId = "conversationId" in story ? story.conversationId : null;
 	const illustrations = useIllustrations(storyConversationId);
 	const viewport = useStoryViewport({
@@ -111,19 +115,22 @@ export function StoryStage({
 	const storyActions = useStoryMessageActions({
 		signal: session.signal,
 		story,
-		conversation,
 		dispatchStory,
 		setConversation: session.setConversation,
+		waitForHistory: session.waitForHistory,
 		queueSwipeScroll: viewport.queueSwipeScroll,
 		canEnterPreview: !assemblyActive,
 		onEnterPreview,
+	});
+	const drafts = inlineMessageDrafts({
+		story, conversation, isGenerating: generation.isGenerating, dispatchStory, editStoryMessage: storyActions.editStoryMessage,
 	});
 	// @approved
 	//  Message rows are memoized, so a streamed event re-renders only the row
 	// whose text changed. Their handlers keep one identity across renders and
 	// call the latest render's.
-	const latest = useRef({ generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint });
-	latest.current = { generation, viewport, storyActions, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint };
+	const latest = useRef({ session, generation, viewport, storyActions, drafts, requestNavigation, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint });
+	latest.current = { session, generation, viewport, storyActions, drafts, requestNavigation, boxWindows, onFork, onInspectVariant, onOpenInspector, onPaint };
 	const rows = useMemo(() => ({
 		paint: (variantId: number) => latest.current.onPaint(variantId),
 		continueMessage: (messageId: number) => latest.current.generation.continueMessage(messageId),
@@ -140,17 +147,23 @@ export function StoryStage({
 		openInspector: (box: string, focus: { messageId: number }) => latest.current.onOpenInspector(box, focus),
 		moveSwipe: (messageId: number, direction: -1 | 1) => void latest.current.storyActions.changeSwipe(messageId, direction),
 		selectVariant: (messageId: number, variantId: number) => void latest.current.storyActions.selectSwipe(messageId, variantId),
-		edit: (messageId: number, content: string, asNew: boolean) => latest.current.storyActions.editStoryMessage(messageId, content, asNew),
+		openDraft: (messageId: number, variant: StoryVariant, revision: number) => latest.current.drafts.open(messageId, variant, revision),
+		editDraft: (messageId: number, text: string) => latest.current.drafts.setText(messageId, text),
+		saveDraft: (messageId: number, asNew: boolean, revision?: number) => latest.current.drafts.save(messageId, asNew, revision),
+		discardDraft: (messageId: number) => latest.current.drafts.discard(messageId),
+		closeDraft: (messageId: number) => latest.current.requestNavigation(() => latest.current.drafts.discard(messageId), inlineDraftScope(messageId)),
+		waitForHistory: async () => { await latest.current.session.waitForHistory(); },
 		fork: (messageId: number) => latest.current.onFork({ through: messageId }),
 		rewind: (messageId: number) => latest.current.onFork({ rewind: messageId }),
-		setMoves: (messageId: number, moves: BoxMoves) => void latest.current.storyActions.setMessageMoves(messageId, moves),
-		remove: (messageId: number) => void latest.current.storyActions.deleteStoryMessage(messageId),
+		setMoves: (messageId: number, moves: BoxMoves, revision: number) => void latest.current.storyActions.setMessageMoves(messageId, moves, revision),
+		remove: (messageId: number, revision: number) => void latest.current.storyActions.deleteStoryMessage(messageId, revision),
 	}), []);
 	const onLayerFocus = useLayerFocus(inert);
 	const latestStoryMessage = readyStory?.page.hasNewer ? undefined : story.messages.at(-1);
 	const previewMode = story.preview !== null;
+	const historyPending = readyStory !== null && conversation !== null && readyStory.revision < conversation.revision;
 	const composerPaintDisabledReason = generationRunning ? "Wait for the Generation to finish before painting." : paintDisabledReason;
-	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(latestStoryMessage, story.preview, story.requestedSelections);
+	const finalVariantId = latestStoryMessage === undefined ? null : displayedVariantId(story, latestStoryMessage);
 	const previewedMessage = story.messages.find((message) => message.id === story.preview?.messageId);
 	const previewSwipeIndex = previewedMessage?.swipes.findIndex((swipe) => swipe.id === story.preview?.variantId) ?? -1;
 	const lens = useMemo(() => conversation === null ? undefined : { conversation, open: (box: BoxId) => latest.current.boxWindows.open(box) }, [conversation]);
@@ -158,10 +171,18 @@ export function StoryStage({
 		? null
 		: conversation.cast.find((participant) => participant.id === conversation.control.modelParticipantId) ?? null;
 	const humanParticipant = conversation?.cast.find((participant) => participant.id === conversation.control.humanParticipantId) ?? null;
-	const requested = readyStory?.page.hasNewer ? null : story.requestedGeneration?.request ?? null;
 
 	return (
 		<main className="story-stage" aria-label="Active Chat" inert={inert} onFocus={onLayerFocus}>
+			{[...story.inlineDrafts].map(([messageId, draft]) => <InlineMessageDraftGuard
+				key={messageId}
+				messageId={messageId}
+				draft={draft}
+				canSave={drafts.canSave(messageId, draft.asNew)}
+				save={rows.saveDraft}
+				discard={rows.discardDraft}
+				waitForHistory={rows.waitForHistory}
+			/>)}
 			{conversation !== null && conversation.background !== null && <BackgroundImage key={conversation.background} hash={conversation.background} className="story-background" />}
 			<StoryHeader
 				chatTitle={session.activeChatTitle}
@@ -181,8 +202,8 @@ export function StoryStage({
 					<span>Message {story.preview.targetPosition} · Later Messages dimmed</span>
 				</div>
 				<div className="preview-dock-actions">
-					<button className="primary-button" type="button" onClick={() => void preview.confirmPreview()}>Confirm</button>
-					<button className="secondary-button" type="button" onClick={() => onFork({ through: story.preview!.messageId, variantId: story.preview!.variantId })}>Fork with this Variant</button>
+					<button className="primary-button" type="button" disabled={historyPending} onClick={() => void preview.confirmPreview()}>Confirm</button>
+					<button className="secondary-button" type="button" disabled={historyPending} onClick={() => onFork({ through: story.preview!.messageId, variantId: story.preview!.variantId })}>Fork with this Variant</button>
 					<button className="secondary-button" type="button" onClick={preview.cancelPreview}>Cancel</button>
 				</div>
 			</div>
@@ -211,6 +232,7 @@ export function StoryStage({
 						<StoryMessageView
 							key={message.id}
 							conversationId={storyConversationId}
+							historyRevision={readyStory!.revision}
 							message={message}
 							onPaint={rows.paint}
 							paintDisabledReason={paintDisabledReason}
@@ -220,11 +242,11 @@ export function StoryStage({
 							isLatest={latestStoryMessage?.id === message.id}
 							generationActive={swiping || generation.activeGenerationTargets.some((target) =>
 								target.messageId === message.id &&
-								target.variantId === displayedVariantId(message, story.preview, story.requestedSelections)
+								target.variantId === displayedVariantId(story, message)
 							)}
-							displayedVariantId={displayedVariantId(message, story.preview, story.requestedSelections)}
-							mutationsDisabled={story.preview !== null || swiping}
-							saveAsNewDisabled={generation.isGenerating}
+							displayedVariantId={displayedVariantId(story, message)}
+							mutationsDisabled={story.preview !== null || swiping || historyPending}
+							contentWritesDisabled={!canWriteMessage(story, message.id)}
 							previewDownstream={isPreviewDownstream(message, story.preview)}
 							previewTarget={story.preview?.messageId === message.id}
 							onContinue={
@@ -259,21 +281,20 @@ export function StoryStage({
 							)}
 							onMoveSwipe={rows.moveSwipe}
 							onSelectVariant={rows.selectVariant}
-							onEdit={rows.edit}
+							draft={story.inlineDrafts.get(message.id)}
+							canSaveDraft={drafts.canSave(message.id, false)}
+							canSaveDraftAsNew={drafts.canSave(message.id, true)}
+							onOpenDraft={rows.openDraft}
+							onEditDraft={rows.editDraft}
+							onSaveDraft={rows.saveDraft}
+							onCloseDraft={rows.closeDraft}
 							onFork={rows.fork}
 							onRewind={message.authorRole === "human" ? rows.rewind : undefined}
 							onMovesChange={message.authorParticipantId === conversation?.control.humanParticipantId && !generation.isGenerating ? rows.setMoves : undefined}
 							onDelete={!assemblyActive && !generation.isGenerating ? rows.remove : undefined}
 						/>
 					))}
-					{requested !== null && requested.kind !== "sibling" && humanParticipant !== null && modelParticipant !== null && (
-						<RequestedSendView
-							human={humanParticipant}
-							sent={requested.kind === "send" && !reusesTrailingHumanMessage(story, humanParticipant.id, requested.content, requested.moves) ? requested : null}
-							model={modelParticipant}
-							lens={lens}
-						/>
-					)}
+					<RequestedSendView story={story} human={humanParticipant} model={modelParticipant} lens={lens} />
 					{readyStory?.page.hasNewer === true && (
 						<div className="history-load-more">
 							<button className="secondary-button" type="button" disabled={readyStory?.loadingMore === true} onClick={() => void session.loadMoreHistory("newer")}>
@@ -290,12 +311,12 @@ export function StoryStage({
 				</div>
 			</div>
 
-			{readyStory?.page.hasNewer && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
+			{(story.status === "error" || readyStory?.historyFailed || readyStory?.page.hasNewer) && <div className="absolute bottom-36 left-1/2 z-10 -translate-x-1/2">
 				<button
 					className="secondary-button"
 					type="button"
 					disabled={previewMode}
-					onClick={() => void session.jumpToLatest().catch(() => dispatchStory({ type: "history-failed" }))}
+					onClick={() => void session.jumpToLatest().catch(() => undefined)}
 				>
 					Jump to latest
 				</button>

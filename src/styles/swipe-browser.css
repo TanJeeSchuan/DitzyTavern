@@ -21,6 +21,9 @@
 	outline: none;
 }
 
+.swipe-card[aria-disabled="true"] { cursor: not-allowed; }
+.swipe-card[aria-disabled="true"] > header { opacity: 0.46; }
+
 .swipe-card > header {
 	display: flex;
 	justify-content: space-between;

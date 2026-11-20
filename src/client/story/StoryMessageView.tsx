@@ -21,9 +21,9 @@ import type { SwipeBrowsing } from "../workspace";
 import { memo, type ReactNode, type TouchEvent, useEffect, useRef, useState } from "react";
 import { BoxMessageActions } from "../box-windows/BoxMessageActions";
 import {
+	type InlineMessageDraft,
 	type StoryMessage,
 	type StoryVariant,
-	displayedVariantId as getDisplayedVariantId,
 	visibleVariantContent,
 } from "../story";
 import { formatTimestamp } from "../lib/format";
@@ -32,7 +32,6 @@ import { Portrait } from "./Portrait";
 import { ProseEditor } from "../editor/ProseEditor";
 import { LensedProse, type StoryLens } from "./LensedProse";
 import { SwipeBrowser } from "./SwipeBrowser";
-import { useSaveGuard } from "../SaveGuard";
 import { useQueryClient } from "@tanstack/react-query";
 import { prefetchNeighbourText, useVariantText, useVariantsText } from "./variant-text";
 import { useStreamedVariant, useStreamedVariants } from "./variant-streams";
@@ -47,13 +46,14 @@ import { useStreamedVariant, useStreamedVariants } from "./variant-streams";
 //  Memoized: while a reply streams, only the row whose text changed renders.
 export const StoryMessageView = memo(function StoryMessageView({
 	conversationId,
+	historyRevision,
 	paintDisabledReason,
 	onPaint,
 	message,
 	isLatest = false,
-	displayedVariantId,
+	displayedVariantId: visibleId,
 	mutationsDisabled = false,
-	saveAsNewDisabled = false,
+	contentWritesDisabled = false,
 	generationActive = false,
 	previewDownstream = false,
 	previewTarget = false,
@@ -61,7 +61,13 @@ export const StoryMessageView = memo(function StoryMessageView({
 	onMoveSwipe,
 	onSelectVariant,
 	swipeBrowsing,
-	onEdit,
+	draft,
+	canSaveDraft,
+	canSaveDraftAsNew,
+	onOpenDraft,
+	onEditDraft,
+	onSaveDraft,
+	onCloseDraft,
 	continueLabel = "Continue",
 	onContinue,
 	onRegenerate,
@@ -77,18 +83,15 @@ export const StoryMessageView = memo(function StoryMessageView({
 	lens,
 }: {
 	conversationId: number;
+	historyRevision: number;
 	paintDisabledReason?: string;
 	onPaint?: (variantId: number) => void;
 	message: StoryMessage;
 	portrait?: PortraitImage | undefined;
 	isLatest?: boolean;
-	// The Variant to show when it differs from the persisted selection: a Preview's or a Requested selection's.
-	// Persisted activeSwipe remains untouched until the server applies the selection.
-	displayedVariantId?: number | null;
+	displayedVariantId: number | null;
 	mutationsDisabled?: boolean;
-	// @approved
-	//  The server refuses a new Variant while any Generation in the Chat runs.
-	saveAsNewDisabled?: boolean;
+	contentWritesDisabled?: boolean;
 	generationActive?: boolean;
 	// @approved
 	//  Causally downstream of the previewed Variant: the stored text stays
@@ -103,16 +106,22 @@ export const StoryMessageView = memo(function StoryMessageView({
 	onMoveSwipe: (messageId: number, direction: -1 | 1) => void;
 	onSelectVariant: (messageId: number, variantId: number) => void;
 	swipeBrowsing: SwipeBrowsing;
-	onEdit: (messageId: number, content: string, asNew: boolean) => Promise<boolean>;
+	draft: InlineMessageDraft | undefined;
+	canSaveDraft: boolean;
+	canSaveDraftAsNew: boolean;
+	onOpenDraft: (messageId: number, variant: StoryVariant, revision: number) => void;
+	onEditDraft: (messageId: number, text: string) => void;
+	onSaveDraft: (messageId: number, asNew: boolean, revision: number) => Promise<boolean>;
+	onCloseDraft: (messageId: number) => void;
 	continueLabel?: string;
 	onContinue?: (messageId: number) => void;
 	onRegenerate?: (messageId: number) => void;
 	onSibling?: (messageId: number) => void;
 	onReroll?: (messageId: number) => void;
-	onMovesChange?: ((messageId: number, moves: BoxMoves) => void) | undefined;
+	onMovesChange?: ((messageId: number, moves: BoxMoves, revision: number) => void) | undefined;
 	onInspect?: (messageId: number, variantId: number) => void;
 	onOpenInspector?: (box: string, focus: { messageId: number }) => void;
-	onDelete?: (messageId: number) => void;
+	onDelete?: (messageId: number, revision: number) => void;
 	onFork: (messageId: number) => void;
 	onRewind?: (messageId: number) => void;
 	// @approved
@@ -121,9 +130,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 	generationControls?: ReactNode;
 	lens?: StoryLens | undefined;
 }) {
-	const [isEditing, setIsEditing] = useState(false);
 	const [advancedActionsSelected, setAdvancedActionsSelected] = useState(false);
-	const visibleId = displayedVariantId ?? getDisplayedVariantId(message, null);
 	const streamed = useStreamedVariant(message.swipes.find((variant) => variant.id === visibleId));
 	const { variant: active, failed: textFailed } = useVariantText(conversationId, message.id, streamed);
 	const activeIndex = active === undefined
@@ -133,36 +140,15 @@ export const StoryMessageView = memo(function StoryMessageView({
 	const previousSwipeDisabled = (mutationsDisabled && !previewTarget) || activeIndex === 0;
 	const nextSwipeDisabled = (mutationsDisabled && !previewTarget) || (atLastSwipe && onSibling === undefined);
 	const [swipeDirection, setSwipeDirection] = useState<"next" | "previous">();
-	const [editText, setEditText] = useState("");
 	const authorName = message.authorName ?? "Unknown author";
-
-	useEffect(() => setIsEditing(false), [active?.id]);
-
-	const [editBase, setEditBase] = useState("");
-	const [changedElsewhere, setChangedElsewhere] = useState(false);
-	const [saving, setSaving] = useState(false);
+	const focusEditor = useRef(false);
+	const writesDisabled = mutationsDisabled || contentWritesDisabled;
+	const selected = message.swipes[message.activeSwipe];
 	const openEditor = () => {
-		if (!isEditing) setEditText(active?.content ?? "");
-		setEditBase(active?.content ?? "");
-		setChangedElsewhere(false);
-		setIsEditing(true);
+		if (draft !== undefined || writesDisabled || selected?.content == null) return;
+		focusEditor.current = true;
+		onOpenDraft(message.id, selected, historyRevision);
 	};
-	const saveEdit = async (asNew: boolean) => {
-		const duplicate = asNew && editText === editBase;
-		const value = duplicate ? editBase : editText.trim();
-		if ((!value && !duplicate && !hasMoves(message.moves)) || active === undefined || active.content === null) return false;
-		if (!asNew && active.content !== editBase) {
-			setEditBase(active.content);
-			setChangedElsewhere(true);
-			return false;
-		}
-		setSaving(true);
-		const applied = await onEdit(message.id, value, asNew);
-		setSaving(false);
-		if (applied) setIsEditing(false);
-		return applied;
-	};
-	useSaveGuard({ dirty: isEditing && editText !== editBase, saving, save: () => saveEdit(false), discard: () => setIsEditing(false) });
 	const movePrevious = () => {
 		setSwipeDirection("previous");
 		onMoveSwipe(message.id, -1);
@@ -216,7 +202,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 			setAdvancedActionsSelected(true);
 			return;
 		}
-		if (isEditing || Math.abs(dx) < 64 || Math.abs(dx) <= 2 * Math.abs(dy)) return;
+		if (draft !== undefined || Math.abs(dx) < 64 || Math.abs(dx) <= 2 * Math.abs(dy)) return;
 		if (event.target instanceof Element && event.target.closest("pre") !== null) return;
 		if (dx < 0 && !nextSwipeDisabled) moveNext();
 		if (dx > 0 && !previousSwipeDisabled) movePrevious();
@@ -272,41 +258,41 @@ export const StoryMessageView = memo(function StoryMessageView({
 					{onReroll !== undefined && <MessageAction label="Re-roll" disabled={mutationsDisabled} onClick={() => onReroll(message.id)}><Dices aria-hidden="true" /></MessageAction>}
 					{onInspect !== undefined && active !== undefined && <MessageAction label="Details" onClick={() => onInspect(message.id, active.id)}><Info aria-hidden="true" /></MessageAction>}
 					{lens !== undefined && onOpenInspector !== undefined && <BoxMessageActions conversation={lens.conversation} messageId={message.id} onOpen={onOpenInspector} />}
-					{onDelete !== undefined && <MessageAction label="Delete" className="edit-action delete-action" disabled={mutationsDisabled} onClick={() => {
-						if (window.confirm("Delete this Message?")) onDelete(message.id);
+					{onDelete !== undefined && <MessageAction label="Delete" className="edit-action delete-action" disabled={writesDisabled} onClick={() => {
+						if (window.confirm("Delete this Message?")) onDelete(message.id, historyRevision);
 					}}><Trash2 aria-hidden="true" /></MessageAction>}
 				</div>
 				</Tooltip.Provider>
 			</header>
-			<MoveChips moves={message.moves} disabled={mutationsDisabled}
-				onChange={onMovesChange === undefined ? undefined : (moves) => onMovesChange(message.id, moves)} />
-			{isEditing && active !== undefined ? (
+			<MoveChips moves={message.moves} disabled={writesDisabled}
+				onChange={onMovesChange === undefined ? undefined : (moves) => { if (!writesDisabled) onMovesChange(message.id, moves, historyRevision); }} />
+			{draft !== undefined ? (
 				<div className="message-editor">
 					<span>Edit Message</span>
-					<ProseEditor value={editText} onChange={setEditText} ariaLabel="Edit Message" autoFocus disabled={saving} />
-					{changedElsewhere && <small className="field-error" role="alert">Changed elsewhere. Save again to overwrite.</small>}
+					<ProseEditor value={draft.text} onChange={(text) => onEditDraft(message.id, text)} ariaLabel="Edit Message" autoFocus={focusEditor.current} disabled={draft.saving} />
+					{draft.conflict !== undefined && <small className="field-error" role="alert">{draft.conflict}</small>}
 					<div>
 						<button
 							className="secondary-button"
 							type="button"
-							disabled={mutationsDisabled || saving}
-							onClick={() => setIsEditing(false)}
+							disabled={draft.saving}
+							onClick={() => onCloseDraft(message.id)}
 						>
 							Cancel
 						</button>
 						<button
 							className="secondary-button"
 							type="button"
-							disabled={mutationsDisabled || saveAsNewDisabled || saving}
-							onClick={() => saveEdit(true)}
+							disabled={!canSaveDraftAsNew}
+							onClick={() => void onSaveDraft(message.id, true, historyRevision)}
 						>
 							Save as new Swipe
 						</button>
 						<button
 							className="primary-button"
 							type="button"
-							disabled={mutationsDisabled || saving}
-							onClick={() => saveEdit(false)}
+							disabled={!canSaveDraft}
+							onClick={() => void onSaveDraft(message.id, false, historyRevision)}
 						>
 							Save
 						</button>
@@ -347,7 +333,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 					<button
 						className="edit-action"
 						type="button"
-						disabled={mutationsDisabled || generationActive || active?.content === null}
+						disabled={writesDisabled || generationActive || selected?.content == null}
 						onClick={openEditor}
 					>
 						<Edit3 aria-hidden="true" /> Edit
@@ -393,7 +379,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 					<button ref={swipeCount} className="swipe-count" type="button" disabled={browsingDisabled} aria-haspopup="dialog" onClick={() => browse(true)} aria-label={`${activeIndex + 1} of ${message.swipes.length}, browse Swipes`}>
 						{activeIndex + 1} of {message.swipes.length}
 					</button>
-					{browsing && <SwipeBrowser mode={swipeBrowsing} variants={browsed} shownIndex={activeIndex} returnFocus={swipeCount} onClose={() => browse(false)} onSelect={selectVariant} />}
+					{browsing && <SwipeBrowser disabled={browsingDisabled} mode={swipeBrowsing} variants={browsed} shownIndex={activeIndex} returnFocus={swipeCount} onClose={() => browse(false)} onSelect={selectVariant} />}
 					<button
 						className="icon-button"
 						type="button"

@@ -1,11 +1,14 @@
-import { installFetch } from "./test-fixtures/conversation";
+import { historyMessage, historyPage, historyVariant, installFetch } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { flushHook, renderHook } from "./test-fixtures/render-hook";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
 import type { ConversationSummary, GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../shared/contract/generation-events";
-import { createStoryState, reduceStory, type StoryAction } from "./story";
+import { createStoryOverlays, readStory, reduceStoryOverlays, retireStoryOverlays, toStoryMessage, type StoryAction, type StoryWindow } from "./story";
+import { RequestedSendView } from "./story/RequestedSendView";
 
 const { useAssemblyController } = await import("./workspace/useAssemblyController");
 const originalFetch = globalThis.fetch;
@@ -132,10 +135,18 @@ describe("assembly session", () => {
 		await h.open();
 		await h.hook.act(async () => h.hook.current.sendPromptPlanPreview());
 		await flushHook();
-		expect(h.stories.reduce(reduceStory, createStoryState()).requestedGeneration).toEqual({
-			request: { kind: "send", content: "Draft" },
-			accepted: { generationId: 10, variantId: 30, sentRevision: 2 },
-		});
+		const overlays = h.stories.reduce(reduceStoryOverlays, createStoryOverlays());
+		const renderSend = (window: StoryWindow) => renderToStaticMarkup(createElement(RequestedSendView, {
+			story: readStory({ overlays: retireStoryOverlays(overlays, window, null), window, conversationId: 7, historyFailed: false, loadingMore: false }),
+			human: { id: 1, name: "Writer" }, model: { name: "Model" }, lens: undefined,
+		}));
+		const { page } = historyPage();
+		const awaitingHistory = renderSend({ page, revision: 2, messages: [] });
+		expect(awaitingHistory).toContain("Draft");
+		expect(awaitingHistory).toContain('aria-label="Model is writing"');
+
+		const messages = [toStoryMessage(historyMessage({ id: 20, variants: [historyVariant({ id: 30 })] }))];
+		expect(renderSend({ page, revision: 3, messages })).toBe("");
 	});
 
 	test("reopening the same request assembles a fresh plan", async () => {

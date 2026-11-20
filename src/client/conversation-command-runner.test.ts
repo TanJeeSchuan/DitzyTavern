@@ -166,10 +166,10 @@ describe("runConversationCommand", () => {
 		]);
 	});
 
-	test("a superseded surface adopts nothing and shows no notice", async () => {
+	test("a superseded surface never sends, adopts or shows a notice", async () => {
 		const events: string[] = [];
 		await run(events, applied(events), {}, { isCurrent: () => false });
-		expect(events).toEqual(["send:7"]);
+		expect(events).toEqual([]);
 	});
 
 	test("an operation outcome is forwarded untouched to the typed operation callback", async () => {
@@ -239,4 +239,13 @@ test("a refusal between two commands preserves the revision the first command pr
 	const last = run(events, applied(events));
 	expect(await Promise.all([first, refused, last])).toEqual([true, false, true]);
 	expect(events).toEqual(["send:7", "adopt:8", "send:8", "notice:No change applied.", "send:8", "adopt:7"]);
+});
+
+
+test("an exact command without a displayed base cannot borrow a queued revision", async () => {
+	const events: string[] = [];
+	const first = run(events, applied(events));
+	const unbased = run(events, applied(events), {}, { exact: true, revision: () => null });
+	expect(await Promise.all([first, unbased])).toEqual([true, false]);
+	expect(events).toEqual(["send:7", "adopt:7", `notice:${CONVERSATION_REVISION_UNAVAILABLE_NOTICE}`]);
 });

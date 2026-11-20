@@ -109,9 +109,11 @@ function Preview() {
 					<div className="story-content">
 						{messages.map((entry) => (
 							<StoryMessageView
+				historyRevision={1}
 								key={entry.id}
 								conversationId={1}
 								message={entry}
+								displayedVariantId={entry.swipes[entry.activeSwipe]?.id ?? null}
 								isLatest={entry.id === reply.id}
 								generationActive={entry.id === reply.id && generating}
 								onContinue={entry.id === reply.id && !generating ? () => {} : undefined}
@@ -119,7 +121,13 @@ function Preview() {
 								onMoveSwipe={() => {}}
 								onSelectVariant={() => {}}
 								swipeBrowsing="fan"
-								onEdit={async () => false}
+								draft={undefined}
+								canSaveDraft={false}
+								canSaveDraftAsNew={false}
+								onOpenDraft={() => {}}
+								onEditDraft={() => {}}
+								onCloseDraft={() => {}}
+								onSaveDraft={async () => false}
 								onFork={() => {}}
 								generationControls={entry.id === reply.id && generating && (
 									<GenerationControls

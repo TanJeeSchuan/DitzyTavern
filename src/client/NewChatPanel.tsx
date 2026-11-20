@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 import { AppSelect } from "@/components/ui/select";
 import { charactersQuery, type CharacterSummary } from "./character-library";
+import type { CommitNavigation, SaveNavigationController } from "./SaveGuard";
 import {
 	createNativeConversation,
 	emptySeatDraft,
@@ -169,8 +170,10 @@ function OpeningsField({
 }
 
 export function NewChatPanel({
+	beforeCreate,
 	onCreated,
 }: {
+	beforeCreate: SaveNavigationController["requestChatLeave"];
 	onCreated: (conversationId: number) => void;
 }) {
 	const [name, setName] = useState("");
@@ -194,9 +197,7 @@ export function NewChatPanel({
 			: characters.some((character) => character.id === modelSeat.characterId);
 	const ready = name.trim() !== "" && humanReady && modelReady && !pending;
 
-	const submit = async () => {
-		setValidationRevealed(true);
-		if (!ready) return;
+	const create = async (commit: CommitNavigation) => {
 		setPending(true);
 		setProblem(null);
 		try {
@@ -208,7 +209,7 @@ export function NewChatPanel({
 			switch (outcome.outcome) {
 				case "available":
 					invalidateChatLists(client);
-					onCreated(outcome.value.conversation.id);
+					commit(() => onCreated(outcome.value.conversation.id));
 					break;
 				case "conflict":
 					setProblem(
@@ -269,7 +270,10 @@ export function NewChatPanel({
 				className="primary-button"
 				type="button"
 				disabled={pending}
-				onClick={() => void submit()}
+				onClick={() => {
+					setValidationRevealed(true);
+					if (ready) beforeCreate((commit) => void create(commit));
+				}}
 			>
 				<Plus aria-hidden="true" /> Create Chat
 			</button>

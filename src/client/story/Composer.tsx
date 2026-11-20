@@ -1,5 +1,5 @@
 import { PenLine, Send, Square } from "lucide-react";
-import { useEffect, useImperativeHandle, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useImperativeHandle, useLayoutEffect, useRef, useState, useSyncExternalStore, type FormEvent, type ReactNode, type RefObject } from "react";
 import { ProseEditor, type ProseEditorHandle } from "../editor/ProseEditor";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { MoveChips } from "./MoveChips";
@@ -37,10 +37,23 @@ export function Composer({
 	const editorRef = useRef<ProseEditorHandle>(null);
 	const formRef = useRef<HTMLFormElement>(null);
 	const [focused, setFocused] = useState(false);
+	const pendingReveal = useRef<((editor: ProseEditorHandle) => void) | null>(null);
 	const revealEditor = (action: (editor: ProseEditorHandle) => void) => {
-		setFocused(true);
-		requestAnimationFrame(() => { if (editorRef.current !== null) action(editorRef.current); });
+		const editor = editorRef.current;
+		if (editor === null) return;
+		if (formRef.current?.closest("[inert]") === null) action(editor);
+		else {
+			pendingReveal.current = action;
+			setFocused(true);
+		}
 	};
+	useLayoutEffect(() => {
+		const action = pendingReveal.current;
+		const editor = editorRef.current;
+		if (action === null || editor === null || formRef.current?.closest("[inert]") !== null) return;
+		pendingReveal.current = null;
+		action(editor);
+	});
 	useImperativeHandle(ref, () => ({ insertReference: (name, hash) => revealEditor((editor) => editor.insertReference(name, hash)) }), []);
 	// @approved
 	// Disabling or swapping the focused control drops focus without a blur event, so read focus again when they change.
@@ -67,6 +80,7 @@ export function Composer({
 			className="composer"
 			data-disabled={!canWrite}
 			data-receded={isReceded}
+			inert={isReceded}
 			onSubmit={onSubmit}
 			onFocus={() => setFocused(true)}
 			onBlur={(event) => {

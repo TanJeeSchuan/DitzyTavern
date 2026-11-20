@@ -182,7 +182,7 @@ export function useGenerationController({
 				};
 			}),
 		});
-	}, [runner, streams, conversation, story]);
+	}, [runner, streams, conversation, story.messages]);
 
 	// @approved
 	//  Each observed event moves a session's cursor; the workspace reads only what changes when a session starts,

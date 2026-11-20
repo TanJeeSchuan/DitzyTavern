@@ -29,7 +29,7 @@ function MoveList<Move>({ name, box, icon, list, label, onChange, disabled }: {
 	//  occurrence.
 	const chips = labels.map((text, index) => ({ label: text, id: `${text}:${labels.slice(0, index).filter((earlier) => earlier === text).length}` }));
 	return <DragDropProvider onDragEnd={(event) => {
-		if (event.canceled || !isSortableOperation(event.operation)) return;
+		if (disabled || event.canceled || !isSortableOperation(event.operation)) return;
 		const { source } = event.operation;
 		if (source === null || source.initialIndex === source.index) return;
 		const next = [...list];
