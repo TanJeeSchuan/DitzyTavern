@@ -33,7 +33,8 @@ const STORY_COMMAND_NOTICES = {
 const noPresentation = () => undefined;
 
 type RequestedSelection = { baseRevision: number; messageId: number; request: RequestedWrite<number> };
-const selections = new WeakMap<AbortSignal, { running: boolean; pending: RequestedSelection | null }>();
+type SelectionSlot = { selection: RequestedSelection; claimed: boolean };
+const selections = new WeakMap<AbortSignal, SelectionSlot>();
 
 type StoryMessageActionsOptions = {
 	signal: AbortSignal;
@@ -69,47 +70,38 @@ export function useStoryMessageActions({
 	};
 	const requestSelection = async (conversationId: number, messageId: number, variantId: number, baseRevision: number) => {
 		const requested = { baseRevision, messageId, request: { value: variantId } };
-		const current = selections.get(signal) ?? { running: false, pending: null };
-		selections.set(signal, current);
-		if (current.pending !== null) dispatchStory({ type: "selection-settled", ...current.pending, revision: null });
-		current.pending = requested;
+		const previousSlot = selections.get(signal);
+		if (previousSlot !== undefined && !previousSlot.claimed) {
+			dispatchStory({ type: "selection-settled", ...previousSlot.selection, revision: null });
+			previousSlot.selection = requested;
+			dispatchStory({ type: "selection-requested", ...requested });
+			return;
+		}
+		const slot: SelectionSlot = { selection: requested, claimed: false };
+		selections.set(signal, slot);
 		dispatchStory({ type: "selection-requested", ...requested });
-		if (current.running) return;
-		current.running = true;
-		let replay = false;
-		let acceptedRevision = 0;
 		try {
-			while (current.pending !== null && !signal.aborted) {
-				let selected = current.pending;
-				const applied = await runConversationCommand({ ...surface, conversationId, revision: async (previous) => {
-					const minimum = Math.max(previous ?? 0, acceptedRevision);
-					const refreshed = replay || minimum > (current.pending?.baseRevision ?? 0) ? await waitForHistory(minimum).catch(() => undefined) : null;
-					const pending = current.pending;
-					if (pending === null) return null;
-					selected = pending;
-					current.pending = null;
-					if (refreshed === null) return pending.baseRevision;
-					if (refreshed === undefined || !isStoryReady(refreshed) || refreshed.revision < pending.baseRevision) return null;
-					const persisted = { ...refreshed, requestedSelections: new Map() };
-					const selection = classifyVariantSelection(persisted, pending.messageId, pending.request.value);
-					return selection.kind === "immediate" ? refreshed.revision : null;
-				} }, (expectedRevision) => applyConversationCommand(conversationId, expectedRevision, {
-					type: "select-variant", messageId: selected.messageId, variantId: selected.request.value,
-				}), {
-					notices: STORY_COMMAND_NOTICES,
-					onApplied: ({ revision }) => {
-						acceptedRevision = revision;
-						dispatchStory({ type: "selection-settled", ...selected, revision });
-					},
-				});
-				if (!applied && !signal.aborted) dispatchStory({ type: "selection-settled", ...selected, revision: null });
-				replay = true;
-			}
-		} catch {
-			if (current.pending !== null && !signal.aborted) dispatchStory({ type: "selection-settled", ...current.pending, revision: null });
+			const applied = await runConversationCommand({ ...surface, conversationId, revision: async (previous) => {
+				const minimum = previous ?? 0;
+				const needsHistory = previousSlot !== undefined || minimum > slot.selection.baseRevision;
+				const refreshed = needsHistory ? await waitForHistory(minimum).catch(() => undefined) : null;
+				slot.claimed = true;
+				const { baseRevision, messageId, request } = slot.selection;
+				if (refreshed === null) return baseRevision;
+				if (refreshed === undefined || !isStoryReady(refreshed) || refreshed.revision < baseRevision) return null;
+				const persisted = { ...refreshed, requestedSelections: new Map() };
+				const selection = classifyVariantSelection(persisted, messageId, request.value);
+				return selection.kind === "immediate" ? refreshed.revision : null;
+			} }, (expectedRevision) => {
+				const { messageId, request } = slot.selection;
+				return applyConversationCommand(conversationId, expectedRevision, { type: "select-variant", messageId, variantId: request.value });
+			}, {
+				notices: STORY_COMMAND_NOTICES,
+				onApplied: ({ revision }) => dispatchStory({ type: "selection-settled", ...slot.selection, revision }),
+			});
+			if (!applied && !signal.aborted) dispatchStory({ type: "selection-settled", ...slot.selection, revision: null });
 		} finally {
-			current.pending = null;
-			current.running = false;
+			if (selections.get(signal) === slot) selections.delete(signal);
 		}
 	};
 

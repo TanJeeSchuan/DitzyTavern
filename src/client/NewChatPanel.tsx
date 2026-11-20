@@ -5,6 +5,7 @@ import { Plus } from "lucide-react";
 import { useState } from "react";
 import { AppSelect } from "@/components/ui/select";
 import { charactersQuery, type CharacterSummary } from "./character-library";
+import type { CommitNavigation, SaveNavigationController } from "./SaveGuard";
 import {
 	createNativeConversation,
 	emptySeatDraft,
@@ -172,7 +173,7 @@ export function NewChatPanel({
 	beforeCreate,
 	onCreated,
 }: {
-	beforeCreate: (create: (discard: () => void) => void) => void;
+	beforeCreate: SaveNavigationController["requestChatLeave"];
 	onCreated: (conversationId: number) => void;
 }) {
 	const [name, setName] = useState("");
@@ -196,7 +197,7 @@ export function NewChatPanel({
 			: characters.some((character) => character.id === modelSeat.characterId);
 	const ready = name.trim() !== "" && humanReady && modelReady && !pending;
 
-	const create = async (discard: () => void) => {
+	const create = async (commit: CommitNavigation) => {
 		setPending(true);
 		setProblem(null);
 		try {
@@ -208,8 +209,7 @@ export function NewChatPanel({
 			switch (outcome.outcome) {
 				case "available":
 					invalidateChatLists(client);
-					discard();
-					onCreated(outcome.value.conversation.id);
+					commit(() => onCreated(outcome.value.conversation.id));
 					break;
 				case "conflict":
 					setProblem(
@@ -272,7 +272,7 @@ export function NewChatPanel({
 				disabled={pending}
 				onClick={() => {
 					setValidationRevealed(true);
-					if (ready) beforeCreate((discard) => void create(discard));
+					if (ready) beforeCreate((commit) => void create(commit));
 				}}
 			>
 				<Plus aria-hidden="true" /> Create Chat

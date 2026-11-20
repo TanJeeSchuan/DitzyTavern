@@ -11,6 +11,7 @@ import {
 	SaveNavigationContext,
 	UnsavedChangesDialog,
 	useSaveNavigation,
+	type CommitNavigation,
 	type SaveGuard,
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
@@ -89,7 +90,7 @@ export function ActiveWritingWorkspace({
 	);
 	const [navigationOpen, setNavigationOpen] = useState(false);
 	const [delegateTarget, setDelegateTarget] = useState<{ box: BoxId; request: number }>();
-	const [forkAt, setForkAt] = useState<ForkConversationBody["at"] | null>(null);
+	const [forkRequest, setForkRequest] = useState<{ at: ForkConversationBody["at"]; commit: CommitNavigation } | null>(null);
 	const [forkNotice, setForkNotice] = useState<string | null>(null);
 	const saveNavigation = useSaveNavigation();
 	const inspectionNavigation = useSaveNavigation();
@@ -203,38 +204,38 @@ export function ActiveWritingWorkspace({
 		dispatchPanel({ type: "workspace-reset" });
 	};
 	const selectChat = (chatId: string, messageId: number | null = null) => {
-		// @approved
-		//  Workspace chat ids are wire strings; the story read model speaks
-		// numeric Conversation ids, so the coercion happens at this boundary.
-		if (
-			previewNavigationNeedsConfirmation(
-				story.preview,
-				Number(session.activeChatId),
-				Number(chatId),
-			) &&
-			!window.confirm("Discard Preview mode and open another Chat?")
-		) return;
-		openChat(chatId, messageId);
+		const open = () => openChat(chatId, messageId);
+		if (chatId === session.activeChatId) {
+			saveNavigation.requestNavigation(open);
+			return;
+		}
+		saveNavigation.requestChatLeave((commit) => {
+			if (previewNavigationNeedsConfirmation(story.preview, Number(session.activeChatId), Number(chatId)) &&
+				!window.confirm("Discard Preview mode and open another Chat?")) return;
+			commit(open);
+		});
 	};
 
 	const conversation = session.conversation;
 	const generationRunning = generation.isGenerating || (conversation?.activeGenerations.length ?? 0) > 0;
 	const fork = async (name: string, trimVariants: boolean): Promise<string | null> => {
-		if (conversation === null || forkAt === null) return "The Chat is not available.";
+		if (conversation === null || forkRequest === null) return "The Chat is not available.";
 		let error: string | null = null;
 		const applied = await runConversationCommand({
 			conversationId: conversation.id, revision: () => isStoryReady(story) ? story.revision : null, exact: true,
 			onConversationChange: session.setConversation, setNotice: (notice) => { error = notice; },
 			isCurrent: () => !session.signal.aborted,
 		}, async (revision) => {
-			const result = await forkConversation(conversation.id, { expectedRevision: revision, at: forkAt, name, trimVariants });
+			const result = await forkConversation(conversation.id, { expectedRevision: revision, at: forkRequest.at, name, trimVariants });
 			return result.outcome === "available" ? { outcome: "operation", operation: result.value } : result;
 		}, { onOperation: (result) => {
 			invalidateChatLists(client);
-			openChat(String(result.conversation.id));
-			if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
+			forkRequest.commit(() => {
+				openChat(String(result.conversation.id));
+				if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
+			});
 			setForkNotice(result.omittedBoxes.length ? `Boxes not copied because they are not installed: ${result.omittedBoxes.join(", ")}.` : null);
-			setForkAt(null);
+			setForkRequest(null);
 		} });
 		return applied ? null : error ?? "The Fork could not be created. Try again.";
 	};
@@ -245,8 +246,7 @@ export function ActiveWritingWorkspace({
 	const openForkSource = () => {
 		const source = conversation?.forkedFrom;
 		if (!source) return;
-		const navigate = String(source.conversationId) === session.activeChatId ? saveNavigation.requestNavigation : saveNavigation.requestChatLeave;
-		navigate(() => selectChat(String(source.conversationId), source.messageId));
+		selectChat(String(source.conversationId), source.messageId);
 	};
 	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const generationDetailsTarget = panelState.generationDetailsTarget;
@@ -333,13 +333,10 @@ export function ActiveWritingWorkspace({
 				onSwipeBrowsingChange={setSwipeBrowsing}
 				inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 				onInspectPromptPlanBeforeGeneratingChange={setInspectPromptPlanBeforeGenerating}
-				onSelectChat={(chatId) => {
-					const navigate = chatId === session.activeChatId ? saveNavigation.requestNavigation : saveNavigation.requestChatLeave;
-					navigate(() => selectChat(chatId));
-				}}
+				onSelectChat={selectChat}
 				onNewChat={onNewChat}
 				onClose={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-closed" }))}
-				onImportLaunched={(id) => saveNavigation.requestChatLeave(() => onImportLaunched(id))}
+				onImportLaunched={(id) => saveNavigation.requestChatLeave((commit) => commit(() => onImportLaunched(id)))}
 				onActiveChatDeleted={onReload}
 				conversation={session.conversation}
 				onConversationChange={session.setConversation}
@@ -366,9 +363,9 @@ export function ActiveWritingWorkspace({
 				generation={generation}
 				preview={preview}
 				boxWindows={boxWindows}
-				onFork={(at) => saveNavigation.requestChatLeave(() => {
+				onFork={(at) => saveNavigation.requestChatLeave((commit) => {
 					if ("rewind" in at && (generation.draft.get().trim() !== "" || hasMoves(generation.moves)) && !window.confirm("Replace the current draft and Moves with the rewound Message?")) return;
-					setForkAt(at);
+					setForkRequest({ at, commit });
 				})}
 				swipeBrowsing={swipeBrowsing}
 				onEnterPreview={(enter) => inspectionNavigation.requestNavigation(() => {
@@ -482,7 +479,7 @@ export function ActiveWritingWorkspace({
 				/>
 			)}
 			</CoveredLayer>
-			{newChatOpen && <NewChatSurface beforeCreate={saveNavigation.prepareChatLeave} onCreated={onNewChatCreated} onClose={onNewChatClose} />}
+			{newChatOpen && <NewChatSurface beforeCreate={saveNavigation.requestChatLeave} onCreated={onNewChatCreated} onClose={onNewChatClose} />}
 		</div>
 		<GenerationErrorToast
 			error={generation.generationError}
@@ -495,7 +492,7 @@ export function ActiveWritingWorkspace({
 			<Toast.Description className="workspace-toast-description">{forkNotice}</Toast.Description>
 			<Toast.Close className="icon-button" aria-label="Dismiss Fork notice"><X aria-hidden="true" /></Toast.Close>
 		</Toast.Root>}
-		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generationRunning} onClose={() => setForkAt(null)} onFork={fork} />}
+		{forkRequest !== null && conversation !== null && <ForkDialog name={conversation.name} running={generationRunning} onClose={() => setForkRequest(null)} onFork={fork} />}
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
 		<UnsavedChangesDialog {...inspectionNavigation.dialogProps} />

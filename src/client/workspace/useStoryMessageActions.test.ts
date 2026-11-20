@@ -274,6 +274,30 @@ describe("Requested selection", () => {
 		expect(harness.shownVariantId()).toBe(101);
 	});
 
+	test("a Send reaches the command queue after a pending Swipe and its coalesced choice", async () => {
+		const harness = createHarness({ kind: "applied" });
+		const release = harness.hold();
+		const first = harness.swipe(10, 1);
+		try {
+			await Bun.sleep(0);
+			expect(harness.fetches).toHaveLength(1);
+			const pending = harness.swipe(10, 1);
+			const sendSelection = Promise.withResolvers<number | undefined>();
+			const send = queueConversationCommand(1, async () => {
+				sendSelection.resolve(harness.commands.at(-1)?.action.variantId);
+				return null;
+			});
+			const latest = harness.swipe(10, 1);
+			release();
+			await withDeadline(Promise.all([first, pending, latest, send]), "the Swipes and Send to settle", 2_000);
+			expect(await withDeadline(sendSelection.promise, "the Variant selected when Send starts", 1_000)).toBe(103);
+			expect(harness.commands.map(({ action }) => action.variantId)).toEqual([101, 103]);
+		} finally {
+			release();
+			await withDeadline(first, "the first Swipe to settle", 2_000);
+		}
+	});
+
 	test("a queued Swipe drops a direct selection that now needs Preview", async () => {
 		const harness = createHarness({ kind: "applied" });
 		const release = harness.hold();

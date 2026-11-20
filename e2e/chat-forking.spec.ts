@@ -112,3 +112,27 @@ test("forking protects an inline edit and Rewind asks before replacing a draft",
 	await expect(page.getByRole("textbox", { name: "Message draft" })).toHaveText("Existing draft");
 	await expect(page.getByRole("dialog", { name: "Fork Chat" })).toHaveCount(0);
 });
+
+for (const action of ["Fork", "Rewind"] as const) {
+	test(`canceling ${action} after approving Discard preserves the inline draft`, async ({ page, llm }) => {
+		await llm.chat({ chunks: ["A reply."] });
+		await page.goto("/");
+		await send(page, "Original guidance.");
+		const reply = story(page).locator("article").last();
+		await expect(reply.getByText("A reply.")).toBeVisible();
+		if (action === "Rewind") await page.getByRole("textbox", { name: "Message draft" }).fill("Existing draft");
+		await reply.getByRole("button", { name: "Edit", exact: true }).click();
+		const editor = reply.getByRole("textbox", { name: "Edit Message" });
+		await editor.fill("Unsaved edit");
+
+		const source = action === "Fork" ? reply : story(page).locator("article").filter({ hasText: "Original guidance." });
+		await source.hover();
+		await source.getByRole("button", { name: action, exact: true }).click();
+		if (action === "Rewind") page.once("dialog", (dialog) => void dialog.dismiss());
+		await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Discard", exact: true }).click();
+		const fork = page.getByRole("dialog", { name: "Fork Chat" });
+		if (action === "Fork") await fork.getByRole("button", { name: "Cancel", exact: true }).click();
+		await expect(fork).toBeHidden();
+		await expect(editor).toHaveText("Unsaved edit");
+	});
+}

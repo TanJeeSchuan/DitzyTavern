@@ -1,12 +1,13 @@
 import { NewChatPanel } from "../NewChatPanel";
 import { PanelHeader } from "../PanelHeader";
+import type { SaveNavigationController } from "../SaveGuard";
 
 export function NewChatSurface({
-	beforeCreate = (create) => create(() => undefined),
+	beforeCreate = (create) => create((navigate) => navigate()),
 	onCreated,
 	onClose,
 }: {
-	beforeCreate?: (create: (discard: () => void) => void) => void;
+	beforeCreate?: SaveNavigationController["requestChatLeave"];
 	onCreated: (conversationId: number) => void;
 	onClose: () => void;
 }) {
