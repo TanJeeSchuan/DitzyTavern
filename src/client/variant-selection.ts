@@ -15,6 +15,7 @@ type SelectionMode = { kind: "confirm" } | { kind: "swipe"; waitForHistory: Sele
 type RequestedSelection = { baseRevision: number; confirmed: boolean; messageId: number; request: RequestedWrite<number> };
 type SelectionSlot = { selection: RequestedSelection; claimed: boolean };
 const selections = new WeakMap<AbortSignal, SelectionSlot>();
+const target = ({ messageId, request }: RequestedSelection) => ({ messageId, request });
 
 export async function requestVariantSelection(
 	{ signal, story, dispatchStory, setConversation }: VariantSelectionSurface,
@@ -30,14 +31,14 @@ export async function requestVariantSelection(
 	const requested = { baseRevision, messageId, confirmed, request: { value: variantId } };
 	const previousSlot = selections.get(signal);
 	if (previousSlot !== undefined && !previousSlot.claimed && !confirmed && !previousSlot.selection.confirmed) {
-		dispatchStory({ type: "selection-settled", ...previousSlot.selection, revision: null });
+		dispatchStory({ type: "selection-settled", ...target(previousSlot.selection), revision: null });
 		previousSlot.selection = requested;
-		dispatchStory({ type: "selection-requested", ...requested });
+		dispatchStory({ type: "selection-requested", ...target(requested) });
 		return;
 	}
 	const slot: SelectionSlot = { selection: requested, claimed: false };
 	selections.set(signal, slot);
-	dispatchStory({ type: confirmed ? "preview-confirmed" : "selection-requested", ...requested });
+	dispatchStory({ type: confirmed ? "preview-confirmed" : "selection-requested", ...target(requested) });
 	try {
 		const applied = await runConversationCommand({ ...surface, conversationId, revision: async (previous, queued) => {
 			if (mode.kind === "confirm") return baseRevision;
@@ -54,9 +55,9 @@ export async function requestVariantSelection(
 			const { messageId, request } = slot.selection;
 			return applyConversationCommand(conversationId, expectedRevision, { type: "select-variant", messageId, variantId: request.value });
 		}, {
-			onApplied: ({ revision }) => dispatchStory({ type: "selection-settled", ...slot.selection, revision }),
+			onApplied: ({ revision }) => dispatchStory({ type: "selection-settled", ...target(slot.selection), revision }),
 		});
-		if (!applied && !signal.aborted) dispatchStory({ type: "selection-settled", ...slot.selection, revision: null });
+		if (!applied && !signal.aborted) dispatchStory({ type: "selection-settled", ...target(slot.selection), revision: null });
 	} finally {
 		if (selections.get(signal) === slot) selections.delete(signal);
 	}
