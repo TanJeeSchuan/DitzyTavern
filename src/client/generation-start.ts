@@ -36,6 +36,9 @@ const idle = (visit: AbortSignal, last: StartRequest | null, error: string | nul
 /** @approved A start belongs to the visit it began in; any other visit sees an idle start with nothing to retry. */
 export const generationStartAt = (state: GenerationStart | null, visit: AbortSignal): GenerationStart => state?.visit === visit ? state : idle(visit, null);
 
+export const awaitsGenerationAcceptance = (start: GenerationStart): boolean =>
+	start.phase === "starting" || (start.phase === "inspecting" && start.acceptance.status === "accepting");
+
 const transition = (state: GenerationStart, event: GenerationStartEvent): GenerationStart => {
 	const { visit, last } = state;
 	switch (event.type) {
@@ -47,7 +50,7 @@ const transition = (state: GenerationStart, event: GenerationStartEvent): Genera
 		case "accepting":
 			return state.phase === "inspecting" && state.acceptance.status !== "accepting" ? { ...state, last: state.request, acceptance: { status: "accepting" } } : state;
 		case "start-accepted":
-			return state.phase === "starting" || (state.phase === "inspecting" && state.acceptance.status === "accepting") ? idle(visit, last) : state;
+			return awaitsGenerationAcceptance(state) ? idle(visit, last) : state;
 		case "failed":
 			if (state.phase === "inspecting") return state.acceptance.status === "accepting" ? { ...state, acceptance: { status: "failed", error: event.error } } : state;
 			return state.phase === "preparing" || state.phase === "starting" ? idle(visit, last, event.error) : state;

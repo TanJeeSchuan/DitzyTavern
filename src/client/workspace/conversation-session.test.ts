@@ -1346,6 +1346,46 @@ test("selectChat retires a queued command before dispatch and leaves the replace
 	}
 });
 
+test("a queued Swipe after a refused write uses current history while rendering is paused", async () => {
+	const { queueConversationCommand } = await import("../conversation-command-runner");
+	let revision = 5;
+	const h = await harness(async ({ url, init }) => {
+		if (init?.method === "POST") return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+		const history = page(1, 1, revision);
+		history.messages.at(-1)!.variants.push(historyVariant({ id: 1099, position: 2, selected: false }));
+		return Response.json(history);
+	});
+	const frames = new Map<number, FrameRequestCallback>();
+	let nextFrame = 0;
+	Object.assign(window, {
+		requestAnimationFrame: (callback: FrameRequestCallback) => { frames.set(++nextFrame, callback); return nextFrame; },
+		cancelAnimationFrame: (id: number) => frames.delete(id),
+	});
+	const preceding = Promise.withResolvers<false>();
+	const refused = queueConversationCommand(1, () => withDeadline(preceding.promise, "the refused write", 1_000));
+	let swipe = Promise.resolve();
+	try {
+		await h.hook.act(async () => { swipe = h.hook.current.selectSwipe(106, 1099); });
+		const following = queueConversationCommand(1, async (revision) => revision);
+		await h.hook.act(async () => {
+			preceding.resolve(false);
+			expect(await withDeadline(following, "the command after the queued Swipe", 1_000)).toBe(6);
+		});
+		expect(h.requests.filter(({ init }) => init?.method === "POST").map(({ init }) => JSON.parse(String(init?.body)).action.type)).toEqual(["select-variant"]);
+	} finally {
+		preceding.resolve(false);
+		await h.hook.act(async () => {
+			while (frames.size > 0) {
+				const pending = [...frames.values()];
+				frames.clear();
+				for (const frame of pending) frame(0);
+			}
+			await withDeadline(Promise.all([refused, swipe]), "the queued Swipe to settle", 1_000);
+		});
+	}
+});
+
 test("retiring a visit releases a queued Swipe even when the renderer stops drawing frames", async () => {
 	let revision = 5;
 	const h = await harness(async ({ url, init }) => {

@@ -5,7 +5,7 @@ export function usePreviewController(surface: VariantSelectionSurface) {
 	const cancelPreview = () => dispatchStory({ type: "preview-changed", preview: null });
 	const confirmPreview = async () => {
 		const preview = story.preview;
-		if (preview !== null) await requestVariantSelection(surface, preview.messageId, preview.variantId, true);
+		if (preview !== null) await requestVariantSelection(surface, preview.messageId, preview.variantId, { kind: "confirm" });
 	};
 	return { cancelPreview, confirmPreview };
 }

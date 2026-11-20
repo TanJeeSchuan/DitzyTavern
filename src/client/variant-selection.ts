@@ -8,20 +8,22 @@ export type VariantSelectionSurface = {
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
 	setConversation: (conversation: ConversationSummary | null) => void;
-	waitForHistory: (minimumRevision: number) => Promise<StoryState>;
 };
 
+export type SelectionHistory = (minimumRevision: number) => Promise<StoryState>;
+type SelectionMode = { kind: "confirm" } | { kind: "swipe"; waitForHistory: SelectionHistory };
 type RequestedSelection = { baseRevision: number; confirmed: boolean; messageId: number; request: RequestedWrite<number> };
 type SelectionSlot = { selection: RequestedSelection; claimed: boolean };
 const selections = new WeakMap<AbortSignal, SelectionSlot>();
 
 export async function requestVariantSelection(
-	{ signal, story, dispatchStory, setConversation, waitForHistory }: VariantSelectionSurface,
+	{ signal, story, dispatchStory, setConversation }: VariantSelectionSurface,
 	messageId: number,
 	variantId: number,
-	confirmed: boolean,
+	mode: SelectionMode,
 ) {
 	if (signal.aborted || !isStoryReady(story)) return;
+	const confirmed = mode.kind === "confirm";
 	const conversationId = story.conversationId;
 	const baseRevision = story.revision;
 	const surface = { exact: !confirmed, onConversationChange: setConversation, setNotice: () => {}, isCurrent: () => !signal.aborted };
@@ -38,9 +40,9 @@ export async function requestVariantSelection(
 	dispatchStory({ type: confirmed ? "preview-confirmed" : "selection-requested", ...requested });
 	try {
 		const applied = await runConversationCommand({ ...surface, conversationId, revision: async (previous, queued) => {
-			if (confirmed) return baseRevision;
+			if (mode.kind === "confirm") return baseRevision;
 			const needsHistory = previousSlot !== undefined || queued;
-			const refreshed = needsHistory ? await waitForHistory(previous ?? 0).catch(() => undefined) : null;
+			const refreshed = needsHistory ? await mode.waitForHistory(previous ?? 0).catch(() => undefined) : null;
 			slot.claimed = true;
 			const { baseRevision: selectionRevision, messageId, request } = slot.selection;
 			if (refreshed === null) return selectionRevision;

@@ -1,4 +1,4 @@
-import { requestVariantSelection, type VariantSelectionSurface } from "../variant-selection";
+import { requestVariantSelection, type SelectionHistory, type VariantSelectionSurface } from "../variant-selection";
 import type { BoxMoves } from "../../shared/contract/box-generation";
 import { runConversationCommand } from "../conversation-command-runner";
 import {
@@ -26,6 +26,7 @@ const STORY_COMMAND_NOTICES = {
 const noPresentation = () => undefined;
 
 type StoryMessageActionsOptions = VariantSelectionSurface & {
+	waitForHistory: SelectionHistory;
 	queueSwipeScroll: (messageId: number) => void;
 	canEnterPreview: boolean;
 	onEnterPreview: (enter: () => void) => void;
@@ -87,7 +88,7 @@ export function useStoryMessageActions({
 		}
 
 		queueSwipeScroll(selection.messageId);
-		await requestVariantSelection({ signal, story, dispatchStory, setConversation, waitForHistory }, selection.messageId, selection.variantId, false);
+		await requestVariantSelection({ signal, story, dispatchStory, setConversation }, selection.messageId, selection.variantId, { kind: "swipe", waitForHistory });
 	};
 
 	// @approved

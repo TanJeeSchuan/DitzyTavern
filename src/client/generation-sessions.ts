@@ -18,7 +18,7 @@ import type {
 	GenerationStatePayload,
 	GenerationStatus,
 } from "../shared/contract/generation-events";
-import { generationStartAt, reduceGenerationStart, type GenerationStart, type GenerationStartEvent } from "./generation-start";
+import { awaitsGenerationAcceptance, generationStartAt, reduceGenerationStart, type GenerationStart, type GenerationStartEvent } from "./generation-start";
 import type { GenerationStreamResult } from "./conversation-stream";
 
 // @approved
@@ -609,7 +609,7 @@ export function reduceGenerationSessions(
 // server-owned Active Generation (including reconnection gaps).
 export const hasActiveGenerationSessions = (state: GenerationSessionsState): boolean => {
 	const start = state.start;
-	if (start !== null && !start.visit.aborted && (start.phase === "starting" || (start.phase === "inspecting" && start.acceptance.status === "accepting"))) return true;
+	if (start !== null && !start.visit.aborted && awaitsGenerationAcceptance(start)) return true;
 	for (const session of state.sessions.values()) {
 		if (session.conversationId === state.activeConversationId && session.terminal === null) {
 			return true;

@@ -362,8 +362,11 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 		}
 	}, [client]);
 
-	const waitForHistory = async (minimumRevision = 0) => {
-		const requiredRevision = () => Math.max(minimumRevision, client.getQueryData<ConversationSummary | null>(conversationKey(id))?.revision ?? 0);
+	const waitForHistory = async (minimumRevision?: number) => {
+		const requiredRevision = () => Math.max(minimumRevision ?? 0, client.getQueryData<ConversationSummary | null>(conversationKey(id))?.revision ?? 0);
+		signal.throwIfAborted();
+		const current = currentSession().story;
+		if (minimumRevision !== undefined && isStoryReady(current) && current.revision >= requiredRevision()) return current;
 		const revision = client.getQueryData<HistorySnapshot>(windowKey)?.pages[0].revision ?? 0;
 		if (revision < requiredRevision()) {
 			await client.refetchQueries({ queryKey: refreshKey, type: "active" }, { cancelRefetch: false, throwOnError: true });
