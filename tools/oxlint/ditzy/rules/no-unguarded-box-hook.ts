@@ -7,6 +7,7 @@ const hooks = new Set([
 	"moves.render", "records.fold", "records.foldAll", "advance.run", "advance.fingerprint", "records.digest.run", "delegate.apply",
 ]);
 const guardOwners = new Set(["src/server/box/registry.ts", "src/server/box/sandboxed.ts"]);
+const boxHolders = new Set(["checked", "loaded", "participating"]);
 const existingCalls = new Map<string, readonly string[]>([
 	["src/server/authoring/scenario.ts", ["records.foldAll", "delegate.apply", "moves.render", "dependencies", "advance.run", "status"]], // Scenarios run already-checked hooks on their isolated Box runtime.
 	["src/server/box/digest.ts", ["status"]], // The digest worker calls the checked registry hooks under the job's cancellation policy.
@@ -17,8 +18,10 @@ const existingCalls = new Map<string, readonly string[]>([
 
 const boxReceiver = (expression: ESTree.Expression): boolean => {
 	const node = unwrapExpression(expression);
-	if (node.type === "Identifier") return node.name === "box" || node.name.endsWith("Box");
-	return node.type === "MemberExpression" && memberName(node) === "box";
+	if (node.type === "Identifier") return node.name === "box";
+	if (node.type !== "MemberExpression" || memberName(node) !== "box") return false;
+	const owner = unwrapExpression(node.object);
+	return owner.type === "Identifier" && boxHolders.has(owner.name);
 };
 
 const boxMemberPath = (expression: ESTree.Expression): string | undefined => {

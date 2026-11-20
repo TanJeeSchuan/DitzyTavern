@@ -37,27 +37,34 @@ const schemaTable = (source: SourceCode, path: string, argument: ESTree.Expressi
 		const binding = schemaBinding(source, path, node);
 		return binding?.type === "ImportSpecifier" ? moduleExportName(binding.imported) : undefined;
 	}
-	if (node.type === "MemberExpression" && node.object.type === "Identifier" &&
-		schemaBinding(source, path, node.object)?.type === "ImportNamespaceSpecifier") return memberName(node);
+	if (node.type === "MemberExpression") {
+		const namespace = unwrapExpression(node.object);
+		if (namespace.type === "Identifier" && schemaBinding(source, path, namespace)?.type === "ImportNamespaceSpecifier") return memberName(node);
+	}
 	return undefined;
 };
 
 const collectionConstructors = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
+const nativeCollection = (source: SourceCode, identifier: ESTree.IdentifierReference): boolean =>
+	collectionConstructors.has(identifier.name) && !referenceOf(source, identifier)?.resolved?.defs.length;
 
 function isCollection(source: SourceCode, expression: ESTree.Expression): boolean {
 	const receiver = unwrapExpression(expression);
 	const variable = receiver.type === "Identifier" ? referenceOf(source, receiver)?.resolved : undefined;
-	if (variable?.references.some((reference) => reference.isWrite() && !reference.init)) return false;
 	const binding = variable?.defs[0];
 	const annotation = binding?.name.type === "Identifier" ? binding.name.typeAnnotation?.typeAnnotation : undefined;
-	if (annotation?.type === "TSTypeReference" && annotation.typeName.type === "Identifier" && collectionConstructors.has(annotation.typeName.name)) return true;
+	if (annotation?.type === "TSTypeReference" && annotation.typeName.type === "Identifier" && nativeCollection(source, annotation.typeName)) return true;
 
 	const node = binding?.node;
-	const value = node?.type === "VariableDeclarator" && node.init !== null ? unwrapExpression(node.init) : receiver;
-	if (value.type === "NewExpression" && value.callee.type === "Identifier") return collectionConstructors.has(value.callee.name);
+	const init = node?.type === "VariableDeclarator" ? node.init : undefined;
+	const assignments = variable?.references.filter((reference) => reference.isWrite() && !reference.init) ?? [];
+	if (assignments.length > 1 || (init != null && assignments.length > 0)) return false;
+
+	const value = unwrapExpression(init ?? assignments[0]?.writeExpr ?? receiver);
+	if (value.type === "NewExpression" && value.callee.type === "Identifier") return nativeCollection(source, value.callee);
 	if (value.type !== "CallExpression" || value.callee.type !== "MemberExpression") return false;
 	const factory = value.callee;
-	return factory.object.type === "Identifier" && factory.object.name === "Map" && memberName(factory) === "groupBy";
+	return factory.object.type === "Identifier" && factory.object.name === "Map" && nativeCollection(source, factory.object) && memberName(factory) === "groupBy";
 }
 
 export const noConversationTableWritesRule = defineRule({

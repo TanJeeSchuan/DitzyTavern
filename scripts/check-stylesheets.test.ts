@@ -19,13 +19,13 @@ test("the stylesheet gate resolves cross-file declarations and checks fallback v
 			@PROPERTY --registered { syntax: "<color>"; INITIAL-VALUE: red; inherits: true; }
 			/* --input: black; */
 		`);
-		await write("app.css", '.item { color: var(--accent); border-color: var(--optional, var(--accent)); outline-color: var(--registered); fill: var(--tone); padding: var(--spacing); content: "var(--ignored)"; }');
+		await write("app.css", '.item { color: var(--accent/**/); border-color: var(--optional, var(--accent)); outline-color: var(--registered); fill: var(--tone); padding: var(--spacing); content: "var(--ignored)"; }');
 		await write("app.tsx", `<div className="bg-panel data-[theme=dark]:text-white [&_.dark:hover]:text-white before:content-['dark:mode']" />`);
 		const passing = run();
 		expect(passing.stderr.toString()).toBe("");
 		expect(passing.exitCode).toBe(0);
 
-		await write("app.css", '.item { color: var(--input, var(--missing)); @apply dark:bg-panel; } .other { color: var(--input); }');
+		await write("app.css", '.item { color: var(--input, var(/* before */--missing/* after */)); @apply dark:bg-panel; } .other { color: var(--input); }');
 		await write("app.tsx", '<div className="md:dark:@md:hover:bg-panel" />');
 		const failing = run();
 		expect(failing.exitCode).toBe(1);

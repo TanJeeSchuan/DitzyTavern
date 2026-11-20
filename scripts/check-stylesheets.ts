@@ -16,7 +16,9 @@ const declared = new Set<string>();
 const references = new Map<string, Set<string>>();
 const errors: string[] = [];
 const cssEscape = /\\(?:(?<hex>[\da-f]{1,6})(?:\r\n|[ \t\r\n\f])?|(?<literal>[^\r\n\f]))/gi;
-const noFallback = new RegExp(String.raw`"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|(?<![\w-])var\(\s*((?:${cssEscape.source}|[^\\\s,()'"])+)\s*\)`, "giu");
+const cssComment = String.raw`\/\*[\s\S]*?\*\/`;
+const cssGap = String.raw`(?:\s|${cssComment})*`;
+const noFallback = new RegExp(String.raw`"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'|${cssComment}|(?<![\w-])var\(${cssGap}((?:${cssEscape.source}|[^\\\s,()'"/])+)${cssGap}\)`, "giu");
 
 function cssIdentifier(value: string): string {
 	return value.replace(cssEscape, (_, hex: string | undefined, literal: string | undefined) => {
