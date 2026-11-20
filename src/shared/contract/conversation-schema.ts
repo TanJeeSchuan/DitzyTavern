@@ -228,8 +228,7 @@ export type ConversationSummary = Static<typeof conversationSummary>;
 // an alias because the HTTP runtime mutates response schemas in place — it
 // injects additionalProperties: false when it compiles a response
 // validator — and the canonical declaration must stay pristine for the
-// adapters that derive from it. The established export name stays for
-// every existing consumer.
+// adapters that derive from it.
 const conversationGenerationSettings = Type.Object({
 	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
 	...Value.Clone(canonicalGenerationSettings).properties,
