@@ -9,7 +9,7 @@
 		"src/boxes/*/{server.ts,shared-descriptor.ts,client.tsx,logic.ts,logic.js,ui.ts,ui.js}!", // Loaded from Box folders at runtime.
 		"e2e/server.ts", // Spawned by the browser harness. Its imports never satisfy production reachability.
 		"e2e/fixtures/boxes/*/{server.ts,shared-descriptor.ts,client.tsx}", // Loaded by the Box host in browser tests.
-		"scripts/{check-clones,publish-docker,write-build-metadata}.ts",
+		"scripts/{check-clones,check-stylesheets,publish-docker,write-build-metadata}.ts",
 		"scripts/stream-eyes/{eyes.mjs,preview.tsx,server.ts}", // Standalone trace CLI, Vite preview page and spawned preview server.
 		"tools/oxlint/*/index.ts" // Loaded by Oxlint.
 	],

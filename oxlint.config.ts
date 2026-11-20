@@ -56,5 +56,10 @@ export default defineConfig({
 		"ditzy/no-manual-conversation-transaction": "error",
 		"ditzy/no-conversation-internal-imports": "error",
 		"ditzy/no-server-runtime-imports-in-client": "error",
+		"ditzy/no-type-alias-rename": "error",
+		"ditzy/no-reexport-module": "error",
+		"ditzy/no-raw-server-fetch": "error",
+		"ditzy/no-unguarded-box-hook": "error",
+		"ditzy/no-conversation-table-writes": "error",
 	},
 });
