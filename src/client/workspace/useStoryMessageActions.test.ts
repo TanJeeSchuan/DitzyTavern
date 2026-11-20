@@ -150,10 +150,10 @@ function createHarness(mode: CommandMode, withLaterMessage = false, withMoves = 
 		story: story(),
 		dispatchStory,
 		setConversation,
+		waitForHistory: async () => { await beforeHistory(); publishHistory(appliedVariant); return story(); },
 	});
 	const actions = () => useStoryMessageActions({
 		...surface(),
-		waitForHistory: async () => { await beforeHistory(); publishHistory(appliedVariant); return story(); },
 		queueSwipeScroll() {},
 		canEnterPreview: true,
 		onEnterPreview: (enter) => {
@@ -368,6 +368,22 @@ describe("Requested selection", () => {
 			expect(harness.shownVariantId()).toBe(100);
 			expect(harness.activeVariantId()).toBe(100);
 		}
+	});
+
+	test("Confirm Change queued behind a Moves write selects the older Variant from refreshed history", async () => {
+		const harness = createHarness({ kind: "applied" }, true, true);
+		const release = harness.hold();
+		const moves = harness.removeMoves();
+		await harness.swipe(10, 1);
+		const confirming = harness.confirm();
+		release();
+		await Promise.all([moves, confirming]);
+		// Reject Confirm borrowing a revision without refreshing, or refusing the historical choice as an ordinary Swipe.
+		expect(harness.commands.map(({ expectedRevision, action }) => [expectedRevision, action.type, action.messageId, action.variantId])).toEqual([
+			[5, "set-message-moves", 9, undefined],
+			[6, "select-variant", 10, 101],
+		]);
+		expect(harness.shownVariantId()).toBe(101);
 	});
 
 	test("Preview blocks a later Swipe and sends only the older Variant confirmed by the writer", async () => {

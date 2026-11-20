@@ -755,7 +755,8 @@ test("an old Stop mutation cannot settle a newer Stop after A to B to A", async 
 		if (String(input).endsWith("/stop")) return responses[stops++]!.promise;
 		return new Promise<Response>((_, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("Detached")), { once: true }));
 	});
-	let conversation = { ...summary(), activeGenerations: [{ generationId: 7, messageId: 105, variantId: 1005, startedAt: "2026-01-01T00:00:00.000Z" }] };
+	const activeGenerations = [{ generationId: 7, messageId: 105, variantId: 1005, startedAt: "2026-01-01T00:00:00.000Z" }];
+	let conversation = { ...summary(), activeGenerations };
 	const activeChatIdRef = { current: "1" };
 	const dispatchStory = () => {};
 	let visit = new AbortController();
@@ -766,13 +767,13 @@ test("an old Stop mutation cannot settle a newer Stop after A to B to A", async 
 		inspectPromptPlanBeforeGenerating: false,
 	}), client);
 	let older: Promise<void> = Promise.resolve();
-	await hook.act(async () => { older = hook.current.stopGeneration(7); });
-	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 2 }; activeChatIdRef.current = "2"; });
+	await hook.act(async () => { older = hook.current.cancelGeneration(); });
+	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 2, activeGenerations: [] }; activeChatIdRef.current = "2"; });
 	await hook.rerender();
-	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 1 }; activeChatIdRef.current = "1"; });
+	await hook.act(async () => { hook.current.conversationSwitched(); reselect(); conversation = { ...conversation, id: 1, activeGenerations }; activeChatIdRef.current = "1"; });
 	await hook.rerender();
 	let newer: Promise<void> = Promise.resolve();
-	await hook.act(async () => { newer = hook.current.stopGeneration(7); });
+	await hook.act(async () => { newer = hook.current.cancelGeneration(); });
 	expect(stops).toBe(2);
 	expect(hook.current.stopPending).toBe(true);
 	await hook.act(async () => { responses[0]!.resolve(Response.json({ outcome: "stopped", generationId: 7 })); await older; });

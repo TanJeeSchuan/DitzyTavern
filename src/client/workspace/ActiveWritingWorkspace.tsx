@@ -137,6 +137,7 @@ export function ActiveWritingWorkspace({
 		if (assemblyActive) dispatchPanel({ type: "workspace-reset" });
 	}, [assemblyActive]);
 	const preview = usePreviewController({
+		waitForHistory: session.waitForHistory,
 		signal: session.signal,
 		story,
 		dispatchStory,

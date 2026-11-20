@@ -1,3 +1,4 @@
+import type { GenerationAttemptTarget } from "../shared/contract/generation-events";
 import type { GenerationPreviewBody } from "./conversation";
 
 // @approved
@@ -5,7 +6,7 @@ import type { GenerationPreviewBody } from "./conversation";
 export type StartRequest = { conversationId: number; seat: number | null; versions: Readonly<Record<string, string>>; request: GenerationPreviewBody };
 
 /** @approved
- * One Generation start, from the request to the server's answer. Once accepted, the pending starts hold the start until its session is observed.
+ * The local request held by the Generation session owner until acceptance installs its subscription.
  * `last` is the request most recently sent, offered again as a retry.
  */
 export type GenerationStart = { visit: AbortSignal; last: StartRequest | null } & (
@@ -23,7 +24,7 @@ export type GenerationStartEvent = { visit: AbortSignal } & (
 	| { type: "requested"; request: StartRequest; inspect: boolean }
 	| { type: "prepared" }
 	| { type: "accepting" }
-	| { type: "start-accepted" }
+	| { type: "start-accepted"; target: GenerationAttemptTarget }
 	| { type: "failed"; error: string }
 	| { type: "cancelled" }
 	| { type: "preview-refreshed" }
@@ -33,7 +34,7 @@ export type GenerationStartEvent = { visit: AbortSignal } & (
 const idle = (visit: AbortSignal, last: StartRequest | null, error: string | null = null): GenerationStart => ({ visit, last, phase: "idle", error });
 
 /** @approved A start belongs to the visit it began in; any other visit sees an idle start with nothing to retry. */
-export const generationStartAt = (state: GenerationStart, visit: AbortSignal): GenerationStart => state.visit === visit ? state : idle(visit, null);
+export const generationStartAt = (state: GenerationStart | null, visit: AbortSignal): GenerationStart => state?.visit === visit ? state : idle(visit, null);
 
 const transition = (state: GenerationStart, event: GenerationStartEvent): GenerationStart => {
 	const { visit, last } = state;

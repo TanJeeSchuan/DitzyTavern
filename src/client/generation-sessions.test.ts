@@ -533,7 +533,7 @@ describe("the Generation session collection", () => {
 	});
 
 	test.each(["failed", "applied", "stopped"] as const)("a live session missing from a refreshed snapshot still observes its %s terminal outcome", (outcome) => {
-		const accepted = run(createGenerationSessions(), { type: "generation-accepted", target: { ...target(7), conversationId: 42 } });
+		const accepted = run(createGenerationSessions(), observed([7]));
 		const refreshed = run(accepted.state, observed([]));
 		expect(refreshed.state.sessions.has(7)).toBe(true);
 		expect(refreshed.effects).toEqual([]);

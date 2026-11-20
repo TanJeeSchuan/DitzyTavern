@@ -65,7 +65,8 @@ Report 06, finding 1; report 05, findings 3 and 5.
 - [x] Slices a and b, one PR, ADR 0036 amended
 - [x] Slice c overlay model approved
 - [x] Slice c owner revision decision, invariant fixes and regression verification
-- [ ] Slice d (Astra), fixes (Sol), PR
+- [x] Slice d first implementation and focused checks (Astra)
+- [ ] Slice d review fixes, full verification and PR (Sol)
 
 ## Acceptance
 
@@ -126,3 +127,22 @@ Round nine BuildBuddy verification passed typecheck, 151 focused unit tests and 
 Round ten verified that a refused New Chat preserves the inline draft after Discard, and that an accepted write recovers a failed joined history read both with and without a committed transcript. Both behaviours failed on `8d978fe3`. Typecheck, 153 focused unit tests and 31 browser tests passed on BuildBuddy. Changed-file lint and `git diff --check` passed locally. [Baseline regressions](https://app.buildbuddy.io/invocation/2d117f5e-117c-4cf1-b738-f14ae30fbfbd), [final verification](https://app.buildbuddy.io/invocation/a3e65743-df6a-47a3-afd3-12ba9133e266).
 
 Round eleven verified that canceling Fork or declining the Rewind composer confirmation preserves the inline draft after Discard. The command queue test verified that a Send waits for a pending Swipe to apply its latest coalesced choice. All three regressions failed on `72e7e8dd`. BuildBuddy passed typecheck, 154 focused unit tests and 33 browser tests. Changed-file lint and `git diff --check` passed locally. [Baseline regressions](https://app.buildbuddy.io/invocation/5e14d4a9-79e0-4fae-8056-52f8b2344d1c) · [Passing run](https://app.buildbuddy.io/invocation/65d3ec89-942f-4c45-a675-63efae30b6be)
+
+
+### Slice d
+
+Current phase: first implementation complete; Sonnet 5.5 high review and Sol fixes/full verification remain before PR.
+
+- The Generation session owner holds the local request through preparation and acceptance. Acceptance installs the session keyed by Generation id in that same transition. The assembly controller reads that owner's start state; the pending-start reducer, acceptance handoff and retirement effect are deleted. Stream observations still go through the per-Variant store.
+- Ordinary Swipe and Confirm Change use `requestVariantSelection` for the requested overlay, command queue, refreshed history validation and settlement. Confirm permits the historical choice the writer approved; ordinary Swipes still refuse a choice that now needs Preview.
+- The controller no longer returns `stopGeneration` or `activeGenerationMessageIds`. Its old-visit Stop regression calls `cancelGeneration`. Leaving a Chat drops its visit's pending Stop flag as well as its stream cursor; the old response still cannot settle a replacement visit.
+
+Focused coverage:
+
+- `generation-session-runner.test.ts`: `a refresh that has not placed an accepted Generation cannot discard its stream` now drives the local request through acceptance before checking off-window streamed text. `a recovered active snapshot resumes the saved event cursor` and both `returning after an explicit/implicit Chat switch replays discarded text` cases cover cursor ownership.
+- `generation-sessions.test.ts`: `reconnection attempts are bounded and re-armed by observed liveness` preserves the reconnect cap.
+- `assembly-session.test.ts`: `acceptance subscribes while the story refresh is still in flight` uses the real owner and a fake stream transport. Existing acceptance, failure, retry and old-visit tests use the same owner.
+- `conversation-session.test.ts`: `an old Stop mutation cannot settle a newer Stop after A to B to A` now visits a Chat without any Generation before returning, so it also rejects carrying the first visit's pending Stop into the second.
+- `useStoryMessageActions.test.ts`: `Confirm Change queued behind a Moves write selects the older Variant from refreshed history` covers the shared transaction's explicit historical selection. Existing rapid Swipe, displaced selection, Preview and failed-command coverage stays in place.
+
+Verification: 158 focused tests passed across those five files, and typecheck passed. Both the queued Confirm and strengthened old-Stop probes fail with the corresponding baseline behavior restored. Changed-file lint passed with the two existing unapproved-comment warnings in `useAssemblyController.ts`; `git diff --check` passed. Full unit, e2e/Doherty, manual browser verification, review fixes and CI are left to Sol under the first-writer handoff. No servers were started.
