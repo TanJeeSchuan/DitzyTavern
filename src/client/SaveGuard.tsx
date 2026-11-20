@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 
 export type SaveGuard = {
 	dirty: boolean;
+	chatDraft?: boolean;
 	saving?: boolean;
 	canSave?: boolean;
 	save?: () => Promise<boolean>;
@@ -15,6 +16,8 @@ export const SaveGuardContext = createContext<(guard: RegisteredGuard) => () => 
 export const SaveGuardScope = createContext<string | undefined>(undefined);
 export const SaveNavigationContext = createContext<(action: () => void, scope?: string) => void>((action) => action());
 
+const chatLeave = Symbol("chat leave");
+
 const SAVE_ERROR = "The changes could not be saved. Keep editing to review them.";
 
 // @approved
@@ -25,13 +28,14 @@ const SAVE_ERROR = "The changes could not be saved. Keep editing to review them.
 export type SaveNavigationController = {
 	registerSaveGuard: (guard: RegisteredGuard) => () => void;
 	requestNavigation: (action: () => void, scope?: string) => void;
+	requestChatLeave: (action: () => void) => void;
 	dialogProps: ComponentProps<typeof UnsavedChangesDialog>;
 };
 
 export function useSaveNavigation(): SaveNavigationController {
 	const guards = useRef(new Set<RegisteredGuard>());
 	const [, bumpGuards] = useReducer((count: number) => count + 1, 0);
-	const [leave, setLeave] = useState<{ action: () => void; scope?: string } | null>(null);
+	const [leave, setLeave] = useState<{ action: () => void; scope?: string | typeof chatLeave } | null>(null);
 	const [leaveSaving, setLeaveSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -41,9 +45,11 @@ export function useSaveNavigation(): SaveNavigationController {
 		return () => { guards.current.delete(guard); bumpGuards(); };
 	}, []);
 
-	const guardsIn = useCallback((scope?: string) => [...guards.current].filter((guard) => scope === undefined || guard.scope === scope), []);
+	const guardsIn = useCallback((scope?: string | typeof chatLeave) => [...guards.current].filter((guard) =>
+		scope === chatLeave || (scope === undefined ? !guard.chatDraft : guard.scope === scope)
+	), []);
 	/** @approved A stable context value keeps stream updates from re-rendering every navigation consumer. */
-	const requestNavigation = useCallback((action: () => void, scope?: string) => {
+	const requestNavigation = useCallback((action: () => void, scope?: string | typeof chatLeave) => {
 		if (guardsIn(scope).some((guard) => guard.dirty || guard.saving)) { setError(null); setLeave({ action, scope }); }
 		else action();
 	}, [guardsIn]);
@@ -71,6 +77,7 @@ export function useSaveNavigation(): SaveNavigationController {
 	return {
 		registerSaveGuard,
 		requestNavigation,
+		requestChatLeave: (action) => requestNavigation(action, chatLeave),
 		dialogProps: {
 			open: leave !== null,
 			saving: leaveSaving || affected.some((guard) => guard.saving),
@@ -88,14 +95,16 @@ export function useSaveNavigation(): SaveNavigationController {
 	};
 }
 
-export function useSaveGuard(guard: SaveGuard) {
+export function useSaveGuard(guard: SaveGuard, scopeOverride?: string) {
 	const register = useContext(SaveGuardContext);
-	const scope = useContext(SaveGuardScope);
+	const inheritedScope = useContext(SaveGuardScope);
+	const scope = scopeOverride ?? inheritedScope;
 	const live = useRef<RegisteredGuard>({ ...guard, scope });
 	live.current = { ...guard, scope };
 	const hasSave = guard.save !== undefined;
 	const registered = useRef<RegisteredGuard>({
 		get scope() { return live.current.scope; },
+		get chatDraft() { return live.current.chatDraft; },
 		get dirty() { return live.current.dirty; },
 		get saving() { return live.current.saving; },
 		get canSave() { return live.current.canSave; },

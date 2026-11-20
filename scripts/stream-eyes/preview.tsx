@@ -121,8 +121,13 @@ function Preview() {
 								onMoveSwipe={() => {}}
 								onSelectVariant={() => {}}
 								swipeBrowsing="fan"
-								onEdit={async () => false}
-								waitForHistory={async () => {}}
+								draft={undefined}
+								canSaveDraft={false}
+								canSaveDraftAsNew={false}
+								onOpenDraft={() => {}}
+								onEditDraft={() => {}}
+								onCloseDraft={() => {}}
+								onSaveDraft={async () => false}
 								onFork={() => {}}
 								generationControls={entry.id === reply.id && generating && (
 									<GenerationControls

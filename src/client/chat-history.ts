@@ -41,7 +41,7 @@ export interface ChatHistoryPageRequest {
 	page?: number;
 }
 
-export type HistorySnapshot = { startPage: number | undefined; sourceMessageId: number | undefined; pages: [ChatHistoryPage, ...ChatHistoryPage[]] };
+export type HistorySnapshot = { sourceMessageId: number | undefined; pages: [ChatHistoryPage, ...ChatHistoryPage[]] };
 
 // @approved
 // Exact-source download outcome. Missing or corrupt exact artifacts are a

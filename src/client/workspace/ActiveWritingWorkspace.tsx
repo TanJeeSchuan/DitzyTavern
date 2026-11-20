@@ -245,7 +245,8 @@ export function ActiveWritingWorkspace({
 	const openForkSource = () => {
 		const source = conversation?.forkedFrom;
 		if (!source) return;
-		saveNavigation.requestNavigation(() => selectChat(String(source.conversationId), source.messageId));
+		const navigate = String(source.conversationId) === session.activeChatId ? saveNavigation.requestNavigation : saveNavigation.requestChatLeave;
+		navigate(() => selectChat(String(source.conversationId), source.messageId));
 	};
 	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const generationDetailsTarget = panelState.generationDetailsTarget;
@@ -332,10 +333,13 @@ export function ActiveWritingWorkspace({
 				onSwipeBrowsingChange={setSwipeBrowsing}
 				inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 				onInspectPromptPlanBeforeGeneratingChange={setInspectPromptPlanBeforeGenerating}
-				onSelectChat={(chatId) => saveNavigation.requestNavigation(() => selectChat(chatId))}
+				onSelectChat={(chatId) => {
+					const navigate = chatId === session.activeChatId ? saveNavigation.requestNavigation : saveNavigation.requestChatLeave;
+					navigate(() => selectChat(chatId));
+				}}
 				onNewChat={onNewChat}
 				onClose={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-closed" }))}
-				onImportLaunched={onImportLaunched}
+				onImportLaunched={(id) => saveNavigation.requestChatLeave(() => onImportLaunched(id))}
 				onActiveChatDeleted={onReload}
 				conversation={session.conversation}
 				onConversationChange={session.setConversation}
@@ -362,7 +366,7 @@ export function ActiveWritingWorkspace({
 				generation={generation}
 				preview={preview}
 				boxWindows={boxWindows}
-				onFork={(at) => saveNavigation.requestNavigation(() => {
+				onFork={(at) => saveNavigation.requestChatLeave(() => {
 					if ("rewind" in at && (generation.draft.get().trim() !== "" || hasMoves(generation.moves)) && !window.confirm("Replace the current draft and Moves with the rewound Message?")) return;
 					setForkAt(at);
 				})}
@@ -478,7 +482,7 @@ export function ActiveWritingWorkspace({
 				/>
 			)}
 			</CoveredLayer>
-			{newChatOpen && <NewChatSurface onCreated={onNewChatCreated} onClose={onNewChatClose} />}
+			{newChatOpen && <NewChatSurface onCreated={() => saveNavigation.requestChatLeave(onNewChatCreated)} onClose={onNewChatClose} />}
 		</div>
 		<GenerationErrorToast
 			error={generation.generationError}

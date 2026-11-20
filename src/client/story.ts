@@ -71,8 +71,20 @@ export type RequestedGeneration =
 	| { kind: "continuation" }
 	| { kind: "sibling"; messageId: number };
 
+export type InlineMessageDraft = {
+	variantId: number;
+	baseContent: string;
+	baseRevision: number;
+	text: string;
+	asNew: boolean;
+	saving: boolean;
+	acknowledged?: { revision: number; content: string; asNew: boolean } | undefined;
+	conflict?: string | undefined;
+};
+
 export type StoryOverlays = {
 	preview: Preview | null;
+	inlineDrafts: ReadonlyMap<number, InlineMessageDraft>;
 	requestedSelections: ReadonlyMap<number, WriteOverlay<number>>;
 	requestedMoves: ReadonlyMap<number, WriteOverlay<BoxMoves>>;
 	requestedGeneration: {
@@ -100,6 +112,7 @@ export const isStoryReady = (state: StoryState): state is Extract<StoryState, { 
 	state.status === "ready";
 
 export type StoryAction =
+	| { type: "inline-draft-changed"; messageId: number; draft: InlineMessageDraft | undefined; expected?: InlineMessageDraft | undefined }
 	| { type: "preview-changed"; preview: Preview | null }
 	| { type: "preview-confirmed"; messageId: number; request: RequestedWrite<number> }
 	| { type: "selection-requested"; messageId: number; request: RequestedWrite<number> }
@@ -112,6 +125,7 @@ export type StoryAction =
 
 export const createStoryOverlays = (): StoryOverlays => ({
 	preview: null,
+	inlineDrafts: new Map(),
 	requestedSelections: new Map(),
 	requestedMoves: new Map(),
 	requestedGeneration: null,
@@ -197,6 +211,13 @@ export const canOfferSiblingGeneration = ({
 
 export function reduceStoryOverlays(state: StoryOverlays, action: StoryAction): StoryOverlays {
 	switch (action.type) {
+		case "inline-draft-changed": {
+			const { messageId, draft, expected } = action;
+			const current = state.inlineDrafts.get(messageId);
+			if (current === draft || (expected !== undefined && current !== expected)) return state;
+			const inlineDrafts = draft === undefined ? without(state.inlineDrafts, messageId) : new Map(state.inlineDrafts).set(messageId, draft);
+			return { ...state, inlineDrafts };
+		}
 		case "preview-changed":
 			return { ...state, preview: action.preview };
 		case "preview-confirmed":
@@ -280,7 +301,7 @@ export function retireStoryOverlays(
 	const requestedGeneration = placed || ended ? null : state.requestedGeneration;
 	return preview === state.preview && requestedSelections === state.requestedSelections && requestedMoves === state.requestedMoves && requestedGeneration === state.requestedGeneration
 		? state
-		: { preview, requestedSelections, requestedMoves, requestedGeneration };
+		: { ...state, preview, requestedSelections, requestedMoves, requestedGeneration };
 }
 
 const noMessages: readonly StoryMessage[] = [];
@@ -376,7 +397,8 @@ export const shownMessage = (state: StoryState, message: StoryMessage): StoryMes
 const requestedSwipeId = -1;
 
 export const canWriteMessage = (state: StoryState, messageId: number) =>
-	state.preview === null && !hasRequestedSwipe(state, messageId) && !state.requestedSelections.has(messageId) && !state.requestedMoves.has(messageId);
+	state.preview === null && state.inlineDrafts.get(messageId)?.saving !== true &&
+	!hasRequestedSwipe(state, messageId) && !state.requestedSelections.has(messageId) && !state.requestedMoves.has(messageId);
 
 export const hasRequestedSwipe = (state: Pick<StoryOverlays, "requestedGeneration">, messageId: number): boolean =>
 	state.requestedGeneration?.request.kind === "sibling" && state.requestedGeneration.request.messageId === messageId;

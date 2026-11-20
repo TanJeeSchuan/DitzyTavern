@@ -145,12 +145,12 @@ test("a refused Swipe reveals the earlier accepted Variant before history catche
 	let overlays = reduceStoryOverlays(createStoryOverlays(), { type: "selection-requested", messageId, request: first });
 	overlays = reduceStoryOverlays(overlays, { type: "selection-requested", messageId, request: second });
 	overlays = reduceStoryOverlays(overlays, { type: "selection-settled", messageId, request: first, revision: 4 });
-	const pending = read(overlays);
+	const pending = read(overlays, history([older]));
 	expect(displayedVariantId(pending, pending.messages[0]!)).toBe(100);
 	overlays = reduceStoryOverlays(overlays, { type: "selection-settled", messageId, request: second, revision: null });
-	const refused = read(overlays);
+	const refused = read(overlays, history([older]));
 	expect(displayedVariantId(refused, refused.messages[0]!)).toBe(101);
-	const refreshed = read(overlays, history([older, later], 5));
+	const refreshed = read(overlays, history([older], 5));
 	expect(displayedVariantId(refreshed, refreshed.messages[0]!)).toBe(100);
 });
 

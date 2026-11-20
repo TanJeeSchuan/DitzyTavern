@@ -76,21 +76,23 @@ export function useStoryMessageActions({
 		dispatchStory({ type: "selection-requested", ...requested });
 		if (current.running) return;
 		current.running = true;
-		let refreshed: StoryState | undefined;
+		let replay = false;
+		let acceptedRevision = 0;
 		try {
 			while (current.pending !== null && !signal.aborted) {
 				let selected = current.pending;
-				let acceptedRevision: number | undefined;
-				const applied = await runConversationCommand({ ...surface, conversationId, revision: () => {
+				const applied = await runConversationCommand({ ...surface, conversationId, revision: async (previous) => {
+					const minimum = Math.max(previous ?? 0, acceptedRevision);
+					const refreshed = replay || minimum > (current.pending?.baseRevision ?? 0) ? await waitForHistory(minimum).catch(() => undefined) : null;
 					const pending = current.pending;
 					if (pending === null) return null;
 					selected = pending;
 					current.pending = null;
-					if (refreshed === undefined) return pending.baseRevision;
-					if (!isStoryReady(refreshed) || refreshed.preview !== null) return null;
-					if (refreshed.revision < pending.baseRevision) return pending.baseRevision;
-					const message = refreshed.messages.find((entry) => entry.id === pending.messageId);
-					return message?.swipes.some((variant) => variant.id === pending.request.value) === true ? refreshed.revision : null;
+					if (refreshed === null) return pending.baseRevision;
+					if (refreshed === undefined || !isStoryReady(refreshed) || refreshed.revision < pending.baseRevision) return null;
+					const persisted = { ...refreshed, requestedSelections: new Map() };
+					const selection = classifyVariantSelection(persisted, pending.messageId, pending.request.value);
+					return selection.kind === "immediate" ? refreshed.revision : null;
 				} }, (expectedRevision) => applyConversationCommand(conversationId, expectedRevision, {
 					type: "select-variant", messageId: selected.messageId, variantId: selected.request.value,
 				}), {
@@ -101,7 +103,7 @@ export function useStoryMessageActions({
 					},
 				});
 				if (!applied && !signal.aborted) dispatchStory({ type: "selection-settled", ...selected, revision: null });
-				if (current.pending !== null && !signal.aborted) refreshed = await waitForHistory(acceptedRevision);
+				replay = true;
 			}
 		} catch {
 			if (current.pending !== null && !signal.aborted) dispatchStory({ type: "selection-settled", ...current.pending, revision: null });
@@ -187,6 +189,7 @@ export function useStoryMessageActions({
 			messageId,
 		}, {
 			notices: STORY_COMMAND_NOTICES,
+			onApplied: () => dispatchStory({ type: "inline-draft-changed", messageId, draft: undefined }),
 		});
 	};
 

@@ -1,3 +1,4 @@
+import { withDeadline } from "../../shared/test-fixtures/deadline";
 import { queueConversationCommand } from "../conversation-command-runner";
 import { historyVariant, historyMessage, historyPage, conversationSummary, installFetch, type FetchHandler } from "../test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
@@ -26,7 +27,7 @@ const summary = (revision: number): ConversationSummary => conversationSummary({
 	},
 });
 
-const firstPage = (withLaterMessage = false): ChatHistoryPage => historyPage({
+const firstPage = (withLaterMessage = false, withMoves = false): ChatHistoryPage => historyPage({
 	conversationId: 1,
 	name: "Seaside Letters",
 	revision: 5,
@@ -34,8 +35,16 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => historyPage({
 		{ id: 10, position: 1, name: "Writer" },
 		{ id: 20, position: 2, name: "Model" },
 	],
-	page: { pageSize: 10, totalMessages: withLaterMessage ? 2 : 1, totalPages: 1, hasOlder: false },
-	messages: [historyMessage({
+	page: { pageSize: 10, totalMessages: 1 + Number(withLaterMessage) + Number(withMoves), totalPages: 1, hasOlder: false },
+	messages: [...(withMoves ? [historyMessage({
+		id: 9,
+		position: 1,
+		authorRole: "human",
+		author: { participantId: 10, capturedName: "Writer", inCast: true },
+		moves: { phone: [{ to: "Model", text: "Wait." }] },
+		variants: [historyVariant({ id: 90 })],
+	})] : []), historyMessage({
+		position: withMoves ? 2 : 1,
 		author: { participantId: 20, capturedName: "Author", inCast: true },
 		variants: [
 			historyVariant({ content: "First" }),
@@ -45,7 +54,7 @@ const firstPage = (withLaterMessage = false): ChatHistoryPage => historyPage({
 		],
 	}), ...(withLaterMessage ? [historyMessage({
 		id: 11,
-		position: 2,
+		position: withMoves ? 3 : 2,
 		timestamp: "2026-01-01T00:00:03.000Z",
 		authorRole: "human",
 		author: { participantId: 10, capturedName: "Writer", inCast: true },
@@ -75,7 +84,7 @@ type RecordedCommand = {
 	action: { type: string; messageId?: number; variantId?: number };
 };
 
-function createHarness(mode: CommandMode, withLaterMessage = false) {
+function createHarness(mode: CommandMode, withLaterMessage = false, withMoves = false) {
 	let previewEntries = 0;
 	const commands: RecordedCommand[] = [];
 	const fetches: { method: string; url: string }[] = [];
@@ -83,6 +92,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	let appliedVariant = 100;
 	let beforeHistory: () => Promise<void> = async () => {};
 	let removedVariant: number | undefined;
+	let laterMessage = withLaterMessage;
 	let gate: Promise<void> = Promise.resolve();
 
 	const handler: FetchHandler = async (input, init) => {
@@ -90,7 +100,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		const method = init?.method ?? "GET";
 		fetches.push({ method, url });
 		if (method === "POST" && url.endsWith("/api/conversations/1/commands")) {
-			await gate;
+			await withDeadline(gate, "release of the held Story command", 1_000);
 			if (mode.kind === "network") throw new TypeError("fetch failed");
 			if (mode.kind === "outcome") {
 				return Response.json(mode.payload, { status: mode.status });
@@ -115,7 +125,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 	installFetch(handler);
 
 	let overlays = createStoryOverlays();
-	const initial = firstPage(withLaterMessage);
+	const initial = firstPage(withLaterMessage, withMoves);
 	let window = { revision: initial.revision, page: initial.page, messages: initial.messages.map(toStoryMessage) };
 	let conversation: ConversationSummary | null = summary(5);
 
@@ -127,10 +137,10 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		conversation = value;
 	};
 	const publishHistory = (variantId: number) => {
-		const page = initial.messages.map((message) => message.id === 10 ? {
+		const page = firstPage(laterMessage, withMoves).messages.map((message) => message.id === 10 ? {
 			...message, variants: message.variants.filter((variant) => variant.id !== removedVariant).map((variant) => ({ ...variant, selected: variant.id === variantId })),
 		} : message);
-		window = { ...window, revision, messages: page.map(toStoryMessage) };
+		window = { ...window, revision, page: firstPage(laterMessage, withMoves).page, messages: page.map(toStoryMessage) };
 		overlays = retireStoryOverlays(overlays, window, conversation);
 	};
 
@@ -176,6 +186,7 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		fetches,
 		swipe,
 		edit,
+		removeMoves: () => actions().setMessageMoves(9, {}, window.revision),
 		select: (messageId: number, variantId: number) => actions().selectSwipe(messageId, variantId),
 		confirm: () => usePreviewController(surface()).confirmPreview(),
 		activeVariantId,
@@ -186,9 +197,10 @@ function createHarness(mode: CommandMode, withLaterMessage = false) {
 		waitForRefresh: (wait: () => Promise<void>) => { beforeHistory = wait; },
 		removeVariant: (id: number) => { removedVariant = id; },
 		appendMessage: () => {
+			laterMessage = true;
 			revision++;
 			conversation = summary(revision);
-			window = { ...window, revision, messages: firstPage(true).messages.map(toStoryMessage) };
+			publishHistory(appliedVariant);
 		},
 		conversation: () => conversation,
 	};
@@ -221,18 +233,22 @@ describe("Requested selection", () => {
 		const release = harness.hold();
 		const refreshing = Promise.withResolvers<void>();
 		const refreshed = Promise.withResolvers<void>();
-		harness.waitForRefresh(async () => { refreshing.resolve(); await refreshed.promise; });
+		harness.waitForRefresh(async () => { refreshing.resolve(); await withDeadline(refreshed.promise, "release of the refreshed history", 1_000); });
 
 		const first = harness.swipe(10, 1);
 		await Bun.sleep(0);
 		expect(harness.fetches).toHaveLength(1);
 		const swipes = [first, harness.swipe(10, 1), harness.swipe(10, 1)];
 
-		expect(harness.shownVariantId()).toBe(103);
-		release();
-		await Promise.race([refreshing.promise, Promise.all(swipes)]);
-		expect(harness.commands).toHaveLength(1);
-		refreshed.resolve();
+		try {
+			expect(harness.shownVariantId()).toBe(103);
+			release();
+			await withDeadline(refreshing.promise, "the queued Swipe history read", 1_000);
+			expect(harness.commands).toHaveLength(1);
+		} finally {
+			release();
+			refreshed.resolve();
+		}
 		await Promise.all(swipes);
 		expect(harness.commands).toEqual([
 			{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } },
@@ -241,6 +257,36 @@ describe("Requested selection", () => {
 		expect(harness.shownVariantId()).toBe(103);
 		harness.publishHistory(103);
 		expect(harness.activeVariantId()).toBe(103);
+	});
+
+	test("a Swipe queued behind a Moves write uses refreshed history", async () => {
+		const harness = createHarness({ kind: "applied" }, false, true);
+		const release = harness.hold();
+		const moves = harness.removeMoves();
+		const swipe = harness.swipe(10, 1);
+		release();
+		await Promise.all([moves, swipe]);
+
+		expect(harness.commands.map(({ expectedRevision, action }) => [expectedRevision, action.type])).toEqual([
+			[5, "set-message-moves"],
+			[6, "select-variant"],
+		]);
+		expect(harness.shownVariantId()).toBe(101);
+	});
+
+	test("a queued Swipe drops a direct selection that now needs Preview", async () => {
+		const harness = createHarness({ kind: "applied" });
+		const release = harness.hold();
+		const first = harness.swipe(10, 1);
+		await Bun.sleep(0);
+		const queued = harness.swipe(10, 1);
+		harness.waitForRefresh(async () => harness.appendMessage());
+		release();
+		await Promise.all([first, queued]);
+
+		expect(harness.commands).toEqual([{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } }]);
+		expect(harness.shownVariantId()).toBe(101);
+		expect(harness.previewEntries()).toBe(0);
 	});
 
 	test("a queued Swipe drops a Variant absent from refreshed history", async () => {
@@ -335,7 +381,7 @@ describe("Requested selection", () => {
 test("coalescing Swipes across Messages retires the displaced unsent selection", async () => {
 	const harness = createHarness({ kind: "applied" });
 	const gate = Promise.withResolvers<void>();
-	const blocker = queueConversationCommand(1, async () => { await gate.promise; return false; });
+	const blocker = queueConversationCommand(1, async () => { await withDeadline(gate.promise, "release of the command ahead of the Swipes", 1_000); return false; });
 	const first = harness.select(10, 101);
 	expect(harness.shownVariantId()).toBe(101);
 	harness.appendMessage();

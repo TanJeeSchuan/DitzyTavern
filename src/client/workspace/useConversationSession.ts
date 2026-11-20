@@ -60,24 +60,29 @@ function historyEdge({ pages }: HistorySnapshot, direction: "older" | "newer") {
 	return last.page.hasOlder ? { page: last.page.index + 1 } : undefined;
 }
 
-function historyStart({ startPage, sourceMessageId }: HistorySnapshot): ChatHistoryPageRequest {
-	return startPage === undefined ? { aroundMessageId: sourceMessageId } : { page: startPage };
+function historyStart({ pages, sourceMessageId }: HistorySnapshot): ChatHistoryPageRequest {
+	return sourceMessageId === undefined ? { page: pages[0].page.index } : { aroundMessageId: sourceMessageId };
 }
 
 async function readHistoryWindow(
 	id: number,
 	start: ChatHistoryPageRequest,
-	count: number,
+	base: HistorySnapshot | undefined,
 	signal: AbortSignal,
 ): Promise<HistorySnapshot["pages"]> {
-	const first = await readHistoryPage(id, start, signal);
-	const pages: HistorySnapshot["pages"] = [first];
-	let last = first;
-	while (pages.length < count && last.page.hasOlder) {
-		last = await readHistoryPage(id, { page: last.page.index + 1 }, signal);
-		if (last.revision !== first.revision) throw new SupersededHistory();
-		pages.push(last);
+	const anchor = await readHistoryPage(id, start, signal);
+	const before = start.aroundMessageId === undefined ? 0 :
+		Math.max(0, base?.pages.findIndex(({ messages }) => messages.some(({ id }) => id === start.aroundMessageId)) ?? 0);
+	const first = Math.max(1, anchor.page.index - before);
+	const last = Math.min(anchor.page.totalPages, anchor.page.index + (base?.pages.length ?? 1) - before - 1);
+	const pages: HistorySnapshot["pages"] = [anchor];
+	for (let index = first; index <= last; index++) {
+		if (index === anchor.page.index) continue;
+		const page = await readHistoryPage(id, { page: index }, signal);
+		if (page.revision !== anchor.revision) throw new SupersededHistory();
+		pages.push(page);
 	}
+	pages.sort((a, b) => a.page.index - b.page.index);
 	return pages;
 }
 
@@ -95,17 +100,10 @@ async function readAndCommitHistory({
 		const start: ChatHistoryPageRequest | undefined = missingSource ? { page: 1 } : read.kind === "jump" ? read.start : read.kind === "refresh" ? (base === undefined ? read.initial : historyStart(base)) : edge;
 		if (start === undefined) return;
 		try {
-			const count = read.kind === "refresh" && !missingSource ? base?.pages.length ?? 1 : 1;
-			const pages = await readHistoryWindow(id, start, count, signal);
+			const pages = await readHistoryWindow(id, start, read.kind === "refresh" && !missingSource ? base : undefined, signal);
 			const [page] = pages;
 			const revision = page.revision;
 			if (read.kind === "page" && base?.pages[0].revision !== revision) throw new SupersededHistory();
-			const sourceMessageId = start.aroundMessageId ?? (read.kind === "refresh" && !missingSource ? base?.sourceMessageId : undefined);
-			if (sourceMessageId !== undefined && start.aroundMessageId === undefined &&
-				!pages.some((page) => page.messages.some((message) => message.id === sourceMessageId))) {
-				const source = await readHistoryPage(id, { aroundMessageId: sourceMessageId }, signal);
-				if (source.revision !== revision) throw new SupersededHistory();
-			}
 			const summaryKey = conversationKey(id);
 			const cached = client.getQueryData<ConversationSummary | null>(summaryKey);
 			const summary = cached === undefined ? await client.ensureQueryData(conversationQuery(client, id)) : cached;
@@ -118,11 +116,11 @@ async function readAndCommitHistory({
 			const authority = client.getQueryData<ConversationSummary | null>(summaryKey);
 			if (authority === null) throw new Error("The Conversation no longer exists.");
 			if (authority?.revision !== revision || (latest !== undefined && revision < latest.pages[0].revision)) throw new SupersededHistory();
-			let next: HistorySnapshot = { startPage: start.page, sourceMessageId, pages };
+			let next: HistorySnapshot = { sourceMessageId: start.aroundMessageId, pages };
 			if (read.kind === "page") {
 				if (latest?.pages[0].revision !== revision) throw new SupersededHistory();
 				if (historyEdge(latest, read.direction)?.page !== start.page) throw new ChangedHistoryWindow();
-				next = read.direction === "newer" ? { ...latest, startPage: start.page, pages: [page, ...latest.pages] } : { ...latest, pages: [...latest.pages, page] };
+				next = read.direction === "newer" ? { ...latest, pages: [page, ...latest.pages] } : { ...latest, pages: [...latest.pages, page] };
 			} else if (read.kind === "refresh" && base !== latest) throw new SupersededHistory();
 			onCommit();
 			client.setQueryData(key, next);
@@ -210,6 +208,35 @@ export function useConversationSession({ initialChatId }: { initialChatId: strin
 	const currentOverlays = historyWindow === null ? overlays : retireStoryOverlays(overlays, historyWindow, conversation);
 	if (currentOverlays !== overlays) setOverlays(currentOverlays);
 	const story = readStory({ overlays: currentOverlays, window: historyWindow, conversationId, historyFailed, loadingMore: paging !== null });
+
+	useEffect(() => {
+		const { inlineDrafts } = currentSession().story;
+		if (historyWindow === null || inlineDrafts.size === 0) return;
+		const { revision, messages, page } = historyWindow;
+		const visible = new Set(messages.map(({ id }) => id));
+		const discardDeleted = (messageId: number) => dispatchStory({ type: "inline-draft-changed", messageId, draft: undefined });
+		for (const [messageId, draft] of inlineDrafts) {
+			if (draft.baseRevision >= revision || visible.has(messageId)) continue;
+			if (page.totalMessages === messages.length) {
+				discardDeleted(messageId);
+				continue;
+			}
+			void client.fetchQuery({
+				queryKey: ["inline-draft-source", id, messageId, revision],
+				staleTime: Infinity,
+				retry: false,
+				queryFn: async ({ signal: querySignal }) => {
+					try {
+						await readHistoryPage(id, { aroundMessageId: messageId }, querySignal);
+						return true;
+					} catch (error) {
+						if (error instanceof MissingSource) return false;
+						throw error;
+					}
+				},
+			}).then((exists) => { if (!exists) discardDeleted(messageId); }, () => undefined);
+		}
+	}, [client, id, historyWindow, dispatchStory]);
 
 	const workspace = useQuery({ ...workspaceQuery, enabled: false }).data;
 	const activeChatTitle = conversation?.name ?? workspace?.chats.find((chat) => chat.id === activeChatId)?.title ?? "Chat";

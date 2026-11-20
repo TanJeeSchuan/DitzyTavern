@@ -1,7 +1,8 @@
+import { withDeadline } from "../src/shared/test-fixtures/deadline";
 import type { Page } from "@playwright/test";
 import { test, expect, story } from "./fixtures";
 
-test.use({ allowedBrowserErrors: /status of 409/ });
+test.use({ allowedBrowserErrors: /status of (404|409)/ });
 
 const edit = async (page: Page, messageId: number, text: string) => {
 	const message = story(page).locator(`[data-message-id="${messageId}"]`);
@@ -46,6 +47,7 @@ test("Save and leave cannot retarget a draft after another tab selects a differe
 	await message.getByRole("button", { name: "Save", exact: true }).click();
 	await expect(message.getByRole("alert")).toBeVisible();
 	await page.getByRole("button", { name: "Chats", exact: true }).click();
+	await page.getByRole("button", { name: /^The Lantern House/ }).click();
 	const guard = page.getByRole("dialog", { name: "Unsaved changes" });
 	await guard.getByRole("button", { name: "Save and leave" }).click();
 	await expect(guard.getByRole("alert")).toBeVisible();
@@ -84,6 +86,7 @@ test("Save and leave keeps a refused Save as new Swipe as a copy", async ({ page
 	await message.getByRole("button", { name: "Save as new Swipe" }).click();
 	await expect(message.getByRole("alert")).toContainText("Changed elsewhere");
 	await page.getByRole("button", { name: "Chats", exact: true }).click();
+	await page.getByRole("button", { name: /^The Lantern House/ }).click();
 	const guard = page.getByRole("dialog", { name: "Unsaved changes" });
 	await guard.getByRole("button", { name: "Save and leave" }).click();
 	await expect(guard).toBeHidden();
@@ -122,24 +125,29 @@ for (const changeSecondDraft of [false, true]) test(`Save and leave ${changeSeco
 		if (sent.url().endsWith(`${url}/commands`) && sent.method() === "POST") commands.push(sent.postDataJSON());
 	});
 	const held = Promise.withResolvers<void>();
-	await page.route(`**${url}/history*`, async (route) => { await held.promise; await route.continue(); });
-	await page.getByRole("button", { name: "Chats", exact: true }).click();
+	await page.route(`**${url}/history*`, async (route) => { await withDeadline(held.promise, "release of the held history route"); await route.continue(); });
 	const guard = page.getByRole("dialog", { name: "Unsaved changes" });
-	const historyRequested = page.waitForRequest((sent) => new URL(sent.url()).pathname === `${url}/history`, { timeout: 5_000 });
-	await guard.getByRole("button", { name: "Save and leave" }).click();
-	await historyRequested;
-	expect(commands).toHaveLength(1);
-	const secondId = ids.find((id) => id !== commands[0]!.action.messageId)!;
-	if (changeSecondDraft) {
-		const { messages } = await (await request.get(`${url}/history`)).json();
-		const target = messages.find((message: { id: number }) => message.id === secondId);
-		const changed = await request.post(`${url}/commands`, { data: {
-			expectedRevision: commands[0]!.expectedRevision + 1,
-			action: { type: "edit-variant", messageId: secondId, variantId: target.variants[0].id, content: "Changed in another tab." },
-		} });
-		expect(changed.ok()).toBe(true);
+	let secondId: number;
+	try {
+		await page.getByRole("button", { name: "Chats", exact: true }).click();
+		await page.getByRole("button", { name: /^The Lantern House/ }).click();
+		const historyRequested = page.waitForRequest((sent) => new URL(sent.url()).pathname === `${url}/history`, { timeout: 5_000 });
+		await guard.getByRole("button", { name: "Save and leave" }).click();
+		await historyRequested;
+		expect(commands).toHaveLength(1);
+		secondId = ids.find((id) => id !== commands[0]!.action.messageId)!;
+		if (changeSecondDraft) {
+			const { messages } = await (await request.get(`${url}/history`)).json();
+			const target = messages.find((message: { id: number }) => message.id === secondId);
+			const changed = await request.post(`${url}/commands`, { data: {
+				expectedRevision: commands[0]!.expectedRevision + 1,
+				action: { type: "edit-variant", messageId: secondId, variantId: target.variants[0].id, content: "Changed in another tab." },
+			} });
+			expect(changed.ok()).toBe(true);
+		}
+	} finally {
+		held.resolve();
 	}
-	held.resolve();
 	if (changeSecondDraft) {
 		await expect(guard.getByRole("alert")).toBeVisible();
 		expect(commands).toHaveLength(1);
@@ -156,6 +164,77 @@ for (const changeSecondDraft of [false, true]) test(`Save and leave ${changeSeco
 	]);
 	const { messages } = await (await request.get(`${url}/history`)).json();
 	for (const id of ids) expect(messages.find((message: { id: number }) => message.id === id).variants[0].content).toBe(`Draft for ${id}.`);
+});
+
+for (const [scenario, title] of [
+	["jump", "an inline draft survives a jump to an off-window Inspector source"],
+	["recover", "an inline draft survives recovery from a deleted Inspector source"],
+	["delete", "a deleted off-window Message drops its draft"],
+] as const) test(title, async ({ page, request }) => {
+	const { activeChatId } = await (await request.get("/api/workspace")).json();
+	const url = `/api/conversations/${activeChatId}`;
+	let conversation = await (await request.get(url)).json();
+	for (let i = 0; i < 65; i++) {
+		const created = await request.post(`${url}/commands`, { data: {
+			expectedRevision: conversation.revision,
+			action: { type: "create-message", timestamp: new Date().toISOString(), authorParticipantId: conversation.control.humanParticipantId, variantContents: [`Newer passage ${i}.`] },
+		} });
+		expect(created.ok()).toBe(true);
+		({ conversation } = await created.json());
+	}
+	const older = await (await request.get(`${url}/history?page=2`)).json();
+	const [source, edited] = older.messages;
+	await page.goto("/");
+	const transcript = story(page);
+	await expect(transcript.getByText("Newer passage 64.")).toBeVisible();
+	await page.getByRole("button", { name: "Memories", exact: true }).click();
+	const coverage = page.getByRole("slider", { name: "Messages by Memory state" });
+	await coverage.press("Home");
+	await coverage.press("Enter");
+	const row = transcript.locator(`[data-message-id="${edited.id}"]`);
+	await row.hover();
+	await row.getByRole("button", { name: "Edit", exact: true }).click();
+	const editor = row.getByRole("textbox", { name: "Edit Message" });
+	await editor.fill("Keep this inline draft.");
+	await expect(editor).toHaveText("Keep this inline draft.");
+
+	if (scenario === "recover") {
+		const deleted = await request.post(`${url}/commands`, { data: {
+			expectedRevision: conversation.revision,
+			action: { type: "delete-message", messageId: source.id },
+		} });
+		expect(deleted.ok()).toBe(true);
+		await focus(page, "hidden");
+		await focus(page, "visible");
+	} else {
+		await coverage.press("End");
+		await coverage.press("Enter");
+	}
+	await expect(transcript.getByText("Newer passage 64.")).toBeVisible();
+	await expect(row).toHaveCount(0);
+	const guard = page.getByRole("dialog", { name: "Unsaved changes" });
+	await expect(guard).toBeHidden();
+	if (scenario === "delete") {
+		const checked = page.waitForResponse((response) => response.url().endsWith(`${url}/history?aroundMessageId=${edited.id}`) && response.status() === 404, { timeout: 5_000 });
+		const deleted = await request.post(`${url}/commands`, { data: {
+			expectedRevision: conversation.revision,
+			action: { type: "delete-message", messageId: edited.id },
+		} });
+		expect(deleted.ok()).toBe(true);
+		await focus(page, "hidden");
+		await focus(page, "visible");
+		await checked;
+		await page.getByRole("button", { name: "Chats", exact: true }).click();
+		await page.getByRole("button", { name: /^The Lantern House/ }).click();
+		await expect(transcript.getByRole("heading", { name: /^The Lantern House/ })).toBeVisible();
+		return;
+	}
+	await page.getByRole("button", { name: "Chats", exact: true }).click();
+	await page.getByRole("button", { name: /^The Lantern House/ }).click();
+	await expect(guard.getByRole("button", { name: "Save and leave" })).toBeDisabled();
+	await guard.getByRole("button", { name: "Keep editing" }).click();
+	await transcript.getByRole("button", { name: "Load more Messages" }).click();
+	await expect(editor).toHaveText("Keep this inline draft.");
 });
 
 test("conflict and focus refresh every loaded history page across two tabs", async ({ page, context, request }) => {
@@ -201,6 +280,7 @@ test("conflict and focus refresh every loaded history page across two tabs", asy
 	const stale = story(page).locator(`[data-message-id="${conflictId}"]`);
 	await expect(stale.getByRole("textbox", { name: "Edit Message" })).toHaveText("This stale edit must not apply.");
 	await stale.getByRole("button", { name: "Cancel", exact: true }).click();
+	await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Discard", exact: true }).click();
 	await expect(story(page).getByText("This stale edit must not apply.", { exact: true })).toHaveCount(0);
 
 	await edit(other, editedId, "Focus recovered this change.");
@@ -239,7 +319,7 @@ test("conflict and focus refresh every loaded history page across two tabs", asy
 
 test.describe(() => {
 	test.use({ allowedBrowserErrors: /status of 500/ });
-	test("Jump to latest after a history error protects an older Message draft", async ({ page, request }) => {
+	test("Jump to latest after a history error preserves an older Message draft", async ({ page, request }) => {
 		const { activeChatId } = await (await request.get("/api/workspace")).json();
 		const url = `/api/conversations/${activeChatId}`;
 		let conversation = await (await request.get(url)).json();
@@ -271,12 +351,10 @@ test.describe(() => {
 		await page.unroute(`**${url}/history*`);
 		const jump = transcript.getByRole("button", { name: "Jump to latest", exact: true });
 		await jump.click();
-		const guard = page.getByRole("dialog", { name: "Unsaved changes" });
-		await guard.getByRole("button", { name: "Keep editing" }).click();
-		await expect(draft).toHaveText("Keep these edits.");
-		await jump.click();
-		await guard.getByRole("button", { name: "Discard", exact: true }).click();
 		await expect(transcript.locator("article[data-message-id]")).toHaveCount(50);
+		await expect(page.getByRole("dialog", { name: "Unsaved changes" })).toBeHidden();
+		await transcript.getByRole("button", { name: "Load more Messages", exact: true }).click();
+		await expect(draft).toHaveText("Keep these edits.");
 	});
 
 	test("retrying the active Chat preserves the unsent composer draft and readable transcript", async ({ page, request }) => {

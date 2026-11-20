@@ -86,3 +86,34 @@ test("a missing Inspector source opens latest; jumping to a source reads one win
 	await expect(latestReply).toBeInViewport();
 	await expect(jumpToLatest).toBeHidden();
 });
+
+test("Write accepts the first input before the next frame while reading older Messages", async ({ page, request }) => {
+	const { activeChatId } = await (await request.get("/api/workspace")).json();
+	const url = `/api/conversations/${activeChatId}`;
+	let conversation = await (await request.get(url)).json();
+	for (let i = 0; i < 51; i++) {
+		const added = await request.post(`${url}/commands`, { data: {
+			expectedRevision: conversation.revision,
+			action: { type: "create-message", timestamp: new Date().toISOString(), authorParticipantId: conversation.control.humanParticipantId, variantContents: [`Passage ${i}.`] },
+		} });
+		expect(added.ok()).toBe(true);
+		({ conversation } = await added.json());
+	}
+	await page.goto("/");
+	await page.getByRole("button", { name: "Memories", exact: true }).click();
+	const coverage = page.getByRole("slider", { name: "Messages by Memory state" });
+	await coverage.press("Home");
+	await coverage.press("Enter");
+	await expect(story(page).getByRole("button", { name: "Jump to latest" })).toBeVisible();
+
+	const write = page.getByRole("button", { name: /^Write/ });
+	const text = "Keep the first input.";
+	await write.evaluate(async (button: HTMLButtonElement, content) => {
+		button.focus();
+		button.click();
+		await new Promise<void>((resolve) => queueMicrotask(resolve));
+		document.execCommand("insertText", false, content);
+	}, text);
+	await page.getByRole("button", { name: "Generate Variant" }).click();
+	await expect(page.getByRole("button", { name: "Send exact plan" })).toBeVisible();
+});

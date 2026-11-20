@@ -21,7 +21,7 @@ export const CONVERSATION_CONFLICT_RELOAD_NOTICE =
 //  latest-wins guard evaluated before every effect.
 export interface ConversationCommandSurface {
 	conversationId: number;
-	revision: () => number | null;
+	revision: (previous: number | null) => number | null | Promise<number | null>;
 	/** @approved A draft's save sends its own base revision, not one a command queued ahead produced. */
 	exact?: boolean;
 	onConversationChange: (conversation: ConversationSummary) => void;
@@ -101,7 +101,9 @@ async function executeConversationCommand<TOperation>(
 	const effect = (apply: () => void) => {
 		if (surface.isCurrent?.() !== false) apply();
 	};
-	const known = surface.revision();
+	const revision = surface.revision(previous);
+	const known = revision instanceof Promise ? await revision : revision;
+	if (surface.isCurrent?.() === false) return false;
 	const expectedRevision = surface.exact === true || previous === null ? known : known === null ? previous : Math.max(known, previous);
 	if (expectedRevision === null) {
 		effect(() => surface.setNotice(CONVERSATION_REVISION_UNAVAILABLE_NOTICE));

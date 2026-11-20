@@ -1,3 +1,4 @@
+import { withDeadline } from "../src/shared/test-fixtures/deadline";
 import type { APIRequestContext, Page, Route } from "@playwright/test";
 import { test, expect, insertBox, story } from "./fixtures";
 import type { E2eServer } from "./harness";
@@ -143,37 +144,49 @@ test("accepted writes disable transcript controls until displayed history catche
 	await reply.getByRole("button", { name: "Edit", exact: true }).click();
 	await reply.getByRole("textbox", { name: "Edit Message" }).fill("Draft kept while history loads.");
 	const held = Promise.withResolvers<void>();
-	await page.route(`**${url}/history*`, async (route) => { await held.promise; await route.continue(); });
-	const applying = holdPost(page, "**/api/conversations/*/commands");
-	const applied = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok());
-	await moves.getByRole("button", { name: "Remove To Theodora Kline: A" }).click();
-	const command = await applying;
-	await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: B" })).toBeDisabled();
-	const editedMoves = story(page).locator("article[data-message-id]").nth(-2);
-	await editedMoves.hover();
-	await expect(editedMoves.getByRole("button", { name: "Edit", exact: true })).toBeDisabled();
-	await expect(editedMoves.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
-	await reply.hover();
-	await reply.getByRole("button", { name: /browse Swipes/ }).click();
-	const browser = page.getByRole("dialog", { name: "Swipes", exact: true });
-	await expect(browser).toBeVisible();
-	const historyRequested = page.waitForRequest((sent) => new URL(sent.url()).pathname === `${url}/history`, { timeout: 5_000 });
-	await command.continue();
-	await applied;
-	await historyRequested;
-	await expect(browser.getByRole("button", { name: "Swipe 1 of 2", exact: true })).toBeDisabled();
-	await expect(browser.getByRole("button", { name: "Swipe 2 of 2", exact: true })).toBeDisabled();
-	await browser.press("Escape");
-	await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: B" })).toBeDisabled();
-	await expect(reply.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
-	await reply.hover();
-	await expect(reply.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
-	await expect(reply.getByRole("button", { name: "Previous Swipe", exact: true })).toBeDisabled();
-	await expect(reply.getByRole("textbox", { name: "Edit Message" })).toHaveText("Draft kept while history loads.");
-	await page.getByRole("button", { name: "Chats", exact: true }).click();
+	await page.route(`**${url}/history*`, async (route) => { await withDeadline(held.promise, "release of the held history route"); await route.continue(); });
+	const releaseCommand = Promise.withResolvers<void>();
 	const guard = page.getByRole("dialog", { name: "Unsaved changes" });
-	await expect(guard.getByRole("button", { name: "Save and leave" })).toBeDisabled();
-	held.resolve();
+	try {
+		await page.route(`**${url}/commands`, async (route) => {
+			await withDeadline(releaseCommand.promise, "release of the held Moves command");
+			await route.continue();
+		}, { times: 1 });
+		await Promise.all([
+			page.waitForRequest((request) => request.url().endsWith(`${url}/commands`) && request.method() === "POST", { timeout: 5_000 }),
+			moves.getByRole("button", { name: "Remove To Theodora Kline: A" }).click(),
+		]);
+		await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: B" })).toBeDisabled();
+		const editedMoves = story(page).locator("article[data-message-id]").nth(-2);
+		await editedMoves.hover();
+		await expect(editedMoves.getByRole("button", { name: "Edit", exact: true })).toBeDisabled();
+		await expect(editedMoves.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+		await reply.hover();
+		await reply.getByRole("button", { name: /browse Swipes/ }).click();
+		const browser = page.getByRole("dialog", { name: "Swipes", exact: true });
+		await expect(browser).toBeVisible();
+		const refreshed = Promise.all([
+			page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok(), { timeout: 5_000 }),
+			page.waitForRequest((sent) => new URL(sent.url()).pathname === `${url}/history`, { timeout: 5_000 }),
+		]);
+		releaseCommand.resolve();
+		await refreshed;
+		await expect(browser.getByRole("button", { name: "Swipe 1 of 2", exact: true })).toBeDisabled();
+		await expect(browser.getByRole("button", { name: "Swipe 2 of 2", exact: true })).toBeDisabled();
+		await browser.press("Escape");
+		await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: B" })).toBeDisabled();
+		await expect(reply.getByRole("button", { name: "Save", exact: true })).toBeDisabled();
+		await reply.hover();
+		await expect(reply.getByRole("button", { name: "Delete", exact: true })).toBeDisabled();
+		await expect(reply.getByRole("button", { name: "Previous Swipe", exact: true })).toBeDisabled();
+		await expect(reply.getByRole("textbox", { name: "Edit Message" })).toHaveText("Draft kept while history loads.");
+		await page.getByRole("button", { name: "Chats", exact: true }).click();
+		await page.getByRole("button", { name: /^The Lantern House/ }).click();
+		await expect(guard.getByRole("button", { name: "Save and leave" })).toBeDisabled();
+	} finally {
+		releaseCommand.resolve();
+		held.resolve();
+	}
 	await expect(guard.getByRole("button", { name: "Save and leave" })).toBeEnabled();
 	await guard.getByRole("button", { name: "Keep editing" }).click();
 	await expect(moves.getByRole("button", { name: "Remove To Theodora Kline: B" })).toBeEnabled();
@@ -181,6 +194,7 @@ test("accepted writes disable transcript controls until displayed history catche
 	await expect(reply.getByRole("button", { name: "Delete", exact: true })).toBeEnabled();
 	await expect(reply.getByRole("button", { name: "Previous Swipe", exact: true })).toBeEnabled();
 	await reply.getByRole("button", { name: "Cancel", exact: true }).click();
+	await guard.getByRole("button", { name: "Discard", exact: true }).click();
 	const secondApplied = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok());
 	await moves.getByRole("button", { name: "Remove To Theodora Kline: B" }).click();
 	await secondApplied;

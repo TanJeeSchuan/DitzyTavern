@@ -1,3 +1,4 @@
+import { withDeadline } from "../../shared/test-fixtures/deadline";
 import { historyVariant, historyMessage, historyPage, conversationSummary, installFetch } from "../test-fixtures/conversation";
 import type { StoryState } from "../story";
 import { afterEach, beforeEach, expect, test } from "bun:test";
@@ -397,11 +398,40 @@ test("newer paging extends a detached window and generation refresh retains that
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104]);
 	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(true);
 	expect(readyStory(h.hook.current.story).revision).toBe(6);
-	expect(h.requests.slice(before).map(({ url }) => url.search)).toEqual(["", "?page=2", "?page=3"]);
+	expect(h.requests.slice(before).map(({ url }) => url.search)).toEqual(["", "?aroundMessageId=101", "?page=2"]);
 	await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
 	await flushHook();
 	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104, 105, 106]);
 	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(false);
+});
+
+test("a refresh follows the source when an append shifts its tail-counted page", async () => {
+	let appended = false;
+	const h = await harness(async ({ url }) => {
+		const revision = appended ? 6 : 5;
+		if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+		const index = Number(url.searchParams.get("page")) || (url.searchParams.has("aroundMessageId") ? (appended ? 4 : 3) : 1);
+		const history = page(1, index, revision);
+		if (appended) {
+			history.page = { ...history.page, totalMessages: 7, totalPages: 4, hasOlder: index < 4 };
+			history.messages = Array.from({ length: index === 4 ? 1 : 2 }, (_, offset) => {
+				const position = index === 4 ? 1 : 8 - index * 2 + offset;
+				return historyMessage({ id: 100 + position, position });
+			});
+		}
+		return Response.json(history);
+	});
+	Object.defineProperty(globalThis, "document", { configurable: true, value: { querySelector: () => null } });
+	await h.hook.act(async () => h.hook.current.navigateToSourceMessage(101));
+	await h.hook.act(async () => h.hook.current.loadMoreHistory("newer"));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103, 104]);
+
+	appended = true;
+	await h.hook.act(async () => h.hook.current.refreshStory(1));
+	await flushHook();
+	expect(h.hook.current.story.messages.map(({ id }) => id)).toEqual([101, 102, 103]);
+	expect(readyStory(h.hook.current.story).page.hasNewer).toBe(true);
 });
 
 test("newer paging preserves the anchor for deleted-source recovery", async () => {
@@ -885,7 +915,7 @@ test("fresh history cannot authorize a second removal from pending Moves", async
 		if (init?.method === "POST") {
 			const { expectedRevision, action } = JSON.parse(String(init.body));
 			sent.resolve();
-			await release.promise;
+			await withDeadline(release.promise, "release of the first Moves command", 1_000);
 			if (expectedRevision !== revision) return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision, actualRevision: revision, current: summary(1, revision) }, { status: 409 });
 			stored = action.moves;
 			return Response.json({ outcome: "applied", conversation: summary(1, ++revision) });
@@ -896,20 +926,22 @@ test("fresh history cannot authorize a second removal from pending Moves", async
 		return Response.json(history);
 	});
 	let first = Promise.resolve();
-	await h.hook.act(async () => { first = h.hook.current.setMessageMoves(105, moves("B", "C"), 5); await sent.promise; });
-	stored = moves("A", "B", "C", "From another tab");
-	revision++;
-	await h.hook.act(async () => h.hook.current.refreshStory(1));
-	await flushHook();
-	const story = readyStory(h.hook.current.story);
-	expect(story.revision).toBe(6);
-	const visible = shownMessage(story, story.messages[0]!);
-	expect(visible.moves).toEqual(moves("B", "C"));
-	await h.hook.act(async () => {
-		const second = h.hook.current.setMessageMoves(105, { phone: visible.moves.phone!.slice(1) }, story.revision);
-		release.resolve();
-		await Promise.all([first, second]);
-	});
+	try {
+		await h.hook.act(async () => { first = h.hook.current.setMessageMoves(105, moves("B", "C"), 5); await withDeadline(sent.promise, "the first Moves command", 1_000); });
+		stored = moves("A", "B", "C", "From another tab");
+		revision++;
+		await h.hook.act(async () => h.hook.current.refreshStory(1));
+		await flushHook();
+		const story = readyStory(h.hook.current.story);
+		expect(story.revision).toBe(6);
+		const visible = shownMessage(story, story.messages[0]!);
+		expect(visible.moves).toEqual(moves("B", "C"));
+		await h.hook.act(async () => {
+			const second = h.hook.current.setMessageMoves(105, { phone: visible.moves.phone!.slice(1) }, story.revision);
+			release.resolve();
+			await Promise.all([first, second]);
+		});
+	} finally { release.resolve(); }
 	await flushHook();
 	expect(stored).toEqual(moves("A", "B", "C", "From another tab"));
 	expect(h.requests.filter(({ init }) => init?.method === "POST")).toHaveLength(1);
