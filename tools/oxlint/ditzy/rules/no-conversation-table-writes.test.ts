@@ -17,6 +17,7 @@ new RuleTester({ languageOptions: { parserOptions: { lang: "ts" } } }).run(
 			{ filename: outside, code: selection + "const groups = Map.groupBy([], value => value); groups.delete(conversationPromptPresetTable);" },
 			{ filename: outside, code: selection + "function remove(tables: Set<unknown>) { tables.delete(conversationPromptPresetTable); }" },
 			{ filename: outside, code: selection + "let tables: Set<unknown>; tables = new Set(); tables.delete(conversationPromptPresetTable);" },
+			{ filename: outside, code: selection + "let tables = new Set(); tables = new Set([conversationPromptPresetTable]); tables.delete(conversationPromptPresetTable);" },
 			{ filename: outside, code: selection + "const f = (conversationPromptPresetTable) => db.update(conversationPromptPresetTable);" },
 			{ filename: outside, code: 'import { characterTable } from "../database/schema"; db.insert(characterTable);' },
 			{ filename: "src/server/conversation/commands/paint.ts", code: selection + "db.update(conversationPromptPresetTable);" },

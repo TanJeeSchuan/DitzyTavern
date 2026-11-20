@@ -20,6 +20,8 @@ test("the stylesheet gate resolves cross-file declarations and checks fallback v
 			/* --input: black; */
 		`);
 		await write("app.css", '.item { color: var(--accent/**/); border-color: var(--optional, var(--accent)); outline-color: var(--registered); fill: var(--tone); padding: var(--spacing); content: "var(--ignored)"; }');
+		await write("comments.css", String.raw`.item { --color : blue; color: var(--color ); content: "escaped \
+var(--literal)"; }`);
 		await write("app.tsx", `<div className="bg-panel data-[theme=dark]:text-white [&_.dark:hover]:text-white before:content-['dark:mode']" />`);
 		const passing = run();
 		expect(passing.stderr.toString()).toBe("");

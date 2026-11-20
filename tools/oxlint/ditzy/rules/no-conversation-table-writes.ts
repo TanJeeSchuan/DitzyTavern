@@ -48,23 +48,27 @@ const collectionConstructors = new Set(["Map", "Set", "WeakMap", "WeakSet"]);
 const nativeCollection = (source: SourceCode, identifier: ESTree.IdentifierReference): boolean =>
 	collectionConstructors.has(identifier.name) && !referenceOf(source, identifier)?.resolved?.defs.length;
 
+function createsCollection(source: SourceCode, expression: ESTree.Expression): boolean {
+	const value = unwrapExpression(expression);
+	if (value.type === "NewExpression" && value.callee.type === "Identifier") return nativeCollection(source, value.callee);
+	if (value.type !== "CallExpression" || value.callee.type !== "MemberExpression") return false;
+	const factory = value.callee;
+	return factory.object.type === "Identifier" && factory.object.name === "Map" && nativeCollection(source, factory.object) && memberName(factory) === "groupBy";
+}
+
 function isCollection(source: SourceCode, expression: ESTree.Expression): boolean {
 	const receiver = unwrapExpression(expression);
 	const variable = receiver.type === "Identifier" ? referenceOf(source, receiver)?.resolved : undefined;
-	const binding = variable?.defs[0];
+	if (variable == null) return createsCollection(source, receiver);
+	const binding = variable.defs[0];
 	const annotation = binding?.name.type === "Identifier" ? binding.name.typeAnnotation?.typeAnnotation : undefined;
 	if (annotation?.type === "TSTypeReference" && annotation.typeName.type === "Identifier" && nativeCollection(source, annotation.typeName)) return true;
 
 	const node = binding?.node;
 	const init = node?.type === "VariableDeclarator" ? node.init : undefined;
-	const assignments = variable?.references.filter((reference) => reference.isWrite() && !reference.init) ?? [];
-	if (assignments.length > 1 || (init != null && assignments.length > 0)) return false;
-
-	const value = unwrapExpression(init ?? assignments[0]?.writeExpr ?? receiver);
-	if (value.type === "NewExpression" && value.callee.type === "Identifier") return nativeCollection(source, value.callee);
-	if (value.type !== "CallExpression" || value.callee.type !== "MemberExpression") return false;
-	const factory = value.callee;
-	return factory.object.type === "Identifier" && factory.object.name === "Map" && nativeCollection(source, factory.object) && memberName(factory) === "groupBy";
+	const values = variable.references.filter((reference) => reference.isWrite() && !reference.init).map((reference) => reference.writeExpr);
+	if (init != null) values.push(init);
+	return values.length > 0 && values.every((value) => value !== null && createsCollection(source, value));
 }
 
 export const noConversationTableWritesRule = defineRule({
