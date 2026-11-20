@@ -39,8 +39,8 @@ write runs through `runConversationTransaction`. `bun run check` is green.
 
 `bun run check` fails on a clone that is not in `.jscpd-baseline.json`
 (`scripts/check-clones.ts`). Existing clones are recorded, not fixed: a recorded
-clone may shrink or move, but a new one fails. After a refactor that removes
-duplication, rewrite the baseline with `bun scripts/check-clones.ts --write-baseline`.
+clone may shrink or shift within its file, but a new one fails. After a refactor
+that removes duplication or renames a file holding a recorded clone, rewrite the baseline with `bun scripts/check-clones.ts --write-baseline`.
 `bun run check:clones` still writes the full console and SARIF report. Whether a
 reported clone deserves an abstraction is a review call, because DRY is about
 duplicated knowledge rather than duplicated syntax.
