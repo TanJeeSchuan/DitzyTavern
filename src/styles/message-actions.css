@@ -82,7 +82,13 @@
 	transition: color 150ms ease, background-color 150ms ease;
 }
 
-.swipe-count:hover:not(:disabled),
+/* Paused while a write settles but still focusable, so closing the Swipe browser can hand focus back. */
+.swipe-count[aria-disabled="true"] {
+	cursor: not-allowed;
+	opacity: 0.46;
+}
+
+.swipe-count:hover:not(:disabled, [aria-disabled="true"]),
 .swipe-count:focus-visible {
 	background: var(--surface-muted);
 	color: var(--foreground);

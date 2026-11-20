@@ -166,7 +166,8 @@ export const StoryMessageView = memo(function StoryMessageView({
 	useEffect(() => {
 		if (isLatest || advancedActionsSelected) prefetchNeighbourText(client, conversationId, message.id, message.swipes, activeIndex);
 	}, [isLatest, advancedActionsSelected, client, conversationId, message.id, message.swipes, activeIndex]);
-	const browsingDisabled = (mutationsDisabled && !previewTarget) || message.swipes.length < 2;
+	const browsingPaused = mutationsDisabled && !previewTarget;
+	const browsingDisabled = browsingPaused || message.swipes.length < 2;
 	const swipeCount = useRef<HTMLButtonElement>(null);
 	const browse = (open: boolean) => {
 		setBrowsing(open);
@@ -376,7 +377,7 @@ export const StoryMessageView = memo(function StoryMessageView({
 					>
 						<ChevronLeft aria-hidden="true" />
 					</button>
-					<button ref={swipeCount} className="swipe-count" type="button" disabled={browsingDisabled} aria-haspopup="dialog" onClick={() => browse(true)} aria-label={`${activeIndex + 1} of ${message.swipes.length}, browse Swipes`}>
+					<button ref={swipeCount} className="swipe-count" type="button" disabled={message.swipes.length < 2} aria-disabled={browsingPaused || undefined} aria-haspopup="dialog" onClick={() => { if (!browsingPaused) browse(true); }} aria-label={`${activeIndex + 1} of ${message.swipes.length}, browse Swipes`}>
 						{activeIndex + 1} of {message.swipes.length}
 					</button>
 					{browsing && <SwipeBrowser disabled={browsingDisabled} mode={swipeBrowsing} variants={browsed} shownIndex={activeIndex} returnFocus={swipeCount} onClose={() => browse(false)} onSelect={selectVariant} />}
