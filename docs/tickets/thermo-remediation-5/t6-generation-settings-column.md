@@ -1,6 +1,6 @@
 # T6: Generation Settings column
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: T5
 
@@ -32,7 +32,7 @@ Evidence: report 18, finding 1; report 17, F6.
 - [x] Migration, with the round-trip test over non-default rows
 - [x] Module reads and writes through `settings_json`
 - [x] The two direct reads and the model-selection write
-- [ ] Typecheck, settings and migration tests, CI
+- [x] Typecheck, settings and migration tests, CI
 - [x] PR opened and left for the owner; say in the PR body that it migrates stored data and is a one-way door
 
 ## Acceptance
@@ -44,3 +44,5 @@ The migration test passes. `git grep -n 'settingsColumn' -- src` is empty. No pe
 Migration 0045 copies each settings row into the new schema and keeps the Connection Profile foreign key. The upgrade test starts at 0044 and reads both Chats through the Conversation module after migration. It checks every setting, including nullable sampling fields and nested Request Overrides. The fork test verifies that a custom model ID survives the copy.
 
 The settings tests use the new storage column for their corruption fixtures. Their existing error-message assertions are unchanged. Changed-file lint passed. The draft PR runs typecheck and tests in GitHub Actions.
+
+CI passed and the owner approved the merge as PR #285. Before the deploy, a dry run applied the migrations to a copy of the chat2 database. Every Chat's settings decoded and matched the old columns. Integrity and foreign-key checks were clean. chat2 runs it from build 769 (`30055b6a`), with a backup taken first.
