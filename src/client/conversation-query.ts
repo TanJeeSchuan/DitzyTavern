@@ -21,8 +21,9 @@ export const cancellableFetch = async <T>(
 	return value;
 };
 
-async function invalidateConversationHistory(client: QueryClient, id: number, revision: number) {
+async function invalidateConversationHistory(client: QueryClient, id: number, revision: number, checkJoinedFailures: boolean) {
 	const queryKey = conversationHistoryKey(id);
+	const joined = checkJoinedFailures ? client.getQueryCache().findAll({ queryKey, type: "active", fetchStatus: "fetching" }) : [];
 	await client.invalidateQueries({ queryKey }, { cancelRefetch: false });
 	// @approved
 	// A write can join a refresh after it commits its window but before the query completes.
@@ -30,7 +31,8 @@ async function invalidateConversationHistory(client: QueryClient, id: number, re
 		queryKey, type: "active",
 		predicate: (query) => {
 			const window = client.getQueryData<HistorySnapshot>(historyWindowKey(query.queryKey));
-			return query.state.status === "success" && window !== undefined && window.pages[0].revision < revision;
+			const behind = window === undefined || window.pages[0].revision < revision;
+			return behind && (joined.includes(query) || (query.state.status === "success" && window !== undefined));
 		},
 	}, { cancelRefetch: false });
 }
@@ -39,10 +41,10 @@ async function invalidateConversationHistory(client: QueryClient, id: number, re
 //  A newer revision can change any page and any Variant's text: the story
 // reads them again when it next shows them. An older copy never replaces the
 // cached one.
-const adoptConversation = (client: QueryClient, incoming: ConversationSummary | null, id: number) => {
+const adoptConversation = (client: QueryClient, incoming: ConversationSummary | null, id: number, published = false) => {
 	const current = client.getQueryData<ConversationSummary | null>(conversationKey(id)) ?? null;
 	if (incoming !== null && incoming.revision > (current?.revision ?? 0)) {
-		void invalidateConversationHistory(client, id, incoming.revision);
+		void invalidateConversationHistory(client, id, incoming.revision, published || current !== null);
 		void client.invalidateQueries({ queryKey: variantTextKey(id) });
 	}
 	return incoming !== null && current !== null && current.revision > incoming.revision ? current : incoming;
@@ -57,7 +59,7 @@ export const publishConversation = (client: QueryClient, conversation: Conversat
 	const queryKey = conversationKey(conversation.id);
 	const publish = () => {
 		void client.cancelQueries({ queryKey });
-		client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id));
+		client.setQueryData<ConversationSummary | null>(queryKey, adoptConversation(client, conversation, conversation.id, true));
 	};
 	if (boxVersionsBuilt(conversation)) publish();
 	else void loadBoxVersions(conversation).then(publish);

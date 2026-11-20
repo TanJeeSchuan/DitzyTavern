@@ -17,6 +17,8 @@ export const SaveGuardScope = createContext<string | undefined>(undefined);
 export const SaveNavigationContext = createContext<(action: () => void, scope?: string) => void>((action) => action());
 
 const chatLeave = Symbol("chat leave");
+const noDiscard = () => undefined;
+type LeaveAction = (discard: () => void) => void;
 
 const SAVE_ERROR = "The changes could not be saved. Keep editing to review them.";
 
@@ -29,13 +31,14 @@ export type SaveNavigationController = {
 	registerSaveGuard: (guard: RegisteredGuard) => () => void;
 	requestNavigation: (action: () => void, scope?: string) => void;
 	requestChatLeave: (action: () => void) => void;
+	prepareChatLeave: (action: LeaveAction) => void;
 	dialogProps: ComponentProps<typeof UnsavedChangesDialog>;
 };
 
 export function useSaveNavigation(): SaveNavigationController {
 	const guards = useRef(new Set<RegisteredGuard>());
 	const [, bumpGuards] = useReducer((count: number) => count + 1, 0);
-	const [leave, setLeave] = useState<{ action: () => void; scope?: string | typeof chatLeave } | null>(null);
+	const [leave, setLeave] = useState<{ action: LeaveAction; scope?: string | typeof chatLeave } | null>(null);
 	const [leaveSaving, setLeaveSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -48,17 +51,20 @@ export function useSaveNavigation(): SaveNavigationController {
 	const guardsIn = useCallback((scope?: string | typeof chatLeave) => [...guards.current].filter((guard) =>
 		scope === chatLeave || (scope === undefined ? !guard.chatDraft : guard.scope === scope)
 	), []);
+	const requestLeave = useCallback((action: LeaveAction, scope?: string | typeof chatLeave) => {
+		if (guardsIn(scope).some((guard) => guard.dirty || guard.saving)) { setError(null); setLeave({ action, scope }); }
+		else action(noDiscard);
+	}, [guardsIn]);
 	/** @approved A stable context value keeps stream updates from re-rendering every navigation consumer. */
 	const requestNavigation = useCallback((action: () => void, scope?: string | typeof chatLeave) => {
-		if (guardsIn(scope).some((guard) => guard.dirty || guard.saving)) { setError(null); setLeave({ action, scope }); }
-		else action();
-	}, [guardsIn]);
+		requestLeave((discard) => { discard(); action(); }, scope);
+	}, [requestLeave]);
 
 	const saveAndLeave = async () => {
 		if (leave === null) return;
 		const dirty = guardsIn(leave.scope).filter((guard) => guard.dirty);
 		if (dirty.some((guard) => guard.save === undefined || guard.canSave === false)) return;
-		if (dirty.length === 0) { setLeave(null); leave.action(); return; }
+		if (dirty.length === 0) { setLeave(null); leave.action(noDiscard); return; }
 		setLeaveSaving(true);
 		setError(null);
 		try {
@@ -67,7 +73,7 @@ export function useSaveNavigation(): SaveNavigationController {
 				if (index < dirty.length - 1) await guard.waitAfterSave?.();
 			}
 			setLeave(null);
-			leave.action();
+			leave.action(noDiscard);
 		} catch {
 			setError(SAVE_ERROR);
 		} finally { setLeaveSaving(false); }
@@ -78,6 +84,7 @@ export function useSaveNavigation(): SaveNavigationController {
 		registerSaveGuard,
 		requestNavigation,
 		requestChatLeave: (action) => requestNavigation(action, chatLeave),
+		prepareChatLeave: (action) => requestLeave(action, chatLeave),
 		dialogProps: {
 			open: leave !== null,
 			saving: leaveSaving || affected.some((guard) => guard.saving),
@@ -86,9 +93,11 @@ export function useSaveNavigation(): SaveNavigationController {
 			onSave: affected.some((guard) => guard.dirty && guard.save === undefined) ? undefined : () => void saveAndLeave(),
 			onDiscard: () => {
 				if (leave === null) return;
-				for (const guard of guardsIn(leave.scope)) guard.discard();
+				const approved = guardsIn(leave.scope);
 				setLeave(null);
-				leave.action();
+				leave.action(() => {
+					for (const guard of approved) if (guards.current.has(guard)) guard.discard();
+				});
 			},
 			onKeepEditing: () => setLeave(null),
 		},

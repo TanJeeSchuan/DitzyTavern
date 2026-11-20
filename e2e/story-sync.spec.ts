@@ -45,7 +45,7 @@ test("an inline Save uses refreshed history after an unrelated write", async ({ 
 	await expect(message.getByText("One click saves this draft.", { exact: true })).toBeVisible();
 });
 
-test("New Chat checks an inline draft before creating anything", async ({ page, request }) => {
+test("New Chat guards before creation and preserves the inline draft after refusal", async ({ page, request }) => {
 	const name = "Guarded new Chat";
 	const createdCount = async () => {
 		const { chats } = await (await request.get("/api/workspace")).json();
@@ -55,7 +55,8 @@ test("New Chat checks an inline draft before creating anything", async ({ page, 
 	const message = story(page).locator("article[data-message-id]").last();
 	await message.hover();
 	await message.getByRole("button", { name: "Edit", exact: true }).click();
-	await message.getByRole("textbox", { name: "Edit Message" }).fill("Keep this inline draft.");
+	const editor = message.getByRole("textbox", { name: "Edit Message" });
+	await editor.fill("Keep this inline draft.");
 	await page.getByRole("button", { name: "Chats", exact: true }).click();
 	await page.getByRole("button", { name: "New", exact: true }).click();
 	await page.getByRole("textbox", { name: "Chat name", exact: true }).fill(name);
@@ -67,6 +68,12 @@ test("New Chat checks an inline draft before creating anything", async ({ page, 
 	await guard.getByRole("button", { name: "Keep editing" }).click();
 	expect(await createdCount()).toBe(0);
 	await expect(create).toBeEnabled();
+	await page.route("**/api/conversations/native", (route) => route.fulfill({ status: 404, json: { outcome: "not-found" } }), { times: 1 });
+	await create.click();
+	await guard.getByRole("button", { name: "Discard", exact: true }).click();
+	await expect(page.getByRole("alert")).toContainText("A chosen Character no longer exists.");
+	await expect(editor).toHaveText("Keep this inline draft.");
+	expect(await createdCount()).toBe(0);
 	await create.click();
 	await guard.getByRole("button", { name: "Discard", exact: true }).click();
 	await expect(story(page).getByRole("heading", { name, exact: true })).toBeVisible();

@@ -172,7 +172,7 @@ export function NewChatPanel({
 	beforeCreate,
 	onCreated,
 }: {
-	beforeCreate: (create: () => void) => void;
+	beforeCreate: (create: (discard: () => void) => void) => void;
 	onCreated: (conversationId: number) => void;
 }) {
 	const [name, setName] = useState("");
@@ -196,7 +196,7 @@ export function NewChatPanel({
 			: characters.some((character) => character.id === modelSeat.characterId);
 	const ready = name.trim() !== "" && humanReady && modelReady && !pending;
 
-	const create = async () => {
+	const create = async (discard: () => void) => {
 		setPending(true);
 		setProblem(null);
 		try {
@@ -208,6 +208,7 @@ export function NewChatPanel({
 			switch (outcome.outcome) {
 				case "available":
 					invalidateChatLists(client);
+					discard();
 					onCreated(outcome.value.conversation.id);
 					break;
 				case "conflict":
@@ -271,7 +272,7 @@ export function NewChatPanel({
 				disabled={pending}
 				onClick={() => {
 					setValidationRevealed(true);
-					if (ready) beforeCreate(() => void create());
+					if (ready) beforeCreate((discard) => void create(discard));
 				}}
 			>
 				<Plus aria-hidden="true" /> Create Chat

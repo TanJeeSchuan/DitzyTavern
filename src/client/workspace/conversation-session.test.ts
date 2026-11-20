@@ -318,6 +318,44 @@ test("a write during refresh completion gets its own current transcript", async 
 	} finally { unsubscribe(); }
 });
 
+for (const initial of [false, true]) test(`an accepted write recovers a failed joined ${initial ? "initial history read" : "history refresh"}`, async () => {
+	let revision = 5;
+	let historyReads = 0;
+	const reading = Promise.withResolvers<void>();
+	const failed = Promise.withResolvers<Response>();
+	const heldRead = initial ? 1 : 2;
+	try {
+		const h = await harness(async ({ url }) => {
+			if (!url.pathname.endsWith("history")) return Response.json(summary(1, revision));
+			if (++historyReads === heldRead) {
+				reading.resolve();
+				return withDeadline(failed.promise, "failure of the joined history read", 1_000);
+			}
+			return Response.json(page(1, 1, revision));
+		});
+		let refresh: Promise<unknown> | undefined;
+		if (!initial) {
+			await h.hook.act(async () => { refresh = h.hook.current.refreshStory(1).catch(() => null); });
+		}
+		await withDeadline(reading.promise, "the joined history read", 1_000);
+		expect(h.hook.current.conversation?.revision).toBe(5);
+		await h.hook.act(async () => h.hook.current.setConversation(summary(1, ++revision)));
+		expect(historyReads).toBe(heldRead);
+		await h.hook.act(async () => {
+			failed.resolve(Response.json({ error: "Temporary failure" }, { status: 500 }));
+			await withDeadline(Promise.resolve(refresh), "the failed refresh", 1_000);
+		});
+		await flushHook();
+
+		expect(h.hook.current.conversation?.revision).toBe(6);
+		expect(readyStory(h.hook.current.story).revision).toBe(6);
+		expect(readyStory(h.hook.current.story).historyFailed).toBe(false);
+		expect(historyReads).toBe(heldRead + 1);
+	} finally {
+		failed.resolve(Response.json({ error: "Temporary failure" }, { status: 500 }));
+	}
+});
+
 test("a source jump cannot replace the displayed window with an older revision", async () => {
 	let summaryReads = 0;
 	const h = await harness(async ({ url }) => Response.json(url.pathname.endsWith("history")

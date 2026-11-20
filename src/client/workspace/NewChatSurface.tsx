@@ -2,11 +2,11 @@ import { NewChatPanel } from "../NewChatPanel";
 import { PanelHeader } from "../PanelHeader";
 
 export function NewChatSurface({
-	beforeCreate = (create) => create(),
+	beforeCreate = (create) => create(() => undefined),
 	onCreated,
 	onClose,
 }: {
-	beforeCreate?: (create: () => void) => void;
+	beforeCreate?: (create: (discard: () => void) => void) => void;
 	onCreated: (conversationId: number) => void;
 	onClose: () => void;
 }) {
