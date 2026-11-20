@@ -8,7 +8,7 @@ export type VariantSelectionSurface = {
 	story: StoryState;
 	dispatchStory: Dispatch<StoryAction>;
 	setConversation: (conversation: ConversationSummary | null) => void;
-	waitForHistory: (minimumRevision?: number) => Promise<StoryState>;
+	waitForHistory: (minimumRevision: number) => Promise<StoryState>;
 };
 
 type RequestedSelection = { baseRevision: number; confirmed: boolean; messageId: number; request: RequestedWrite<number> };
@@ -24,7 +24,7 @@ export async function requestVariantSelection(
 	if (signal.aborted || !isStoryReady(story)) return;
 	const conversationId = story.conversationId;
 	const baseRevision = story.revision;
-	const surface = { exact: true, onConversationChange: setConversation, setNotice: () => {}, isCurrent: () => !signal.aborted };
+	const surface = { exact: !confirmed, onConversationChange: setConversation, setNotice: () => {}, isCurrent: () => !signal.aborted };
 	const requested = { baseRevision, messageId, confirmed, request: { value: variantId } };
 	const previousSlot = selections.get(signal);
 	if (previousSlot !== undefined && !previousSlot.claimed && !confirmed && !previousSlot.selection.confirmed) {
@@ -38,15 +38,16 @@ export async function requestVariantSelection(
 	dispatchStory({ type: confirmed ? "preview-confirmed" : "selection-requested", ...requested });
 	try {
 		const applied = await runConversationCommand({ ...surface, conversationId, revision: async (previous, queued) => {
+			if (confirmed) return baseRevision;
 			const needsHistory = previousSlot !== undefined || queued;
 			const refreshed = needsHistory ? await waitForHistory(previous ?? 0).catch(() => undefined) : null;
 			slot.claimed = true;
-			const { baseRevision, messageId, request, confirmed } = slot.selection;
-			if (refreshed === null) return baseRevision;
-			if (refreshed === undefined || !isStoryReady(refreshed) || refreshed.revision < baseRevision) return null;
-			const persisted = { ...refreshed, preview: confirmed ? null : refreshed.preview, requestedSelections: new Map() };
+			const { baseRevision: selectionRevision, messageId, request } = slot.selection;
+			if (refreshed === null) return selectionRevision;
+			if (refreshed === undefined || !isStoryReady(refreshed) || refreshed.revision < selectionRevision) return null;
+			const persisted = { ...refreshed, requestedSelections: new Map() };
 			const selection = classifyVariantSelection(persisted, messageId, request.value);
-			return selection.kind === "immediate" || (confirmed && selection.kind === "preview") ? refreshed.revision : null;
+			return selection.kind === "immediate" ? refreshed.revision : null;
 		} }, (expectedRevision) => {
 			const { messageId, request } = slot.selection;
 			return applyConversationCommand(conversationId, expectedRevision, { type: "select-variant", messageId, variantId: request.value });
