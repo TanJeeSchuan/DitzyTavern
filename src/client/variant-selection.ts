@@ -45,7 +45,7 @@ export async function requestVariantSelection(
 			const { baseRevision, messageId, request, confirmed } = slot.selection;
 			if (refreshed === null) return baseRevision;
 			if (refreshed === undefined || !isStoryReady(refreshed) || refreshed.revision < baseRevision) return null;
-			const persisted = { ...refreshed, preview: null, requestedSelections: new Map() };
+			const persisted = { ...refreshed, requestedSelections: new Map() };
 			const selection = classifyVariantSelection(persisted, messageId, request.value);
 			return selection.kind === "immediate" || (confirmed && selection.kind === "preview") ? refreshed.revision : null;
 		} }, (expectedRevision) => {

@@ -42,7 +42,7 @@ const firstPage = (withLaterMessage = false, withMoves = false): ChatHistoryPage
 		authorRole: "human",
 		author: { participantId: 10, capturedName: "Writer", inCast: true },
 		moves: { phone: [{ to: "Model", text: "Wait." }] },
-		variants: [historyVariant({ id: 90 })],
+		variants: [historyVariant({ id: 90 }), historyVariant({ id: 91, position: 2, selected: false })],
 	})] : []), historyMessage({
 		position: withMoves ? 2 : 1,
 		author: { participantId: 20, capturedName: "Author", inCast: true },
@@ -311,6 +311,20 @@ describe("Requested selection", () => {
 		expect(harness.commands).toEqual([{ expectedRevision: 5, action: { type: "select-variant", messageId: 10, variantId: 101 } }]);
 		expect(harness.shownVariantId()).toBe(101);
 		expect(harness.previewEntries()).toBe(0);
+	});
+
+	test("opening an older Preview drops a queued ordinary Swipe", async () => {
+		const harness = createHarness({ kind: "applied" }, false, true);
+		const release = harness.hold();
+		const moves = harness.removeMoves();
+		const swipe = harness.swipe(10, 1);
+		await harness.select(9, 91);
+		release();
+		await Promise.all([moves, swipe]);
+
+		expect(harness.commands.map(({ action }) => action.type)).toEqual(["set-message-moves"]);
+		expect(harness.shownVariantId()).toBe(100);
+		expect(harness.previewEntries()).toBe(1);
 	});
 
 	test("a queued Swipe drops a Variant absent from refreshed history", async () => {
