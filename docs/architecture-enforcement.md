@@ -1,10 +1,10 @@
 # Architecture enforcement
 
 `bun run check` is the local and CI entrypoint for repository policy. It runs
-Oxlint, the custom rule tests, both TypeScript projects, and the Bun tests.
-Clone detection is a separate advisory command.
+Oxlint, the custom rule tests, both Knip scans, the clone baseline check, the
+stylesheet check, both TypeScript projects, the Bun tests, and the e2e harness tests.
 
-The `ditzy` Oxlint plugin owns six project rules:
+The `ditzy` Oxlint plugin enforces these rules.
 
 - `no-box-boundary-imports` keeps each Box to its own folder, by relative
   path, and its layer's Box SDK, by `@/` path; only tests import from
@@ -23,17 +23,28 @@ The `ditzy` Oxlint plugin owns six project rules:
 - `no-conversation-internal-imports` rejects imports of Conversation internals
   and of the Message, Variant, and Active Generation tables from outside the
   Conversation module; other modules use its public barrel and read seams.
+- `no-conversation-table-writes` rejects direct Drizzle inserts, updates, and
+  deletes on Conversation-owned schema tables outside the Conversation module.
+- `no-type-alias-rename` rejects aliases of bare type references and named
+  exports that rename their binding.
+- `no-reexport-module` rejects modules made entirely of re-exports. Box SDK
+  entry points are exempt.
+- `no-raw-server-fetch` rejects use of the global `fetch` in production server
+  code outside the shared Model Client transport and listed transport owners.
+- `no-unguarded-box-hook` rejects direct calls to recognized Box hook members
+  outside their guard owners and listed callers of checked hooks.
 
-The `no-contract-definition-outside-contract` Oxlint rule is the only gate for
-schema ownership.
+The new rules list existing exceptions beside their reasons in
+`tools/oxlint/ditzy/rules/`.
 
-## Existing violations
+## Stylesheet check
 
-The six rules are fully enforced with no baseline violations: the Elysia
-route adapters live in `src/server/contract/**` and import every wire schema
-from `src/shared/contract/**`, the migrated client transports decode payloads
-with `Value.Decode` against the canonical schemas, and every Conversation
-write runs through `runConversationTransaction`. `bun run check` is green.
+`scripts/check-stylesheets.ts` resolves custom properties declared across
+`src/**/*.css`, including Tailwind `@theme` blocks. It rejects an undeclared
+`var()` with no fallback. The script lists the properties that Radix Select and
+SwipeBrowser supply at runtime. It also rejects Tailwind `dark:` utilities in
+source files because the built-in variant follows the OS color scheme. Use
+`data-theme` selectors to follow the app setting.
 
 ## Clone and dead-export checks
 

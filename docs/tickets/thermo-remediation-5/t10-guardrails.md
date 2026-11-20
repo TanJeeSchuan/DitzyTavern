@@ -1,6 +1,6 @@
 # T10: Guardrails against the debt round 5 removed
 
-Status: IN PROGRESS
+Status: DONE
 
 Blocked By: T8
 
@@ -44,7 +44,7 @@ One script step in `check`:
 ## TODO
 
 - [x] Slice a, PR (knip triage findings that are surface raised to the owner)
-- [ ] Slices b, c and d, one PR
+- [x] Slices b, c and d, one PR
 
 ## Acceptance
 
@@ -66,3 +66,9 @@ Knip findings kept
 The Box host loads the built-in Box default exports by folder. Knip allowlists those live entry exports by name.
 
 Both Knip scans, the clone check and focused tests passed. Probes verified that production Knip rejects a module reachable only from the browser harness, and that the scans flag unused named Box and tooling exports and an unreferenced script. The clone regression test covers deletion, shorter surviving ranges, JSX indentation, CRLF and a replacement that changes literal text. GitHub Check runs the full suite and e2e. Slices b, c and d remain open.
+
+### Slices b, c and d
+
+The five Oxlint rules catch rename-only declarations, re-export-only modules, raw server fetches, direct Box hook calls, and direct Drizzle writes to Conversation tables. Existing exceptions are listed next to their reasons. Creator Mode scenarios now share the setup refusal guard with Chat commands. The regression test verifies the scenario diagnostic when a setup hook throws.
+
+The stylesheet step checks cross-file custom property declarations and rejects Tailwind's OS-driven `dark:` variant. It records the runtime properties supplied by Radix Select and SwipeBrowser. Both checks run from `bun run check`.
