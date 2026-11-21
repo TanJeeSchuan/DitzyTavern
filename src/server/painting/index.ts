@@ -4,8 +4,8 @@ import type { Static } from "@sinclair/typebox";
 import { and, eq, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, messageVariantDataTable } from "../database/schema";
-import { illustration, keptImage, paintingSettings, referenceSet, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead, type ReferenceSet } from "../../shared/contract/painting";
-import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantData, readChatVariantIds, readChatVariants, readConversationSummary, readPaintPresetSettings } from "../conversation";
+import { illustration, keptImage, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
+import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantData, readChatVariantIds, readChatVariants, readConversationSummary, readPaintPresetSettings, executeConversationCommand, readReferenceSets } from "../conversation";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import { readImageModelSettings } from "./image-model-settings";
 import { paintImage, type ModelFetch } from "../model-client";
@@ -29,14 +29,6 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	const chatRow = (conversationId: number, key: string) => and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), eq(conversationDataTable.key, key));
 	const writeChatRow = (conversationId: number, key: string, value: string) => db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key, value })
 		.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value } }).run();
-	const initialReferenceSet: ReferenceSet = { id: "default", name: "References", references: "" };
-	const storedReferenceSets = (conversationId: number): ReferenceSet[] => db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), like(conversationDataTable.key, "reference-set:%"))).all()
-		.map(({ key, value }) => Value.Parse(referenceSet, { ...JSON.parse(value), id: key.slice("reference-set:".length) }))
-		.sort((a, b) => a.name.localeCompare(b.name));
-	const referenceSets = (conversationId: number): ReferenceSet[] => {
-		const sets = storedReferenceSets(conversationId);
-		return sets.length === 0 ? [initialReferenceSet] : sets;
-	};
 	const read = (conversationId: number): IllustrationsRead => {
 		requireChat(conversationId);
 		const row = db.select().from(conversationDataTable).where(chatRow(conversationId, "aspect-ratio")).get();
@@ -45,10 +37,7 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		const stored = readChatVariantData(database, conversationId, PAINTING_NAMESPACE);
 		const paintings: Painting[] = stored.map(({ key: id, variantId, value }) => ({ kind: "illustration", id, variantId, ...Value.Parse<typeof illustration>(illustration, JSON.parse(value)) }));
 		for (const variantId of variantIds) for (const entry of provisional.forVariant(variantId)) paintings.push(entry.painting);
-		const sets = referenceSets(conversationId);
-		const selected = db.select().from(conversationDataTable).where(chatRow(conversationId, "selected-reference-set")).get();
-		const referenceSetId = sets.find(({ id }) => selected !== undefined && id === JSON.parse(selected.value))?.id ?? sets[0]!.id;
-		return { ...readPaintPresetSettings(database, conversationId), aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)), referenceSets: sets, referenceSetId };
+		return { ...readPaintPresetSettings(database, conversationId), ...readReferenceSets(db, conversationId), aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)) };
 	};
 	const start = ({ variantId, brief, references, ask, aspectRatio, id = Bun.randomUUIDv7() }: Pick<Painting, "variantId" | "brief" | "references" | "ask" | "aspectRatio"> & { id?: string }) => {
 		const { profileId, model } = readImageModelSettings(database);
@@ -80,34 +69,11 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	const command = (conversationId: number, command: PaintingCommand) => {
 		requireChat(conversationId);
 		if (command.type === "set-aspect-ratio") return void writeChatRow(conversationId, "aspect-ratio", JSON.stringify({ aspectRatio: command.aspectRatio }));
-		const setName = (name: string) => {
-			if (!name.trim()) throw new InvalidConversationCommandError("Name the Reference Set.");
-			return name.trim();
-		};
-		if (command.type === "save-reference-set" || command.type === "rename-reference-set") {
-			const set = referenceSets(conversationId).find(({ id }) => id === command.id);
-			if (set === undefined) {
-				if (command.type === "save-reference-set") return;
-				throw new InvalidConversationCommandError("This Reference Set was deleted.");
-			}
-			const { name, references } = set;
-			return void writeChatRow(conversationId, `reference-set:${command.id}`, JSON.stringify(command.type === "save-reference-set" ? { name, references: command.references } : { name: setName(command.name), references }));
-		}
-		if (command.type === "select-reference-set") return void writeChatRow(conversationId, "selected-reference-set", JSON.stringify(command.id));
-		if (command.type === "delete-reference-set") return void database.transaction(() => {
-			if (referenceSets(conversationId).length === 1) throw new InvalidConversationCommandError("Keep at least one Reference Set.");
-			db.delete(conversationDataTable).where(chatRow(conversationId, `reference-set:${command.id}`)).run();
-			writeChatRow(conversationId, "selected-reference-set", JSON.stringify(read(conversationId).referenceSetId));
-		}).immediate();
-		if (command.type === "create-reference-set" || command.type === "adopt-reference-set") {
-			const name = setName(command.name);
-			return void database.transaction(() => {
-				if (storedReferenceSets(conversationId).length === 0) writeChatRow(conversationId, "reference-set:default", JSON.stringify({ name: initialReferenceSet.name, references: initialReferenceSet.references }));
-				const existing = command.type === "adopt-reference-set" ? referenceSets(conversationId).find(({ references }) => references === command.references) : undefined;
-				const id = existing?.id ?? Bun.randomUUIDv7();
-				if (existing === undefined) writeChatRow(conversationId, `reference-set:${id}`, JSON.stringify({ name, references: command.references }));
-				writeChatRow(conversationId, "selected-reference-set", JSON.stringify(id));
-			}).immediate();
+		if (command.type === "create-reference-set" || command.type === "adopt-reference-set" || command.type === "save-reference-set" || command.type === "rename-reference-set" || command.type === "select-reference-set" || command.type === "delete-reference-set") {
+			const revision = readConversationRevision(database, conversationId);
+			if (revision === undefined) throw new ConversationNotFoundError(conversationId);
+			const updated = executeConversationCommand(database, { conversationId, expectedRevision: revision, action: { type: "update-reference-sets", command } });
+			return { before: revision, after: updated.revision };
 		}
 		if (command.type === "add-to-gallery") {
 			if (readImage(db, command.hash) === undefined) throw new InvalidConversationCommandError("The image is missing; upload it again.");

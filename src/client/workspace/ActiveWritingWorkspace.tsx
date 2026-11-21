@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { IllustrationActionsContext, type PaintTarget } from "../painting";
+import { forkWithSavedReferences, IllustrationActionsContext, type PaintTarget } from "../painting";
 import type { ComposerHandle } from "../story/Composer";
 import { PaintPanel } from "../PaintPanel";
 import { boxIdOf, type BoxId } from "../../shared/contract/box";
@@ -220,24 +220,27 @@ export function ActiveWritingWorkspace({
 	const generationRunning = generation.isGenerating || (conversation?.activeGenerations.length ?? 0) > 0;
 	const fork = async (name: string, trimVariants: boolean): Promise<string | null> => {
 		if (conversation === null || forkRequest === null) return "The Chat is not available.";
-		let error: string | null = null;
-		const applied = await runConversationCommand({
-			conversationId: conversation.id, revision: () => isStoryReady(story) ? story.revision : null, exact: true,
-			onConversationChange: session.setConversation, setNotice: (notice) => { error = notice; },
-			isCurrent: () => !session.signal.aborted,
-		}, async (revision) => {
-			const result = await forkConversation(conversation.id, { expectedRevision: revision, at: forkRequest.at, name, trimVariants });
-			return result.outcome === "available" ? { outcome: "operation", operation: result.value } : result;
-		}, { onOperation: (result) => {
-			invalidateChatLists(client);
-			forkRequest.commit(() => {
-				openChat(String(result.conversation.id));
-				if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
-			});
-			setForkNotice(result.omittedBoxes.length ? `Boxes not copied because they are not installed: ${result.omittedBoxes.join(", ")}.` : null);
-			setForkRequest(null);
-		} });
-		return applied ? null : error ?? "The Fork could not be created. Try again.";
+		return forkWithSavedReferences(client, conversation.id, isStoryReady(story) ? story.revision : null, async (revision) => {
+			if (session.signal.aborted) return "The Chat is not available.";
+			let error: string | null = null;
+			const applied = await runConversationCommand({
+				conversationId: conversation.id, revision: () => revision, exact: true,
+				onConversationChange: session.setConversation, setNotice: (notice) => { error = notice; },
+				isCurrent: () => !session.signal.aborted,
+			}, async (revision) => {
+				const result = await forkConversation(conversation.id, { expectedRevision: revision, at: forkRequest.at, name, trimVariants });
+				return result.outcome === "available" ? { outcome: "operation", operation: result.value } : result;
+			}, { onOperation: (result) => {
+				invalidateChatLists(client);
+				forkRequest.commit(() => {
+					openChat(String(result.conversation.id));
+					if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
+				});
+				setForkNotice(result.omittedBoxes.length ? `Boxes not copied because they are not installed: ${result.omittedBoxes.join(", ")}.` : null);
+				setForkRequest(null);
+			} });
+			return applied ? null : error ?? "The Fork could not be created. Try again.";
+		});
 	};
 	const unlinkFork = () => {
 		if (conversation === null) return;
@@ -285,8 +288,10 @@ export function ActiveWritingWorkspace({
 	const composerRef = useRef<ComposerHandle>(null);
 	const paintDrafts = useRef(new Map<number, Pick<PaintTarget, "brief" | "ask">>());
 	const openPaint = (variantId: number, brief?: string, ask = "") => {
-		if (paintDisabledReason !== undefined) return;
+		const canOpen = () => !session.signal.aborted && !panelAccess.current.inspecting && !panelAccess.current.swiping;
+		if (paintDisabledReason !== undefined || !canOpen()) return;
 		saveNavigation.requestNavigation(() => {
+			if (!canOpen()) return;
 			const draft = brief === undefined ? paintDrafts.current.get(variantId) ?? { brief: "", ask: "" } : { brief, ask };
 			paintDrafts.current.set(variantId, draft);
 			dispatchPanel({ type: "paint-opened", target: { variantId, ...draft, requestId: crypto.randomUUID() } });

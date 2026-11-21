@@ -2,6 +2,7 @@ import { Type, type Static } from "@sinclair/typebox";
 import { briefMessageCount, generationFormattingContext } from "./conversation-schema";
 import { modelSelection } from "./model-selection";
 import { invalidOutcome, notFoundOutcome, notPlayableOutcome } from "./outcomes";
+import { referenceSet, referenceSetCommand } from "./reference-set";
 
 export const paintingAspectRatio = Type.Union([Type.Literal("9:16"), Type.Literal("3:4"), Type.Literal("1:1"), Type.Literal("4:3"), Type.Literal("16:9")]);
 export const paintingSettings = Type.Object({ aspectRatio: paintingAspectRatio });
@@ -25,10 +26,8 @@ const paintPresetSettings = Type.Object({
 	paintPresets: Type.Array(Type.Object({ id: Type.Integer(), name: Type.String() })),
 });
 export type PaintPresetSettings = Static<typeof paintPresetSettings>;
-export const referenceSet = Type.Object({ id: Type.String(), name: Type.String({ minLength: 1 }), references: Type.String() });
-export type ReferenceSet = Static<typeof referenceSet>;
-const illustrationsRead = Type.Object({ ...paintPresetSettings.properties, aspectRatio: paintingAspectRatio, paintings: Type.Array(painting),
-	referenceSets: Type.Array(referenceSet, { minItems: 1 }), referenceSetId: Type.String() });
+const referenceSetSelection = Type.Object({ referenceSets: Type.Array(referenceSet, { minItems: 1 }), referenceSetId: Type.String() });
+const illustrationsRead = Type.Composite([paintPresetSettings, referenceSetSelection, Type.Object({ aspectRatio: paintingAspectRatio, paintings: Type.Array(painting) })]);
 export type IllustrationsRead = Static<typeof illustrationsRead>;
 export const paintingCommand = Type.Union([
 	Type.Object({ type: Type.Literal("paint"), variantId: Type.Integer(), brief: Type.String({ minLength: 1 }), references: Type.String(), ask: Type.String(), aspectRatio: paintingAspectRatio }),
@@ -39,15 +38,14 @@ export const paintingCommand = Type.Union([
 	Type.Object({ type: Type.Literal("add-to-gallery"), hash: Type.String({ pattern: "^[0-9a-f]{64}$" }), name: Type.String() }),
 	Type.Object({ type: Type.Literal("remove-from-gallery"), id: Type.String() }),
 	Type.Object({ type: Type.Literal("set-aspect-ratio"), aspectRatio: paintingAspectRatio }),
-	Type.Object({ type: Type.Literal("create-reference-set"), name: referenceSet.properties.name, references: Type.String() }),
-	Type.Object({ type: Type.Literal("adopt-reference-set"), name: referenceSet.properties.name, references: Type.String() }),
-	Type.Object({ type: Type.Literal("save-reference-set"), id: Type.String(), references: Type.String() }),
-	Type.Object({ type: Type.Literal("rename-reference-set"), id: Type.String(), name: referenceSet.properties.name }),
-	Type.Object({ type: Type.Literal("select-reference-set"), id: Type.String() }),
-	Type.Object({ type: Type.Literal("delete-reference-set"), id: Type.String() }),
+	...referenceSetCommand.anyOf,
 ]);
 export type PaintingCommand = Static<typeof paintingCommand>;
-export const paintingCommandResponse = { 200: Type.Object({ outcome: Type.Literal("accepted") }), 404: notFoundOutcome, 422: invalidOutcome };
+export const paintingCommandResponse = {
+	200: Type.Object({ outcome: Type.Literal("accepted"), referenceRevision: Type.Optional(Type.Object({ before: Type.Integer(), after: Type.Integer() })) }),
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
 export const illustrationsResponse = { 200: illustrationsRead, 404: notFoundOutcome };
 
 export const briefRequest = Type.Object({ ...generationFormattingContext.properties, variantId: Type.Integer(), ask: Type.String() });

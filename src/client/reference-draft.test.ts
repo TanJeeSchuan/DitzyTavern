@@ -1,7 +1,8 @@
 import { afterEach, expect, test } from "bun:test";
 import { QueryClient, useQuery } from "@tanstack/react-query";
 import { renderHook } from "./test-fixtures/render-hook";
-import type { IllustrationsRead, ReferenceSet } from "../shared/contract/painting";
+import type { IllustrationsRead } from "../shared/contract/painting";
+import type { ReferenceSet } from "../shared/contract/reference-set";
 
 const { useAdoptReferences, useReferenceDraft, illustrationsKey } = await import("./painting");
 const originalFetch = globalThis.fetch;
@@ -77,19 +78,18 @@ test("an edit made while a save is in flight is saved before adopting an Illustr
 	expect(sent).toEqual(["save-reference-set:Iris: kimono", "save-reference-set:Iris: kimono, hair down", "adopt-reference-set:Iris: silks"]);
 });
 
-test("a save shows the saved References before any read-back lands", async () => {
+test("a saved edit stays visible when its Illustrations read-back fails", async () => {
 	const client = new QueryClient();
-	client.setQueryData(illustrationsKey(5), {
-		paintPresetId: 1, briefMessageCount: 5, paintPresets: [], aspectRatio: "1:1", paintings: [],
-		referenceSets: [{ id: "default", name: "References", references: "Iris: silks" }], referenceSetId: "default",
-	});
+	const queryKey = illustrationsKey(5);
+	client.setQueryData(queryKey, readOf({ id: "default", name: "References", references: "Iris: silks" }));
 	serve(0);
 	const hook = await renderHook(() => {
-		const read = useQuery<IllustrationsRead>({ queryKey: illustrationsKey(5), enabled: false });
+		const read = useQuery<IllustrationsRead>({ queryKey, queryFn: async () => { throw new Error("offline"); }, refetchOnMount: false, retry: false });
 		return useReferenceDraft(5, read.data?.referenceSets[0]);
 	}, client);
 	await hook.act(async () => { hook.current.edit("Iris: kimono"); });
 	await hook.act(async () => { expect(await hook.current.flush()).toBe(true); });
+	expect(client.getQueryState(queryKey)?.error).toEqual(new Error("offline"));
 	expect(hook.current.references).toBe("Iris: kimono");
 });
 

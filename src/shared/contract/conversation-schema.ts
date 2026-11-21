@@ -27,6 +27,7 @@ import { generationProvenance } from "./generation-provenance";
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
 import { scopedLorebookAttachment } from "./lorebook";
+import { referenceSetCommand } from "./reference-set";
 
 const promptHistoryRole = Type.Union([
 	Type.Literal("human"),
@@ -595,6 +596,7 @@ const selectPromptPresetAction = Type.Object({
 export const briefMessageCount = Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]);
 const selectPaintPresetAction = Type.Object({ type: Type.Literal("select-paint-preset"), paintPresetId: Type.Integer() });
 const setBriefMessageCountAction = Type.Object({ type: Type.Literal("set-brief-message-count"), briefMessageCount });
+const updateReferenceSetsAction = Type.Object({ type: Type.Literal("update-reference-sets"), command: referenceSetCommand });
 
 const participantLorebookAttachment = {
 	participantId: Type.Integer(),
@@ -623,6 +625,7 @@ const conversationCommandAction = Type.Union([
 	selectPromptPresetAction,
 	selectPaintPresetAction,
 	setBriefMessageCountAction,
+	updateReferenceSetsAction,
 	Type.Object({ type: Type.Literal("attach-chat"), bookId: Type.Integer(), enabled: Type.Optional(Type.Boolean()) }),
 	Type.Object({ type: Type.Literal("detach-chat"), bookId: Type.Integer() }),
 	Type.Object({ type: Type.Literal("attach-participant"), ...participantLorebookAttachment, enabled: Type.Optional(Type.Boolean()) }),

@@ -38,7 +38,7 @@ export const createPaintingRoutes = (database: Database, options: ConversationRo
 			catch (error) { return presentDomainError(error, illustrationsResponse); }
 		}, { params: conversationIdParams, response: illustrationsResponse })
 		.post("/api/conversations/:id/illustrations/commands", ({ params, body }) => {
-			try { paintings.command(params.id, body); return { outcome: "accepted" as const }; }
+			try { return { outcome: "accepted" as const, referenceRevision: paintings.command(params.id, body) ?? undefined }; }
 			catch (error) { return presentDomainError(error, paintingCommandResponse); }
 		}, { params: conversationIdParams, body: paintingCommand, response: paintingCommandResponse });
 };

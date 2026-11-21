@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { DecisionModelPicker } from "../DecisionModelPicker";
 import { useConnectionSettingsQuery } from "../connection-settings-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { foldNewer } from "../lib/visit";
 import { useAsyncEffect } from "../lib/use-async";
 import { useRevisionedDraft } from "../lib/revisioned-draft";
 import { ConflictBanner } from "../ConflictBanner";
@@ -42,20 +44,32 @@ export function useSettingsDraft<S extends Revisioned>(
 	name: string,
 	load: () => Promise<S>,
 	apply: (command: Omit<S, "revision"> & { type: "apply"; expectedRevision: number }) => Promise<SaveOutcome<S>>,
+	query?: { key: readonly unknown[] },
 ): SettingsDraft<S> {
-	const [read, setRead] = useState<Read<S>>({ settings: null, loading: true, error: null });
+	const client = useQueryClient();
+	const queryRead = useQuery({ queryKey: query?.key ?? [name], queryFn: load, enabled: query !== undefined });
+	const [localRead, setRead] = useState<Read<S>>({ settings: null, loading: true, error: null });
+	const read: Read<S> = query === undefined
+		? localRead
+		: { settings: queryRead.data ?? null, loading: queryRead.isLoading, error: localRead.error ?? (queryRead.error ? `${name} could not be loaded.` : null) };
 	const reload = useCallback((isCancelled: () => boolean = () => false) => load()
 		.then((settings) => { if (!isCancelled()) setRead({ settings, loading: false, error: null }); })
 		.catch(() => { if (!isCancelled()) setRead((current) => ({ ...current, loading: false, error: `${name} could not be loaded.` })); }), [load, name]);
-	useAsyncEffect((isCancelled) => { void reload(isCancelled); }, [reload]);
+	useAsyncEffect((isCancelled) => { if (query === undefined) void reload(isCancelled); }, [query, reload]);
 
 	const editor = useRevisionedDraft(read.settings === null ? null : revisioned(read.settings), {
 		equals: same,
 		save: async (submitted, expectedRevision) => {
 			setRead((current) => ({ ...current, error: null }));
 			const result = await apply({ ...submitted, type: "apply", expectedRevision });
-			if (result.outcome === "available") return { outcome: "saved", saved: revisioned(result.value.settings) };
-			if (result.outcome === "conflict") return { outcome: "conflict", theirs: revisioned(result.current) };
+			if (result.outcome === "available") {
+				if (query !== undefined) foldNewer(client, query.key, result.value.settings, (settings) => settings.revision);
+				return { outcome: "saved", saved: revisioned(result.value.settings) };
+			}
+			if (result.outcome === "conflict") {
+				if (query !== undefined) foldNewer(client, query.key, result.current, (settings) => settings.revision);
+				return { outcome: "conflict", theirs: revisioned(result.current) };
+			}
 			setRead((current) => ({ ...current, error: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : `${name} could not be saved.` }));
 			return { outcome: "failed" };
 		},
@@ -65,12 +79,15 @@ export function useSettingsDraft<S extends Revisioned>(
 		...read,
 		// @approved
 		// SAFETY: the session's authoritative copy is draftOf(S) at its revision, so restoring the revision restores S.
-		settings: editor.saved === null ? read.settings : { ...editor.saved.value, revision: editor.saved.revision } as S,
+		settings: query !== undefined || editor.saved === null ? read.settings : { ...editor.saved.value, revision: editor.saved.revision } as S,
 		draft: editor.value,
 		pending: editor.saving,
 		dirty: editor.dirty,
 		conflict: editor.conflict,
-		reload: () => { setRead((current) => ({ ...current, loading: true, error: null })); void reload(); },
+		reload: () => {
+			if (query !== undefined) { setRead((current) => ({ ...current, error: null })); void queryRead.refetch(); }
+			else { setRead((current) => ({ ...current, loading: true, error: null })); void reload(); }
+		},
 		update: (patch) => {
 			// @approved
 			// SAFETY: a patch of S's own fields keeps the draft's shape.

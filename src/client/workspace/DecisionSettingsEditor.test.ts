@@ -62,3 +62,20 @@ test("the settings a summary reads follow a successful save", async () => {
 	await hook.act(async () => { await hook.current.save(); });
 	expect(hook.current.settings).toEqual(settings(2, "mine"));
 });
+
+test("model settings use the shared committed query and update it after saving", async () => {
+	let server = settings(1, "start");
+	const client = new QueryClient();
+	const key = ["model-selection", "image-model"] as const;
+	const load = () => Promise.resolve(server);
+	const apply = async ({ decisionModel, expectedRevision }: Omit<Settings, "revision"> & { expectedRevision: number }) => {
+		server = settings(expectedRevision + 1, decisionModel);
+		return { outcome: "available" as const, value: { settings: server } };
+	};
+	const hook = await renderHook(() => useSettingsDraft<Settings>("Image Model", load, apply, { key }), client);
+	await flushHook();
+	await hook.act(async () => { hook.current.update({ decisionModel: "draft" }); });
+	expect(client.getQueryData<Settings>(key)).toEqual(settings(1, "start"));
+	await hook.act(async () => { await hook.current.save(); });
+	expect(client.getQueryData<Settings>(key)).toEqual(settings(2, "draft"));
+});

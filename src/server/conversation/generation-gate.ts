@@ -43,6 +43,7 @@ const policies = {
 	"select-prompt-preset": { rule: "allowed" },
 	"select-paint-preset": { rule: "allowed" },
 	"set-brief-message-count": { rule: "allowed" },
+	"update-reference-sets": { rule: "allowed" },
 	"set-box-setup": { rule: "allowed" },
 	"set-box-state": { rule: "allowed" },
 	"upgrade-box": { rule: "allowed" },

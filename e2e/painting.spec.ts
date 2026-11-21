@@ -2,6 +2,8 @@ import { isChatModelCall } from "./protocol";
 import type { Page } from "@playwright/test";
 import { test, expect, send, story } from "./fixtures";
 import { pngFixture } from "../src/server/image/image-fixtures";
+import { emptyPromptChannels } from "../src/shared/definition";
+import { withDeadline } from "../src/shared/test-fixtures/deadline";
 
 const picture = pngFixture({ width: 640, height: 480 }).toString("base64");
 
@@ -61,6 +63,7 @@ test("keep an Illustration in the Gallery after taking it off its Message, reuse
 	const panel = page.getByRole("complementary", { name: "Paint", exact: true });
 	await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("Lantern at the lake");
 	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("A coral lantern reflected in still water.");
+	await panel.getByRole("textbox", { name: "References", exact: true }).fill("A coral lantern.");
 	await panel.getByRole("button", { name: "Paint", exact: true }).click();
 	await panel.getByRole("button", { name: "Close Paint" }).click();
 	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
@@ -69,11 +72,23 @@ test("keep an Illustration in the Gallery after taking it off its Message, reuse
 	await expect(story(page).getByRole("img", { name: "Illustration", exact: true })).toHaveCount(0);
 	await message.hover();
 	await message.getByRole("button", { name: "Paint", exact: true }).click();
-	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("");
+	const brief = panel.getByRole("textbox", { name: "Brief", exact: true });
+	await brief.fill("A different scene.");
 	await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("");
+	const adoption = Promise.withResolvers<void>();
+	await page.route("**/illustrations/commands", async (route) => {
+		if (route.request().postDataJSON().type === "adopt-reference-set") await withDeadline(adoption.promise, "adoption release");
+		await route.continue();
+	});
 	await panel.getByRole("button", { name: "Picture actions: Lantern at the lake", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Use Brief", exact: true }).click();
-	await expect(panel.getByRole("textbox", { name: "Brief", exact: true })).toHaveText("A coral lantern reflected in still water.");
+	try {
+		await expect(brief).toBeDisabled();
+		await expect(panel.getByRole("button", { name: "Paint", exact: true })).toBeDisabled();
+		await expect(panel.getByRole("button", { name: "Write Brief", exact: true })).toBeDisabled();
+		await expect(panel.getByRole("button", { name: "Use as reference: Lantern at the lake", exact: true })).toBeDisabled();
+	} finally { adoption.resolve(); }
+	await expect(brief).toHaveText("A coral lantern reflected in still water.");
 	await expect(panel.getByRole("textbox", { name: "Ask", exact: true })).toHaveText("Lantern at the lake");
 	await panel.getByRole("button", { name: "Picture actions: Lantern at the lake", exact: true }).click();
 	await page.getByRole("menuitem", { name: "Remove from Gallery", exact: true }).click();
@@ -168,6 +183,55 @@ test("write a Brief from an Ask on an older Message, edit it and paint", async (
 test.describe("References", () => {
 	test.use({ allowedBrowserErrors: /status of 422/ });
 
+	test("a References edit survives reloading before the server accepts it", async ({ page }) => {
+		const { activeChatId } = await (await page.request.get("/api/workspace")).json();
+		const url = `/api/conversations/${activeChatId}/illustrations`;
+		const route = `**${url}/commands`;
+		await page.route(route, (request) => request.fulfill({ status: 422, json: { outcome: "invalid", reason: "Save temporarily refused." } }));
+		await page.goto("/");
+		const open = page.locator("form.composer").getByRole("button", { name: "Paint", exact: true });
+		const panel = page.getByRole("complementary", { name: "Paint", exact: true });
+		const references = panel.getByRole("textbox", { name: "References", exact: true });
+		await open.click();
+		await references.fill("Keep this through the reload.");
+		await expect(panel.getByText("Save temporarily refused.")).toBeVisible();
+		expect((await (await page.request.get(url)).json()).referenceSets[0].references).toBe("");
+		await page.unroute(route);
+		await page.reload();
+		await open.click();
+		await expect(references).toHaveText("Keep this through the reload.");
+		await expect.poll(async () => (await (await page.request.get(url)).json()).referenceSets[0].references).toBe("Keep this through the reload.");
+	});
+
+	test("Fork copies the References edit whose save is still in flight", async ({ page }) => {
+		await page.goto("/");
+		await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
+		const paint = page.getByRole("complementary", { name: "Paint", exact: true });
+		const saving = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		await page.route("**/illustrations/commands", async (route) => {
+			saving.resolve();
+			await withDeadline(release.promise, "Reference Set save release");
+			await route.continue();
+		});
+		try {
+			await paint.getByRole("textbox", { name: "References", exact: true }).fill("Copy the latest References.");
+			await paint.getByRole("button", { name: "Close Paint" }).click();
+			await withDeadline(saving.promise, "Reference Set save request");
+			const message = story(page).locator("article[data-message-id]").last();
+			await message.hover();
+			await message.getByRole("button", { name: "Fork", exact: true }).click();
+			const dialog = page.getByRole("dialog", { name: "Fork Chat" });
+			const forked = page.waitForResponse((response) => response.url().endsWith("/fork") && response.ok(), { timeout: 5_000 });
+			await dialog.getByRole("button", { name: "Fork", exact: true }).click();
+			await expect(dialog.getByRole("button", { name: "Fork", exact: true })).toBeDisabled();
+			release.resolve();
+			const { conversation } = await (await forked).json();
+			const fork = await (await page.request.get(`/api/conversations/${conversation.id}/illustrations`)).json();
+			expect(fork.referenceSets[0].references).toBe("Copy the latest References.");
+		} finally { release.resolve(); }
+	});
+
 	test("References survive writing a Brief again, persist in named Reference Sets and reach the Image Model after the Brief", async ({ page, llm }) => {
 		await selectImageModel(page);
 		const upload = async (width: number) => {
@@ -180,7 +244,7 @@ test.describe("References", () => {
 		const portrait = await upload(64);
 		const { activeChatId } = await (await page.request.get("/api/workspace")).json();
 		const url = `/api/conversations/${activeChatId}`;
-		const prompt = { systemInstruction: "", identity: "", appearance: `Silver hair. ![Face](image:${face.hash})`, scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+		const prompt = { ...emptyPromptChannels(), appearance: `Silver hair. ![Face](image:${face.hash})` };
 		const { revision } = await (await page.request.get(url)).json();
 		expect((await page.request.post(`${url}/commands`, { data: { expectedRevision: revision, action: {
 			type: "add-participant", definition: { name: "Iris", prompt, sendAppearanceImages: true, openings: [], portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } },
@@ -222,13 +286,21 @@ test.describe("References", () => {
 		await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
 		await expect(picker).toHaveText("Kimono");
 		await expect(references).toHaveText("Iris: kimono");
-		await picker.click();
-		await page.getByRole("option", { name: "References", exact: true }).click();
+		await panel.getByRole("button", { name: "Reference Set actions" }).click();
+		await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
+		expect((await page.request.post(`${url}/illustrations/commands`, { data: { type: "select-reference-set", id: "default" } })).ok()).toBe(true);
 		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
+		await panel.getByRole("textbox", { name: "Reference Set name" }).fill("Festival kimono");
+		await panel.getByRole("button", { name: "Rename", exact: true }).click();
+		await expect(picker).toHaveText("References");
+		await picker.click();
+		await page.getByRole("option", { name: "Festival kimono", exact: true }).click();
+		await expect(references).toHaveText("Iris: kimono");
 		await story(page).getByRole("button", { name: "Illustration actions" }).click();
 		await page.getByRole("menuitem", { name: "Edit Brief and repaint" }).click();
 		await expect(brief).toHaveText("Iris standing at the bridge.");
 		await expect(picker).toHaveText("References");
+		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
 
 		const unchanged = await brief.innerText();
 		await llm.chat({ status: 429, error: "Brief quota exceeded" });
@@ -241,5 +313,60 @@ test.describe("References", () => {
 		await expect(panel.getByRole("button", { name: "Write Brief", exact: true })).toBeEnabled();
 		expect(await brief.innerText()).toBe(unchanged);
 		await llm.release();
+
+		const adoption = Promise.withResolvers<void>();
+		await page.route(`**${url}/illustrations/commands`, async (route) => {
+			if (route.request().postDataJSON().type === "adopt-reference-set") await withDeadline(adoption.promise, "adoption release");
+			await route.continue();
+		});
+		try {
+			await story(page).getByRole("button", { name: "Illustration actions" }).click();
+			await page.getByRole("menuitem", { name: "Edit Brief and repaint" }).click();
+			await expect(brief).toBeDisabled();
+			await page.getByRole("button", { name: "Chats", exact: true }).click();
+			await page.getByRole("button", { name: /^The Lantern House/ }).click();
+			await expect(story(page).getByRole("heading", { name: /^The Lantern House/ })).toBeVisible();
+			const adopted = page.waitForResponse((response) => response.url().endsWith(`${url}/illustrations/commands`) && response.ok(), { timeout: 5_000 });
+			adoption.resolve();
+			await (await adopted).finished();
+			await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+			await expect(panel).toBeHidden();
+		} finally { adoption.resolve(); }
 	});
+});
+
+test("Paint waits for the Image Model read and then for a new selection to save", async ({ page, llm }) => {
+	await selectImageModel(page);
+	await llm.images({ base64: picture });
+	const read = Promise.withResolvers<void>();
+	const save = Promise.withResolvers<void>();
+	await page.route("**/api/image-model", async (route) => {
+		await withDeadline(read.promise, "Image Model read release");
+		await route.continue();
+	});
+	await page.route("**/api/image-model/commands", async (route) => {
+		await withDeadline(save.promise, "Image Model save release");
+		await route.continue();
+	});
+	try {
+		await page.goto("/");
+		await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
+		const panel = page.getByRole("complementary", { name: "Paint", exact: true });
+		const picker = panel.getByRole("button", { name: /^Image Model:/ });
+		const paint = panel.getByRole("button", { name: "Paint", exact: true });
+		await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("A blue lighthouse.");
+		await expect(picker).toBeDisabled();
+		await expect(paint).toBeDisabled();
+		read.resolve();
+		await expect(picker).toHaveText(/e2e-painter/);
+		await picker.click();
+		await page.getByRole("combobox", { name: "Search models" }).fill("second-painter");
+		await page.getByRole("option", { name: "second-painter", exact: true }).click();
+		await expect(paint).toBeDisabled();
+		save.resolve();
+		await expect(picker).toHaveText(/second-painter/);
+		await paint.click();
+		await expect(panel.getByRole("figure", { name: "Illustration" })).toContainText("second-painter · 1:1");
+		expect((await llm.log()).calls.find((call) => call.kind === "image")?.body).toMatchObject({ model: "second-painter" });
+	} finally { read.resolve(); save.resolve(); }
 });

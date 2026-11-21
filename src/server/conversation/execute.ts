@@ -34,6 +34,7 @@ import {
 	saveConversationLoreSettings,
 } from "./commands/lore-attachments";
 import { selectPaintPreset, setBriefMessageCount } from "./commands/paint-preset";
+import { updateReferenceSets } from "./commands/update-reference-sets";
 import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
@@ -90,6 +91,7 @@ const handlers = {
 	"select-prompt-preset": selectPromptPreset,
 	"select-paint-preset": selectPaintPreset,
 	"set-brief-message-count": setBriefMessageCount,
+	"update-reference-sets": updateReferenceSets,
 	"set-box-setup": setBoxSetup,
 	"set-box-state": setBoxState,
 	"upgrade-box": upgradeBox,

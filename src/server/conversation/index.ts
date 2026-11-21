@@ -107,3 +107,4 @@ export { checkBoxValuesInChats } from "./box-values";
 export { generationGate } from "./generation-gate";
 
 export { readPaintPresetSelection, readPaintPresetSettings } from "./paint-preset";
+export { readReferenceSets } from "./commands/update-reference-sets";

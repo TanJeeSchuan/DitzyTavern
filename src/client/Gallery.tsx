@@ -10,7 +10,12 @@ import type { GalleryRead } from "../shared/contract/painting";
 
 export function Gallery({ conversationId, paint }: {
 	conversationId: number;
-	paint?: { disabled: boolean; onReference: (name: string, hash: string) => void; onUseBrief: (name: string, painted: NonNullable<GalleryRead[number]["painted"]>) => void };
+	paint?: {
+		insertDisabled: boolean;
+		adoptDisabled: boolean;
+		onReference: (name: string, hash: string) => void;
+		onUseBrief: (name: string, painted: NonNullable<GalleryRead[number]["painted"]>) => void;
+	};
 }) {
 	const read = useGallery(conversationId);
 	const actions = useContext(IllustrationActionsContext)!;
@@ -42,7 +47,7 @@ export function Gallery({ conversationId, paint }: {
 				: read.data.length === 0 ? <p className="panel-note">Pictures from this Chat and its Cast, and pictures you upload, appear here.</p>
 					: <ul className={cn("gap-3 p-1", paint ? "flex overflow-x-auto" : "grid grid-cols-[repeat(auto-fill,minmax(9rem,1fr))]")} role="list">
 						{read.data.map(({ hash, name, source, keptId, painted }) => <li key={hash} className={cn("grid content-start gap-1", paint && "w-32 shrink-0")}>
-							<button type="button" className="prose-image gallery-thumbnail" title={paint ? "Insert into References" : undefined}
+							<button type="button" className="prose-image gallery-thumbnail" disabled={paint?.insertDisabled} title={paint ? "Insert into References" : undefined}
 								aria-label={paint ? `Use as reference: ${name}` : `Open ${name} full size`} data-image-hash={hash} data-image-name={name}
 								onClick={(event) => paint ? paint.onReference(name, hash) : openImageAt(event.currentTarget)}>
 								<img src={imageSrc(hash)} alt={name} loading="lazy" />
@@ -59,7 +64,7 @@ export function Gallery({ conversationId, paint }: {
 									<DropdownMenuContent align="end" className="w-auto">
 										{paint && <DropdownMenuItem data-image-hash={hash} data-image-name={name} onSelect={(event) => { if (event.target) openImageAt(event.target); }}>Open full size</DropdownMenuItem>}
 										<DropdownMenuItem disabled={actions.addToComposer === null} onSelect={() => actions.addToComposer?.(name, hash)}>Add to composer</DropdownMenuItem>
-										{paint && painted !== undefined && <DropdownMenuItem disabled={paint.disabled} onSelect={() => paint.onUseBrief(name, painted)}>Use Brief</DropdownMenuItem>}
+										{paint && painted !== undefined && <DropdownMenuItem disabled={paint.adoptDisabled} onSelect={() => paint.onUseBrief(name, painted)}>Use Brief</DropdownMenuItem>}
 										{keptId !== undefined && <DropdownMenuItem variant="destructive" disabled={pending} onSelect={() => void submit({ type: "remove-from-gallery", id: keptId })}>Remove from Gallery</DropdownMenuItem>}
 									</DropdownMenuContent>
 								</DropdownMenu>

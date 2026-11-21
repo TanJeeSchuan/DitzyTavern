@@ -349,10 +349,10 @@ test("Reference Sets: one empty set before any exists, New selects its copy, edi
 	module.command(chat.id, { type: "rename-reference-set", id: "default", name: "Race day" });
 	module.command(chat.id, { type: "create-reference-set", name: " Kimono ", references: "Kiseki: racing silks" });
 	const kimono = module.read(chat.id).referenceSets.find(({ name }) => name === "Kimono")!;
-	module.command(chat.id, { type: "save-reference-set", id: kimono.id, references: "Kiseki: kimono" });
+	const saved = module.command(chat.id, { type: "save-reference-set", id: kimono.id, references: "Kiseki: kimono" })!;
 	const expected = { referenceSets: [{ id: kimono.id, name: "Kimono", references: "Kiseki: kimono" }, { id: "default", name: "Race day", references: "Kiseki: racing silks" }], referenceSetId: kimono.id };
 	expect(createPaintingModule(database).read(chat.id)).toMatchObject(expected);
-	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: chat.revision, at: { through: chat.messages[0]!.id }, name: "Fork", trimVariants: false }).conversation;
+	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: saved.after, at: { through: chat.messages[0]!.id }, name: "Fork", trimVariants: false }).conversation;
 	expect(module.read(fork.id)).toMatchObject(expected);
 	module.command(chat.id, { type: "delete-reference-set", id: kimono.id });
 	expect(module.read(chat.id)).toMatchObject({ referenceSets: [{ id: "default", name: "Race day" }], referenceSetId: "default" });
@@ -410,6 +410,21 @@ test("deleting the selected Reference Set remembers its replacement, so renaming
 	expect(module.read(chat.id).referenceSetId).toBe("default");
 	module.command(chat.id, { type: "save-reference-set", id: b, references: "Typed after the delete" });
 	expect(module.read(chat.id).referenceSets.map(({ name }) => name)).toEqual(["C", "Z"]);
+});
+
+test("selecting a deleted Reference Set refuses without changing the selected set", () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	module.command(chat.id, { type: "create-reference-set", name: "Keep", references: "kept refs" });
+	const keepId = module.read(chat.id).referenceSetId;
+	module.command(chat.id, { type: "create-reference-set", name: "Delete me", references: "gone refs" });
+	const deleted = module.read(chat.id).referenceSetId;
+	module.command(chat.id, { type: "delete-reference-set", id: deleted });
+	module.command(chat.id, { type: "select-reference-set", id: keepId });
+	module.command(chat.id, { type: "rename-reference-set", id: keepId, name: "Z" });
+	expect(() => module.command(chat.id, { type: "select-reference-set", id: deleted })).toThrow("This Reference Set was deleted.");
+	expect(module.read(chat.id).referenceSetId).toBe(keepId);
 });
 
 test("the first adoption keeps the initial Reference Set, so an edit typed into it meanwhile is saved", () => {

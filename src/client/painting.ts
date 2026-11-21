@@ -1,10 +1,14 @@
 import { createContext, useEffect, useState, useSyncExternalStore } from "react";
-import { modelSelectionClient } from "./model-selection-client";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { Type } from "@sinclair/typebox";
+import { decodeWirePayload } from "./lib/wire-decode";
 import { api } from "./lib/eden";
 import { requestData } from "./lib/request-outcome";
 import { requestOutcome } from "./lib/request-route-outcome";
-import { illustrationsResponse, galleryResponse, paintingCommandResponse, type PaintingCommand, type IllustrationsRead, type ReferenceSet } from "../shared/contract/painting";
+import { illustrationsResponse, galleryResponse, paintingCommandResponse, type PaintingCommand, type IllustrationsRead } from "../shared/contract/painting";
+import type { ReferenceSet } from "../shared/contract/reference-set";
+import { conversationKey, publishConversation } from "./conversation-query";
+import type { ConversationSummary } from "./conversation";
 import { followsChanges } from "./server-changes";
 
 export const illustrationsKey = (conversationId: number | null) => ["illustrations", conversationId] as const;
@@ -21,7 +25,17 @@ export const useGallery = (conversationId: number) => useQuery({
 	queryFn: () => requestData(api.api.conversations({ id: conversationId }).gallery.get(), galleryResponse[200]),
 });
 
-const commandPainting = (conversationId: number, command: PaintingCommand) => requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingCommandResponse);
+const commandPainting = async (client: QueryClient, conversationId: number, command: PaintingCommand) => {
+	const result = await requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingCommandResponse);
+	if (result.outcome === "available" && result.value.referenceRevision !== undefined) {
+		const { before, after } = result.value.referenceRevision;
+		const saves = savesOf(conversationId);
+		saves.revision = { before: saves.revision?.after === before ? saves.revision.before : before, after };
+		const summary = client.getQueryData<ConversationSummary>(conversationKey(conversationId));
+		if (summary?.revision === before) publishConversation(client, { ...summary, revision: after });
+	}
+	return result;
+};
 
 export function usePaintingCommand(conversationId: number) {
 	const client = useQueryClient();
@@ -31,7 +45,7 @@ export function usePaintingCommand(conversationId: number) {
 		setPending(true);
 		setError(null);
 		try {
-			const result = await commandPainting(conversationId, command);
+			const result = await commandPainting(client, conversationId, command);
 			if (result.outcome === "available") await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
 			else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The painting could not be updated. Try again.");
 			return result.outcome === "available";
@@ -42,16 +56,30 @@ export function usePaintingCommand(conversationId: number) {
 
 export type PaintTarget = { variantId: number; brief: string; ask: string; requestId: string };
 
-type ReferenceSaves = { pending: ReadonlyMap<string, string>; locked: boolean; timer?: ReturnType<typeof setTimeout>; saving: Promise<string | null>; listeners: Set<() => void> };
+type ReferenceSaves = {
+	pending: ReadonlyMap<string, string>;
+	locked: boolean;
+	timer?: ReturnType<typeof setTimeout>;
+	saving: Promise<string | null>;
+	listeners: Set<() => void>;
+	revision?: { before: number; after: number };
+};
 const referenceSaves = new Map<number, ReferenceSaves>();
+const referenceDraftKey = (conversationId: number) => `ditzy:reference-draft:${conversationId}`;
+const referenceDraft = Type.Record(Type.String(), Type.String());
+const readReferenceDraft = (conversationId: number) => {
+	const stored = window.localStorage?.getItem(referenceDraftKey(conversationId));
+	if (stored == null) return new Map<string, string>();
+	try { return new Map(Object.entries(decodeWirePayload(referenceDraft, JSON.parse(stored)) ?? {})); }
+	catch { return new Map<string, string>(); }
+};
 const savesOf = (conversationId: number) => {
-	const saves: ReferenceSaves = referenceSaves.get(conversationId) ?? { pending: new Map(), locked: false, saving: Promise.resolve(null), listeners: new Set() };
+	const saves: ReferenceSaves = referenceSaves.get(conversationId) ?? { pending: readReferenceDraft(conversationId), locked: false, saving: Promise.resolve(null), listeners: new Set() };
 	referenceSaves.set(conversationId, saves);
 	return saves;
 };
 const notify = (saves: ReferenceSaves) => { for (const listener of saves.listeners) listener(); };
-/** Runs one action that changes the selected set; any other started meanwhile is refused. */
-const exclusively = async (conversationId: number, action: () => Promise<boolean>) => {
+const exclusively = async <Result>(conversationId: number, action: () => Promise<Result>) => {
 	const saves = savesOf(conversationId);
 	if (saves.locked) return false;
 	saves.locked = true;
@@ -61,10 +89,16 @@ const exclusively = async (conversationId: number, action: () => Promise<boolean
 		notify(saves);
 	}
 };
-const setPending = (saves: ReferenceSaves, id: string, references: string | undefined) => {
+const setPending = (conversationId: number, id: string, references: string, saved = false) => {
+	const saves = savesOf(conversationId);
 	const pending = new Map(saves.pending);
-	if (references === undefined) pending.delete(id);
+	if (saved) pending.delete(id);
 	else pending.set(id, references);
+	const stored = readReferenceDraft(conversationId);
+	if (!saved) stored.set(id, references);
+	else if (stored.get(id) === references) stored.delete(id);
+	if (stored.size === 0) window.localStorage?.removeItem(referenceDraftKey(conversationId));
+	else window.localStorage?.setItem(referenceDraftKey(conversationId), JSON.stringify(Object.fromEntries(stored)));
 	saves.pending = pending;
 	notify(saves);
 };
@@ -75,16 +109,27 @@ const flushReferences = (client: QueryClient, conversationId: number): Promise<s
 	saves.saving = saves.saving.then(async () => {
 		for (let next = saves.pending.entries().next(); !next.done; next = saves.pending.entries().next()) {
 			const [id, references] = next.value;
-			const result = await commandPainting(conversationId, { type: "save-reference-set", id, references });
+			const result = await commandPainting(client, conversationId, { type: "save-reference-set", id, references });
 			if (result.outcome !== "available") return result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The References could not be saved.";
+			await client.cancelQueries({ queryKey: illustrationsKey(conversationId) });
 			client.setQueryData<IllustrationsRead>(illustrationsKey(conversationId), (read) => read && { ...read, referenceSets: read.referenceSets.map((set) => set.id === id ? { ...set, references } : set) });
-			if (saves.pending.get(id) === references) setPending(saves, id, undefined);
+			if (saves.pending.get(id) === references) setPending(conversationId, id, references, true);
 			await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
 		}
 		return null;
 	});
 	return saves.saving;
 };
+
+export async function forkWithSavedReferences(client: QueryClient, conversationId: number, revision: number | null, fork: (revision: number | null) => Promise<string | null>) {
+	const result = await exclusively(conversationId, async () => {
+		const failure = await flushReferences(client, conversationId);
+		if (failure !== null) return failure;
+		const writes = savesOf(conversationId).revision;
+		return fork(writes !== undefined && revision !== null && revision >= writes.before && revision < writes.after ? writes.after : revision);
+	});
+	return result === false ? "Wait for References to finish updating before forking." : result;
+}
 
 export function useReferenceDraft(conversationId: number, selected: ReferenceSet | undefined) {
 	const client = useQueryClient();
@@ -101,7 +146,10 @@ export function useReferenceDraft(conversationId: number, selected: ReferenceSet
 		setError(failure);
 		return failure === null;
 	};
-	useEffect(() => () => void flushReferences(client, conversationId), [client, conversationId]);
+	useEffect(() => {
+		if (saves.pending.size > 0) void flush();
+		return () => void flushReferences(client, conversationId);
+	}, [client, conversationId]);
 	return {
 		references: (selected && pending.get(selected.id)) ?? selected?.references ?? "",
 		error,
@@ -109,7 +157,7 @@ export function useReferenceDraft(conversationId: number, selected: ReferenceSet
 		edit: (references: string) => {
 			if (selected === undefined || saves.locked) return;
 			setError(null);
-			setPending(saves, selected.id, references);
+			setPending(conversationId, selected.id, references);
 			clearTimeout(saves.timer);
 			saves.timer = setTimeout(() => void flush(), 600);
 		},
@@ -135,24 +183,6 @@ export function useAdoptReferences(conversationId: number) {
 		});
 	};
 	return { adopt, error: saveError ?? error };
-}
-
-const imageModelClient = modelSelectionClient("image-model");
-export function useImageModel() {
-	const client = useQueryClient();
-	const read = useQuery({ queryKey: ["image-model"], meta: followsChanges, queryFn: imageModelClient.load });
-	const [error, setError] = useState<string | null>(null);
-	const select = async (profileId: number, model: string) => {
-		if (read.data === undefined) return;
-		setError(null);
-		const result = await imageModelClient.save({ type: "apply", expectedRevision: read.data.revision, profileId, model });
-		if (result.outcome === "available") client.setQueryData(["image-model"], result.value.settings);
-		else if (result.outcome === "conflict") {
-			client.setQueryData(["image-model"], result.current);
-			setError("The Image Model changed elsewhere. Choose again.");
-		} else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The Image Model could not be saved.");
-	};
-	return { selected: read.data, select, error };
 }
 
 export const IllustrationActionsContext = createContext<{
