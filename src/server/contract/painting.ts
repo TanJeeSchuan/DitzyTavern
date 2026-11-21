@@ -38,7 +38,10 @@ export const createPaintingRoutes = (database: Database, options: ConversationRo
 			catch (error) { return presentDomainError(error, illustrationsResponse); }
 		}, { params: conversationIdParams, response: illustrationsResponse })
 		.post("/api/conversations/:id/illustrations/commands", ({ params, body }) => {
-			try { return { outcome: "accepted" as const, referenceRevision: paintings.command(params.id, body) ?? undefined }; }
+			try {
+				const result = paintings.command(params.id, body);
+				return result?.outcome === "reference-set-conflict" ? status(409, result) : result ?? { outcome: "accepted" as const };
+			}
 			catch (error) { return presentDomainError(error, paintingCommandResponse); }
 		}, { params: conversationIdParams, body: paintingCommand, response: paintingCommandResponse });
 };

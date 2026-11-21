@@ -14,11 +14,12 @@ export const modelSelectionClient = (route: "image-model" | "describing-model") 
 export const modelSelectionKey = (route: "image-model" | "describing-model") => ["model-selection", route] as const;
 const imageModelClient = modelSelectionClient("image-model");
 const imageModelKey = modelSelectionKey("image-model");
+export const useImageModelSaving = () => useIsMutating({ mutationKey: imageModelKey }) > 0;
 
 export function useImageModel() {
 	const client = useQueryClient();
 	const read = useQuery({ queryKey: imageModelKey, meta: followsChanges, queryFn: imageModelClient.load });
-	const saving = useIsMutating({ mutationKey: imageModelKey }) > 0;
+	const saving = useImageModelSaving();
 	const selection = useMutation({
 		mutationKey: imageModelKey,
 		networkMode: "always",

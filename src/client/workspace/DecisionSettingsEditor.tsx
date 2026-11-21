@@ -5,8 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Field } from "@/components/ui/field";
 import { DecisionModelPicker } from "../DecisionModelPicker";
 import { useConnectionSettingsQuery } from "../connection-settings-query";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { foldNewer } from "../lib/visit";
+import { followsChanges } from "../server-changes";
 import { useAsyncEffect } from "../lib/use-async";
 import { useRevisionedDraft } from "../lib/revisioned-draft";
 import { ConflictBanner } from "../ConflictBanner";
@@ -47,7 +48,8 @@ export function useSettingsDraft<S extends Revisioned>(
 	query?: { key: readonly unknown[] },
 ): SettingsDraft<S> {
 	const client = useQueryClient();
-	const queryRead = useQuery({ queryKey: query?.key ?? [name], queryFn: load, enabled: query !== undefined });
+	const queryRead = useQuery({ queryKey: query?.key ?? [name], queryFn: load, enabled: query !== undefined, meta: query === undefined ? undefined : followsChanges });
+	const write = useMutation({ mutationKey: query?.key, mutationFn: apply, networkMode: "always" });
 	const [localRead, setRead] = useState<Read<S>>({ settings: null, loading: true, error: null });
 	const read: Read<S> = query === undefined
 		? localRead
@@ -61,7 +63,7 @@ export function useSettingsDraft<S extends Revisioned>(
 		equals: same,
 		save: async (submitted, expectedRevision) => {
 			setRead((current) => ({ ...current, error: null }));
-			const result = await apply({ ...submitted, type: "apply", expectedRevision });
+			const result = await write.mutateAsync({ ...submitted, type: "apply", expectedRevision });
 			if (result.outcome === "available") {
 				if (query !== undefined) foldNewer(client, query.key, result.value.settings, (settings) => settings.revision);
 				return { outcome: "saved", saved: revisioned(result.value.settings) };

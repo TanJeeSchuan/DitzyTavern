@@ -30,7 +30,7 @@ const setName = (name: string) => {
 	return name.trim();
 };
 
-export function updateReferenceSets(db: ConversationDatabase, { conversationId, command }: { conversationId: number; command: ReferenceSetCommand }): void {
+export function updateReferenceSets(db: ConversationDatabase, conversationId: number, command: ReferenceSetCommand): ReferenceSet | undefined {
 	const write = (key: string, data: string | Omit<ReferenceSet, "id">) => {
 		const value = JSON.stringify(data);
 		db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key, value })
@@ -55,7 +55,11 @@ export function updateReferenceSets(db: ConversationDatabase, { conversationId, 
 	}
 	switch (command.type) {
 		case "select-reference-set": write(selectedKey, set.id); return;
-		case "save-reference-set": writeSet({ ...set, references: command.references }); return;
+		case "save-reference-set":
+			if (set.references === command.references) return;
+			if (set.references !== command.expectedReferences) return set;
+			writeSet({ ...set, references: command.references });
+			return;
 		case "rename-reference-set": writeSet({ ...set, name: setName(command.name) }); return;
 		case "delete-reference-set":
 			if (sets.length === 1) throw new InvalidConversationCommandError("Keep at least one Reference Set.");

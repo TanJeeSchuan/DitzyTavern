@@ -54,7 +54,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 	const references = useReferenceDraft(conversationId, referenceSet);
 	const adoptingOrWriting = references.locked || writing.pending;
 	const writablePreset = selection?.paintPresets.some((preset) => preset.id === selection.paintPresetId) ?? false;
-	const settingsDisabled = pending || settings.isPending || adoptingOrWriting || read.isPending || read.isError;
+	const settingsDisabled = pending || settings.isPending || adoptingOrWriting || selection === undefined;
 	const saveMessageCount = (count: number) => count === selection?.briefMessageCount ? Promise.resolve(true)
 		: settings.mutateAsync({ type: "set-brief-message-count", briefMessageCount: count }).then(() => true, () => false);
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;
@@ -120,8 +120,8 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 			<Field label="Brief" helper="Describe the picture. Writing a Brief replaces this text.">
 				<ProseEditor className="prose-editor-field" ariaLabel="Brief" autoFocus={Boolean(target.brief)} value={brief} onChange={updateBrief} disabled={adoptingOrWriting} />
 			</Field>
-			<ReferenceSetField conversationId={conversationId} sets={selection?.referenceSets ?? []} selected={referenceSet} draft={references} editorRef={referencesEditor} disabled={read.isPending || read.isError} />
-			<Gallery conversationId={conversationId} paint={{ insertDisabled: references.locked || read.isError || referenceSet === undefined,
+			<ReferenceSetField conversationId={conversationId} sets={selection?.referenceSets ?? []} selected={referenceSet} draft={references} editorRef={referencesEditor} disabled={selection === undefined} />
+			<Gallery conversationId={conversationId} paint={{ insertDisabled: references.locked || referenceSet === undefined,
 				adoptDisabled: settingsDisabled, onReference: (name, hash) => referencesEditor.current?.insertReference(name, hash),
 				onUseBrief: async (name, painted) => {
 					if (!await adoptReferences.adopt(name, painted.references)) return;
@@ -136,13 +136,14 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 				selected={imageModel.selected?.profileId == null ? null : { connectionProfileId: imageModel.selected.profileId, modelId: imageModel.selected.model }}
 				onSelect={(profile, model) => imageModel.select(profile.id, model)} />
 			<div className="flex min-w-0 items-center gap-2">
-				<div className="w-40 shrink-0"><AppSelect aria-label="Shape" className="field-input" value={aspectRatio} disabled={pending || read.isPending || read.isError}
+				<div className="w-40 shrink-0"><AppSelect aria-label="Shape" className="field-input" value={aspectRatio} disabled={pending || selection === undefined}
 					onValueChange={(value) => { if (Value.Check(paintingAspectRatio, value)) void submit({ type: "set-aspect-ratio", aspectRatio: value }); }}
 					options={[{ value: "9:16", label: "Tall · 9:16" }, { value: "3:4", label: "Portrait · 3:4" }, { value: "1:1", label: "Square · 1:1" }, { value: "4:3", label: "Landscape · 4:3" }, { value: "16:9", label: "Wide · 16:9" }]} /></div>
 				<Button className="ml-auto" disabled={settingsDisabled || modelUnavailable || !brief.trim()}
 					onClick={() => void submit({ type: "paint", variantId, brief, references: references.references, ask, aspectRatio })}>Paint</Button>
 			</div>
 			<p className="panel-note m-0">Painting continues after you close this panel.</p>
+			{read.isError && <Button type="button" variant="ghost" size="sm" onClick={() => void read.refetch()}>Retry Illustrations</Button>}
 			{!imageModel.pending && imageModel.selected === undefined && <Button type="button" variant="ghost" size="sm" onClick={imageModel.reload}>Retry Image Model</Button>}
 			{panelError !== null && <p role="alert" className="text-sm text-destructive">{panelError}</p>}
 		</footer>

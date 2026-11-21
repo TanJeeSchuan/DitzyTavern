@@ -4,7 +4,7 @@ import type { Static } from "@sinclair/typebox";
 import { and, eq, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, messageVariantDataTable } from "../database/schema";
-import { illustration, keptImage, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
+import { illustration, keptImage, paintingDataCommand, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
 import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantData, readChatVariantIds, readChatVariants, readConversationSummary, readPaintPresetSettings, executeConversationCommand, readReferenceSets } from "../conversation";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import { readImageModelSettings } from "./image-model-settings";
@@ -27,8 +27,6 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		if (readConversationRevision(database, conversationId) === undefined) throw new ConversationNotFoundError(conversationId);
 	};
 	const chatRow = (conversationId: number, key: string) => and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), eq(conversationDataTable.key, key));
-	const writeChatRow = (conversationId: number, key: string, value: string) => db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key, value })
-		.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value } }).run();
 	const read = (conversationId: number): IllustrationsRead => {
 		requireChat(conversationId);
 		const row = db.select().from(conversationDataTable).where(chatRow(conversationId, "aspect-ratio")).get();
@@ -67,20 +65,13 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		})();
 	};
 	const command = (conversationId: number, command: PaintingCommand) => {
+		if (Value.Check(paintingDataCommand, command)) return executeConversationCommand(database, { type: "painting-data", conversationId, command });
 		requireChat(conversationId);
-		if (command.type === "set-aspect-ratio") return void writeChatRow(conversationId, "aspect-ratio", JSON.stringify({ aspectRatio: command.aspectRatio }));
-		if (command.type === "create-reference-set" || command.type === "adopt-reference-set" || command.type === "save-reference-set" || command.type === "rename-reference-set" || command.type === "select-reference-set" || command.type === "delete-reference-set") {
-			const revision = readConversationRevision(database, conversationId);
-			if (revision === undefined) throw new ConversationNotFoundError(conversationId);
-			const updated = executeConversationCommand(database, { conversationId, expectedRevision: revision, action: { type: "update-reference-sets", command } });
-			return { before: revision, after: updated.revision };
-		}
 		if (command.type === "add-to-gallery") {
 			if (readImage(db, command.hash) === undefined) throw new InvalidConversationCommandError("The image is missing; upload it again.");
 			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key: `gallery:${command.hash}`, value: JSON.stringify({ image: `image:${command.hash}`, name: command.name }) }).onConflictDoNothing().run();
 			return;
 		}
-		if (command.type === "remove-from-gallery") return void db.delete(conversationDataTable).where(chatRow(conversationId, `gallery:${command.id}`)).run();
 		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint.");
 		if (command.type === "delete" || command.type === "keep-in-gallery") {
 			const { message_variant_id, namespace, key } = messageVariantDataTable;

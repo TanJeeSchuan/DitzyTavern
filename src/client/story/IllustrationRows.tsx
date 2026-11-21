@@ -2,7 +2,8 @@ import { useContext } from "react";
 import { MoreHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { IllustrationActionsContext, useAdoptReferences, useIllustrations, usePaintingCommand } from "../painting";
+import { IllustrationActionsContext, useAdoptReferences, useIllustrations, usePaintingCommand, useReferenceSetLocked } from "../painting";
+import { useImageModelSaving } from "../model-selection-client";
 import { useOpenImageAt } from "../ImageDialog";
 import { illustrationName } from "../../shared/painting-brief";
 import { imageSrc } from "../lib/image";
@@ -13,6 +14,8 @@ export function IllustrationRows({ conversationId, variantId }: { conversationId
 	const actions = useContext(IllustrationActionsContext)!;
 	const openImageAt = useOpenImageAt();
 	const adoptReferences = useAdoptReferences(conversationId);
+	const referencesLocked = useReferenceSetLocked(conversationId);
+	const imageModelSaving = useImageModelSaving();
 	return <>
 		{data?.paintings.map((painting) => <figure key={painting.id} className="illustration-row my-5 w-full overflow-hidden rounded-xl border border-border bg-muted/30" aria-label="Illustration">
 			<div className="illustration-picture relative grid w-full overflow-hidden" style={{ aspectRatio: painting.aspectRatio.replace(":", "/") }}>
@@ -34,14 +37,14 @@ export function IllustrationRows({ conversationId, variantId }: { conversationId
 							<Button size="icon-sm" variant="ghost" aria-label="Illustration actions" title="Illustration actions"><MoreHorizontal aria-hidden="true" /></Button>
 						</DropdownMenuTrigger>
 						<DropdownMenuContent align="end" className="w-auto">
-							<DropdownMenuItem disabled={actions.editBrief === null} title={actions.editBriefDisabledReason} onSelect={() => void adoptReferences.adopt(illustrationName(painting.ask), painting.references).then((adopted) => { if (adopted) actions.editBrief?.(variantId, painting.brief, painting.ask); })}>Edit Brief and repaint</DropdownMenuItem>
+							<DropdownMenuItem disabled={actions.editBrief === null || referencesLocked} title={referencesLocked ? "Wait for References to finish updating." : actions.editBriefDisabledReason} onSelect={() => void adoptReferences.adopt(illustrationName(painting.ask), painting.references).then((adopted) => { if (adopted) actions.editBrief?.(variantId, painting.brief, painting.ask); })}>Edit Brief and repaint</DropdownMenuItem>
 							<DropdownMenuItem disabled={pending} onSelect={() => void submit({ type: "keep-in-gallery", id: painting.id, variantId })}>Remove, keep in Gallery</DropdownMenuItem>
 							<DropdownMenuItem variant="destructive" disabled={pending} onSelect={() => void submit({ type: "delete", id: painting.id, variantId })}>Delete</DropdownMenuItem>
 						</DropdownMenuContent>
 					</DropdownMenu>
 				</>}
 				{painting.kind === "failed" && <>
-					<Button size="sm" variant="outline" disabled={pending} onClick={() => void submit({ type: "retry", id: painting.id, variantId })}>Retry</Button>
+					<Button size="sm" variant="outline" disabled={pending || imageModelSaving} onClick={() => void submit({ type: "retry", id: painting.id, variantId })}>Retry</Button>
 					<Button size="sm" variant="ghost" disabled={pending} onClick={() => void submit({ type: "dismiss", id: painting.id, variantId })}>Dismiss</Button>
 				</>}
 			</figcaption>

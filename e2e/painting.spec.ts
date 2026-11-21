@@ -181,7 +181,7 @@ test("write a Brief from an Ask on an older Message, edit it and paint", async (
 });
 
 test.describe("References", () => {
-	test.use({ allowedBrowserErrors: /status of 422/ });
+	test.use({ allowedBrowserErrors: /status of (409|422)/ });
 
 	test("a References edit survives reloading before the server accepts it", async ({ page }) => {
 		const { activeChatId } = await (await page.request.get("/api/workspace")).json();
@@ -201,6 +201,36 @@ test.describe("References", () => {
 		await open.click();
 		await expect(references).toHaveText("Keep this through the reload.");
 		await expect.poll(async () => (await (await page.request.get(url)).json()).referenceSets[0].references).toBe("Keep this through the reload.");
+	});
+
+	test("a recovered draft keeps a newer save intact until the writer chooses", async ({ page }) => {
+		const { activeChatId } = await (await page.request.get("/api/workspace")).json();
+		const url = `/api/conversations/${activeChatId}/illustrations`;
+		const commands = `**${url}/commands`;
+		await page.clock.install();
+		await page.route(commands, (route) => route.fulfill({ status: 422, json: { outcome: "invalid", reason: "Save temporarily refused." } }));
+		await page.goto("/");
+		const open = page.locator("form.composer").getByRole("button", { name: "Paint", exact: true });
+		const panel = page.getByRole("complementary", { name: "Paint", exact: true });
+		const references = panel.getByRole("textbox", { name: "References", exact: true });
+		await open.click();
+		await references.fill("My offline draft");
+		await page.clock.runFor(650);
+		await expect(panel.getByText("Save temporarily refused.")).toBeVisible();
+		const newer = await page.request.post(`${url}/commands`, { data: { type: "save-reference-set", id: "default", expectedReferences: "", references: "Newer on the server" } });
+		expect(newer.ok()).toBe(true);
+		await page.unroute(commands);
+		await page.reload();
+		await open.click();
+		await expect(panel.getByText(/changed elsewhere/)).toBeVisible();
+		await expect(references).toHaveText("My offline draft");
+		expect((await (await page.request.get(url)).json()).referenceSets[0].references).toBe("Newer on the server");
+		const sent: string[] = [];
+		await page.route(commands, async (route) => { sent.push(route.request().postDataJSON().type); await route.continue(); });
+		await panel.getByRole("button", { name: "Use saved References" }).click();
+		await expect(references).toHaveText("Newer on the server");
+		await page.clock.runFor(650);
+		expect(sent).toEqual([]);
 	});
 
 	test("Fork copies the References edit whose save is still in flight", async ({ page }) => {
@@ -323,6 +353,9 @@ test.describe("References", () => {
 			await story(page).getByRole("button", { name: "Illustration actions" }).click();
 			await page.getByRole("menuitem", { name: "Edit Brief and repaint" }).click();
 			await expect(brief).toBeDisabled();
+			await story(page).getByRole("button", { name: "Illustration actions" }).click();
+			await expect(page.getByRole("menuitem", { name: "Edit Brief and repaint" })).toBeDisabled();
+			await page.keyboard.press("Escape");
 			await page.getByRole("button", { name: "Chats", exact: true }).click();
 			await page.getByRole("button", { name: /^The Lantern House/ }).click();
 			await expect(story(page).getByRole("heading", { name: /^The Lantern House/ })).toBeVisible();
@@ -335,9 +368,9 @@ test.describe("References", () => {
 	});
 });
 
-test("Paint waits for the Image Model read and then for a new selection to save", async ({ page, llm }) => {
+test("Paint and Retry wait for the chosen Image Model", async ({ page, llm }) => {
 	await selectImageModel(page);
-	await llm.images({ base64: picture });
+	await llm.images({ status: 400, error: "Try another painter." }, { base64: picture });
 	const read = Promise.withResolvers<void>();
 	const save = Promise.withResolvers<void>();
 	await page.route("**/api/image-model", async (route) => {
@@ -359,14 +392,32 @@ test("Paint waits for the Image Model read and then for a new selection to save"
 		await expect(paint).toBeDisabled();
 		read.resolve();
 		await expect(picker).toHaveText(/e2e-painter/);
+		await paint.click();
+		const retry = panel.getByRole("button", { name: "Retry", exact: true });
+		await expect(retry).toBeEnabled();
 		await picker.click();
 		await page.getByRole("combobox", { name: "Search models" }).fill("second-painter");
 		await page.getByRole("option", { name: "second-painter", exact: true }).click();
 		await expect(paint).toBeDisabled();
+		await expect(retry).toBeDisabled();
 		save.resolve();
 		await expect(picker).toHaveText(/second-painter/);
-		await paint.click();
+		await retry.click();
 		await expect(panel.getByRole("figure", { name: "Illustration" })).toContainText("second-painter · 1:1");
-		expect((await llm.log()).calls.find((call) => call.kind === "image")?.body).toMatchObject({ model: "second-painter" });
+		expect((await llm.log()).calls.filter((call) => call.kind === "image").map((call) => call.body.model)).toEqual(["e2e-painter", "second-painter"]);
 	} finally { read.resolve(); save.resolve(); }
+});
+
+test("Connections shows a new committed Image Model without opening Paint", async ({ page }) => {
+	await selectImageModel(page);
+	await page.goto("/");
+	await page.getByRole("navigation", { name: "Workspace" }).getByRole("button", { name: "Connections" }).click();
+	const connections = page.locator(".primary-panel");
+	await expect(connections.getByText("e2e-painter", { exact: true })).toBeVisible();
+	const current = await (await page.request.get("/api/image-model")).json();
+	const changed = await page.request.post("/api/image-model/commands", { data: {
+		type: "apply", expectedRevision: current.revision, profileId: current.profileId, model: "updated-painter",
+	} });
+	expect(changed.ok()).toBe(true);
+	await expect(connections.getByText("updated-painter", { exact: true })).toBeVisible();
 });

@@ -220,11 +220,11 @@ export function ActiveWritingWorkspace({
 	const generationRunning = generation.isGenerating || (conversation?.activeGenerations.length ?? 0) > 0;
 	const fork = async (name: string, trimVariants: boolean): Promise<string | null> => {
 		if (conversation === null || forkRequest === null) return "The Chat is not available.";
-		return forkWithSavedReferences(client, conversation.id, isStoryReady(story) ? story.revision : null, async (revision) => {
+		return forkWithSavedReferences(client, conversation.id, async () => {
 			if (session.signal.aborted) return "The Chat is not available.";
 			let error: string | null = null;
 			const applied = await runConversationCommand({
-				conversationId: conversation.id, revision: () => revision, exact: true,
+				conversationId: conversation.id, revision: () => isStoryReady(story) ? story.revision : null, exact: true,
 				onConversationChange: session.setConversation, setNotice: (notice) => { error = notice; },
 				isCurrent: () => !session.signal.aborted,
 			}, async (revision) => {

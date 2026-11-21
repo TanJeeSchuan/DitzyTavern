@@ -57,6 +57,13 @@ export function ReferenceSetField({ conversationId, sets, selected, draft, edito
 		</form>}
 		<ProseEditor key={selected?.id} className="prose-editor-field" ref={editorRef} ariaLabel="References" value={draft.references} onChange={draft.edit} disabled={busy} />
 		<small className="text-xs text-muted-foreground">Sent after the Brief. Writing a Brief never changes them. Press a picture below to insert it here.</small>
-		{(error ?? draft.error) !== null && <p role="alert" className="text-sm text-destructive">{error ?? draft.error}</p>}
+		{draft.storageUnavailable && <p role="status" className="text-sm text-muted-foreground">This browser could not keep your draft. Keep this page open until it saves.</p>}
+		{draft.conflict ? <div className="grid gap-2">
+			<p role="alert" className="text-sm text-destructive">“{draft.conflict.name}” changed elsewhere. Your draft is still here.</p>
+			<div className="flex flex-wrap gap-2">
+				<Button type="button" size="sm" variant="outline" disabled={draft.locked} onClick={() => void draft.resolveConflict(false)}>Use saved References</Button>
+				<Button type="button" size="sm" variant="outline" disabled={draft.locked} onClick={() => void draft.resolveConflict(true)}>Save my References</Button>
+			</div>
+		</div> : (error ?? draft.error) !== null && <p role="alert" className="text-sm text-destructive">{error ?? draft.error}</p>}
 	</section>;
 }

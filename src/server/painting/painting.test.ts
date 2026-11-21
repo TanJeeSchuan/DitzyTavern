@@ -1,3 +1,4 @@
+import { withDeadline } from "../../shared/test-fixtures/deadline";
 import { emptyPromptChannels } from "../../shared/definition";
 import { prepareConversationEffects } from "../application/conversation-effects";
 import { createGenerationPreviewAsync } from "../workflows/generation-preview";
@@ -51,7 +52,7 @@ test("an Illustration lands on its original Variant after a swipe without a Conv
 	const finished = Promise.withResolvers<void>();
 	const unsubscribe = subscribeDatabaseChanges(database, () => { if (module.read(chat.id).paintings.some((entry) => entry.kind === "illustration")) finished.resolve(); }, () => {});
 	reply.resolve(Response.json({ data: [{ b64_json: pngFixture({ card: "private metadata" }).toString("base64") }] }));
-	await finished.promise;
+	await withDeadline(finished.promise, "finished Illustration");
 	unsubscribe();
 	const painting = module.read(chat.id).paintings[0]!;
 	expect(painting).toMatchObject({ kind: "illustration", variantId, brief: "Private painted scene", aspectRatio: "3:4" });
@@ -126,7 +127,7 @@ test("concurrent paintings keep their starting positions when the later picture 
 		const finished = Promise.withResolvers<void>();
 		const unsubscribe = subscribeDatabaseChanges(database, () => { if (module.read(chat.id).paintings.some((painting) => painting.kind === "illustration" && painting.brief === brief)) finished.resolve(); }, () => {});
 		reply.resolve(Response.json({ data: [{ b64_json: pngFixture().toString("base64") }] }));
-		await finished.promise;
+		await withDeadline(finished.promise, "finished Illustration");
 		unsubscribe();
 	};
 	await finish(second, "Second");
@@ -168,7 +169,7 @@ const paintAndWait = async (fixture: ReturnType<typeof setup>, variantId: number
 	const unsubscribe = subscribeDatabaseChanges(fixture.database, () => {
 		if (module.read(fixture.chat.id).paintings.some((painting) => painting.kind === "illustration" && painting.brief === brief)) finished.resolve();
 	}, () => {});
-	await finished.promise;
+	await withDeadline(finished.promise, "finished Illustration");
 	unsubscribe();
 	return module;
 };
@@ -331,7 +332,7 @@ test("the Image Model receives the Brief, a separator and the References, with e
 	module.command(chat.id, { type: "paint", ask: "", references, variantId, brief: `A lake ${formatImageReference("Lake", lake.hash)}`, aspectRatio: "1:1" });
 	const finished = Promise.withResolvers<void>();
 	const unsubscribe = subscribeDatabaseChanges(database, () => { if (module.read(chat.id).paintings.some((painting) => painting.kind === "illustration")) finished.resolve(); }, () => {});
-	await finished.promise;
+	await withDeadline(finished.promise, "finished Illustration");
 	unsubscribe();
 	const body = JSON.parse(requests[0]!);
 	expect(body.prompt).toBe("A lake [Image: Lake]\n\n---\n\nMaren: [Image: Face] [Image: Lake again]");
@@ -345,14 +346,14 @@ test("Reference Sets: one empty set before any exists, New selects its copy, edi
 	const { database, chat } = fixture;
 	const module = createPaintingModule(database);
 	expect(module.read(chat.id)).toMatchObject({ referenceSets: [{ id: "default", name: "References", references: "" }], referenceSetId: "default" });
-	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Kiseki: racing silks" });
+	module.command(chat.id, { type: "save-reference-set", id: "default", expectedReferences: "", references: "Kiseki: racing silks" });
 	module.command(chat.id, { type: "rename-reference-set", id: "default", name: "Race day" });
 	module.command(chat.id, { type: "create-reference-set", name: " Kimono ", references: "Kiseki: racing silks" });
 	const kimono = module.read(chat.id).referenceSets.find(({ name }) => name === "Kimono")!;
-	const saved = module.command(chat.id, { type: "save-reference-set", id: kimono.id, references: "Kiseki: kimono" })!;
+	module.command(chat.id, { type: "save-reference-set", id: kimono.id, expectedReferences: "Kiseki: racing silks", references: "Kiseki: kimono" });
 	const expected = { referenceSets: [{ id: kimono.id, name: "Kimono", references: "Kiseki: kimono" }, { id: "default", name: "Race day", references: "Kiseki: racing silks" }], referenceSetId: kimono.id };
 	expect(createPaintingModule(database).read(chat.id)).toMatchObject(expected);
-	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: saved.after, at: { through: chat.messages[0]!.id }, name: "Fork", trimVariants: false }).conversation;
+	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: chat.revision, at: { through: chat.messages[0]!.id }, name: "Fork", trimVariants: false }).conversation;
 	expect(module.read(fork.id)).toMatchObject(expected);
 	module.command(chat.id, { type: "delete-reference-set", id: kimono.id });
 	expect(module.read(chat.id)).toMatchObject({ referenceSets: [{ id: "default", name: "Race day" }], referenceSetId: "default" });
@@ -365,11 +366,11 @@ test("adopting an Illustration's References selects the set holding them now, or
 	using fixture = setup();
 	const { database, chat } = fixture;
 	const module = createPaintingModule(database);
-	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Kiseki: kimono" });
+	module.command(chat.id, { type: "save-reference-set", id: "default", expectedReferences: "", references: "Kiseki: kimono" });
 	module.command(chat.id, { type: "create-reference-set", name: "Race", references: "Kiseki: racing silks" });
 	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Kiseki: kimono" });
 	expect(module.read(chat.id)).toMatchObject({ referenceSets: [{ name: "Race" }, { id: "default" }], referenceSetId: "default" });
-	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Kiseki: kimono, hair down" });
+	module.command(chat.id, { type: "save-reference-set", id: "default", expectedReferences: "Kiseki: kimono", references: "Kiseki: kimono, hair down" });
 	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Kiseki: kimono" });
 	const { referenceSets, referenceSetId } = module.read(chat.id);
 	expect(referenceSets.find(({ id }) => id === referenceSetId)).toMatchObject({ name: "Bridge", references: "Kiseki: kimono" });
@@ -391,7 +392,7 @@ for (const [reply, message] of [
 	const failed = Promise.withResolvers<void>();
 	const unsubscribe = subscribeDatabaseChanges(database, () => { if (module.read(chat.id).paintings.some((painting) => painting.kind === "failed")) failed.resolve(); }, () => {});
 	module.command(chat.id, { type: "paint", ask: "", references: "", variantId, brief: "A scene", aspectRatio: "1:1" });
-	await failed.promise;
+	await withDeadline(failed.promise, "failed Illustration");
 	unsubscribe();
 	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "failed", message }]);
 });
@@ -408,7 +409,7 @@ test("deleting the selected Reference Set remembers its replacement, so renaming
 	expect(module.read(chat.id).referenceSetId).toBe("default");
 	module.command(chat.id, { type: "rename-reference-set", id: "default", name: "Z" });
 	expect(module.read(chat.id).referenceSetId).toBe("default");
-	module.command(chat.id, { type: "save-reference-set", id: b, references: "Typed after the delete" });
+	module.command(chat.id, { type: "save-reference-set", id: b, expectedReferences: "Kiseki: B", references: "Typed after the delete" });
 	expect(module.read(chat.id).referenceSets.map(({ name }) => name)).toEqual(["C", "Z"]);
 });
 
@@ -427,11 +428,26 @@ test("selecting a deleted Reference Set refuses without changing the selected se
 	expect(module.read(chat.id).referenceSetId).toBe(keepId);
 });
 
+test("an older References draft cannot overwrite the saved set or invalidate a Story edit", () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	module.command(chat.id, { type: "save-reference-set", id: "default", expectedReferences: "", references: "Newer saved text" });
+	const attempted = module.command(chat.id, { type: "save-reference-set", id: "default", expectedReferences: "", references: "An older draft" });
+	expect(attempted).toMatchObject({ outcome: "reference-set-conflict", current: { id: "default", references: "Newer saved text" } });
+	expect(module.read(chat.id).referenceSets[0]?.references).toBe("Newer saved text");
+	const message = chat.messages[0]!;
+	executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: {
+		type: "edit-variant", messageId: message.id, variantId: message.variants[0]!.id, content: "The Story edit still lands.",
+	} });
+	expect(readConversationSummary(database, chat.id)?.revision).toBe(chat.revision + 1);
+});
+
 test("the first adoption keeps the initial Reference Set, so an edit typed into it meanwhile is saved", () => {
 	using fixture = setup();
 	const { database, chat } = fixture;
 	const module = createPaintingModule(database);
 	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Iris: kimono" });
-	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Typed during the adoption" });
+	module.command(chat.id, { type: "save-reference-set", id: "default", expectedReferences: "", references: "Typed during the adoption" });
 	expect(module.read(chat.id).referenceSets).toMatchObject([{ name: "Bridge", references: "Iris: kimono" }, { id: "default", name: "References", references: "Typed during the adoption" }]);
 });

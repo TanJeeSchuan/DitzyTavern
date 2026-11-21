@@ -1,5 +1,5 @@
 import { defaultKeymap, history, historyKeymap, isolateHistory } from "@codemirror/commands";
-import { Compartment, EditorSelection, EditorState, type Range, type SelectionRange, type TransactionSpec } from "@codemirror/state";
+import { Annotation, Compartment, EditorSelection, EditorState, Transaction, type Range, type SelectionRange, type TransactionSpec } from "@codemirror/state";
 import { Decoration, type DecorationSet, drawSelection, EditorView, keymap, ViewPlugin, WidgetType } from "@codemirror/view";
 import { ImagePlus } from "lucide-react";
 import { type Ref, type ReactNode, useEffect, useImperativeHandle, useRef, useState } from "react";
@@ -87,6 +87,7 @@ const editability = (disabled: boolean) => [EditorView.editable.of(!disabled), E
 
 const contentAttributes = (ariaLabel: string, placeholder: string) =>
 	EditorView.contentAttributes.of({ "aria-label": ariaLabel, "aria-placeholder": placeholder, "aria-multiline": "true", spellcheck: "true" });
+const controlledValue = Annotation.define<boolean>();
 
 type ProseEditorProps = {
 	ref?: Ref<ProseEditorHandle>;
@@ -207,7 +208,7 @@ function Editor({
 									? EditorSelection.cursor(update.changes.mapPos(pending.range.to, 1))
 									: pending.range.map(update.changes, 1);
 							}
-							onChangeRef.current(update.state.doc.toString());
+							if (update.transactions.some((transaction) => transaction.docChanged && !transaction.annotation(controlledValue))) onChangeRef.current(update.state.doc.toString());
 						}
 					}),
 					EditorView.domEventHandlers({
@@ -261,7 +262,7 @@ function Editor({
 	useEffect(() => {
 		const editor = view.current;
 		if (editor !== null && editor.state.doc.toString() !== value) {
-			editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: value } });
+			editor.dispatch({ changes: { from: 0, to: editor.state.doc.length, insert: value }, annotations: [controlledValue.of(true), Transaction.addToHistory.of(false)] });
 		}
 	}, [value]);
 
