@@ -29,12 +29,19 @@ test("0043 adds Cast Appearance immediately before Lore in an edited Default (Pa
 	expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
 });
 
-test("0044 upgrades stored Illustrations to an empty Ask", async () => {
+test("0044 and 0046 backfill Ask and References for attached and kept Illustrations", async () => {
 	using database = await databaseAtMigration(43);
 	database.exec(`INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES (1, 'Existing', '', '');
 			INSERT INTO messages (id, conversation_id, position, timestamp) VALUES (1, 1, 1, '');
 			INSERT INTO message_variant (id, message_id, position, content, timestamp) VALUES (1, 1, 1, 'Scene', '');
-			INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (1, 'painting', 'old', '{"brief":"A bridge","aspectRatio":"1:1"}');`);
+			INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (1, 'painting', 'old', '{"brief":"A bridge","aspectRatio":"1:1"}');
+			INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES
+			(1, 'painting', 'gallery:kept', '{"brief":"A tower","ask":"Draw a tower"}'),
+			(1, 'painting', 'gallery:upload', '{"image":"image:uploaded","name":"An upload"}');`);
 	initializeDatabase(database);
-	expect(database.query("SELECT value FROM message_variant_data").get()).toEqual({ value: '{"brief":"A bridge","aspectRatio":"1:1","ask":""}' });
+	expect(database.query("SELECT value FROM message_variant_data").get()).toEqual({ value: '{"brief":"A bridge","aspectRatio":"1:1","ask":"","references":""}' });
+	expect(database.query("SELECT key, value FROM conversation_data WHERE namespace = 'painting' ORDER BY key").all()).toEqual([
+		{ key: "gallery:kept", value: '{"brief":"A tower","ask":"Draw a tower","references":""}' },
+		{ key: "gallery:upload", value: '{"image":"image:uploaded","name":"An upload"}' },
+	]);
 });

@@ -14,11 +14,8 @@ import { readConversationSummaryFromConnection } from "../snapshot";
 import type { ConversationSummary } from "../types";
 
 // @approved
-//  Shared Conversation write seam: every server-owned write runs as one
-// immediate SQLite transaction on a fresh Drizzle handle, advances the
-// Conversation revision exactly once, and finishes with the authoritative
-// summary. Deep history remains an explicit read. Command modules compose these pieces instead of hand-repeating
-// the connect/bump/read scaffolding.
+//  Shared Conversation write seam: server-owned writes run in an immediate SQLite transaction.
+// Story commands advance the Conversation revision and return the authoritative summary.
 
 const revisionAdvanceSet = (lastMessageTime: string | undefined) =>
 	lastMessageTime === undefined

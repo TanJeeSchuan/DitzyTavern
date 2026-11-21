@@ -1,4 +1,4 @@
-import { modelSelectionClient } from "../model-selection-client";
+import { modelSelectionClient, modelSelectionKey } from "../model-selection-client";
 import { ModelSelectionSettingsEditor } from "./ModelSelectionSettingsEditor";
 import type { ModelSelectionSettings } from "../../shared/contract/model-selection";
 import { useState, type ReactNode } from "react";
@@ -68,8 +68,8 @@ const imageModelClient = modelSelectionClient("image-model");
 
 export function ConnectionSettingsPanel({ controller, activeProfileId, delegateBox }: PanelProps) {
 	const semanticTriggers = useSemanticTriggerSettings();
-	const describingModel = useSettingsDraft("Describing model", describingModelClient.load, describingModelClient.save);
-	const imageModel = useSettingsDraft("Image Model", imageModelClient.load, imageModelClient.save);
+	const describingModel = useSettingsDraft("Describing model", describingModelClient.load, describingModelClient.save, { key: modelSelectionKey("describing-model") });
+	const imageModel = useSettingsDraft("Image Model", imageModelClient.load, imageModelClient.save, { key: modelSelectionKey("image-model") });
 	const [open, setOpen] = useState<Open>(delegateBox === undefined ? null : `delegate:${delegateBox}`);
 	const defaultDelegate = useSettingsDraft("Default delegate settings", defaultDelegateClient.load, defaultDelegateClient.save);
 	return <BoxSettingsDrafts render={(drafts) =>

@@ -34,15 +34,19 @@ import {
 	saveConversationLoreSettings,
 } from "./commands/lore-attachments";
 import { selectPaintPreset, setBriefMessageCount } from "./commands/paint-preset";
+import { updatePaintingData } from "./commands/painting-data";
+import type { PaintingCommandResult, PaintingDataCommand } from "../../shared/contract/painting";
 import { selectPromptPreset } from "./commands/select-prompt-preset";
 import { selectVariant } from "./commands/select-variant";
 import { setGenerationModel } from "./commands/set-generation-model";
 import { updateConversationGenerationSettings } from "./generation-settings";
 import {
 	ConversationNotPlayableError,
+	ConversationNotFoundError,
 } from "./errors";
 import {
 	isPlayable,
+	findConversation,
 	readControlAssignment,
 	requireConversationRevision,
 	type ConversationDatabase,
@@ -107,10 +111,18 @@ const handlers = {
 
 const playOnly = new Set<ConversationAction["type"]>(["create-message"]);
 
+type PaintingWrite = { type: "painting-data"; conversationId: number; command: PaintingDataCommand };
+
+export function executeConversationCommand(database: Database, command: PaintingWrite): PaintingCommandResult;
+export function executeConversationCommand(database: Database, command: ConversationCommand): ConversationSummary;
 export function executeConversationCommand(
 	database: Database,
-	command: ConversationCommand,
-): ConversationSummary {
+	command: ConversationCommand | PaintingWrite,
+): ConversationSummary | PaintingCommandResult {
+	if ("type" in command) return runConversationTransaction(database, (db) => {
+		if (findConversation(db, command.conversationId) === undefined) throw new ConversationNotFoundError(command.conversationId);
+		return updatePaintingData(db, command.conversationId, command.command);
+	});
 	return runConversationTransaction(database, (db, reportChange) => {
 		requireConversationRevision(
 			db,
