@@ -1,8 +1,10 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { builtInBoxes, loadBoxes } from "../box/registry";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, participantSeed, participantDefinition } from "../test-fixtures/conversation";
+import { rmSync } from "node:fs";
+import { join, resolve } from "node:path";
+import { boxDescriptor } from "../../shared/contract/box";
+import { loadTestBoxes } from "../test-fixtures/boxes";
+import { writeBoxFiles } from "../test-fixtures/versioned-box";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { drizzle } from "drizzle-orm/bun-sqlite";
@@ -20,12 +22,8 @@ import { InvalidConversationCreationError } from ".";
 import type { ConversationCreationInput, ParticipantDefinition } from ".";
 
 const prompt = (overrides: Partial<ParticipantDefinition["prompt"]> = {}) => ({
+	...emptyPromptChannels(),
 	systemInstruction: "Keep the scene grounded.",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
 	...overrides,
 });
 
@@ -33,12 +31,7 @@ const adHoc = (
 	name: string,
 	openings: string[] = [],
 	promptOverrides: Partial<ParticipantDefinition["prompt"]> = {},
-): ParticipantDefinition => ({
-	name,
-	prompt: prompt(promptOverrides),
-	sendAppearanceImages: true,
-	openings,
-});
+): ParticipantDefinition => participantDefinition(name, { prompt: prompt(promptOverrides), openings });
 
 const inputWith = (
 	overrides: Partial<ConversationCreationInput> = {},
@@ -215,15 +208,7 @@ describe("Conversation creation", () => {
 		const snapshot = createConversationWithHistory(conversation,
 			inputWith({
 				participants: [
-					{
-						definition: {
-							name: source.name,
-							prompt: source.prompt,
-							sendAppearanceImages: true,
-							openings: source.openings,
-						},
-						sourceCharacterId: source.id,
-					},
+					participantSeed(source.name, { prompt: source.prompt, openings: source.openings, sourceCharacterId: source.id }),
 					{ definition: adHoc("Writer") },
 				],
 				control: { human: 1, model: 0 },
@@ -376,23 +361,24 @@ describe("Conversation creation", () => {
 		expect(readTestConversationSnapshot(conversation, snapshot.id)).toEqual(snapshot);
 	});
 	test("creates a Chat with no Box loaded, and one whose Boxes all start off", async () => {
-		const offFolder = mkdtempSync(join(tmpdir(), "ditzy-create-"));
-		mkdirSync(join(offFolder, "lantern"));
-		writeFileSync(join(offFolder, "lantern", "shared-descriptor.ts"), 'export default { id: "lantern", sdk: 2, label: "Lantern", summary: "Hangs a lantern.", role: "system", startsEnabled: false, instructions: "" };');
-		writeFileSync(join(offFolder, "lantern", "server.ts"), "export default {};");
+		const offFolder = resolve(".scratch", `create-${crypto.randomUUID()}`);
 		const boxRows = (conversationId: number) =>
 			database.query("SELECT namespace, key FROM conversation_data WHERE conversation_id = ? AND namespace LIKE 'box:%' ORDER BY namespace, key").all(conversationId);
 		try {
-			await loadBoxes([offFolder]);
+			writeBoxFiles(join(offFolder, "lantern"), {
+				"shared-descriptor.ts": 'export default { id: "lantern", sdk: 2, label: "Lantern", summary: "Hangs a lantern.", role: "system", startsEnabled: false, instructions: "" };',
+				"server.ts": "export default {};",
+			});
+			await loadTestBoxes([offFolder]);
+			expect(boxDescriptor("lantern").startsEnabled).toBe(false);
 			const off = createConversationWithHistory(database, inputWith());
 			expect(boxRows(off.id)).toEqual([]);
-			await loadBoxes([]);
+			await loadTestBoxes([]);
 			const none = createConversationWithHistory(database, inputWith());
 			expect(boxRows(none.id)).toEqual([]);
 			expect(none.playable).toBe(true);
 		} finally {
 			rmSync(offFolder, { recursive: true, force: true });
-			await loadBoxes([builtInBoxes]);
 		}
 	});
 });

@@ -29,12 +29,12 @@ import { readConversationSummary } from "../conversation";
 // when the expiring sweep collects the never-claimed path.
 import { createHash, randomUUID } from "node:crypto";
 import { createWriteStream, mkdirSync, readFileSync, rmSync } from "node:fs";
-import { basename, join } from "node:path";
+import { basename, join, parse } from "node:path";
 import { Readable, Transform } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { Database } from "bun:sqlite";
 import { mediaTypeFromFilename, sha256Hex, uniqueManagedRelativePath } from "../artifact";
-import { createCharacterLibraryModule } from "../character-library";
+import { characterDefinitionOf, createCharacterLibraryModule } from "../character-library";
 import type { ParticipantDefinition } from "../conversation";
 
 import { createImportedConversation } from "../workflows";
@@ -59,20 +59,22 @@ import {
 	StagedChatImportUnavailableError,
 	SillyTavernImportError,
 } from "./errors";
-import { chatNameFromFilename } from "./import";
 import { processStateFor } from "../application/process-state";
 
-import { buildPreview } from "./staged/preview";
+import { buildPreviewDetails } from "./staged/preview";
 import type {
 	ChatImportCommitInput,
 	ChatImportModule,
 	ChatImportModuleOptions,
+	ChatImportPreview,
 	ChatImportReceipt,
 	ChatImportResolvedParticipantPlan,
 	StagedRecord,
 } from "./staged/types";
 
 export * from "./staged/types";
+
+const chatNameFromFilename = (filename: string): string => parse(filename).name;
 
 // @approved
 //  One expiring import-session store. Process-level so every request-scoped
@@ -81,7 +83,7 @@ export * from "./staged/types";
 // map, and every entry carries its own absolute expiry: the staged handle
 // from its staging time, and the compact committed receipt kept for
 // idempotent retry from its commit.
-export type StagedImportSession =
+type StagedImportSession =
 	| { phase: "staged"; expiresAt: number; record: StagedRecord }
 	| { phase: "committed"; expiresAt: number; receipt: ChatImportReceipt };
 
@@ -288,12 +290,7 @@ const resolvePlanParticipants = (
 			}
 			return {
 				plan,
-				definition: {
-					name: character.name,
-					prompt: character.prompt,
-					sendAppearanceImages: character.sendAppearanceImages,
-					openings: character.openings,
-				},
+				definition: characterDefinitionOf(character),
 				sourceCharacterId: character.id,
 				createProfile: false,
 			};
@@ -365,7 +362,6 @@ export function createChatImportModule(
 					readFileSync(stagedPath),
 				);
 				inspection = inspectSillyTavernChatJsonl(sourceText, {
-					name: chatNameFromFilename(filename),
 					filename,
 					sha256: staged.sha256,
 				});
@@ -377,23 +373,20 @@ export function createChatImportModule(
 				throw error;
 			}
 
-			const preview = buildPreview(
-				database,
-				filename,
-				staged.byteLength,
-				staged.sha256,
-				inspection,
-			);
+			const preview: ChatImportPreview = {
+				title: chatNameFromFilename(filename),
+				originalFilename: filename,
+				...staged,
+				...buildPreviewDetails(database, inspection),
+			};
 			const token = randomUUID();
 			stagedImportStore(database).sessions.set(token, {
 				phase: "staged",
 				expiresAt: Date.now() + STAGED_IMPORT_SESSION_TTL_MS,
 				record: {
-					token,
 					originalFilename: filename,
 					byteLength: staged.byteLength,
 					sha256: staged.sha256,
-					integrity: inspection.report.source.integrity ?? null,
 					stagedPath,
 					relativePath,
 					preview,
@@ -454,7 +447,6 @@ export function createChatImportModule(
 			// staged copy alone.
 			const sourceText = decodeSillyTavernSourceBytes(readVerifiedStagedBytes(record));
 			const decoded = decodeSillyTavernImportSource(sourceText, {
-				name: chatNameFromFilename(record.originalFilename),
 				filename: record.originalFilename,
 				sha256: record.sha256,
 			});

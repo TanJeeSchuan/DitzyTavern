@@ -1,20 +1,16 @@
 import type { ConversationSummary } from "../../conversation";
 import type {
 	ChatImportCommitBody,
-	ChatImportDuplicateMatch,
 	ChatImportGroup as ChatImportGroupContract,
 	ChatImportPreview as ChatImportPreviewContract,
 	ChatImportReceipt as ChatImportReceiptContract,
-	ChatImportReceiptParticipant as ChatImportReceiptParticipantContract,
 	ChatImportResolvedParticipant,
 	ChatImportSuggestion,
-	ImportResolutionOutcome as ImportResolutionOutcomeContract,
 } from "../../../shared/contract/chat-import";
 
 // Compact post-commit receipt shared with the HTTP contract.
 export type ChatImportReceipt = ChatImportReceiptContract;
-export type ChatImportReceiptParticipant = ChatImportReceiptParticipantContract;
-export type { ChatImportDuplicateMatch, ChatImportSuggestion };
+export type { ChatImportSuggestion };
 export type SuggestionMatchKind = ChatImportSuggestion["match"];
 
 export type ChatImportGroup = ChatImportGroupContract;
@@ -23,17 +19,10 @@ export type ChatImportGroup = ChatImportGroupContract;
 // native or global domain record.
 export type ChatImportPreview = ChatImportPreviewContract;
 
-export interface StagedChatImportResult {
+interface StagedChatImportResult {
 	token: string;
 	preview: ChatImportPreview;
 }
-
-// The three resolution outcomes a resulting Participant may take: fork an
-// existing Actor Profile into an independent Conversation-local Participant,
-// create a Participant together with a minimal new Actor Profile, or keep a
-// complete Chat-only Participant. No skip, source-role inference, or later
-// re-assignment alternative exists.
-export type ImportResolutionOutcome = ImportResolutionOutcomeContract;
 
 // One resulting Participant in the user-confirmed resolution plan. Whole
 // Messages are referenced by their 1-based record positions; every retained
@@ -44,14 +33,12 @@ export type ChatImportResolvedParticipantPlan = ChatImportResolvedParticipant;
 
 export type ChatImportCommitInput = ChatImportCommitBody;
 
-export type ChatImportResolvedOutcome = ChatImportReceiptParticipant["outcome"];
-
-export interface ChatImportCommitResult {
+interface ChatImportCommitResult {
 	conversation: ConversationSummary;
 	receipt: ChatImportReceipt;
 }
 
-export interface ChatImportStageInput {
+interface ChatImportStageInput {
 	// The exact bytes streamed straight from the client; the flow never
 	// receives or reopens a browser filesystem path.
 	bytes: ReadableStream<Uint8Array>;
@@ -100,11 +87,9 @@ export interface ChatImportModule {
 }
 
 export interface StagedRecord {
-	token: string;
 	originalFilename: string;
 	byteLength: number;
 	sha256: string;
-	integrity: string | null;
 	stagedPath: string;
 	// The managed relative path of the staged bytes: the final artifact
 	// path that the commit transaction claims in place.

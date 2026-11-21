@@ -1,3 +1,5 @@
+import { characterConflict } from "./character-library";
+import { invalidOutcome, notFoundOutcome } from "./outcomes";
 import { Type } from "@sinclair/typebox";
 import { conversationSummary, generationFormattingContext } from "./conversation-schema";
 import { portrait } from "./image";
@@ -33,8 +35,10 @@ export const nativeConversationBody = Type.Object({
 	...generationFormattingContext.properties,
 });
 
-export const nativeConversationResponse = Type.Object({
-	outcome: Type.Literal("created"),
-	conversation: conversationSummary,
-});
+export const nativeConversationResponse = {
+	200: Type.Object({ outcome: Type.Literal("created"), conversation: conversationSummary }),
+	404: notFoundOutcome,
+	409: characterConflict,
+	422: invalidOutcome,
+};
 

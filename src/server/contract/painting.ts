@@ -1,8 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { Elysia, sse, status } from "elysia";
-import { briefRequest, galleryRead, illustrationsRead, paintingCommand, paintingAccepted } from "../../shared/contract/painting";
+import { briefRequest, briefResponse, galleryResponse, illustrationsResponse, paintingCommand, paintingCommandResponse } from "../../shared/contract/painting";
 import { conversationIdParams } from "../../shared/contract/conversation-schema";
-import { invalidOutcome, notFoundOutcome, notPlayableOutcome } from "../../shared/contract/outcomes";
 import { ModelClientGenerationError, ModelClientTransportError } from "../model-client";
 import { writeBrief } from "../painting/brief";
 import { createPaintingModule } from "../painting";
@@ -11,9 +10,6 @@ import { presentDomainError } from "./domain-error";
 
 export const createPaintingRoutes = (database: Database, options: ConversationRouteOptions = {}) => {
 	const paintings = createPaintingModule(database, options);
-	const readResponse = { 200: illustrationsRead, 404: notFoundOutcome };
-	const briefResponse = { 404: notFoundOutcome, 409: notPlayableOutcome, 422: invalidOutcome };
-	const commandResponse = { 200: paintingAccepted, 404: notFoundOutcome, 422: invalidOutcome };
 	return new Elysia()
 		.post("/api/conversations/:id/brief", async ({ params, body, request }) => {
 			const events = writeBrief(database, params.id, body, options, request.signal);
@@ -35,14 +31,14 @@ export const createPaintingRoutes = (database: Database, options: ConversationRo
 		}, { params: conversationIdParams, body: briefRequest, response: briefResponse })
 		.get("/api/conversations/:id/gallery", ({ params }) => {
 			try { return paintings.gallery(params.id); }
-			catch (error) { return presentDomainError(error, { 404: notFoundOutcome }); }
-		}, { params: conversationIdParams, response: { 200: galleryRead, 404: notFoundOutcome } })
+			catch (error) { return presentDomainError(error, galleryResponse); }
+		}, { params: conversationIdParams, response: galleryResponse })
 		.get("/api/conversations/:id/illustrations", ({ params }) => {
 			try { return paintings.read(params.id); }
-			catch (error) { return presentDomainError(error, readResponse); }
-		}, { params: conversationIdParams, response: readResponse })
+			catch (error) { return presentDomainError(error, illustrationsResponse); }
+		}, { params: conversationIdParams, response: illustrationsResponse })
 		.post("/api/conversations/:id/illustrations/commands", ({ params, body }) => {
 			try { paintings.command(params.id, body); return { outcome: "accepted" as const }; }
-			catch (error) { return presentDomainError(error, commandResponse); }
-		}, { params: conversationIdParams, body: paintingCommand, response: commandResponse });
+			catch (error) { return presentDomainError(error, paintingCommandResponse); }
+		}, { params: conversationIdParams, body: paintingCommand, response: paintingCommandResponse });
 };

@@ -1,4 +1,4 @@
-import { boxSetups, boxes } from "./test-fixtures/box-setups";
+import { conversationSummary, installFetch } from "./test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
 import { flushHook, renderHook } from "./test-fixtures/render-hook";
@@ -8,14 +8,7 @@ const { useGenerationSettingsDraft } = await import("./workspace/useGenerationSe
 const { useGenerationSettingsQuery, publishGenerationSettings } = await import("./generation-settings-query");
 const originalFetch = globalThis.fetch;
 afterEach(() => { globalThis.fetch = originalFetch; onlineManager.setOnline(true); });
-const summary = (id = 1, revision = 5): ConversationSummary => ({
-	id, revision, name: "Chat", boxSetups, boxes, boxVersions: {}, forkedFrom: null,
-	background: null, cast: [], control: { humanParticipantId: null, modelParticipantId: null },
-	controlValidity: { valid: false, reason: "missing-seat" }, playable: false,
-	capabilities: { compose: { available: false, reason: "conversation-not-playable" },
-		generate: { available: false, reason: "conversation-not-playable" },
-		swipe: { available: false, reason: "conversation-not-playable" } }, activeGenerations: [],
-});
+const summary = (id = 1, revision = 5): ConversationSummary => conversationSummary({ id, revision, name: "Chat" });
 const settings = (instruction = "Original"): ConversationGenerationSettings => ({
 	connectionProfileId: 7, modelId: "model", temperature: null, topP: null, frequencyPenalty: null, presencePenalty: null,
 	contextLimit: 32768, responseBudget: 1024, safetyAllowance: 500, siblingGenerationLimit: 4,
@@ -25,9 +18,9 @@ const settings = (instruction = "Original"): ConversationGenerationSettings => (
 type Request = { url: string; init?: RequestInit };
 async function harness(handler: (request: Request) => Promise<Response>, strict = false) {
 	const requests: Request[] = [];
-	globalThis.fetch = Object.assign((input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch((input: RequestInfo | URL, init?: RequestInit) => {
 		const request = { url: String(input), init }; requests.push(request); return handler(request);
-	}, { preconnect() {} });
+	});
 	const client = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
 	const changes: ConversationSummary[] = [];
 	const options = { conversation: summary(), onConversationChange: (next: ConversationSummary | null) => { if (next) { changes.push(next); options.conversation = next; } } };
@@ -119,7 +112,7 @@ test("discard during a save keeps the submitted draft until the save settles", a
 
 test("a newer Conversation revision without newer settings does not move the draft's save revision", async () => {
 	const h = await harness(({ init }) => init?.method === "POST"
-		? Promise.resolve(Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 6, currentConversation: summary(1, 6) }, { status: 409 }))
+		? Promise.resolve(Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: 6, current: summary(1, 6) }, { status: 409 }))
 		: Promise.resolve(Response.json(settings())));
 	await h.hook.act(async () => h.hook.current.updateInstruction("Local"));
 	h.options.conversation = summary(1, 6);
@@ -131,7 +124,7 @@ test("a newer Conversation revision without newer settings does not move the dra
 test("a conflict whose settings cannot be read again keeps the draft unsaved instead of retrying", async () => {
 	let reads = 0;
 	const h = await harness(async ({ init }) => init?.method === "POST"
-		? Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 6, currentConversation: summary(1, 6) }, { status: 409 })
+		? Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: 6, current: summary(1, 6) }, { status: 409 })
 		: ++reads === 3 ? new Response(null, { status: 500 }) : Response.json(settings()));
 	await h.hook.act(async () => h.hook.current.updateInstruction("Local"));
 	let saved = true;
@@ -146,7 +139,7 @@ test("a conflict whose settings cannot be read again keeps the draft unsaved ins
 test("409 adopts the current Conversation and settings for all readers while retaining the complete draft", async () => {
 	let reads = 0;
 	const h = await harness(async ({ init }) => init?.method === "POST"
-		? Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 9, currentConversation: summary(1, 9) }, { status: 409 })
+		? Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: 9, current: summary(1, 9) }, { status: 409 })
 		: Response.json(settings(++reads <= 2 ? "Original" : "Server")));
 	const other = await renderHook(() => useGenerationSettingsQuery(h.options.conversation), h.client);
 	await h.hook.act(async () => { h.hook.current.updateInstruction("Local"); h.hook.current.updateSampling("temperature", "0.4"); });
@@ -200,15 +193,15 @@ const modelSelect = (element: ReturnType<typeof ModelSelector>) => element.props
 test("ModelSelector conflict refreshes cached settings for later readers", async () => {
 	let current = summary();
 	let serverModel = "model";
-	globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
 		if (init?.method === "POST") {
 			serverModel = "server-model";
-			return Response.json({ outcome: "conflict", expectedRevision: 5, actualRevision: 9, currentConversation: summary(1, 9) }, { status: 409 });
+			return Response.json({ outcome: "conflict", reason: "stale-revision", expectedRevision: 5, actualRevision: 9, current: summary(1, 9) }, { status: 409 });
 		}
 		if (String(input).includes("connection-settings"))
 			return Response.json({ revision: 1, profiles: [], presets: [] });
 		return Response.json({ ...settings(), modelId: serverModel });
-	}, { preconnect() { } });
+	});
 	const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const options = () => ({ conversation: current, onConversationChange: (next: ConversationSummary) => { current = next; } });
 	const hook = await renderHook(() => ModelSelector(options()), cache);
@@ -223,13 +216,13 @@ test("ModelSelector conflict refreshes cached settings for later readers", async
 });
 test("ModelSelector pending write cannot publish after unmount", async () => {
 	const late = Promise.withResolvers<Response>();
-	globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
 		if (init?.method === "POST")
 			return late.promise;
 		if (String(input).includes("connection-settings"))
 			return Response.json({ revision: 1, profiles: [], presets: [] });
 		return Response.json(settings());
-	}, { preconnect() { } });
+	});
 	const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });
 	const changes: ConversationSummary[] = [];
 	const hook = await renderHook(() => ModelSelector({ conversation: summary(), onConversationChange: x => changes.push(x) }), cache);
@@ -247,13 +240,13 @@ test("ModelSelector pending write cannot publish after unmount", async () => {
 });
 test("ModelSelector key switch rejects old Conversation completion", async () => {
 	const late = Promise.withResolvers<Response>();
-	globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch(async (input: RequestInfo | URL, init?: RequestInit) => {
 		if (init?.method === "POST")
 			return late.promise;
 		if (String(input).includes("connection-settings"))
 			return Response.json({ revision: 1, profiles: [], presets: [] });
 		return Response.json(settings());
-	}, { preconnect() { } });
+	});
 	let current = summary();
 	const changes: ConversationSummary[] = [];
 	const cache = new QueryClient({ defaultOptions: { queries: { retry: false } } });

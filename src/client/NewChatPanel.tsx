@@ -1,8 +1,11 @@
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { invalidateChatLists } from "./workspace";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { Plus } from "lucide-react";
 import { useState } from "react";
 import { AppSelect } from "@/components/ui/select";
-import { type CharacterSummary, listCharacters } from "./character-library";
+import { charactersQuery, type CharacterSummary } from "./character-library";
+import type { CommitNavigation, SaveNavigationController } from "./SaveGuard";
 import {
 	createNativeConversation,
 	emptySeatDraft,
@@ -10,7 +13,6 @@ import {
 } from "./new-chat";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
 import { promptChannelFields } from "../shared/definition";
-import { useAsyncEffect } from "./lib/use-async";
 
 // @approved
 //  Native New Chat setup: the human and model seats are configured side by
@@ -168,26 +170,20 @@ function OpeningsField({
 }
 
 export function NewChatPanel({
+	beforeCreate,
 	onCreated,
 }: {
+	beforeCreate: SaveNavigationController["requestChatLeave"];
 	onCreated: (conversationId: number) => void;
 }) {
 	const [name, setName] = useState("");
-	const [characters, setCharacters] = useState<CharacterSummary[]>([]);
+	const client = useQueryClient();
+	const characters = useQuery(charactersQuery).data ?? [];
 	const [humanSeat, setHumanSeat] = useState<SeatDraft>(emptySeatDraft());
 	const [modelSeat, setModelSeat] = useState<SeatDraft>(emptySeatDraft());
 	const [pending, setPending] = useState(false);
 	const [validationRevealed, setValidationRevealed] = useState(false);
 	const [problem, setProblem] = useState<string | null>(null);
-
-	useAsyncEffect(async (isCancelled) => {
-		try {
-			const summaries = await listCharacters();
-			if (!isCancelled()) setCharacters(summaries);
-		} catch {
-			if (!isCancelled()) setCharacters([]);
-		}
-	}, []);
 
 	const humanReady =
 		humanSeat.type === "adhoc"
@@ -201,9 +197,7 @@ export function NewChatPanel({
 			: characters.some((character) => character.id === modelSeat.characterId);
 	const ready = name.trim() !== "" && humanReady && modelReady && !pending;
 
-	const submit = async () => {
-		setValidationRevealed(true);
-		if (!ready) return;
+	const create = async (commit: CommitNavigation) => {
 		setPending(true);
 		setProblem(null);
 		try {
@@ -214,11 +208,12 @@ export function NewChatPanel({
 			});
 			switch (outcome.outcome) {
 				case "available":
-					onCreated(outcome.value.conversation.id);
+					invalidateChatLists(client);
+					commit(() => onCreated(outcome.value.conversation.id));
 					break;
 				case "conflict":
 					setProblem(
-						`${outcome.currentCharacter.name} changed while you were setting up. Re-select it to fork the current version.`,
+						`${outcome.current.name} changed while you were setting up. Re-select it to fork the current version.`,
 					);
 					break;
 				case "not-found":
@@ -275,7 +270,10 @@ export function NewChatPanel({
 				className="primary-button"
 				type="button"
 				disabled={pending}
-				onClick={() => void submit()}
+				onClick={() => {
+					setValidationRevealed(true);
+					if (ready) beforeCreate((commit) => void create(commit));
+				}}
 			>
 				<Plus aria-hidden="true" /> Create Chat
 			</button>

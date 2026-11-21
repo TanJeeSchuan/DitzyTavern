@@ -16,7 +16,7 @@ export type CharacterDatabase = ReturnType<typeof connectCharacterLibraryDatabas
 // @approved
 //  Names are normalized by removing leading and trailing whitespace while
 // preserving case and Unicode exactly.
-export const normalizeName = (name: string) => name.trim();
+const normalizeName = (name: string) => name.trim();
 
 const requireName = (
 	name: string,

@@ -1,5 +1,8 @@
 import { Pencil } from "lucide-react";
-import type { ConversationSummary } from "./conversation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import type { ConversationAction, ConversationSummary } from "./conversation";
+import { conversationKey } from "./conversation-query";
+import { runConversationCommand } from "./conversation-command-runner";
 import { PromptPresetPanel } from "./workspace/PromptPresetPanel";
 import { useId, useRef, useState } from "react";
 import { Label } from "@/components/ui/label";
@@ -15,7 +18,7 @@ import { Gallery } from "./Gallery";
 import { ProseEditor, type ProseEditorHandle } from "./editor/ProseEditor";
 import { IllustrationRows } from "./story/IllustrationRows";
 import { PanelHeader } from "./PanelHeader";
-import { usePaintingCommand, useIllustrations, useAdoptReferences, useImageModel, useReferenceDraft, type PaintTarget } from "./painting";
+import { illustrationsKey, usePaintingCommand, useIllustrations, useAdoptReferences, useImageModel, useReferenceDraft, type PaintTarget } from "./painting";
 import { ReferenceSetField } from "./ReferenceSetField";
 import { ProfileModelPicker } from "./ProfileModelPicker";
 
@@ -31,18 +34,32 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 	const referencesEditor = useRef<ProseEditorHandle>(null);
 	const writing = useWriteBrief(conversationId, updateBrief);
 	const { submit, pending, error } = usePaintingCommand(conversationId);
-	const messageCount = usePaintingCommand(conversationId);
+	const client = useQueryClient();
+	const settings = useMutation({
+		networkMode: "always",
+		mutationFn: async (action: Extract<ConversationAction, { type: "select-paint-preset" | "set-brief-message-count" }>) => {
+			let reason = "The Paint settings could not be saved.";
+			const applied = await runConversationCommand({
+				conversationId, onConversationChange, setNotice: (notice) => { reason = notice; },
+				revision: () => client.getQueryData<ConversationSummary>(conversationKey(conversationId))?.revision ?? null,
+			}, action, { notices: { conflict: "This Chat changed elsewhere. Your Paint settings were not saved." } });
+			await client.invalidateQueries({ queryKey: illustrationsKey(conversationId) });
+			if (!applied) throw new Error(reason);
+		},
+	});
 	const read = useIllustrations(conversationId);
 	const selection = read.data;
 	const writablePreset = selection?.paintPresets.some((preset) => preset.id === selection.paintPresetId) ?? false;
-	const settingsDisabled = pending || writing.pending || read.isPending || read.isError;
-	const saveMessageCount = (count: number) => count === selection?.briefMessageCount ? Promise.resolve(true) : messageCount.submit({ type: "set-brief-message-count", briefMessageCount: count });
+	const settingsDisabled = pending || settings.isPending || writing.pending || read.isPending || read.isError;
+	const saveMessageCount = (count: number) => count === selection?.briefMessageCount ? Promise.resolve(true)
+		: settings.mutateAsync({ type: "set-brief-message-count", briefMessageCount: count }).then(() => true, () => false);
 	const aspectRatio = read.data?.aspectRatio ?? DEFAULT_PAINTING_ASPECT_RATIO;
 	const referenceSet = selection?.referenceSets.find(({ id }) => id === selection.referenceSetId);
 	const references = useReferenceDraft(conversationId, referenceSet);
 	const adoptReferences = useAdoptReferences(conversationId);
 	const imageModel = useImageModel();
 	const presetName = selection?.paintPresets.find(({ id }) => id === selection.paintPresetId)?.name;
+	const panelError = error ?? settings.error?.message ?? imageModel.error ?? adoptReferences.error ?? (read.isError ? "Illustrations could not be loaded." : null);
 	if (editingPreset !== null) return <aside className="details-panel" data-open="true" aria-label="Paint Preset">
 		<PromptPresetPanel conversation={conversation} onConversationChange={onConversationChange} presetId={editingPreset}
 			onClose={() => { setEditingPreset(null); void read.refetch(); }} />
@@ -67,7 +84,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 				<Field label="Paint Preset" htmlFor="paint-preset">
 					<AppSelect id="paint-preset" className="field-input" value={selection ? String(selection.paintPresetId) : ""} disabled={settingsDisabled}
 						emptyLabel="Choose a Paint Preset" options={selection?.paintPresets.map((preset) => ({ value: String(preset.id), label: preset.name })) ?? []}
-						onValueChange={(value) => void submit({ type: "select-paint-preset", paintPresetId: Number(value) })} />
+						onValueChange={(value) => settings.mutate({ type: "select-paint-preset", paintPresetId: Number(value) })} />
 				</Field>
 				<Button type="button" variant="ghost" className="justify-self-start px-0" disabled={settingsDisabled || !selection}
 					onClick={() => { if (selection) setEditingPreset(selection.paintPresetId); }}><Pencil aria-hidden="true" />Edit Paint Preset</Button>
@@ -83,8 +100,8 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 								}
 								else event.currentTarget.value = String(selection?.briefMessageCount ?? DEFAULT_BRIEF_MESSAGE_COUNT);
 							}} />
-						<div className="flex items-center gap-2"><Switch id={allMessagesId} checked={selection?.briefMessageCount === null} disabled={settingsDisabled || messageCount.pending}
-							onCheckedChange={(all) => void submit({ type: "set-brief-message-count", briefMessageCount: all ? null : DEFAULT_BRIEF_MESSAGE_COUNT })} /><Label htmlFor={allMessagesId}>All</Label></div>
+						<div className="flex items-center gap-2"><Switch id={allMessagesId} checked={selection?.briefMessageCount === null} disabled={settingsDisabled}
+							onCheckedChange={(all) => settings.mutate({ type: "set-brief-message-count", briefMessageCount: all ? null : DEFAULT_BRIEF_MESSAGE_COUNT })} /><Label htmlFor={allMessagesId}>All</Label></div>
 					</div>
 				</Field>
 					</div>
@@ -120,8 +137,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 					onClick={() => void submit({ type: "paint", variantId, brief, references: references.references, ask, aspectRatio })}>Paint</Button>
 			</div>
 			<p className="panel-note m-0">Painting continues after you close this panel.</p>
-			{(error ?? messageCount.error ?? imageModel.error ?? adoptReferences.error ?? (read.isError ? "Illustrations could not be loaded." : null)) !== null
-				&& <p role="alert" className="text-sm text-destructive">{error ?? messageCount.error ?? imageModel.error ?? adoptReferences.error ?? "Illustrations could not be loaded."}</p>}
+			{panelError !== null && <p role="alert" className="text-sm text-destructive">{panelError}</p>}
 		</footer>
 	</aside>;
 }

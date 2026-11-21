@@ -104,6 +104,7 @@ test("on a phone, Add to composer from the Gallery closes it over the composer",
 	await page.getByRole("menuitem", { name: "Add to composer", exact: true }).click();
 	await expect(gallery).toBeHidden();
 	await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("harbour");
+	await expect(page.getByRole("textbox", { name: "Message draft" })).toBeFocused();
 });
 
 test("painting reaches the story model only after Add to composer and Send", async ({ page, llm }) => {

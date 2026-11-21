@@ -10,7 +10,7 @@ import {
 import { genericDataNamespacePattern } from "../import-data";
 import { boxSetups, boxStates, promptBoxReference } from "./box";
 import { commitBoxAction, resetBoxRecordAction, setBoxRecordAction, setBoxSetupAction, setBoxStateAction, upgradeBoxAction } from "./box-actions";
-import { boxMoves, boxTraces, type BoxMoves } from "./box-generation";
+import { boxMoves, boxTraces } from "./box-generation";
 import { imageHash, portrait } from "./image";
 import { promptChannels } from "./prompt-schema";
 import {
@@ -19,15 +19,14 @@ import {
 	notPlayableOutcome,
 	notRemovableOutcome,
 	conflictReasonOutcome,
+	revisionConflict,
 } from "./outcomes";
 import { numericWire } from "./wire";
 import type { GenerationJsonObject } from "../generation-provenance";
 import { generationProvenance } from "./generation-provenance";
 import { macroVariableWrite } from "./macro-variable-write";
 import { loreActivationRecord } from "./lore-activation";
-export type { LoreActivationRecord } from "./lore-activation";
-
-export { effectiveGenerationSettings } from "./generation-settings";
+import { scopedLorebookAttachment } from "./lorebook";
 
 const promptHistoryRole = Type.Union([
 	Type.Literal("human"),
@@ -229,9 +228,8 @@ export type ConversationSummary = Static<typeof conversationSummary>;
 // an alias because the HTTP runtime mutates response schemas in place — it
 // injects additionalProperties: false when it compiles a response
 // validator — and the canonical declaration must stay pristine for the
-// adapters that derive from it. The established export name stays for
-// every existing consumer.
-export const conversationGenerationSettings = Type.Object({
+// adapters that derive from it.
+const conversationGenerationSettings = Type.Object({
 	connectionProfileId: Type.Union([Type.Null(), Type.Integer()]),
 	...Value.Clone(canonicalGenerationSettings).properties,
 });
@@ -239,24 +237,10 @@ export const conversationGenerationSettings = Type.Object({
 export type ConversationGenerationSettings = Static<typeof conversationGenerationSettings>;
 export type ContinuationPrefillSuffix = ConversationGenerationSettings["continuationPrefillSuffix"];
 
-export const generationVariant = Type.Object({
-	messageId: Type.Integer(),
-	variantId: Type.Integer(),
-	content: Type.String(),
-	timestamp: Type.String(),
-	data: Type.Array(Type.Object({
-		namespace: Type.String(),
-		key: Type.String(),
-		value: Type.String(),
-	})),
-});
-
-export type GenerationVariant = Static<typeof generationVariant>;
-
 // @approved
 //  The budget decision made at Generation start, with the whole history
 // entries omitted during preflight.
-export const generationBudgetInspection = Type.Object({
+const generationBudgetInspection = Type.Object({
 	tokenEstimate: Type.Number(),
 	responseBudget: Type.Integer(),
 	safetyAllowance: Type.Integer(),
@@ -297,7 +281,7 @@ export type GenerationInspectionStatus = Static<typeof activeGenerationDetails>[
 export type GenerationBudgetInspection = Static<typeof generationBudgetInspection>;
 export type ActiveGenerationDetails = Static<typeof activeGenerationDetails>;
 
-export const variantDetails = Type.Object({
+const variantDetails = Type.Object({
 	conversationId: Type.Integer(),
 	messageId: Type.Integer(),
 	variantId: Type.Integer(),
@@ -355,7 +339,7 @@ const chatHistoryVariant = Type.Object({
 
 export type ChatHistoryVariant = Static<typeof chatHistoryVariant>;
 
-export const variantText = Type.Object({ content: Type.String(), reasoning: Type.String() });
+const variantText = Type.Object({ content: Type.String(), reasoning: Type.String() });
 export type VariantText = Static<typeof variantText>;
 
 // Server-owned targeted Swipe eligibility (ADR-0003, ADR-0031): the
@@ -520,7 +504,7 @@ const deleteDataAction = Type.Object({
 // fields. The Conversation module still fills defaults when it creates
 // settings server-side, but an update always states every field, so adding
 // a canonical field automatically participates in the update command.
-export const generationSettingsUpdate = Value.Clone(canonicalGenerationSettings);
+const generationSettingsUpdate = Value.Clone(canonicalGenerationSettings);
 
 const updateGenerationSettingsAction = Type.Object({
 	type: Type.Literal("update-generation-settings"),
@@ -608,6 +592,15 @@ const selectPromptPresetAction = Type.Object({
 	promptPresetId: Type.Integer(),
 });
 
+export const briefMessageCount = Type.Union([Type.Integer({ minimum: 1 }), Type.Null()]);
+const selectPaintPresetAction = Type.Object({ type: Type.Literal("select-paint-preset"), paintPresetId: Type.Integer() });
+const setBriefMessageCountAction = Type.Object({ type: Type.Literal("set-brief-message-count"), briefMessageCount });
+
+const participantLorebookAttachment = {
+	participantId: Type.Integer(),
+	...scopedLorebookAttachment,
+};
+
 const conversationCommandAction = Type.Union([
 	createMessageAction,
 	createVariantAction,
@@ -628,6 +621,13 @@ const conversationCommandAction = Type.Union([
 	assignControlAction,
 	removeParticipantAction,
 	selectPromptPresetAction,
+	selectPaintPresetAction,
+	setBriefMessageCountAction,
+	Type.Object({ type: Type.Literal("attach-chat"), bookId: Type.Integer(), enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("detach-chat"), bookId: Type.Integer() }),
+	Type.Object({ type: Type.Literal("attach-participant"), ...participantLorebookAttachment, enabled: Type.Optional(Type.Boolean()) }),
+	Type.Object({ type: Type.Literal("detach-participant"), ...participantLorebookAttachment }),
+	Type.Object({ type: Type.Literal("save-lore-settings"), scanDepth: Type.Integer(), allowance: Type.Integer() }),
 	renameConversationAction,
 	setBackgroundAction,
 	setBoxSetupAction,
@@ -655,7 +655,7 @@ export const conversationCommandBody = Type.Object({
 	action: conversationCommandAction,
 });
 
-export const forkConversationResponse = Type.Object({
+const forkConversationResponse = Type.Object({
 	outcome: Type.Literal("applied"), conversation: conversationSummary, omittedBoxes: Type.Array(Type.String()),
 	rewind: Type.Optional(Type.Object({ content: Type.String(), moves: boxMoves })),
 });
@@ -671,81 +671,35 @@ export const generationFormattingContext = Type.Object({
 
 export type GenerationFormattingContext = Static<typeof generationFormattingContext>;
 
-const inspectedPlanFields = {
+const sendTarget = Type.Object({
+	kind: Type.Literal("send"),
+	content: Type.String(),
+	moves: Type.Optional(boxMoves),
+});
+const continuationTarget = Type.Object({ kind: Type.Literal("continuation") });
+const siblingTarget = Type.Object({
+	kind: Type.Literal("sibling"),
+	messageId: Type.Integer(),
+	reroll: Type.Optional(Type.Boolean()),
+});
+const generationTarget = Type.Union([sendTarget, continuationTarget, siblingTarget]);
+export type GenerationTarget = Static<typeof generationTarget>;
+
+const generationStartOptions = {
 	previewId: Type.Optional(Type.String()),
 	promptPlan: Type.Optional(promptPlan),
 	...generationFormattingContext.properties,
 };
+const revisionedStartOptions = { ...generationStartOptions, expectedRevision: Type.Integer() };
 
-// Send carries the client draft and the Conversation revision it was based
-// on. Generation acceptance is deliberately a complete typed operation: an
-// omitted revision or draft must never fall through to an older request shape.
-export const generationBody = Type.Object({
-	kind: Type.Literal("send"),
-	expectedRevision: Type.Integer(),
-	content: Type.String(),
-	moves: Type.Optional(boxMoves),
-	// A preview token carries the server-captured macro clock, random draws,
-	// and pending writes. The optional plan is the user's direct edit of that
-	// capture; it is never treated as provider JSON.
-	...inspectedPlanFields,
-});
-
-// @approved
-//  Continue carries only the Conversation revision. The server derives the
-// selected terminal Message and current Control pair from its snapshot.
-export const continuationBody = Type.Object({
-	kind: Type.Literal("continuation"),
-	expectedRevision: Type.Integer(),
-	...inspectedPlanFields,
-});
-
-export type ConversationCommandBody = Static<typeof conversationCommandBody>;
+export const generationBody = Type.Union([
+	Type.Object({ ...sendTarget.properties, ...revisionedStartOptions }),
+	Type.Object({ ...continuationTarget.properties, ...revisionedStartOptions }),
+	Type.Object({ ...siblingTarget.properties, ...generationStartOptions }),
+]);
 export type GenerationBody = Static<typeof generationBody>;
-export type ContinuationBody = Static<typeof continuationBody>;
 
-export const siblingGenerationBody = Type.Object({
-	reroll: Type.Optional(Type.Boolean()),
-	kind: Type.Literal("sibling"),
-	...inspectedPlanFields,
-});
-
-const generationPreviewKind = Type.Union([
-	Type.Literal("send"),
-	Type.Literal("continuation"),
-	Type.Literal("sibling"),
-]);
-
-export const generationPreviewBody = Type.Union([
-	Type.Object({
-		kind: Type.Literal("send"),
-		content: Type.String(),
-		moves: Type.Optional(boxMoves),
-		...generationFormattingContext.properties,
-	}),
-	Type.Object({
-		kind: Type.Literal("continuation"),
-		...generationFormattingContext.properties,
-	}),
-	Type.Object({
-		kind: Type.Literal("sibling"),
-		messageId: Type.Integer(),
-		reroll: Type.Optional(Type.Boolean()),
-		...generationFormattingContext.properties,
-	}),
-]);
-
-// @approved
-//  The one Generation attempt vocabulary: the kind discriminant of the
-// Preview body above. Every capture, preview record, lifecycle policy, and
-// server-owned wrapper dispatches on this union instead of restating the
-// kinds, so the wire vocabulary and the server vocabulary cannot drift.
-export type GenerationTarget =
-	| { readonly kind: "send"; readonly content: string; readonly moves?: BoxMoves | undefined }
-	| { readonly kind: "continuation" }
-	| { readonly kind: "sibling"; readonly messageId: number; readonly reroll?: boolean | undefined };
-
-export type GenerationTargetKind = GenerationTarget["kind"];
+export const generationPreviewBody = Type.Object({ target: generationTarget, ...generationFormattingContext.properties });
 
 const generationPreviewBudget = Type.Object({
 	tokenEstimate: Type.Integer(),
@@ -760,7 +714,7 @@ export const generationPreview = Type.Object({
 	outcome: Type.Literal("available"),
 	previewId: Type.String(),
 	conversationId: Type.Integer(),
-	kind: generationPreviewKind,
+	kind: Type.Index(generationTarget, ["kind"]),
 	promptPlan,
 	participants: Type.Object({
 		human: Type.Union([Type.Null(), Type.Object({ id: Type.Integer(), name: Type.String() })]),
@@ -773,16 +727,10 @@ export const generationPreview = Type.Object({
 	budget: generationPreviewBudget,
 });
 
-export type SiblingGenerationBody = Static<typeof siblingGenerationBody>;
 export type GenerationPreviewBody = Static<typeof generationPreviewBody>;
 export type GenerationPreview = Static<typeof generationPreview>;
 
-export const conversationConflict = Type.Object({
-	outcome: Type.Literal("conflict"),
-	expectedRevision: Type.Integer(),
-	actualRevision: Type.Integer(),
-	currentConversation: conversationSummary,
-});
+export const conversationConflict = revisionConflict(conversationSummary);
 
 export const generationAccepted = Type.Object({
 	outcome: Type.Literal("accepted"),
@@ -792,31 +740,17 @@ export const generationAccepted = Type.Object({
 	variantId: Type.Integer(),
 });
 
-export const generationStartResponse = Type.Union([
-	generationAccepted,
-	notFoundOutcome,
-	conflictReasonOutcome,
-	notPlayableOutcome,
-	invalidOutcome,
-]);
-
-export type GenerationAccepted = Static<typeof generationAccepted>;
-export type GenerationStartResponse = Static<typeof generationStartResponse>;
-
-export const generationStopped = Type.Object({
+const generationStopped = Type.Object({
 	outcome: Type.Literal("stopped"),
 	generationId: Type.Integer(),
 	conversation: conversationSummary,
 });
 
-export const generationsStopped = Type.Object({
+const generationsStopped = Type.Object({
 	outcome: Type.Literal("stopped"),
 	generationIds: Type.Array(Type.Integer()),
 	conversation: conversationSummary,
 });
-
-export type GenerationStopped = Static<typeof generationStopped>;
-export type GenerationsStopped = Static<typeof generationsStopped>;
 
 // Route boundary schemas referenced by the Conversation adapter: path and
 // query params arrive as wire strings, and the response maps reuse these
@@ -824,16 +758,11 @@ export type GenerationsStopped = Static<typeof generationsStopped>;
 
 export const conversationIdParams = Type.Object({ id: numericWire });
 
-export const conversationDeleted = Type.Object({ outcome: Type.Literal("deleted") });
+const conversationDeleted = Type.Object({ outcome: Type.Literal("deleted") });
 
 export const generationIdParams = Type.Object({
 	id: numericWire,
 	generationId: numericWire,
-});
-
-export const messageIdParams = Type.Object({
-	id: numericWire,
-	messageId: numericWire,
 });
 
 export const variantIdParams = Type.Object({
@@ -857,12 +786,12 @@ export const generationEventsQuery = Type.Object({
 	after: Type.Optional(numericWire),
 });
 
-export const conversationAppliedResponse = Type.Object({
+const conversationAppliedResponse = Type.Object({
 	outcome: Type.Literal("applied"),
 	conversation: conversationSummary,
 });
 
-export const characterAppliedResponse = Type.Object({
+const characterAppliedResponse = Type.Object({
 	outcome: Type.Literal("applied"),
 	character: characterSnapshot,
 });
@@ -872,50 +801,80 @@ export const generationConflictResponse = Type.Union([
 	notPlayableOutcome,
 ]);
 
-export const conversationCommandConflict = Type.Union([
+const conversationCommandConflict = Type.Union([
 	conversationConflict,
 	notPlayableOutcome,
 	notRemovableOutcome,
 ]);
 
-export const castCharacterConflict = Type.Union([
+const castCharacterConflict = Type.Union([
 	characterConflict,
 	conversationConflict,
 ]);
 
-// @approved
-//  The Conversation route families' modeled error unions: the composed
-// 409/404/422 envelopes each family declares, so the client decodes an error
-// body against exactly the union its route models.
-export const conversationConflictErrors = Type.Union([
-	conversationConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const saveParticipantAsCharacterResponse = {
+	200: characterAppliedResponse,
+	409: conversationConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
 
-export const conversationCommandErrors = Type.Union([
-	conversationCommandConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const addCharacterToCastResponse = {
+	200: conversationAppliedResponse,
+	409: castCharacterConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
 
-export const castCharacterErrors = Type.Union([
-	castCharacterConflict,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const conversationForkResponse = {
+	200: forkConversationResponse,
+	409: conversationCommandConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
 
-export const generationPreviewErrors = Type.Union([
-	notFoundOutcome,
-	notPlayableOutcome,
-	invalidOutcome,
-]);
+export const conversationCommandResponse = {
+	200: conversationAppliedResponse,
+	409: conversationCommandConflict,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
 
-export const generationStartErrors = Type.Union([
-	generationConflictResponse,
-	notFoundOutcome,
-	invalidOutcome,
-]);
+export const variantDetailsResponse = { 200: variantDetails, 404: notFoundOutcome, 422: invalidOutcome };
+
+export const generationInspectionResponse = { 200: activeGenerationDetails, 404: notFoundOutcome, 422: invalidOutcome };
+
+export const generationPreviewResponse = {
+	200: generationPreview,
+	404: notFoundOutcome,
+	409: notPlayableOutcome,
+	422: invalidOutcome,
+};
+
+export const conversationDeleteResponse = {
+	200: conversationDeleted,
+	404: notFoundOutcome,
+	422: invalidOutcome,
+};
+
+export const generationStartResponse = {
+	200: generationAccepted,
+	404: notFoundOutcome,
+	409: generationConflictResponse,
+	422: invalidOutcome,
+};
+
+export const generationStopResponse = { 200: generationStopped, 404: notFoundOutcome };
+
+export const generationsStopResponse = { 200: generationsStopped, 404: notFoundOutcome };
+
+export const variantTextResponse = { 200: variantText, 404: notFoundOutcome };
+
+export const conversationReadResponse = { 200: conversationSummary, 404: notFoundOutcome };
+
+export const chatHistoryResponse = { 200: chatHistoryPage, 404: notFoundOutcome };
+
+export const conversationGenerationSettingsResponse = { 200: conversationGenerationSettings, 404: notFoundOutcome };
 
 export const addCharacterToCastBody = Type.Object({
 	expectedConversationRevision: Type.Integer(),

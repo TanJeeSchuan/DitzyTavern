@@ -1,6 +1,7 @@
 import { presentDomainError } from "./domain-error";
 import type { Database } from "bun:sqlite";
 import { Elysia } from "elysia";
+import { loadChatVersions } from "../box/registry";
 import {
 	addPromptPresetBlock,
 	addPromptPresetInstruction,
@@ -18,7 +19,6 @@ import {
 	setPromptPresetBlockEnabled,
 } from "../prompt-preset";
 
-import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 import { invalidResponse, notFoundResponse } from "./responses";
 import {
 	addPromptPresetBlockBody,
@@ -27,42 +27,24 @@ import {
 	nativePromptPreset,
 	presetIdParams,
 	promptPresetBlockPatchesBody,
-	promptPresetCommandApplied,
 	promptPresetCommandBody,
-	promptPresetCommandConflict,
+	promptPresetCommandResponse,
+	promptPresetExportResponse,
+	promptPresetImportResponse,
 	promptPresetListResponse,
-	promptPresetRecipeApplied,
+	promptPresetRecipeResponse,
 	setPromptPresetBlockEnabledBody,
-	sillyTavernImportApplied,
-	sillyTavernImportPreview,
 	sillyTavernImportRequest,
+	sillyTavernPresetImportResponse,
+	sillyTavernPresetReviewResponse,
 } from "../../shared/contract/prompt-preset";
-
-const commandResponse = {
-	200: promptPresetCommandApplied,
-	409: promptPresetCommandConflict,
-	404: notFoundOutcome,
-	422: invalidOutcome,
-};
-
-const nativeImportResponse = { 200: promptPresetCommandApplied, 422: invalidOutcome };
-
-const sillyTavernImportResponse = { 200: sillyTavernImportApplied, 422: invalidOutcome };
-
-const sillyTavernReviewResponse = { 200: sillyTavernImportPreview, 422: invalidOutcome };
-
-const recipeResponseSchema = {
-	200: promptPresetRecipeApplied,
-	404: notFoundOutcome,
-	422: invalidOutcome,
-};
 
 const recipeResponse = (operation: () => void) => {
 	try {
 		operation();
 		return { outcome: "applied" as const };
 	} catch (error) {
-		return presentDomainError(error, recipeResponseSchema);
+		return presentDomainError(error, promptPresetRecipeResponse);
 	}
 };
 
@@ -77,12 +59,12 @@ export const createPromptPresetRoutes = (database: Database) =>
 				try {
 					return reviewSillyTavernPromptPreset(body);
 				} catch (error) {
-					return presentDomainError(error, sillyTavernReviewResponse);
+					return presentDomainError(error, sillyTavernPresetReviewResponse);
 				}
 			},
 			{
 				body: sillyTavernImportRequest,
-				response: sillyTavernReviewResponse,
+				response: sillyTavernPresetReviewResponse,
 			},
 		)
 		.post(
@@ -94,12 +76,12 @@ export const createPromptPresetRoutes = (database: Database) =>
 				try {
 					return importSillyTavernPromptPreset(database, body);
 				} catch (error) {
-					return presentDomainError(error, sillyTavernImportResponse);
+					return presentDomainError(error, sillyTavernPresetImportResponse);
 				}
 			},
 			{
 				body: sillyTavernImportRequest,
-				response: sillyTavernImportResponse,
+				response: sillyTavernPresetImportResponse,
 			},
 		)
 		.get(
@@ -110,7 +92,7 @@ export const createPromptPresetRoutes = (database: Database) =>
 			},
 			{
 				params: presetIdParams,
-				response: { 200: nativePromptPreset, 404: notFoundOutcome },
+				response: promptPresetExportResponse,
 			},
 		)
 		.post(
@@ -120,12 +102,12 @@ export const createPromptPresetRoutes = (database: Database) =>
 					const preset = importNativePromptPreset(database, body);
 					return { outcome: "applied" as const, preset };
 				} catch (error) {
-					return presentDomainError(error, nativeImportResponse);
+					return presentDomainError(error, promptPresetImportResponse);
 				}
 			},
 			{
 				body: nativePromptPreset,
-				response: nativeImportResponse,
+				response: promptPresetImportResponse,
 			},
 		)
 		.get(
@@ -148,12 +130,12 @@ export const createPromptPresetRoutes = (database: Database) =>
 						? { outcome: "deleted" as const, result: outcome.result }
 						: { outcome: "applied" as const, preset: outcome.preset };
 				} catch (error) {
-					return presentDomainError(error, commandResponse);
+					return presentDomainError(error, promptPresetCommandResponse);
 				}
 			},
 			{
 				body: promptPresetCommandBody,
-				response: commandResponse,
+				response: promptPresetCommandResponse,
 			},
 		)
 		.post(
@@ -164,18 +146,24 @@ export const createPromptPresetRoutes = (database: Database) =>
 			{
 				params: presetIdParams,
 				body: promptPresetBlockPatchesBody,
-				response: recipeResponseSchema,
+				response: promptPresetRecipeResponse,
 			},
 		)
 		.post(
 			"/api/prompt-presets/:presetId/blocks",
-			({ params, body }) =>
-				recipeResponse(() =>
-						addPromptPresetBlock(database, params.presetId, body.reference)),
+			async ({ params, body }) => {
+				const { conversationId, reference } = body;
+				if (conversationId !== undefined) {
+					await loadChatVersions(database, conversationId).catch((error: Error) => {
+						console.error(`[boxes] Chat ${conversationId}'s Box versions did not load:`, error);
+					});
+				}
+				return recipeResponse(() => addPromptPresetBlock(database, params.presetId, reference, conversationId));
+			},
 			{
 				params: presetIdParams,
 				body: addPromptPresetBlockBody,
-				response: recipeResponseSchema,
+				response: promptPresetRecipeResponse,
 			},
 		)
 		.post(
@@ -191,7 +179,7 @@ export const createPromptPresetRoutes = (database: Database) =>
 			{
 				params: blockIdParams,
 				body: movePromptPresetBlockBody,
-				response: recipeResponseSchema,
+				response: promptPresetRecipeResponse,
 			},
 		)
 		.post(
@@ -207,7 +195,7 @@ export const createPromptPresetRoutes = (database: Database) =>
 			{
 				params: blockIdParams,
 				body: setPromptPresetBlockEnabledBody,
-				response: recipeResponseSchema,
+				response: promptPresetRecipeResponse,
 			},
 		)
 		.post(
@@ -217,7 +205,7 @@ export const createPromptPresetRoutes = (database: Database) =>
 						duplicatePromptPresetBlock(database, params.presetId, params.blockId)),
 			{
 				params: blockIdParams,
-				response: recipeResponseSchema,
+				response: promptPresetRecipeResponse,
 			},
 		)
 		.delete(
@@ -227,7 +215,7 @@ export const createPromptPresetRoutes = (database: Database) =>
 						removePromptPresetBlock(database, params.presetId, params.blockId)),
 			{
 				params: blockIdParams,
-				response: recipeResponseSchema,
+				response: promptPresetRecipeResponse,
 			},
 		)
 		.post(
@@ -237,6 +225,6 @@ export const createPromptPresetRoutes = (database: Database) =>
 						addPromptPresetInstruction(database, params.presetId)),
 			{
 				params: presetIdParams,
-				response: recipeResponseSchema,
+				response: promptPresetRecipeResponse,
 			},
 		);

@@ -8,7 +8,7 @@ import { loreActivationRecord, type LoreActivationRecord } from "./contract/lore
 import { boxTraces, type BoxTraces } from "./contract/box-generation";
 import { decodeMacroVariableWrite, encodeMacroVariableWrite, type MacroVariableWrite } from "./contract/macro-variable-write";
 
-export class LoreActivationRecordParseError extends Error {
+class LoreActivationRecordParseError extends Error {
 	readonly outcome = "invalid" as const;
 	readonly details = { reason: this.message };
 
@@ -35,7 +35,7 @@ const parseLoreActivationRecord = (serialized: string): LoreActivationRecord | n
 	return parsed as LoreActivationRecord;
 };
 
-export class BoxTracesParseError extends Error {
+class BoxTracesParseError extends Error {
 	readonly outcome = "invalid" as const;
 	readonly details = { reason: this.message };
 
@@ -58,7 +58,7 @@ export const GENERATION_DATA_KEYS = {
 } as const;
 
 export const LORE_ACTIVATION_NAMESPACE = "lore-activation";
-export const LORE_ACTIVATION_KEY = "record";
+const LORE_ACTIVATION_KEY = "record";
 export const BOX_TRACES_NAMESPACE = "generation-box";
 export const BOX_TRACES_KEY = "traces";
 export const MACRO_DATA_NAMESPACE = "prompt-macro";

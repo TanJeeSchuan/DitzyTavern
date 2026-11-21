@@ -1,6 +1,6 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { conversationSummary } from "./conversation-schema";
-import { invalidOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome } from "./outcomes";
 
 const importSuggestion = Type.Object({
 	characterId: Type.Integer(),
@@ -43,7 +43,7 @@ export type ChatImportDuplicateMatch = Static<typeof importDuplicateMatch>;
 // Duplicate evidence: the classified Prior imports for one source, exact
 // (matching raw-byte SHA-256) or related (matching only the advisory
 // integrity). Shared by the preview, receipt, and Import Details payloads.
-export const duplicateEvidence = Type.Object({
+const duplicateEvidence = Type.Object({
 	exact: Type.Array(importDuplicateMatch),
 	related: Type.Array(importDuplicateMatch),
 });
@@ -52,7 +52,7 @@ export type ChatImportDuplicateEvidence = Static<typeof duplicateEvidence>;
 
 // The two ways an Exact Source Artifact copy can be missing content;
 // missing or corrupt copies report cleaned up without affecting the Chat.
-export const cleanupReason = Type.Union([
+const cleanupReason = Type.Union([
 	Type.Literal("missing"),
 	Type.Literal("corrupt"),
 ]);
@@ -78,7 +78,7 @@ const chatImportPreview = Type.Object({
 
 export type ChatImportPreview = Static<typeof chatImportPreview>;
 
-const stagedOutcome = Type.Object({
+const importStagedResponse = Type.Object({
 	outcome: Type.Literal("staged"),
 	token: Type.String(),
 	preview: chatImportPreview,
@@ -136,7 +136,6 @@ const importReceiptParticipant = Type.Object({
 	sourceCharacterId: Type.Union([Type.Null(), Type.Integer()]),
 });
 
-export type ChatImportReceiptParticipant = Static<typeof importReceiptParticipant>;
 
 // Compact post-commit receipt; the committed Conversation summary is
 // returned too so the client can open the new Chat immediately without a
@@ -159,7 +158,7 @@ const chatImportReceipt = Type.Object({
 
 export type ChatImportReceipt = Static<typeof chatImportReceipt>;
 
-export const importCommittedResponse = Type.Object({
+const importCommittedResponse = Type.Object({
 	outcome: Type.Literal("committed"),
 	conversation: conversationSummary,
 	receipt: chatImportReceipt,
@@ -176,7 +175,6 @@ const importDetailsArtifactAvailability = Type.Union([
 	}),
 ]);
 
-export type ImportDetailsArtifactAvailability = Static<typeof importDetailsArtifactAvailability>;
 
 // @approved
 //  The committed metadata of one preserved exact-source artifact:
@@ -263,15 +261,13 @@ export const importTokenParams = Type.Object({ token: Type.String() });
 
 export const importPreviewBody = Type.Object({ sha256: Type.String() });
 
-export const importStagedResponse = stagedOutcome;
-
-export const importPreviewResponse = Type.Object({
+const importPreviewResponse = Type.Object({
 	outcome: Type.Literal("available"),
 	preview: chatImportPreview,
 });
 
 // Expired and unavailable staged handles are both gone-state 410 outcomes.
-export const importGoneResponse = Type.Union([
+const importGoneResponse = Type.Union([
 	Type.Object({ outcome: Type.Literal("expired") }),
 	Type.Object({
 		outcome: Type.Literal("unavailable"),
@@ -279,20 +275,18 @@ export const importGoneResponse = Type.Union([
 	}),
 ]);
 
-export const importDiscardedResponse = Type.Object({
+const importDiscardedResponse = Type.Object({
 	outcome: Type.Literal("discarded"),
 });
 
-export const importCleanedUpResponse = Type.Object({
+const importCleanedUpResponse = Type.Object({
 	outcome: Type.Literal("cleaned-up"),
 	reason: cleanupReason,
 });
 
-// @approved
-//  The Chat Import command family's modeled error union: the composed
-// 410/422 envelopes every staged route declares, so the client decodes an
-// error body against exactly that union.
-export const chatImportCommandErrors = Type.Union([
-	importGoneResponse,
-	invalidOutcome,
-]);
+export const chatImportStageResponse = { 200: importStagedResponse, 422: invalidOutcome };
+export const chatImportPreviewResponse = { 200: importPreviewResponse, 410: importGoneResponse, 422: invalidOutcome };
+export const chatImportCommitResponse = { 200: importCommittedResponse, 410: importGoneResponse, 422: invalidOutcome };
+export const chatImportDiscardResponse = { 200: importDiscardedResponse };
+export const chatImportDetailsResponse = { 200: chatImportDetails, 404: notFoundOutcome };
+export const chatImportSourceResponse = { 404: notFoundOutcome, 410: importCleanedUpResponse };

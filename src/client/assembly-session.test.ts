@@ -1,10 +1,16 @@
+import { historyMessage, historyPage, historyVariant, installFetch } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { flushHook, renderHook } from "./test-fixtures/render-hook";
 import { QueryClient, onlineManager } from "@tanstack/react-query";
 import type { ConversationSummary, GenerationPreview } from "./conversation";
 import type { PromptPlan } from "../shared/contract/conversation-schema";
-import type { GenerationAttemptTarget } from "../shared/contract/generation-events";
-import { createStoryState, reduceStory, type StoryAction } from "./story";
+import type { GenerationStreamSubscription } from "./conversation-stream";
+import { createGenerationSessionRunner } from "./generation-session-runner";
+import { createVariantStreams } from "./story/variant-streams";
+import { createStoryOverlays, readStory, reduceStoryOverlays, retireStoryOverlays, toStoryMessage, type StoryAction, type StoryWindow } from "./story";
+import { RequestedSendView } from "./story/RequestedSendView";
 
 const { useAssemblyController } = await import("./workspace/useAssemblyController");
 const originalFetch = globalThis.fetch;
@@ -30,14 +36,20 @@ const accepted = { outcome: "accepted", conversationId: 7, generationId: 10, mes
 type Request = { url: string; init?: RequestInit };
 async function assemblyHarness(handler: (request: Request) => Promise<Response>, strict = false) {
 	const requests: Request[] = [];
-	globalThis.fetch = Object.assign((input: RequestInfo | URL, init?: RequestInit) => {
+	installFetch((input: RequestInfo | URL, init?: RequestInit) => {
 		const request = { url: String(input), init };
 		requests.push(request);
 		return handler(request);
-	}, { preconnect() {} });
+	});
 	const cache = new QueryClient({ defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false } } });
 	const effects: string[] = [];
-	const targets: GenerationAttemptTarget[] = [];
+	const targets: GenerationStreamSubscription[] = [];
+	const generations = createGenerationSessionRunner({
+		adapter: { subscribe: (target) => { effects.push("subscribed"); targets.push(target); return new Promise(() => {}); } },
+		streams: createVariantStreams(),
+		getVariant: () => undefined,
+		refreshConversation: async () => {},
+	});
 	const stories: StoryAction[] = [];
 	let visit = new AbortController();
 	const options: Parameters<typeof useAssemblyController>[0] = {
@@ -47,17 +59,13 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 		refreshStory: async (_id: number) => { effects.push("refresh"); return options.conversation; },
 		isGenerating: false, variantPreviewActive: false, beforeInspect: (inspect) => inspect(),
 		inspectPromptPlanBeforeGenerating: true,
-		generationStart: {
-			begin: () => { effects.push("begin"); return 1; },
-			settle: (_id: number) => { effects.push("settle"); },
-			accepted: (_id: number, target: GenerationAttemptTarget) => { effects.push("accepted"); targets.push(target); },
-		},
+		generations,
 		dispatchStory: (action) => { stories.push(action); },
 		takeComposer: () => { effects.push("clear"); return () => { effects.push("restore"); }; },
 	};
 	const hook = await renderHook(() => useAssemblyController(options), cache, strict);
 	const open = async (content = "Draft") => {
-		await hook.act(async () => hook.current.requestGeneration({ kind: "send", content }));
+		await hook.act(async () => hook.current.requestGeneration({ target: { kind: "send", content } }));
 		await flushHook();
 		await flushHook();
 	};
@@ -70,12 +78,27 @@ async function assemblyHarness(handler: (request: Request) => Promise<Response>,
 		await hook.rerender();
 	};
 	// The workspace owns the Chat visit: unmounting it ends the visit with the controller.
-	const leave = async () => { visit.abort(); await hook.unmount(); };
-	const reselect = () => { visit.abort(); visit = new AbortController(); };
+	const leave = async () => { visit.abort(); generations.dispose(); await hook.unmount(); };
+	const reselect = () => { visit.abort(); generations.dispatch({ type: "conversation-switched" }); visit = new AbortController(); };
 	return { hook, cache, effects, targets, stories, requests, options, open, switchTo, leave, reselect };
 }
 
 describe("assembly session", () => {
+	test("inspection locks editors from the history read through the open preview", async () => {
+		const latest = Promise.withResolvers<ConversationSummary>();
+		const h = await assemblyHarness(async () => Response.json(preview()));
+		h.options.ensureLatest = () => latest.promise;
+		await h.hook.rerender();
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "Keep reading" } }));
+		expect(h.hook.current.assembly).toBeNull();
+		expect(h.hook.current.inspectionLocked).toBe(true);
+		await h.hook.act(async () => latest.resolve(conversation()));
+		expect(h.hook.current.assembly).not.toBeNull();
+		expect(h.hook.current.inspectionLocked).toBe(true);
+		await h.hook.act(async () => h.hook.current.cancelPromptPlanPreview());
+		expect(h.hook.current.inspectionLocked).toBe(false);
+	});
+
 	test("acceptance sends the edited plan once and closes on success", async () => {
 		const response = Promise.withResolvers<Response>();
 		const h = await assemblyHarness(({ url }) => url.endsWith("/preview") ? Promise.resolve(Response.json(preview())) : response.promise);
@@ -92,8 +115,8 @@ describe("assembly session", () => {
 		await h.hook.act(async () => response.resolve(Response.json(accepted)));
 		await flushHook();
 		expect(h.hook.current.assembly).toBeNull();
-		expect(h.effects).toEqual(["begin", "clear", "accepted", "refresh"]);
-		expect(h.targets).toEqual([accepted]);
+		expect(h.effects).toEqual(["clear", "subscribed", "refresh"]);
+		expect(h.targets).toMatchObject([{ conversationId: 7, generationId: 10, messageId: 20, variantId: 30, afterEventId: 0 }]);
 	});
 
 	test("a second request in the same tick is refused while the first prepares", async () => {
@@ -102,13 +125,13 @@ describe("assembly session", () => {
 		h.options.ensureLatest = async () => { reads += 1; return h.options.conversation; };
 		await h.hook.rerender();
 		await h.hook.act(async () => {
-			h.hook.current.requestGeneration({ kind: "send", content: "First" });
-			h.hook.current.requestGeneration({ kind: "send", content: "Second" });
+			h.hook.current.requestGeneration({ target: { kind: "send", content: "First" } });
+			h.hook.current.requestGeneration({ target: { kind: "send", content: "Second" } });
 		});
 		await flushHook();
 		await flushHook();
 		expect(reads).toBe(1);
-		expect(h.requests.map(({ init }) => JSON.parse(String(init?.body)).content)).toEqual(["First"]);
+		expect(h.requests.map(({ init }) => JSON.parse(String(init?.body)).target.content)).toEqual(["First"]);
 	});
 
 	test("an accepted preview shows its requested Send until a page places it", async () => {
@@ -116,10 +139,18 @@ describe("assembly session", () => {
 		await h.open();
 		await h.hook.act(async () => h.hook.current.sendPromptPlanPreview());
 		await flushHook();
-		expect(h.stories.reduce(reduceStory, createStoryState()).requestedGeneration).toEqual({
-			request: { kind: "send", content: "Draft" },
-			accepted: { generationId: 10, variantId: 30, sentRevision: 2 },
-		});
+		const overlays = h.stories.reduce(reduceStoryOverlays, createStoryOverlays());
+		const renderSend = (window: StoryWindow) => renderToStaticMarkup(createElement(RequestedSendView, {
+			story: readStory({ overlays: retireStoryOverlays(overlays, window, null), window, conversationId: 7, historyFailed: false, loadingMore: false }),
+			human: { id: 1, name: "Writer" }, model: { name: "Model" }, lens: undefined,
+		}));
+		const { page } = historyPage();
+		const awaitingHistory = renderSend({ page, revision: 2, messages: [] });
+		expect(awaitingHistory).toContain("Draft");
+		expect(awaitingHistory).toContain('aria-label="Model is writing"');
+
+		const messages = [toStoryMessage(historyMessage({ id: 20, variants: [historyVariant({ id: 30 })] }))];
+		expect(renderSend({ page, revision: 3, messages })).toBe("");
 	});
 
 	test("reopening the same request assembles a fresh plan", async () => {
@@ -151,7 +182,7 @@ describe("assembly session", () => {
 
 	test("a Send whose seat changed before its turn is not sent with the old seat's seat-bound Moves", async () => {
 		const h = await assemblyHarness(async () => Response.json(preview()));
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "", moves: { phone: [{ to: "Mara", text: "u up?" }] } }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "", moves: { phone: [{ to: "Mara", text: "u up?" }] } } }));
 		await flushHook();
 		await flushHook();
 		h.options.conversation = conversation(7, 3);
@@ -166,7 +197,7 @@ describe("assembly session", () => {
 		const pinned = (version: string): ConversationSummary => ({ ...conversation(), boxVersions: { jar: version } });
 		await h.hook.act(async () => { h.options.inspectPromptPlanBeforeGenerating = false; h.options.conversation = pinned("v1"); });
 		await h.hook.rerender();
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "", moves: { jar: [{ coins: 1 }] } }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "", moves: { jar: [{ coins: 1 }] } } }));
 		await flushHook();
 		await flushHook();
 		const starts = () => h.requests.filter(({ url }) => !url.endsWith("/preview")).length;
@@ -241,7 +272,7 @@ describe("assembly session", () => {
 		await flushHook();
 		expect(signal?.aborted).toBe(true);
 		expect(h.hook.current.assembly?.preview?.promptPlan).toEqual(plan("New Plan"));
-		expect(h.effects).toEqual(["begin", "clear"]);
+		expect(h.effects).toEqual(["clear"]);
 	});
 
 	test("a direct start failing after a batched A to B to A reports nothing to the returned visit", async () => {
@@ -249,7 +280,7 @@ describe("assembly session", () => {
 		const h = await assemblyHarness(() => response.promise);
 		h.options.inspectPromptPlanBeforeGenerating = false;
 		await h.hook.rerender();
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Draft" }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "Draft" } }));
 		await flushHook();
 		await h.hook.act(async () => {
 			for (const id of [8, 7]) {
@@ -261,7 +292,7 @@ describe("assembly session", () => {
 		await h.hook.act(async () => response.resolve(Response.json({ outcome: "not-found" }, { status: 404 })));
 		await flushHook();
 		expect(h.hook.current.directStartError).toBeNull();
-		expect(h.effects).toEqual(["begin", "clear"]);
+		expect(h.effects).toEqual(["clear"]);
 	});
 
 	test("a Chat deleted while a Send waits for latest opens no preview for it", async () => {
@@ -269,7 +300,7 @@ describe("assembly session", () => {
 		const latest = Promise.withResolvers<ConversationSummary | null>();
 		h.options.ensureLatest = () => latest.promise;
 		await h.hook.rerender();
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Draft" }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "Draft" } }));
 		h.options.conversation = null;
 		await h.hook.rerender();
 		await h.hook.act(async () => latest.resolve(null));
@@ -290,7 +321,7 @@ describe("assembly session", () => {
 		await h.hook.act(async () => latest.resolve(conversation()));
 		await flushHook();
 		expect(h.requests).toHaveLength(1);
-		expect(h.effects).toEqual(["begin", "clear"]);
+		expect(h.effects).toEqual(["clear"]);
 	});
 
 	test("acceptance subscribes while the story refresh is still in flight", async () => {
@@ -301,8 +332,8 @@ describe("assembly session", () => {
 		await h.hook.rerender();
 		await h.hook.act(async () => h.hook.current.sendPromptPlanPreview());
 		await flushHook();
-		expect(h.effects).toEqual(["begin", "clear", "accepted", "refresh"]);
-		expect(h.targets).toEqual([accepted]);
+		expect(h.effects).toEqual(["clear", "subscribed", "refresh"]);
+		expect(h.targets).toMatchObject([{ conversationId: 7, generationId: 10, messageId: 20, variantId: 30, afterEventId: 0 }]);
 	});
 
 	test("preparation cannot reopen a preview after its owner unmounts", async () => {
@@ -310,7 +341,7 @@ describe("assembly session", () => {
 		const latest = Promise.withResolvers<ConversationSummary>();
 		h.options.ensureLatest = () => latest.promise;
 		await h.hook.rerender();
-		await h.hook.act(async () => h.hook.current.requestGeneration({ kind: "send", content: "Draft" }));
+		await h.hook.act(async () => h.hook.current.requestGeneration({ target: { kind: "send", content: "Draft" } }));
 		await h.leave();
 		await h.hook.act(async () => latest.resolve(conversation()));
 		await flushHook();
@@ -327,6 +358,6 @@ describe("assembly session", () => {
 		await h.leave();
 		await h.hook.act(async () => response.resolve(Response.json(accepted)));
 		await flushHook();
-		expect(h.effects).toEqual(["begin", "clear"]);
+		expect(h.effects).toEqual(["clear"]);
 	});
 });

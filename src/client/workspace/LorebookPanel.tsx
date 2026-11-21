@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import { Check, Plus, Search, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
-import { applyLorebookCommand, importNativeLorebook, importSillyTavernLorebook, listLorebooks, parseNativeLorebook, type LoreAttachmentState, type Lorebook } from "../lorebook-library";
+import { applyLorebookCommand, importNativeLorebook, importSillyTavernLorebook, listLorebooks, parseNativeLorebook, type Lorebook } from "../lorebook-library";
 import type { SillyTavernJsonValue } from "../../shared/contract/prompt-preset";
 import { PanelHeader } from "../PanelHeader";
 import { foldNewer } from "../lib/visit";
@@ -71,15 +71,15 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 	const bookName = (id: number) => books.find((item) => item.id === id)?.name ?? "Unavailable Lorebook";
 	const participantName = (id: number) => cast.find((participant) => participant.id === id)?.duplicateLabel ?? "Removed Participant";
 	const attachedBookIds = new Set(attachmentState?.attachments.map((attachment) => attachment.bookId));
-	const setAttachmentEnabled = (state: LoreAttachmentState, attachment: LoreAttachment, enabled: boolean) => void updateAttachment(
+	const setAttachmentEnabled = (attachment: LoreAttachment, enabled: boolean) => void updateAttachment(
 		attachment.scope === "chat"
-			? { type: "attach-chat", conversationId, bookId: attachment.bookId, expectedRevision: state.revision, enabled }
-			: { type: "attach-participant", participantId: attachment.ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope, enabled },
+			? { type: "attach-chat", bookId: attachment.bookId, enabled }
+			: { type: "attach-participant", participantId: attachment.ownerId, bookId: attachment.bookId, scope: attachment.scope, enabled },
 	);
-	const detach = (state: LoreAttachmentState, attachment: LoreAttachment) => void updateAttachment(
+	const detach = (attachment: LoreAttachment) => void updateAttachment(
 		attachment.scope === "chat"
-			? { type: "detach-chat", conversationId, bookId: attachment.bookId, expectedRevision: state.revision }
-			: { type: "detach-participant", participantId: attachment.ownerId, bookId: attachment.bookId, expectedRevision: state.revision, scope: attachment.scope },
+			? { type: "detach-chat", bookId: attachment.bookId }
+			: { type: "detach-participant", participantId: attachment.ownerId, bookId: attachment.bookId, scope: attachment.scope },
 	);
 	return <>
 		<PanelHeader title="Lorebooks" onClose={onClose} />
@@ -93,7 +93,7 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 							scanDepth={attachmentState.scanDepth}
 							allowance={attachmentState.allowance}
 							pending={attachmentPending}
-							onSave={(settings) => updateAttachment({ type: "save-settings", conversationId, expectedRevision: attachmentState.revision, ...settings })}
+							onSave={(settings) => updateAttachment({ type: "save-lore-settings", ...settings })}
 						/>
 					</div>
 					{attachmentState.attachments.length === 0
@@ -112,7 +112,7 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 									checked={attachment.enabled}
 									disabled={attachmentPending}
 									aria-label={`Use ${bookName(attachment.bookId)} in this Chat`}
-									onCheckedChange={(enabled) => setAttachmentEnabled(attachmentState, attachment, enabled)}
+									onCheckedChange={(enabled) => setAttachmentEnabled(attachment, enabled)}
 								/>
 								<Button
 									type="button"
@@ -121,7 +121,7 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 									title="Detach"
 									aria-label={`Detach ${bookName(attachment.bookId)}`}
 									disabled={attachmentPending}
-									onClick={() => detach(attachmentState, attachment)}
+									onClick={() => detach(attachment)}
 								><X aria-hidden="true" /></Button>
 							</li>)}
 						</ul>}
@@ -185,7 +185,7 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 											variant="ghost"
 											disabled={attachmentPending}
 											aria-label={`Attach ${item.name} to this Chat`}
-											onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: item.id, expectedRevision: attachmentState.revision })}
+											onClick={() => void updateAttachment({ type: "attach-chat", bookId: item.id })}
 										><Plus aria-hidden="true" /> Attach</Button>
 									</span>}
 							</li>)}
@@ -195,7 +195,7 @@ function LorebookPanelBody({ conversationId, cast, onClose, mutationsDisabled = 
 				{notice ?? attachmentController.notice ?? library.error?.message}
 			</p>}
 		</div>
-		{bookId !== null && <LorebookEditorDialog key={bookId} bookId={bookId} conversationId={conversationId}
+		{bookId !== null && <LorebookEditorDialog key={bookId} bookId={bookId}
 			onOpenBook={openBook} selectName={selectName} mutationsDisabled={mutationsDisabled} attachments={attachmentController} tester={tester} />}
 	</>;
 }

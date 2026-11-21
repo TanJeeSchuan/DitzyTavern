@@ -1,24 +1,20 @@
-import { afterEach } from "bun:test";
 import { act, createElement, StrictMode, type ReactNode } from "react";
 import type { QueryClient } from "@tanstack/react-query";
 
 const documentStub = { nodeType: 9, addEventListener() {}, removeEventListener() {}, activeElement: null };
-const windowStub = {
-	document: documentStub, location: { origin: "http://localhost" }, HTMLIFrameElement: class {},
-	addEventListener() {}, removeEventListener() {},
-};
-Object.defineProperty(globalThis, "window", { configurable: true, value: windowStub });
-Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const { createRoot } = await import("react-dom/client");
 const { QueryClientProvider, notifyManager } = await import("@tanstack/react-query");
-// @approved
-// Query results notify observers on a timer, which can land between act scopes.
-notifyManager.setNotifyFunction((notify) => act(notify));
 const cleanups: (() => Promise<void>)[] = [];
+let restoreReactGlobals: (() => void) | undefined;
 
-afterEach(async () => {
-	for (const cleanup of cleanups.splice(0)) await cleanup();
-});
+export const cleanupRenderedHooks = async () => {
+	try {
+		for (const cleanup of cleanups.splice(0)) await cleanup();
+	} finally {
+		restoreReactGlobals?.();
+		restoreReactGlobals = undefined;
+	}
+};
 
 export const flushHook = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
@@ -29,10 +25,24 @@ export async function renderTree(tree: () => ReactNode, client: QueryClient) {
 }
 
 export async function renderHook<Value>(hook: () => Value, client: QueryClient, strict = false, tree: () => ReactNode = () => null) {
-	Object.defineProperty(globalThis, "window", { configurable: true, value: windowStub });
+	if (restoreReactGlobals === undefined) {
+		const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+		if (previousWindow === undefined) throw new Error("The window preload is required by renderHook.");
+		const actEnvironment = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+		Object.defineProperty(globalThis, "window", { configurable: true, value: { ...window, document: documentStub, HTMLIFrameElement: class {} } });
+		Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+		// @approved
+		// Query results notify observers on a timer, which can land between act scopes.
+		notifyManager.setNotifyFunction((notify) => act(notify));
+		restoreReactGlobals = () => {
+			Object.defineProperty(globalThis, "window", previousWindow);
+			if (actEnvironment === undefined) Reflect.deleteProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+			else Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", actEnvironment);
+		};
+	}
 	const container: Partial<HTMLElement> = { nodeType: 1, addEventListener() {}, removeEventListener() {}, textContent: "" };
 	Object.defineProperties(container, {
-		ownerDocument: { value: { ...documentStub, defaultView: windowStub } },
+		ownerDocument: { value: { ...documentStub, defaultView: window } },
 		tagName: { value: "DIV" },
 	});
 	// @approved

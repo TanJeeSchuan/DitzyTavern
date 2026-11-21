@@ -30,7 +30,7 @@ import { connectionSettingsKey as settingsKey, publishConnectionSettings, useCon
 import { connectionDraftValidationError } from "../../connection-settings-draft";
 import { resolveRequestUrl } from "../../../shared/connection-url";
 
-export function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOperation[] {
+function headerOperationsFor(data: HeaderEditorData): ConnectionHeaderOperation[] {
 	return Object.entries(data).map(([name, value]) => {
 		if (value.operation === "replace") return { name, operation: "replace", value: value.replacement };
 		if (value.operation === "remove") return { name, operation: "remove" };
@@ -181,15 +181,15 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		mutationFn: (submission: ConnectionCommandSubmission) => saveConnectionCommand(submission.command),
 		onSuccess: (result, submission) => {
 			if (result.outcome === "conflict") {
-				publishConnectionSettings(client, result.currentSettings);
+				publishConnectionSettings(client, result.current);
 				if (submission.type === "reset-credential") dispatch({ type: "set-error", message: "Credential reset failed." });
 				else if (submission.type === "apply") {
 					const id = submission.command.type === "apply-profile" ? submission.command.profileId : null;
-					const current = result.currentSettings.profiles.find((profile) => profile.id === id);
+					const current = result.current.profiles.find((profile) => profile.id === id);
 					const theirs = id === null ? blankEdit : current === undefined ? null : editOf(current);
 					const { submitted } = submission;
 					if (theirs === null) settleApply({ type: "apply-failed", submitted, message: PROFILE_NOT_FOUND_ERROR });
-					else settleApply({ type: "apply-conflicted", submitted, theirs: { value: theirs, revision: result.currentSettings.revision }, message: APPLY_CONFLICT_ERROR });
+					else settleApply({ type: "apply-conflicted", submitted, theirs: { value: theirs, revision: result.current.revision }, message: APPLY_CONFLICT_ERROR });
 				} else if (!conflictIsStale(result.actualRevision)) dispatch({ type: "set-error", message: APPLY_CONFLICT_ERROR });
 				return;
 			}
@@ -223,7 +223,7 @@ export function useConnectionSettingsController(): ConnectionSettingsController 
 		mutationFn: refreshDiscoveryCatalog,
 		onSuccess: (result) => {
 			if (result.outcome === "conflict") {
-				publishConnectionSettings(client, result.currentSettings);
+				publishConnectionSettings(client, result.current);
 				if (!conflictIsStale(result.actualRevision)) dispatch({ type: "set-error", message: "Connection Settings changed while models were refreshing. Your draft is preserved." });
 				return;
 			}

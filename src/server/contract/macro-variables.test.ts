@@ -1,4 +1,4 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { pairChat } from "../test-fixtures/conversation";
 import { executeConversationCommand, readConversationSummary } from "../conversation";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -16,25 +16,10 @@ import {
 	macroVariablesAppliedResponse,
 	type MacroVariablesEditBody,
 } from "../../shared/contract/macro-variables";
-import type { GenerationJsonObject } from "../../shared/generation-json";
+import type { GenerationJsonObject } from "../../shared/contract/json-value";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
 
-const createChat = (database: Database) => createConversationWithHistory(database, {
-	name: "Variables Chat",
-	participants: [
-		{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-		{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-	],
-	control: { human: 0, model: 1 },
-});
+const createChat = (database: Database) => pairChat(database, "Variables Chat");
 
 describe("Macro Variables transport", () => {
 	let database: Database;
@@ -215,7 +200,7 @@ describe("Macro Variables transport", () => {
 		let captured: { messages: { role: string; content: string }[] } | undefined;
 		const app = createConversationRoutes(database, {
 			masterKey: new Uint8Array(32).fill(11),
-			fetch: captureModelFetch((request) => { captured = request; }),
+			fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch,
 		});
 		const edit = async (body: MacroVariablesEditBody) => app.handle(new Request(
 			`http://localhost/api/conversations/${conversation.id}/macro-variables`,

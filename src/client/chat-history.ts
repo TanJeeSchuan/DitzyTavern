@@ -11,20 +11,20 @@
 // stay behind deliberate detail operations.
 
 import { api } from "./lib/eden";
-import { requestData, requestOutcome } from "./lib/request-outcome";
+import { requestData } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
 import { decodeWirePayload } from "./lib/wire-decode";
 import type {
 	ChatHistoryMessage,
 	ChatHistoryPage,
 	ChatHistoryVariant,
 } from "../shared/contract/conversation-schema";
-import { chatHistoryPage, variantText } from "../shared/contract/conversation-schema";
+import { chatHistoryResponse, variantTextResponse } from "../shared/contract/conversation-schema";
 import {
-	chatImportDetails,
-	importCleanedUpResponse,
+	chatImportDetailsResponse,
+	chatImportSourceResponse,
 } from "../shared/contract/chat-import";
 import type { ChatImportDetails } from "../shared/contract/chat-import";
-import { notFoundOutcome } from "../shared/contract/outcomes";
 
 export type {
 	ChatHistoryMessage,
@@ -40,6 +40,8 @@ export interface ChatHistoryPageRequest {
 	//  backward from the newest Message (page 1 = latest window).
 	page?: number;
 }
+
+export type HistorySnapshot = { sourceMessageId: number | undefined; pages: [ChatHistoryPage, ...ChatHistoryPage[]] };
 
 // @approved
 // Exact-source download outcome. Missing or corrupt exact artifacts are a
@@ -66,23 +68,21 @@ export async function loadHistoryPage(
 			query: { page: request?.page, aroundMessageId: request?.aroundMessageId },
 			fetch: { signal },
 		}),
-		chatHistoryPage,
-		notFoundOutcome,
+		chatHistoryResponse,
 	);
 }
 
 /** @approved One Variant's Content and Reasoning Content, for a Variant the page carried without them. */
 export const loadVariantText = (conversationId: number, messageId: number, variantId: number, signal?: AbortSignal) =>
-	requestData(api.api.conversations({ id: conversationId }).messages({ messageId }).variants({ variantId }).text.get({ fetch: { signal } }), variantText);
+	requestData(api.api.conversations({ id: conversationId }).messages({ messageId }).variants({ variantId }).text.get({ fetch: { signal } }), variantTextResponse[200]);
 
 // @approved
 // Loads the persisted receipt and source identity for one Chat; a typed
 //  not-found for Chats without import provenance.
-export async function loadImportDetails(conversationId: number) {
+export async function loadImportDetails(conversationId: number, signal: AbortSignal) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId })["import-details"].get(),
-		chatImportDetails,
-		notFoundOutcome,
+		api.api.conversations({ id: conversationId })["import-details"].get({ fetch: { signal } }),
+		chatImportDetailsResponse,
 	);
 }
 
@@ -119,7 +119,7 @@ export async function downloadExactSource(
 		if (response.status === 404) return { outcome: "not-found" };
 		if (response.status === 410) {
 			const cleaned = decodeWirePayload(
-				importCleanedUpResponse,
+				chatImportSourceResponse[410],
 				await response.json().catch(() => null),
 			);
 			return cleaned === null

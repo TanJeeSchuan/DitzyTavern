@@ -24,7 +24,7 @@ export async function* writeBrief(database: Database, conversationId: number, re
 		const model = chat.cast.find((participant) => participant.id === chat.control.modelParticipantId);
 		if (!human || !model || human.id === model.id) throw new ConversationNotPlayableError(conversationId);
 		const selection = readPaintPresetSelection(database, conversationId);
-		const preset = requirePaintPresetRecipe(database, selection.paintPresetId);
+		const preset = requirePaintPresetRecipe(db, selection.paintPresetId);
 		const selected = readHistoryThroughVariant(db, conversationId, request.variantId);
 		const history = selected.messages.flatMap((message) => message.variant === null ? [] : [{ ...message, variant: message.variant }]);
 		const messages = selection.briefMessageCount === null ? history : history.slice(-selection.briefMessageCount);
@@ -50,7 +50,7 @@ export async function* writeBrief(database: Database, conversationId: number, re
 			.map((participant) => ({ ...participant, otherName: participant.id === model.id ? human.name : model.name }));
 		return { human, model, castAppearance, settings, connection, recipe, context, lore,
 			ask: request.ask.trim() ? request.ask : "Describe the scene in the last Message above.",
-			attempt: createAttemptEnvironment({ self: human.name, other: model.name, conversationId, promptPresetId: preset.id, now: new Date(), variables, timeZone: request.timeZone, locale: request.locale }),
+			attempt: createAttemptEnvironment({ self: human.name, other: model.name, conversationId, promptPresetId: preset.id, now: new Date(), random: Math.random, variables, timeZone: request.timeZone, locale: request.locale }),
 			client: createModelClient({ profile, secrets: connections.getProfileSecrets(profile.id), loadImage: imageLoader(database), fetch: options.fetch }),
 		};
 	});

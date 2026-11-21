@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { desc, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { emptyPromptChannels } from "../../shared/definition";
 import { createCharacterLibraryModule } from "../character-library";
 import {
 	characterTable, characterPromptTable, characterDataTable, characterLorebookAttachmentTable,
@@ -11,7 +10,7 @@ import {
 } from "../database/schema";
 import { readLorebookAttachmentImpact } from "../lorebook/attachments";
 import { importNativeLorebook } from "../lorebook/library";
-import { applyCommand, createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
+import { applyCommand, createConversationWithHistory, openObservedDatabase, participantDefinition } from "../test-fixtures/conversation";
 import { deleteConversation } from "./delete";
 import { forkConversation } from ".";
 
@@ -19,7 +18,7 @@ let database: Database;
 beforeEach(() => { database = openObservedDatabase(); });
 afterEach(() => database.close());
 
-const definition = (name: string, openings: string[] = []) => ({ name, prompt: emptyPromptChannels(), sendAppearanceImages: true, openings });
+const definition = (name: string, openings: string[] = []) => participantDefinition(name, { openings });
 const setup = () => {
 	const library = createCharacterLibraryModule(database);
 	const source = library.execute({ type: "create", definition: definition("Source", ["Opening"]) });
@@ -115,4 +114,20 @@ test("tombstone collection keeps a Participant that a Box value still names", ()
 	const first = drizzle(database).select({ id: messageTable.id }).from(messageTable).where(eq(messageTable.conversation_id, fork.id)).orderBy(messageTable.position).limit(1).get()!;
 	const again = forkConversation(database, { conversationId: fork.id, expectedRevision: deleted.revision, at: { through: first.id }, name: "Fork again", trimVariants: false });
 	expect(again.conversation.name).toBe("Fork again");
+});
+
+test("removing a Participant named only by a Box value preserves its identity", () => {
+	const chat = createConversationWithHistory(database, {
+		name: "Box reference",
+		participants: [{ definition: definition("Writer") }, { definition: definition("Model") }, { definition: definition("Guest") }],
+		control: { human: 0, model: 1 },
+	});
+	const guest = chat.cast[2]!.id;
+	database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:memory', 'labels', ?)")
+		.run(chat.id, JSON.stringify({ identities: { [guest]: { kind: "plays", person: "Alice" } }, merges: [] }));
+	const removed = applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "remove-participant", participantId: guest } });
+	expect(removed.cast.map(({ id }) => id)).not.toContain(guest);
+	const retained = drizzle(database).select().from(participantTable).where(eq(participantTable.id, guest)).get();
+	expect(retained?.name).toBe("Guest");
+	expect(retained?.deleted_at).toBeTruthy();
 });

@@ -6,15 +6,9 @@
 // are accepted as an intentional lifecycle tradeoff).
 
 import { createHash, randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { basename, extname, join, resolve, sep } from "node:path";
 import { ArtifactStoreError } from "./errors";
-
-export interface StoredArtifactCopy {
-	relativePath: string;
-	byteLength: number;
-	sha256: string;
-}
 
 // @approved
 //  The deployment-wide managed artifact directory, mirroring the default
@@ -61,7 +55,7 @@ export const mediaTypeFromFilename = (filename: string): string => {
 // path is an infrastructure inconsistency (the artifact is unavailable),
 // never silently treated as provenance loss: only absent or corrupt files
 // report the cleaned-up outcome.
-export const resolveManagedPath = (root: string, relativePath: string): string => {
+const resolveManagedPath = (root: string, relativePath: string): string => {
 	const base = resolve(root);
 	const candidate = resolve(base, relativePath);
 	if (candidate !== base && !candidate.startsWith(base + sep)) {
@@ -78,32 +72,6 @@ export const resolveManagedPath = (root: string, relativePath: string): string =
 // whitespace, escape spelling, blank lines, and trailing newline.
 export const sha256Hex = (bytes: Buffer): string =>
 	createHash("sha256").update(bytes).digest("hex");
-
-// @approved
-//  Copies the exact validated bytes into a unique managed relative path
-// before any database creation begins. Any failure aborts the caller: no
-// Conversation state of any kind has been created yet.
-export const storeExactArtifactCopy = (
-	root: string,
-	bytes: Buffer,
-	originalFilename: string,
-): StoredArtifactCopy => {
-	try {
-		mkdirSync(root, { recursive: true });
-		const relativePath = uniqueManagedRelativePath(originalFilename);
-		writeFileSync(resolveManagedPath(root, relativePath), bytes);
-		return {
-			relativePath,
-			byteLength: bytes.length,
-			sha256: sha256Hex(bytes),
-		};
-	} catch (error) {
-		const detail = error instanceof Error ? error.message : String(error);
-		throw new ArtifactStoreError(
-			`Could not store the exact artifact copy: ${detail}`,
-		);
-	}
-};
 
 export type StoredArtifactVerification =
 	| { status: "available" }
@@ -178,7 +146,7 @@ const sanitizeCharacter = (character: string): string => {
 		: character;
 };
 
-export const sanitizeArtifactFilename = (filename: string): string =>
+const sanitizeArtifactFilename = (filename: string): string =>
 	basename(filename)
 		.split("")
 		.map(sanitizeCharacter)

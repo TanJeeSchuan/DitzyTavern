@@ -1,0 +1,48 @@
+# T6: Generation Settings column
+
+Status: DONE
+
+Blocked By: T5
+
+Model: Sol 6.2 high writes and fixes. Reviewer: Sonnet 5.5 high.
+
+**This ticket changes stored data. Do not merge it. The owner backs up the hosted database and deploys it himself.**
+
+Evidence: report 18, finding 1; report 17, F6.
+
+## Problem
+
+`conversation_generation_settings` stores a Chat's Generation Settings as 14 columns with their defaults restated. `canonicalGenerationSettings` in `src/shared/contract/generation-settings.ts` already defines and validates the same shape. Between them, `conversation/generation-settings.ts` copies field by field in four places, and a `settingsColumn` map exists that only a type reads.
+
+## What to do
+
+- Keep `conversation_id` and `connection_profile_id` as columns; other modules join and update on the profile id. Replace the remaining settings columns with one `settings_json`, decoded on read with `canonicalGenerationSettings`.
+- Write the migration: add `settings_json`, fill it from the old columns with `json_object(...)`, drop the old columns. Run it against a database at the previous migration that holds rows with non-default values, null sampling fields and request overrides, and assert each Chat's settings read back equal. `database/migrations.test.ts` has the harness for starting at an earlier migration.
+- Two reads bypass the module and fall back silently when the row is missing (`generation-gate.ts` for the sibling limit, `history.ts` for the continuation strategy). Creation always writes the row. Point both at the module's read.
+- `set-generation-model` reads all settings to write two fields; give `updateConversationModelSelection` just the profile id and model id.
+- Fork copies the settings row; check `fork-conversation.ts` copies the new column.
+
+## Rejected
+
+- Building validation errors from the schema: it changes the per-field messages the client mirrors. Keep the hand-written normalisers and their messages.
+- Moving `connection_profile_id` into the JSON.
+
+## TODO
+
+- [x] Migration, with the round-trip test over non-default rows
+- [x] Module reads and writes through `settings_json`
+- [x] The two direct reads and the model-selection write
+- [x] Typecheck, settings and migration tests, CI
+- [x] PR opened and left for the owner; say in the PR body that it migrates stored data and is a one-way door
+
+## Acceptance
+
+The migration test passes. `git grep -n 'settingsColumn' -- src` is empty. No per-field error message changed: the settings tests that assert messages pass unedited.
+
+## Outcome
+
+Migration 0045 copies each settings row into the new schema and keeps the Connection Profile foreign key. The upgrade test starts at 0044 and reads both Chats through the Conversation module after migration. It checks every setting, including nullable sampling fields and nested Request Overrides. The fork test verifies that a custom model ID survives the copy.
+
+The settings tests use the new storage column for their corruption fixtures. Their existing error-message assertions are unchanged. Changed-file lint passed.
+
+CI passed and the owner approved the merge as PR #285. Before the deploy, a dry run applied the migrations to a copy of the chat2 database. Every Chat's settings decoded and matched the old columns. Integrity and foreign-key checks were clean. chat2 runs it from build 769 (`30055b6a`), with a backup taken first.

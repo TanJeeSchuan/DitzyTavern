@@ -122,19 +122,11 @@ const loreText = (entries: readonly PromptLoreEntry[]): string =>
 // is the one-based ordered position used to label warnings.
 export function compileOpening(
 	content: string,
-	context: MacroContext,
 	position: number,
-	attempt?: AttemptEnvironment,
+	{ environment, state }: AttemptEnvironment,
 ): MacroExpansionResult {
-	const environment = attempt?.environment ?? { self: context.self, other: context.other };
-	const state = attempt?.state ?? createMacroAttemptState();
 	state.macroPositionBase = `opening:${position}`;
-	return expandMacroText(
-		content,
-		{ ...environment, self: context.self, other: context.other },
-		state,
-		`opening ${position}`,
-	);
+	return expandMacroText(content, environment, state, `opening ${position}`);
 }
 
 const expandInto = (request: {
@@ -145,7 +137,7 @@ const expandInto = (request: {
 	text: string;
 	context: MacroContext;
 	blockLabel: string;
-	macroEnvironment: MacroEnvironment | undefined;
+	macroEnvironment: MacroEnvironment;
 	macroAttemptState: MacroAttemptState;
 	cacheKey: string;
 	beforeHistory: boolean;
@@ -161,7 +153,7 @@ const expandInto = (request: {
 		macroAttemptState.macroPositionBase = cacheKey;
 		expanded = expandMacroText(
 			text,
-			{ ...(macroEnvironment ?? { self: context.self, other: context.other }), self: context.self, other: context.other },
+			{ ...macroEnvironment, ...context },
 			macroAttemptState,
 			blockLabel,
 		);
@@ -199,8 +191,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 	if (repeated !== undefined) throw new Error(`A Prompt Preset may contain at most one ${singleUseReferenceLabel(repeated)} block.`);
 	const blocks: PromptBlock[] = [];
 	const warnings: PromptWarning[] = [];
-	const macroEnvironment: MacroEnvironment = input.attempt?.environment ?? { self: "", other: "" };
-	const macroAttemptState = input.attempt?.state ?? createMacroAttemptState();
+	const { environment: macroEnvironment, state: macroAttemptState } = input.attempt;
 	let historyStart: number | undefined;
 	const historySlot = input.recipe.findIndex((slot) => slot.enabled && slot.reference === "history");
 
@@ -248,7 +239,7 @@ export function compilePrompt(input: CompilePromptInput): PromptPlan {
 			continue;
 		}
 		if (slot.reference === "lore") {
-			const content = loreText(input.lore ?? []);
+			const content = loreText(input.lore);
 			if (content.length > 0) {
 				blocks.push({ kind: "lore", role: planRoleFor[slot.role], content });
 			}

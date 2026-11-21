@@ -6,17 +6,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useSaveGuard } from "../SaveGuard";
 import { ConflictBanner } from "../ConflictBanner";
-import type { LoreAttachmentCommand, LoreAttachmentState, LorebookCommand, LoreMatchTest } from "../lorebook-library";
+import type { LorebookCommand, LoreMatchTest } from "../lorebook-library";
+import type { useLorebookAttachments } from "./useLorebookAttachments";
 import { EntryEditor, MatchTester, UnsavedLorebookDialog } from "./LorebookPanelEditors";
 import { useLorebookEditor } from "./useLorebookEditor";
 import type { LeaveIntent } from "./lorebook-editor-state";
 
 /** @approved The Lorebook attachment state the editor shows and its one command. */
-type LorebookEditorAttachments = {
-	attachmentState: LoreAttachmentState | null;
-	attachmentPending: boolean;
-	updateAttachment: (command: LoreAttachmentCommand) => Promise<boolean>;
-};
+type LorebookEditorAttachments = Pick<ReturnType<typeof useLorebookAttachments>, "attachmentState" | "attachmentPending" | "updateAttachment">;
 
 /** @approved The match-tester state and command the editor's writing field drives. */
 type LorebookEditorTester = {
@@ -28,8 +25,8 @@ type LorebookEditorTester = {
 	runMatchTest: (bookId: number) => void;
 };
 
-export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selectName, mutationsDisabled, attachments, tester }: {
-	bookId: number; conversationId: number; onOpenBook: (id: number | null, notice?: string) => void;
+export function LorebookEditorDialog({ bookId, onOpenBook, selectName, mutationsDisabled, attachments, tester }: {
+	bookId: number; onOpenBook: (id: number | null, notice?: string) => void;
 	selectName: boolean; mutationsDisabled: boolean; attachments: LorebookEditorAttachments;
 	tester: LorebookEditorTester;
 }) {
@@ -165,7 +162,7 @@ export function LorebookEditorDialog({ bookId, conversationId, onOpenBook, selec
 							size="sm"
 							variant="outline"
 							disabled={attachmentPending}
-							onClick={() => void updateAttachment({ type: "attach-chat", conversationId, bookId: book.id, expectedRevision: attachmentState.revision })}
+							onClick={() => void updateAttachment({ type: "attach-chat", bookId: book.id })}
 						>Attach to Chat</Button>}
 						<Button type="button" size="sm" variant="outline" disabled={pending} onClick={() => void exportBook()}><Download aria-hidden="true" /> Export</Button>
 						<Button

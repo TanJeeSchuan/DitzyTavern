@@ -5,6 +5,7 @@ import {
 	ConversationNotFoundError,
 	InvalidConversationCommandError,
 	removeRetainedGenerationInspection,
+	type AcceptedGeneration,
 	type ConversationSummary,
 } from "../conversation";
 import {
@@ -25,7 +26,6 @@ import {
 import {
 	generationRuntimeFor,
 	startServerOwnedGeneration,
-	type AcceptedGenerationRecord,
 	type GenerationInput,
 	type GenerationRuntime,
 	type ServerOwnedGeneration,
@@ -84,7 +84,7 @@ export type GenerationStopAllOutcome =
 	  };
 
 /** @approved A configured transport prerequisite that the Generation HTTP contract can report as invalid. */
-export class GenerationConfigurationError extends Error {
+class GenerationConfigurationError extends Error {
 	readonly outcome = "invalid" as const;
 	readonly details = { reason: this.message };
 
@@ -96,11 +96,11 @@ export class GenerationConfigurationError extends Error {
 
 export interface CoordinatedGeneration {
 	/** @approved The authoritative acceptance returned after the provisional target exists. */
-	readonly accepted: AcceptedGenerationRecord;
+	readonly accepted: AcceptedGeneration;
 	/** @approved The process-local runtime that fans out events to observers. */
 	readonly runtime: GenerationRuntime;
 	/** @approved Settles after terminal Conversation state has been committed. */
-	readonly result: Promise<AcceptedGenerationRecord>;
+	readonly result: Promise<AcceptedGeneration>;
 }
 
 export type GenerationStartRequest = Omit<GenerationInput,
@@ -109,7 +109,7 @@ export type GenerationStartRequest = Omit<GenerationInput,
 
 interface GenerationStartCallbacks {
 	onAccepted: (
-		accepted: AcceptedGenerationRecord,
+		accepted: AcceptedGeneration,
 		control: ServerOwnedGenerationControl,
 	) => void | Promise<void>;
 	onEvent: (event: ModelClientEvent) => void | Promise<void>;
@@ -162,6 +162,7 @@ export class GenerationCoordinator {
 			start: ({ database, modelClient, connection, onBeforeTerminal, callbacks }) =>
 				startServerOwnedGeneration(database, {
 					...input,
+					expectedRevision: input.preview === undefined && input.target.kind !== "sibling" ? input.expectedRevision : undefined,
 					modelClient,
 					connection,
 					preparationFetch: this.options.fetch,
@@ -192,7 +193,7 @@ export class GenerationCoordinator {
 		//  A failed checkpoint must prevent a Stop from using stale output.
 		runtime?.dispatch({ type: "request-stop" });
 		try {
-			const snapshot = stopConversationGeneration(database, { conversationId, generationId });
+			const snapshot = stopConversationGeneration(database, { cause: "user-stop", conversationId, generationId });
 			return this.settleStoppedGeneration(generationId, runtime, snapshot);
 		} catch (error) {
 			runtime?.dispatch({ type: "release-stop" });

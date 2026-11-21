@@ -1,10 +1,10 @@
 import { Type, type Static } from "@sinclair/typebox";
 import { boxValue, type BoxValue } from "./box-value";
 import type { BoxDescriptor } from "./box-descriptor";
-import { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
+import type { BoxMetadata } from "./box-metadata";
 import { decisionSelection } from "./decision-model";
 import { numericWire } from "./wire";
-import { notFoundOutcome } from "./outcomes";
+import { invalidOutcome, notFoundOutcome, revisionConflict } from "./outcomes";
 
 // @approved
 //  A Box's id is a string the host checks against the registry at runtime
@@ -28,7 +28,7 @@ export type BoxState = Static<typeof boxState>;
 export const boxStates = Type.Record(Type.String(), boxState);
 export type BoxStates = Static<typeof boxStates>;
 export type { BoxDescriptor } from "./box-descriptor";
-export { boxMetadataSchema, type BoxMetadata } from "./box-metadata";
+export type { BoxMetadata } from "./box-metadata";
 
 // @approved
 //  A loaded Box: the metadata the server lists, and its descriptor, which the
@@ -44,8 +44,8 @@ export const installBoxes = (boxes: readonly InstalledBox[]): void => {
 	installed = new Map(boxes.map((box) => [box.metadata.id, box]));
 };
 /** @approved The metadata the server lists for a Box, projected from its descriptor or from the list itself. */
-export const boxMetadataFrom = ({ id, label, summary, instructions, block, decision, lens, delegate }: BoxMetadata): BoxMetadata =>
-	({ id, label, summary, instructions, block, decision, lens, delegate: delegate && { tag: delegate.tag, summary: delegate.summary, description: delegate.description, off: delegate.off } });
+export const boxMetadataFrom = ({ id, label, summary, instructions, prompt, block, decision, lens, delegate }: BoxMetadata): BoxMetadata =>
+	({ id, label, summary, instructions, prompt, block, decision, lens, delegate: delegate && { tag: delegate.tag, summary: delegate.summary, description: delegate.description, off: delegate.off } });
 
 const installedBox = (id: BoxId): InstalledBox => {
 	const box = installed.get(id);
@@ -76,8 +76,15 @@ export const isBoxReference = (reference: string): reference is PromptBoxReferen
 	const id = boxIdOf(reference);
 	return id !== undefined && installed.has(id);
 };
-/** @approved Whether `reference` has the `box:<id>` form but names no registered Box, which a preset refuses. */
-export const isUnknownBoxReference = (reference: string): boolean => boxIdOf(reference) !== undefined && !isBoxReference(reference);
+/** @approved Why a preset refuses a Box block, if the reference names an unavailable block. */
+export const boxBlockRefusal = (reference: string, descriptor?: BoxMetadata): string | undefined => {
+	const id = boxIdOf(reference);
+	if (id === undefined) return undefined;
+	const box = descriptor ?? installed.get(id)?.metadata;
+	if (box === undefined) return `There is no Box for ${reference}.`;
+	if (box.prompt === false) return `The ${box.label} Box has no Prompt Preset block.`;
+	return undefined;
+};
 /** @approved Whether `id` is a registered digesting Box, the only kind with a Decision Model selection and a passage timeline. */
 export const isDigestBox = (id: BoxId): boolean => installed.get(id)?.metadata.decision !== undefined;
 /** @approved Every tag a loaded Box's markup takes in prose but `tag`: each lens's and each delegate's, which a delegate request may not nest in or hold. */
@@ -85,19 +92,13 @@ export const otherBoxTags = (tag: string): string[] =>
 	[...installed.values()].flatMap(({ metadata: { lens, delegate } }) => [lens, delegate?.tag].flatMap((other) => other === undefined || other === tag ? [] : [other]));
 /** @approved Whether `id` is a registered delegating Box, the only kind with a delegate setting. */
 export const isDelegateBox = (id: BoxId): boolean => installed.get(id)?.metadata.delegate !== undefined;
-/** @approved Each registered Box whose descriptor declares `key`, in registry order, with that key's value. */
-export const boxesWith = <Key extends keyof BoxDescriptor>(key: Key): [BoxId, NonNullable<BoxDescriptor[Key]>][] =>
-	[...boxDescriptors()].flatMap(([id, descriptor]) => {
-		const value = descriptor[key];
-		return value === undefined ? [] : [[id, value]];
-	});
 /** @approved A new Chat starts with these Boxes enabled and every other Box absent. */
 export const defaultBoxIds = (): BoxId[] => [...boxDescriptors()].flatMap(([id, { startsEnabled }]) => startsEnabled ? [id] : []);
 
 // @approved
 //  A Box window's client-side layout, persisted per Chat: open state,
 //  minimization and position are view state, never Conversation state.
-export const boxWindowLayout = Type.Object({
+const boxWindowLayout = Type.Object({
 	open: Type.Boolean(),
 	minimized: Type.Boolean(),
 	x: Type.Optional(Type.Number()),
@@ -119,13 +120,16 @@ export const heldBoxValues = Type.Record(Type.String(), Type.Array(Type.String()
 export const heldBoxValuesCleared = Type.Object({ outcome: Type.Literal("cleared") });
 export const conversationBoxParams = Type.Object({ id: numericWire, box: Type.String() });
 
-export const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
+const boxDecisionSettings = Type.Composite([decisionSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDecisionSettings = Static<typeof boxDecisionSettings>;
-export const boxDecisionSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: boxDecisionSettings });
-export const boxDecisionSettingsConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: boxDecisionSettings });
-export const boxDecisionSettingsInvalid = Type.Object({ outcome: Type.Literal("invalid"), reason: Type.String() });
 /** @approved Only a digesting Box has a Decision Model selection, so its routes find no other id. */
-export const boxDecisionSettingsCommandErrors = Type.Union([boxDecisionSettingsConflict, boxDecisionSettingsInvalid, notFoundOutcome]);
+export const boxDecisionSettingsReadResponse = { 200: boxDecisionSettings, 404: notFoundOutcome };
+export const boxDecisionSettingsCommandResponse = {
+	200: Type.Object({ outcome: Type.Literal("applied"), settings: boxDecisionSettings }),
+	404: notFoundOutcome,
+	409: revisionConflict(boxDecisionSettings),
+	422: invalidOutcome,
+};
 export const boxDecisionSettingsCommandBody = Type.Composite([decisionSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
 export type BoxDecisionSettingsCommand = Static<typeof boxDecisionSettingsCommandBody>;
 
@@ -136,11 +140,15 @@ export const DEFAULT_BOX_DELEGATE = "$default";
 //  A delegating Box's delegate setting: the chat Connection Profile and model
 // its agent runs on. No profile inherits the host default; neither means off.
 export const boxDelegateSelection = Type.Object({ profileId: Type.Union([Type.Integer(), Type.Null()]), model: Type.String() });
-export const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
+const boxDelegateSettings = Type.Composite([boxDelegateSelection, Type.Object({ revision: Type.Integer() })]);
 export type BoxDelegateSettings = Static<typeof boxDelegateSettings>;
-export const boxDelegateSettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: boxDelegateSettings });
-export const boxDelegateSettingsConflict = Type.Object({ outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: boxDelegateSettings });
 /** @approved Only a delegating Box and the reserved host default have delegate settings routes. */
-export const boxDelegateSettingsCommandErrors = Type.Union([boxDelegateSettingsConflict, boxDecisionSettingsInvalid, notFoundOutcome]);
+export const boxDelegateSettingsReadResponse = { 200: boxDelegateSettings, 404: notFoundOutcome };
+export const boxDelegateSettingsCommandResponse = {
+	200: Type.Object({ outcome: Type.Literal("applied"), settings: boxDelegateSettings }),
+	404: notFoundOutcome,
+	409: revisionConflict(boxDelegateSettings),
+	422: invalidOutcome,
+};
 export const boxDelegateSettingsCommandBody = Type.Composite([boxDelegateSelection, Type.Object({ type: Type.Literal("apply"), expectedRevision: Type.Integer() })]);
 export type BoxDelegateSettingsCommand = Static<typeof boxDelegateSettingsCommandBody>;

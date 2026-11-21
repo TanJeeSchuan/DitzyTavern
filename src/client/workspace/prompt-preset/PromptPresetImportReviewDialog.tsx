@@ -3,7 +3,7 @@ import { AppSelect } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import type { SillyTavernImportPreview } from "../../prompt-preset-library";
 import { outgoingRoleLabels, promptPresetSelectClass, slotTitle } from "../../prompt-preset-presentation";
-import type { SillyTavernReview } from "../../prompt-preset-editor-state";
+import type { SillyTavernReview } from "./usePromptPresetLibrary";
 
 const importedSlotRole = (slot: SillyTavernImportPreview["native"]["slots"][number]): string =>
 	slot.reference === "history" ? "History message roles" : outgoingRoleLabels[slot.role];

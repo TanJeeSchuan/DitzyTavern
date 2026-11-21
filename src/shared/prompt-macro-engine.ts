@@ -3,7 +3,7 @@ import { type MacroValue, type MacroVariableWrite } from "./contract/macro-varia
 import { dispatchMacro, type MacroDispatchContext } from "./prompt-macro-dispatch";
 import { parseMacroDocument, unescapeMacroText, type MacroDocumentNode } from "./prompt-macro-syntax";
 
-export type { MacroValue, MacroVariableWrite } from "./contract/macro-variables";
+export type { MacroValue } from "./contract/macro-variables";
 
 // @approved
 //  Immutable inputs for one attempt. The evaluator never reads browser
@@ -15,10 +15,10 @@ export interface MacroEnvironment {
 	readonly other: string;
 	readonly conversationId?: string | number;
 	readonly promptPresetId?: string | number;
-	readonly now?: Date;
+	readonly now: Date;
 	readonly timeZone?: string;
 	readonly locale?: string;
-	readonly random?: () => number;
+	readonly random: () => number;
 }
 
 // @approved
@@ -35,16 +35,10 @@ export interface MacroAttemptState {
 	macroPositionBase: string | number;
 }
 
-export interface AttemptEnvironmentInput {
-	readonly self: string;
-	readonly other: string;
+export interface AttemptEnvironmentInput extends MacroEnvironment {
 	readonly conversationId: string | number;
 	readonly promptPresetId: string | number;
-	readonly now: Date;
-	readonly timeZone?: string;
-	readonly locale?: string;
 	readonly variables?: ReadonlyMap<string, MacroValue>;
-	readonly random?: () => number;
 }
 
 export interface AttemptEnvironment {
@@ -66,18 +60,9 @@ export const createMacroAttemptState = (
 //  One named construction path captures every immutable input and creates
 // every mutable per-attempt value. Generation capture and creation-time
 // opening expansion therefore cannot forget the journal or cache.
-export const createAttemptEnvironment = (input: AttemptEnvironmentInput): AttemptEnvironment => ({
-	environment: {
-		self: input.self,
-		other: input.other,
-		conversationId: input.conversationId,
-		promptPresetId: input.promptPresetId,
-		now: input.now,
-		timeZone: input.timeZone,
-		locale: input.locale,
-		random: input.random ?? Math.random,
-	},
-	state: createMacroAttemptState(input.variables),
+export const createAttemptEnvironment = ({ variables, ...environment }: AttemptEnvironmentInput): AttemptEnvironment => ({
+	environment,
+	state: createMacroAttemptState(variables),
 });
 
 export interface MacroExpansionResult {
@@ -152,7 +137,7 @@ export const expandMacroText = (
 export const validateMacroText = (source: string, blockLabel: string): MacroValidationResult => ({
 	warnings: expandMacroText(
 		source,
-		{ self: "", other: "" },
+		{ self: "", other: "", now: new Date(0), random: () => 0 },
 		{ ...createMacroAttemptState(), macroPositionBase: "validation" },
 		blockLabel,
 		{ validationOnly: true },

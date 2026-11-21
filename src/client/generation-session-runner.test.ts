@@ -1,3 +1,4 @@
+import { generationTarget as target } from "./test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
 import type { GenerationEvent, GenerationStatePayload } from "../shared/contract/generation-events";
 import type {
@@ -11,7 +12,6 @@ import { NetworkError } from "./lib/request-outcome";
 import { hasActiveGenerationSessions } from "./generation-sessions";
 import type {
 	GenerationSessionsState,
-	GenerationSessionTarget,
 } from "./generation-sessions";
 
 // Thin integration tests for the session runner: a fake stream adapter
@@ -20,11 +20,6 @@ import type {
 // effects — subscriptions, aborts, story effects, and refresh requests —
 // without React or a network.
 
-const target = (generationId: number): GenerationSessionTarget => ({
-	generationId,
-	messageId: 900 + generationId,
-	variantId: 9_000 + generationId,
-});
 
 const contentEvent = (text: string): GenerationEvent => ({ type: "content", text });
 
@@ -102,7 +97,7 @@ const runnerWith = (stream: FakeStream, spy: Host) =>
 	});
 
 const observeTargets = (generationIds: readonly number[]) =>
-	({ type: "targets-observed", conversationId: 42, targets: generationIds.map(target) }) as const;
+	({ type: "targets-observed", conversationId: 42, targets: generationIds.map((id) => target(id)) }) as const;
 
 describe("the Generation session runner", () => {
 	beforeEach(() => { jest.useFakeTimers(); });
@@ -237,7 +232,11 @@ describe("the Generation session runner", () => {
 		const spy = host();
 		const runner = runnerWith(stream, spy);
 		runner.dispatch(observeTargets([]));
-		runner.dispatch({ type: "generation-accepted", target: { ...target(7), conversationId: 42 } });
+		const visit = new AbortController().signal;
+		runner.dispatch({ type: "start-event", event: { type: "requested", visit, request: { conversationId: 42, seat: null, versions: {}, request: { target: { kind: "continuation" } } }, inspect: false } });
+		runner.dispatch({ type: "start-event", event: { type: "prepared", visit } });
+		expect(hasActiveGenerationSessions(runner.getSnapshot())).toBe(true);
+		runner.dispatch({ type: "start-event", event: { type: "start-accepted", visit, target: { ...target(7), conversationId: 42 } } });
 		stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("One.") });
 		runner.dispatch(observeTargets([]));
 		stream.requests[0]!.onEvent({ eventId: 2, event: contentEvent(" Two.") });
@@ -287,6 +286,20 @@ describe("the Generation session runner", () => {
 			runner.dispose();
 		});
 	}
+
+	for (const end of ["switch", "dispose"] as const) test(`${end} releases text a live page still holds`, () => {
+		const stream = fakeStream();
+		const spy = host();
+		const runner = runnerWith(stream, spy);
+		runner.dispatch(observeTargets([7]));
+		spy.streams.checkpoint([{ id: 9_007, position: 1, content: "", empty: true, hasReasoning: false, generationId: 7, lastEventId: 0 }]);
+		stream.requests[0]!.onEvent({ eventId: 1, event: contentEvent("Live text") });
+		if (end === "dispose") runner.dispose();
+		else runner.dispatch({ type: "conversation-switched" });
+		// Reject keeping a left Chat's text because its last page held the Variant live.
+		expect(spy.streams.get(9_007)).toBeUndefined();
+		runner.dispose();
+	});
 
 	for (const implicit of [false, true]) test(`returning after an ${implicit ? "implicit" : "explicit"} Chat switch replays discarded text`, () => {
 		const stream = fakeStream();

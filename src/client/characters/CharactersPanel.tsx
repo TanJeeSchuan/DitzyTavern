@@ -1,16 +1,19 @@
 import { Check, Pin, Plus, Search, Sparkles, UserRound } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { libraryPickerEntries } from "../cast";
 import { removalConfirmationCopy } from "../cast-remove";
-import { applyCommand, listCharacters, type CharacterSummary } from "../character-library";
+import { charactersQuery, useCharacterCommand } from "../character-library";
 import type { ConversationSummary } from "../conversation";
 import { LIBRARY_UNREACHABLE_NOTICE } from "../character-library";
 import { emptyPromptChannels, promptPreview } from "../../shared/definition";
 import { Portrait } from "../story/Portrait";
 import { AddParticipantMenu } from "./AddParticipantMenu";
 import { CharacterEditor } from "./CharacterEditor";
+import { openedDefinitionDraft, type DefinitionDraftRequest } from "./definition-draft";
+import { DraftDefinitionEditor } from "./DraftDefinitionEditor";
 import { ParticipantEditor } from "./ParticipantEditor";
 import { ParticipantMenu, type Seat } from "./ParticipantMenu";
 import { useCastActions } from "./useCastActions";
@@ -18,7 +21,8 @@ import { useCastActions } from "./useCastActions";
 type View =
 	| { kind: "list" }
 	| { kind: "participant"; id: number; fresh: boolean }
-	| { kind: "character"; id: number; fresh: boolean };
+	| { kind: "character"; id: number; fresh: boolean }
+	| { kind: "draft"; request: DefinitionDraftRequest; serial: number };
 
 type CastParticipant = ConversationSummary["cast"][number];
 
@@ -35,7 +39,8 @@ export function CharactersPanel({
 	onConversationChange: (conversation: ConversationSummary | null) => void;
 }) {
 	const [view, setView] = useState<View>({ kind: "list" });
-	const [characters, setCharacters] = useState<CharacterSummary[] | null>(null);
+	const { data: characters, isPending: loading, isError } = useQuery(charactersQuery);
+	const applyCommand = useCharacterCommand();
 	const [query, setQuery] = useState("");
 	const [libraryNotice, setLibraryNotice] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
@@ -45,10 +50,15 @@ export function CharactersPanel({
 
 	const castActions = useCastActions({ conversationId, conversation, onConversationChange, setRemoveTargetId });
 
-	const loadCharacters = useCallback(() => {
-		void listCharacters().then(setCharacters, () => { setCharacters([]); setLibraryNotice(LIBRARY_UNREACHABLE_NOTICE); });
-	}, []);
-	useEffect(loadCharacters, [loadCharacters]);
+	// @approved
+	//  A draft the workspace opened for this Chat becomes this panel's view, so
+	// it lives only while its editor does; each new one starts a fresh editor.
+	const offered = useSyncExternalStore(openedDefinitionDraft.subscribe, openedDefinitionDraft.get);
+	useEffect(() => {
+		if (offered === null || conversationId === 0) return;
+		openedDefinitionDraft.set(null);
+		if (offered.conversationId === conversationId) setView((current) => ({ kind: "draft", request: offered, serial: current.kind === "draft" ? current.serial + 1 : 0 }));
+	}, [offered, conversationId]);
 
 	const pickerEntries = useMemo(() => libraryPickerEntries(characters ?? [], cast), [characters, cast]);
 	const needle = query.trim().toLocaleLowerCase();
@@ -69,7 +79,6 @@ export function CharactersPanel({
 			return setLibraryNotice(outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : LIBRARY_UNREACHABLE_NOTICE);
 		}
 		setLibraryNotice(null);
-		loadCharacters();
 		setView({ kind: "character", id: outcome.value.character.id, fresh: true });
 	};
 
@@ -80,7 +89,7 @@ export function CharactersPanel({
 			pending={castActions.pending}
 			className={className}
 			onAssignSeat={(seat) => void castActions.applyAssignSeat(seat, participant.id)}
-			onSaveAsCharacter={() => void castActions.applySaveParticipant(participant).then(loadCharacters)}
+			onSaveAsCharacter={() => void castActions.applySaveParticipant(participant)}
 			onRemove={() => setRemoveTargetId(participant.id)}
 		/>
 	);
@@ -136,6 +145,22 @@ export function CharactersPanel({
 		</>;
 	}
 
+	if (view.kind === "draft") {
+		const { request } = view;
+		return <DraftDefinitionEditor
+			key={view.serial}
+			conversation={conversation}
+			request={request}
+			onConversationChange={onConversationChange}
+			onKept={({ kind, id }) => {
+				// @approved
+				//  A save that lands after the writer left this draft has no view to change.
+				setView((current) => current.kind === "draft" && current.request === request ? { kind, id, fresh: false } : current);
+			}}
+			onBack={openList}
+		/>;
+	}
+
 	if (view.kind === "character") {
 		return <CharacterEditor
 			key={view.id}
@@ -143,7 +168,6 @@ export function CharactersPanel({
 			autoSelectName={view.fresh}
 			canAddToChat={!castActions.pending}
 			onAddToChat={(character) => void castActions.applyAddCharacter(character.id, character.revision)}
-			onChanged={loadCharacters}
 			onClosed={(notice) => { setLibraryNotice(notice); openList(); }}
 		/>;
 	}
@@ -215,12 +239,12 @@ export function CharactersPanel({
 					<Search aria-hidden="true" />
 					<input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search Characters" aria-label="Search Characters" />
 				</label>
-				{libraryNotice !== null && <p role="status" className="text-sm text-muted-foreground">{libraryNotice}</p>}
-				<ul className="-mx-3 flex flex-col gap-0.5" aria-label="Character Library" aria-busy={characters === null}>
-					{characters === null ? <li className="px-3 py-3 text-sm text-muted-foreground">Loading the Library…</li>
+				{(libraryNotice !== null || isError) && <p role="status" className="text-sm text-muted-foreground">{libraryNotice ?? LIBRARY_UNREACHABLE_NOTICE}</p>}
+				<ul className="-mx-3 flex flex-col gap-0.5" aria-label="Character Library" aria-busy={loading}>
+					{loading ? <li className="px-3 py-3 text-sm text-muted-foreground">Loading the Library…</li>
 					: libraryRows.length === 0 ? (
 						<li className="px-3 py-3 text-sm text-muted-foreground">
-							{characters.length === 0
+							{!characters?.length
 								? "No Characters yet. Create one to reuse it across Chats."
 								: "No Characters match this search."}
 						</li>

@@ -1,14 +1,16 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import type { RecallCandidate } from "./server-recall";
 import { describe, expect, test } from "bun:test";
 import { compileGenerationPlan } from "../../server/generation-plan";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../../server/conversation";
-import { createMacroAttemptState } from "../../shared/prompt-macro-engine";
+import { testMacroAttempt } from "../../shared/test-fixtures/prompt-macros";
 import type { RecallActivation } from "./server-recall";
 import { memoryItems } from "./server-prompt";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = emptyPromptChannels();
 const compile = (overrides: Partial<Parameters<typeof compileGenerationPlan>[0]>) => compileGenerationPlan({
 	boxes: {}, human: { name: "Writer", prompt, sendAppearanceImages: true }, model: { name: "Maren", prompt, sendAppearanceImages: true }, recipe: [], context: [],
+	lore: [], loreAllowance: 2_048, attempt: testMacroAttempt(),
 	settings: DEFAULT_CONVERSATION_GENERATION_SETTINGS, connection: null,
 	images: { lookup: () => undefined, placement: "last", sendImages: true }, ...overrides,
 });
@@ -98,14 +100,14 @@ describe("Memory prompt admission", () => {
 	});
 
 	test("renders recalled Memory claims literally, even while budgeting", () => {
-		const state = createMacroAttemptState();
+		const attempt = testMacroAttempt();
 		const plan = compile({
 			recipe: [{ reference: "box:memory", enabled: true, role: "system", content: "" }],
 			context: [],
 			boxes: { "box:memory": memoryItems(memoryActivation([memoryCandidate("macro", "{{setvar::mood::grim}}{{self}} waits")])) },
-			attempt: { environment: { self: "Writer", other: "Maren" }, state },
+			attempt,
 		});
 		expect(plan.promptPlan.blocks[0]?.content).toBe("[Message 0] {{setvar::mood::grim}}{{self}} waits (attribution: Narrated event)");
-		expect(state.writes).toEqual([]);
+		expect(attempt.state.writes).toEqual([]);
 	});
 });

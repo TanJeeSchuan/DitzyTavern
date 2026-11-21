@@ -18,7 +18,7 @@ import {
 	type PromptPresetSummary,
 } from "../../shared/contract/prompt-preset";
 import { Value } from "@sinclair/typebox/value";
-import { isUnknownBoxReference } from "../../shared/contract/box";
+import { boxBlockRefusal } from "../../shared/contract/box";
 import {
 	BuiltInPromptPresetNotRemovableError,
 	InvalidPromptPresetCommandError,
@@ -162,8 +162,10 @@ export const importNativePromptPreset = (
 		throw new InvalidPromptPresetCommandError("The native Prompt Preset JSON is invalid.");
 	}
 	const name = requireCommandName(native.name);
-	const unknownBox = native.slots.find((slot) => isUnknownBoxReference(slot.reference));
-	if (unknownBox !== undefined) throw new InvalidPromptPresetCommandError(`There is no Box for ${unknownBox.reference}.`);
+	for (const { reference } of native.slots) {
+		const refusal = boxBlockRefusal(reference);
+		if (refusal !== undefined) throw new InvalidPromptPresetCommandError(refusal);
+	}
 	const repeated = repeatedSingleUseReference(native.slots.map((slot) => slot.reference));
 	if (repeated !== undefined) throw new InvalidPromptPresetCommandError(`A Prompt Preset may contain at most one ${singleUseReferenceLabel(repeated)} block.`);
 	const db = connect(database);

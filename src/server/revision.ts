@@ -4,16 +4,13 @@
  * a revision counter throws the single `StaleRevisionError` through the
  * single `guardRevision`.
  *
- * The aggregate names the wire envelope the error presents as: most 409s
- * carry the expected/actual revisions and the authoritative current state of
- * the aggregate (`presentDomainError` spreads `details`, so the envelope is
- * built here where the class and its aggregate live), and the generation
- * start families model only the prose reason envelope.
+ * Stale writes carry both revisions and the authoritative current state.
+ * Generation starts use the prose reason envelope.
  */
 import type { ConnectionSettingsPayload } from "../shared/contract/connection-settings";
 import type { CharacterSnapshot } from "../shared/contract/character-library";
 import type { ConversationSummary } from "../shared/contract/conversation-schema";
-import type { Lorebook, LorebookOwnerAttachmentState } from "../shared/contract/lorebook";
+import type { Lorebook } from "../shared/contract/lorebook";
 import type { PromptPresetSummary } from "../shared/contract/prompt-preset";
 import type { SemanticTriggerSettingsPayload } from "../shared/contract/semantic-trigger-settings";
 import type { BoxDecisionSettings, BoxDelegateSettings } from "../shared/contract/box";
@@ -27,7 +24,6 @@ export type CurrentByAggregate = {
 	settings: ConnectionSettingsPayload | SemanticTriggerSettingsPayload | BoxDecisionSettings | BoxDelegateSettings;
 	preset: PromptPresetSummary;
 	lorebook: Lorebook;
-	"lore-attachment": LorebookOwnerAttachmentState;
 	character: CharacterSnapshot;
 	conversation: ConversationSummary;
 	generation: undefined;
@@ -49,44 +45,10 @@ const staleAggregateLabel = {
 	settings: "settings",
 	preset: "Prompt Preset",
 	lorebook: "Lorebook",
-	"lore-attachment": "Character",
 	character: "Character",
 	conversation: "Conversation",
 	generation: "Conversation",
 } satisfies Record<RevisionAggregate, string>;
-
-// @approved
-//  The closed wire-envelope union: one member per aggregate, matching the
-//  409 schema each route family declares. Throw sites no longer hand-roll
-//  details and no per-module recovery presenters exist.
-type StaleRevisionDetails =
-	| { expectedRevision: number; actualRevision: number; currentSettings: CurrentByAggregate["settings"] }
-	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentPreset: CurrentByAggregate["preset"] }
-	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentBook: CurrentByAggregate["lorebook"] }
-	| { reason: "stale-revision"; expectedRevision: number; actualRevision: number; currentState: CurrentByAggregate["lore-attachment"] }
-	| { expectedRevision: number; actualRevision: number; currentCharacter: CurrentByAggregate["character"] }
-	| { expectedRevision: number; actualRevision: number; currentConversation: CurrentByAggregate["conversation"] }
-	| { reason: string };
-
-const staleRevisionDetails = (args: StaleRevisionArgs, message: string): StaleRevisionDetails => {
-	const [, expectedRevision, actualRevision] = args;
-	switch (args[0]) {
-		case "settings":
-			return { expectedRevision, actualRevision, currentSettings: args[3] };
-		case "preset":
-			return { reason: "stale-revision", expectedRevision, actualRevision, currentPreset: args[3] };
-		case "lorebook":
-			return { reason: "stale-revision", expectedRevision, actualRevision, currentBook: args[3] };
-		case "lore-attachment":
-			return { reason: "stale-revision", expectedRevision, actualRevision, currentState: args[3] };
-		case "character":
-			return { expectedRevision, actualRevision, currentCharacter: args[3] };
-		case "conversation":
-			return { expectedRevision, actualRevision, currentConversation: args[3] };
-		case "generation":
-			return { reason: message };
-	}
-};
 
 export class StaleRevisionError extends Error {
 	readonly outcome = "conflict" as const;
@@ -94,10 +56,10 @@ export class StaleRevisionError extends Error {
 	readonly expectedRevision: number;
 	readonly actualRevision: number;
 	readonly current: CurrentByAggregate[RevisionAggregate] | undefined;
-	readonly details: StaleRevisionDetails;
+	readonly details;
 
 	constructor(...args: StaleRevisionArgs) {
-		const [aggregate, expectedRevision, actualRevision] = args;
+		const [aggregate, expectedRevision, actualRevision, current] = args;
 		super(
 			`Expected ${staleAggregateLabel[aggregate]} revision ${expectedRevision}, but the current revision is ${actualRevision}.`,
 		);
@@ -105,8 +67,10 @@ export class StaleRevisionError extends Error {
 		this.aggregate = aggregate;
 		this.expectedRevision = expectedRevision;
 		this.actualRevision = actualRevision;
-		this.current = args.length === 4 ? args[3] : undefined;
-		this.details = staleRevisionDetails(args, this.message);
+		this.current = current;
+		this.details = current === undefined
+			? { reason: this.message }
+			: { reason: "stale-revision" as const, expectedRevision, actualRevision, current };
 	}
 }
 

@@ -29,7 +29,7 @@ const addableReferences = (): PromptBlockReference[] => [
 	"cast-appearance",
 	"lore",
 	"brief-instruction",
-	...[...installedBoxes().keys()].map(boxReference),
+	...[...installedBoxes().values()].flatMap(({ metadata }) => metadata.prompt === false ? [] : [boxReference(metadata.id)]),
 ];
 
 const AddBlockMenu = ({
@@ -88,6 +88,7 @@ export function PromptPresetRecipeEditor({
 	preset,
 	drafts,
 	pending,
+	editingDisabled,
 	problem,
 	onDraftChange,
 	onEnabledChange,
@@ -97,19 +98,25 @@ export function PromptPresetRecipeEditor({
 	preset: ConversationPromptPreset;
 	drafts: Record<number, BlockDraft>;
 	pending: boolean;
+	editingDisabled: boolean;
 	problem: string | null;
 } & RecipeOperationHandlers) {
-	const [orderedSlots, setOrderedSlots] = useState(preset.slots);
+	const [move, setMove] = useState<{ id: number; index: number } | null>(null);
+	const orderedSlots = [...preset.slots];
+	if (move !== null) {
+		const index = orderedSlots.findIndex((slot) => slot.id === move.id);
+		if (index !== -1) {
+			const [moved] = orderedSlots.splice(index, 1);
+			if (moved !== undefined) orderedSlots.splice(move.index, 0, moved);
+		}
+	}
 	// @approved
 	//  The compiler places history at the first enabled history block.
 	const historyIndex = orderedSlots.findIndex((slot) => slot.reference === "history" && (drafts[slot.id]?.enabled ?? slot.enabled));
 	const [newInstructionEditorId, setNewInstructionEditorId] = useState<number | null>(null);
 	const slotListRef = useRef<HTMLOListElement>(null);
-	const previousRenderedRecipe = useRef({ presetId: preset.id, slotCount: preset.slots.length });
+	const previousSlotCount = useRef(preset.slots.length);
 	const instructionIdsBeforeAdd = useRef<Set<number> | null>(null);
-	useEffect(() => {
-		if (!pending) setOrderedSlots(preset.slots);
-	}, [pending, preset.slots]);
 	useEffect(() => {
 		const previousIds = instructionIdsBeforeAdd.current;
 		if (previousIds === null) return;
@@ -122,16 +129,11 @@ export function PromptPresetRecipeEditor({
 		}
 	}, [pending, preset.slots, problem]);
 	useEffect(() => {
-		const previous = previousRenderedRecipe.current;
-		if (previous.presetId !== preset.id) {
-			previousRenderedRecipe.current = { presetId: preset.id, slotCount: preset.slots.length };
-			return;
-		}
-		if (!pending && orderedSlots.length > previous.slotCount) {
+		if (!pending && preset.slots.length > previousSlotCount.current) {
 			slotListRef.current?.lastElementChild?.scrollIntoView({ block: "nearest" });
 		}
-		previousRenderedRecipe.current = { presetId: preset.id, slotCount: orderedSlots.length };
-	}, [orderedSlots.length, pending, preset.id, preset.slots.length]);
+		if (!pending) previousSlotCount.current = preset.slots.length;
+	}, [pending, preset.slots.length]);
 
 	return <section aria-label="Preset contents" className="flex flex-col gap-3 border-t border-border pt-5">
 		<div className="flex items-center justify-between gap-2">
@@ -139,12 +141,12 @@ export function PromptPresetRecipeEditor({
 			<AddBlockMenu
 				disabled={pending}
 				existing={preset.slots}
-				onAddReference={(reference) => onOperation(() => addPromptPresetReference(preset.id, reference))}
+				onAddReference={(reference) => void onOperation(() => addPromptPresetReference(preset.id, reference))}
 				onAddInstruction={() => {
 					instructionIdsBeforeAdd.current = new Set(
 						preset.slots.filter((slot) => slot.reference === "instruction").map((slot) => slot.id),
 					);
-					onOperation(() => addPromptPresetInstruction(preset.id));
+					void onOperation(() => addPromptPresetInstruction(preset.id));
 				}}
 			/>
 		</div>
@@ -161,16 +163,9 @@ export function PromptPresetRecipeEditor({
 				//  SAFETY: Every sortable in this provider receives its numeric prompt block ID.
 				const sourceId = source.id as number;
 				if (source.initialIndex === source.index) return;
-				setOrderedSlots((current) => {
-					const sourceIndex = current.findIndex((slot) => slot.id === sourceId);
-					if (sourceIndex === -1) return current;
-					const next = [...current];
-					const [moved] = next.splice(sourceIndex, 1);
-					if (moved === undefined) return current;
-					next.splice(source.index, 0, moved);
-					return next;
-				});
-				onOperation(() => movePromptPresetBlock(preset.id, sourceId, source.index + 1));
+				const index = source.index;
+				setMove({ id: sourceId, index });
+				void onOperation(() => movePromptPresetBlock(preset.id, sourceId, index + 1)).finally(() => setMove(null));
 			}}
 		>
 		<ol ref={slotListRef} className="divide-y divide-border border-b border-border">
@@ -184,6 +179,7 @@ export function PromptPresetRecipeEditor({
 					historyIndex={historyIndex}
 					draft={drafts[slot.id]}
 					pending={pending}
+					editingDisabled={editingDisabled}
 					autoOpenEditor={newInstructionEditorId === slot.id}
 					onAutoOpenEditorHandled={() => setNewInstructionEditorId(null)}
 					onDraftChange={onDraftChange}

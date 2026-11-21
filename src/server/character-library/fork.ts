@@ -3,7 +3,7 @@ import { CharacterNotFoundError } from "./errors";
 import { guardRevision } from "../revision";
 import { connectCharacterLibraryDatabase } from "./internal";
 import { readCharacterSnapshot } from "./snapshot";
-import type { CharacterDefinition } from "./types";
+import type { CharacterDefinition, CharacterSnapshot } from "./types";
 
 // @approved
 //  One fork of a Library Character: the authoritative Definition copied at
@@ -31,13 +31,15 @@ export function forkCharacter(
 	if (character === undefined) throw new CharacterNotFoundError(characterId);
 	guardRevision("character", expectedRevision, character, () => character);
 	return {
-		definition: {
-			name: character.name,
-			prompt: character.prompt,
-			sendAppearanceImages: character.sendAppearanceImages,
-			openings: character.openings,
-			portrait: character.portrait,
-		},
+		definition: characterDefinitionOf(character),
 		sourceCharacterId: character.id,
 	};
 }
+
+export const characterDefinitionOf = (character: CharacterSnapshot): CharacterDefinition => ({
+	name: character.name,
+	prompt: character.prompt,
+	sendAppearanceImages: character.sendAppearanceImages,
+	openings: character.openings,
+	portrait: character.portrait,
+});

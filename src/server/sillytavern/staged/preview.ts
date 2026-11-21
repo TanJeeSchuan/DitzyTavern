@@ -7,7 +7,6 @@ import type {
 	SillyTavernChatInspection,
 	SillyTavernExactAuthor,
 } from "../adapter";
-import { chatNameFromFilename } from "../import";
 import { findPriorImportsBySource } from "../prior-imports";
 import {
 	groupImportedAuthors,
@@ -15,7 +14,6 @@ import {
 } from "../import-projection";
 import type {
 	ChatImportGroup,
-	ChatImportPreview,
 	ChatImportSuggestion,
 	SuggestionMatchKind,
 } from "./types";
@@ -107,20 +105,13 @@ const buildGroups = (
 			group.key === null ? null : strongestSuggestion(group.key, characters),
 	}));
 
-export const buildPreview = (
+export const buildPreviewDetails = (
 	database: Database,
-	originalFilename: string,
-	byteLength: number,
-	sha256: string,
 	inspection: SillyTavernChatInspection,
-): ChatImportPreview => {
+) => {
 	const characters = createCharacterLibraryModule(database).list();
 	const matches = findPriorImportsBySource(database, inspection.report.source);
 	return {
-		title: chatNameFromFilename(originalFilename),
-		originalFilename,
-		sha256,
-		byteLength,
 		integrity: inspection.report.source.integrity ?? null,
 		counts: { ...inspection.report.counts },
 		warnings: [...inspection.report.warnings],

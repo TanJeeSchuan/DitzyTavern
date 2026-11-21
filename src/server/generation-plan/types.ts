@@ -14,13 +14,12 @@ import type { LoreActivationRecord } from "../../shared/contract/lore-activation
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { BoxResults } from "../box/registry";
 
-export type { PromptLoreEntry } from "../prompt-compiler";
 import type { PromptPresetSlot } from "../../shared/contract/prompt-preset";
 import type {
 	CompilePromptDefinition,
 	GenerationIntent,
 	PromptImageResolution,
-	PromptBudgetResult,
+	PromptBudgetMeasurement,
 	PromptContextEntry,
 	LiteralPromptMessage,
 	PromptPlan,
@@ -40,12 +39,13 @@ import type {
 export type { EffectiveGenerationSettings } from "../../shared/contract/generation-settings";
 
 /**
- * The complete application plan for one Generation attempt: its Prompt Plan,
- * budget decision, and Effective Generation Settings.
+ * The complete application plan for one Generation attempt, including its
+ * Prompt Plan, history omissions, budget measurement, and Effective Settings.
  */
 export interface GenerationPlan {
 	readonly promptPlan: PromptPlan;
-	readonly budget: PromptBudgetResult;
+	readonly omittedContext: readonly PromptContextEntry[];
+	readonly budget: PromptBudgetMeasurement;
 	readonly effectiveSettings: EffectiveGenerationSettings;
 	readonly loreActivation: LoreActivationRecord | null;
 	readonly boxTraces: BoxTraces;
@@ -78,9 +78,9 @@ export interface CompileGenerationPlanInput {
 	// the attempt's inputs so execution never rereads mutable preset state.
 	readonly recipe: readonly PromptPresetSlot[];
 	/** Captured lore candidates. They are admitted once before history trimming. */
-	readonly lore?: readonly PromptLoreEntry[];
+	readonly lore: readonly PromptLoreEntry[];
 	/** Chat-owned estimated-token allowance for the Lore block. */
-	readonly loreAllowance?: number;
+	readonly loreAllowance: number;
 	/** Captured activation evidence. It is never recomputed during budgeting. */
 	readonly loreActivation?: LoreActivationRecord | null;
 	// The Generation intent this attempt serves. An ordinary Tail Generation
@@ -93,7 +93,7 @@ export interface CompileGenerationPlanInput {
 	readonly connection: GenerationConnectionFacts | null;
 	// One attempt's captured macro inputs and state. Keeping them together makes
 	// reuse across every budget candidate part of the type contract.
-	readonly attempt?: AttemptEnvironment;
+	readonly attempt: AttemptEnvironment;
 	// Tests and calibration work may replace the default project-owned
 	// estimator; budgeting policy itself stays application-owned.
 	readonly estimator?: TokenEstimator | undefined;

@@ -10,12 +10,3 @@ import type { BoxId } from "../../shared/contract/box";
 export const api = treaty<Contract>(window.location.origin, { parseDate: false });
 /** @approved A Box's own `routes`, which the host serves under `/api/boxes/<id>`. */
 export const boxApi = <Routes extends AnyElysia>(id: BoxId) => treaty<Routes>(`${window.location.origin}/api/boxes/${id}`, { parseDate: false });
-
-// @approved
-//  Eden's Treaty response is a discriminated success/error union. Keep that
-// union shape at client transport helpers instead of forcing each caller to
-// repeat a broad type assertion around `data` and `error`.
-export type EdenResponse<Data, Error> = Promise<
-	| { data: Data; error: null }
-	| { data: null; error: Error }
->;

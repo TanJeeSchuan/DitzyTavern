@@ -1,6 +1,6 @@
 import { isActive } from "../database/is-active";
 import type { Database } from "bun:sqlite";
-import { and, eq, sql } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import {
 	characterLorebookAttachmentTable,
@@ -12,13 +12,12 @@ import {
 	participantTable,
 	lorebookTable,
 } from "../database/schema";
-import type { LoreAttachmentCommand, LoreAttachmentScope } from "../../shared/contract/lorebook";
+import type { LoreAttachmentScope } from "../../shared/contract/lorebook";
 import { findConversation, readActiveCast, readControlAssignment } from "../conversation";
-import { guardRevision, StaleRevisionError } from "../revision";
 
-export type LoreAttachmentOwner = "character" | "participant" | "conversation";
+type LoreAttachmentOwner = "character" | "participant" | "conversation";
 
-export interface LoreAttachment {
+interface LoreAttachment {
 	readonly id: number;
 	readonly owner: LoreAttachmentOwner;
 	readonly ownerId: number;
@@ -37,43 +36,8 @@ export interface LoreSettings {
 	readonly allowance: number;
 }
 
-export class LoreAttachmentOwnerNotFoundError extends Error {
-	readonly outcome = "not-found" as const;
-
-	constructor() {
-		super("The Lore attachment owner was not found.");
-		this.name = "LoreAttachmentOwnerNotFoundError";
-	}
-}
-
 const connect = (database: Database) => drizzle(database);
 type LoreDatabase = ReturnType<typeof connect>;
-
-export const attachLorebookToCharacter = (
-	database: Database,
-	input: { characterId: number; bookId: number; scope: Exclude<LoreAttachmentScope, "chat">; enabled?: boolean },
-) => {
-	const db = connect(database);
-	db.insert(characterLorebookAttachmentTable).values({
-		character_id: input.characterId,
-		lorebook_id: input.bookId,
-		scope: input.scope,
-		enabled: input.enabled ?? true,
-	}).onConflictDoUpdate({
-		target: [characterLorebookAttachmentTable.character_id, characterLorebookAttachmentTable.lorebook_id, characterLorebookAttachmentTable.scope],
-		set: { enabled: input.enabled ?? true },
-	}).run();
-};
-
-export const detachLorebookFromCharacter = (
-	database: Database,
-	input: { characterId: number; bookId: number; scope: Exclude<LoreAttachmentScope, "chat"> },
-) =>
-	connect(database).delete(characterLorebookAttachmentTable).where(and(
-		eq(characterLorebookAttachmentTable.character_id, input.characterId),
-		eq(characterLorebookAttachmentTable.lorebook_id, input.bookId),
-		eq(characterLorebookAttachmentTable.scope, input.scope),
-	)).run();
 
 /** @approved Resolve scope before deduplication: an ineligible use cannot veto an eligible use. */
 const readLorebookAttachmentEligibilityFrom = (
@@ -210,15 +174,6 @@ export const readCharacterLorebookAttachments = (database: Database, characterId
 	};
 };
 
-// @approved
-//  The Conversation a Participant Lore attachment command mutates:
-// the Lorebook attachment wire command carries no conversation id, so the
-// transport derives it from the Participant's own Chat reference. Undefined
-// when the Participant is gone, which the route presents as not-found.
-export const readParticipantConversationId = (database: Database, participantId: number): number | undefined =>
-	connect(database).select({ conversationId: participantTable.conversation_id }).from(participantTable)
-		.where(and(eq(participantTable.id, participantId), isActive(participantTable))).get()?.conversationId;
-
 export const readParticipantLorebookAttachments = (database: Database, participantId: number) => {
 	const db = connect(database);
 	const participant = db
@@ -248,50 +203,6 @@ const readLoreSettingsFrom = (db: LoreDatabase, conversationId: number): LoreSet
 	const row = db.select().from(conversationLoreSettingsTable)
 		.where(eq(conversationLoreSettingsTable.conversation_id, conversationId)).get();
 	return { scanDepth: row?.scan_depth ?? 4, allowance: row?.allowance ?? 2048 };
-};
-
-const advanceCharacterRevision = (database: Database, db: LoreDatabase, characterId: number, expectedRevision: number) => {
-	const advanced = db.update(characterTable)
-		.set({ revision: sql`${characterTable.revision} + 1` })
-		.where(and(eq(characterTable.id, characterId), eq(characterTable.revision, expectedRevision)))
-		.returning({ revision: characterTable.revision })
-		.get();
-	if (advanced === undefined) {
-		const current = readCharacterLorebookAttachments(database, characterId);
-		if (current === undefined) throw new LoreAttachmentOwnerNotFoundError();
-		throw new StaleRevisionError("lore-attachment", expectedRevision, current.revision, current);
-	}
-};
-
-// @approved
-//  The two Character-owned Lore attachment commands stay in the Lorebook
-// module: the Character Library owns their revision, and the guarded advance
-// below is its attachment-command application. The five Conversation-owned
-// commands (attach-chat, detach-chat, attach-participant, detach-participant,
-// save-settings) dispatch through executeConversationCommand in the Lorebook
-// attachment route and inherit the Conversation seam's revision guard,
-// post-write summary, and conflict shape instead.
-export const executeLorebookAttachmentCommand = (
-	database: Database,
-	command: Extract<LoreAttachmentCommand, { type: "attach-character" | "detach-character" }>,
-): void => {
-	const db = connect(database);
-	database.transaction(() => {
-		const owner = db
-			.select({ revision: characterTable.revision })
-			.from(characterTable)
-			.where(and(eq(characterTable.id, command.characterId), isActive(characterTable)))
-			.get();
-		if (owner === undefined) throw new LoreAttachmentOwnerNotFoundError();
-		guardRevision("lore-attachment", command.expectedRevision, owner, () => {
-			const current = readCharacterLorebookAttachments(database, command.characterId);
-			if (current === undefined) throw new LoreAttachmentOwnerNotFoundError();
-			return current;
-		});
-		if (command.type === "attach-character") attachLorebookToCharacter(database, command);
-		else detachLorebookFromCharacter(database, command);
-		advanceCharacterRevision(database, db, command.characterId, command.expectedRevision);
-	}).immediate();
 };
 
 const ownerAttachmentSelection = (table: typeof characterLorebookAttachmentTable | typeof participantLorebookAttachmentTable) => ({

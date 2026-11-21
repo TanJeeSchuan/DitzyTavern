@@ -19,7 +19,7 @@ import { authoringTools, checkScenario } from "./tools";
 
 /** @approved Where candidates are made, and the plugin folder Install publishes into. */
 export type AuthoringFolders = { readonly root: string; readonly plugins: string };
-export const defaultAuthoringFolders = (): AuthoringFolders => ({ root: defaultAuthoringFolder(), plugins: pluginFolder });
+const defaultAuthoringFolders = (): AuthoringFolders => ({ root: defaultAuthoringFolder(), plugins: pluginFolder });
 
 const instructions = (id: string) => [
 	"You write sandboxed Boxes for DitzyTavern, an app for writing stories with a model, by calling your tools. You have no other tools, files or network.",

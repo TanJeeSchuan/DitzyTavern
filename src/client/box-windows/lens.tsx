@@ -11,7 +11,7 @@ export interface BoxLens {
 	readonly tag: string;
 	gate(conversation: ConversationSummary): ((text: string) => readonly LensPiece[]) | undefined;
 }
-export type LensPiece = { readonly kind: "prose"; readonly text: string } | { readonly kind: "lifted"; readonly line: string };
+type LensPiece = { readonly kind: "prose"; readonly text: string } | { readonly kind: "lifted"; readonly line: string };
 
 type Segment<Kind extends string, Text> = { readonly kind: "prose"; readonly text: string } | { readonly kind: Kind; readonly text: Text };
 export const createBoxLens = <Context, Kind extends string, Text>(

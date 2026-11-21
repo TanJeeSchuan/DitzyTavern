@@ -8,15 +8,10 @@ import type { PromptImageResolution } from "./images";
 import type { BoxItems } from "../box/registry";
 import type { SystemPlacement } from "../connection-settings/types";
 
-export type {
-	AttemptEnvironment,
-	MacroAttemptState,
-	MacroEnvironment,
-} from "../../shared/prompt-macro-engine";
+export type { MacroAttemptState } from "../../shared/prompt-macro-engine";
 export type {
 	GenerationIntent,
 	PromptBlock,
-	PromptHistoryRole,
 	PromptImage,
 	PromptPlan,
 	PromptWarning,
@@ -85,10 +80,10 @@ export interface CompilePromptInput {
 	// plan contains and in what order; the compiler holds no order of its own.
 	recipe: readonly PromptPresetSlot[];
 	/** Captured lore selected by the generation workflow; rendered literally. */
-	lore?: readonly PromptLoreEntry[];
+	lore: readonly PromptLoreEntry[];
 	// Captured once for one assembly. Environment and state are one invariant:
 	// budget recompilation must reuse both or create both together.
-	attempt?: AttemptEnvironment;
+	attempt: AttemptEnvironment;
 	/** How References are resolved once Prompt Macros have expanded, mapped to
 	 * the attempt's effective sending policy. */
 	images: PromptImageResolution;

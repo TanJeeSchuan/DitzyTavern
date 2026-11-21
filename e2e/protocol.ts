@@ -1,15 +1,15 @@
 import { Value } from "@sinclair/typebox/value";
 import { Type, type Static } from "@sinclair/typebox";
 import type { DecisionAnswer } from "../src/shared/contract/decision-model";
-import type { GenerationJsonValue } from "../src/shared/generation-json";
+import type { GenerationJsonValue } from "../src/shared/contract/json-value";
 import type { BuildMetadata } from "../src/server/build-metadata";
 
-export type RegistryReply = { buildNumber: number; revision: string; hold?: boolean } | { status: number };
+type RegistryReply = { buildNumber: number; revision: string; hold?: boolean } | { status: number };
 export type UpdateScenario = { build: BuildMetadata; automaticChecks?: boolean; replies: RegistryReply[] };
 
 export type ImageReply = ({ base64: string } | { status: number; error: string }) & { hold?: boolean };
 
-export const imageCallBody = Type.Object({ model: Type.String(), prompt: Type.String(), n: Type.Literal(1), aspect_ratio: Type.String(), input_references: Type.Optional(Type.Array(Type.Object({ type: Type.Literal("image_url"), image_url: Type.Object({ url: Type.String() }) }))) });
+const imageCallBody = Type.Object({ model: Type.String(), prompt: Type.String(), n: Type.Literal(1), aspect_ratio: Type.String(), input_references: Type.Optional(Type.Array(Type.Object({ type: Type.Literal("image_url"), image_url: Type.Object({ url: Type.String() }) }))) });
 export type ImageModelCall = { kind: "image"; url: string; headers: Record<string, string>; body: Static<typeof imageCallBody> };
 
 export type ChatReply =
@@ -51,7 +51,7 @@ export const decisionCallBody = Type.Object({
 	state: Type.Unknown(),
 	questions: Type.Record(Type.String(), Type.Unknown()),
 });
-export type DecisionCallBody = Static<typeof decisionCallBody>;
+type DecisionCallBody = Static<typeof decisionCallBody>;
 
 /** @approved A Decision call's state is a provider-defined object, a string for the Test Connection ping, or absent. */
 export const hasDecisionPassage = (state: unknown): state is { readonly passage: unknown } =>
@@ -60,7 +60,7 @@ export const hasDecisionPassage = (state: unknown): state is { readonly passage:
 export const embeddingsCallBody = Type.Object({
 	input: Type.Union([Type.String(), Type.Array(Type.String())]),
 });
-export type EmbeddingsCallBody = Static<typeof embeddingsCallBody>;
+type EmbeddingsCallBody = Static<typeof embeddingsCallBody>;
 
 // @approved
 //  One scripted reply to the coding agent's next authoring request: tool
@@ -82,12 +82,12 @@ export const authoringCallBody = Type.Object({
 	})),
 	tools: Type.Optional(Type.Array(Type.Object({ function: Type.Object({ name: Type.String() }) }))),
 });
-export type AuthoringCallBody = Static<typeof authoringCallBody>;
+type AuthoringCallBody = Static<typeof authoringCallBody>;
 
 export type ChatModelCall = { kind: "chat" | "extraction"; url: string; headers: Record<string, string>; body: ChatCompletionCallBody };
 export type DecisionModelCall = { kind: "decision"; url: string; headers: Record<string, string>; body: DecisionCallBody };
-export type EmbeddingsModelCall = { kind: "embeddings"; url: string; headers: Record<string, string>; body: EmbeddingsCallBody };
-export type UncategorizedModelCall = { kind: "models" | "unknown"; url: string; headers: Record<string, string>; body: unknown };
+type EmbeddingsModelCall = { kind: "embeddings"; url: string; headers: Record<string, string>; body: EmbeddingsCallBody };
+type UncategorizedModelCall = { kind: "models" | "unknown"; url: string; headers: Record<string, string>; body: unknown };
 export type AuthoringModelCall = { kind: "authoring"; url: string; headers: Record<string, string>; body: AuthoringCallBody };
 export type ModelCall = DescribeModelCall | ImageModelCall | ChatModelCall | DecisionModelCall | EmbeddingsModelCall | AuthoringModelCall | UncategorizedModelCall;
 

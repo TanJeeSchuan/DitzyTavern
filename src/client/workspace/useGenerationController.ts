@@ -5,7 +5,6 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { shownContent } from "../story/variant-text";
 import {
 	useEffect,
-	useReducer,
 	useRef,
 	useState,
 	useSyncExternalStore,
@@ -31,10 +30,6 @@ import {
 	type GenerationSessionsState,
 	type GenerationStopCommandOutcome,
 } from "../generation-sessions";
-import {
-	createPendingGenerationStarts,
-	reducePendingGenerationStarts,
-} from "../pending-generation-starts";
 import {
 	canOfferSiblingGeneration,
 	isModelAuthoredMessage,
@@ -122,12 +117,6 @@ export function useGenerationController({
 		setStaged({ conversationId: target.id, humanParticipantId: target.control.humanParticipantId, versions: target.boxVersions, moves: rewind.moves });
 	};
 	const signal = useConversationVisit(selection, conversation?.id);
-	const [pendingStarts, dispatchPendingStarts] = useReducer(
-		reducePendingGenerationStarts,
-		undefined,
-		createPendingGenerationStarts,
-	);
-	const nextStartIdRef = useRef(1);
 
 	// @approved
 	//  Streamed text bypasses story state, so a chunk re-renders only the Message showing it. Each observation
@@ -182,25 +171,17 @@ export function useGenerationController({
 				};
 			}),
 		});
-	}, [runner, streams, conversation, story]);
+	}, [runner, streams, conversation, story.messages]);
 
 	// @approved
 	//  Each observed event moves a session's cursor; the workspace reads only what changes when a session starts,
 	// stops or fails, so streaming does not re-render it.
 	const useSessions = <Value,>(select: (sessions: GenerationSessionsState) => Value) =>
 		useSyncExternalStore(runner.subscribe, () => select(runner.getSnapshot()));
-	const isGenerating = useSessions(hasActiveGenerationSessions) || pendingStarts.size > 0;
+	const isGenerating = useSessions(hasActiveGenerationSessions);
 	const stopPending = useSessions(hasPendingGenerationStop);
 	const sessionError = useSessions((sessions) => firstActiveGenerationSessionFailure(sessions)?.reason ?? null);
 	const failedImageModel = useSessions((sessions) => firstActiveGenerationSessionFailure(sessions)?.imageModel ?? null);
-	const sessionIds = useSessions((sessions) => [...sessions.sessions.keys()].join());
-
-	useEffect(() => {
-		dispatchPendingStarts({
-			type: "sessions-observed",
-			generationIds: new Set(runner.getSnapshot().sessions.keys()),
-		});
-	}, [pendingStarts, sessionIds, runner]);
 
 	const activeGenerationTargets = conversation === null
 		? []
@@ -211,16 +192,9 @@ export function useGenerationController({
 		return message?.swipes[message.activeSwipe]?.id === target.variantId;
 	}) ?? activeGenerationTargets[0];
 
-	const beginStart = () => {
-		const startId = nextStartIdRef.current;
-		nextStartIdRef.current += 1;
-		dispatchPendingStarts({ type: "started", startId });
-		runner.dispatch({ type: "errors-acknowledged" });
-		return startId;
-	};
-
 	const {
 		assembly,
+		inspectionLocked,
 		assemblyAvailable,
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,
@@ -240,14 +214,7 @@ export function useGenerationController({
 		variantPreviewActive: story.preview !== null,
 		inspectPromptPlanBeforeGenerating,
 		beforeInspect,
-		generationStart: {
-			begin: beginStart,
-			settle: (startId) => dispatchPendingStarts({ type: "settled", startId }),
-			accepted: (startId, target) => {
-				dispatchPendingStarts({ type: "accepted", startId, generationId: target.generationId });
-				runner.dispatch({ type: "generation-accepted", target });
-			},
-		},
+		generations: runner,
 		dispatchStory,
 		takeComposer: () => {
 			const taken = { draft: draft.get(), staged };
@@ -266,7 +233,6 @@ export function useGenerationController({
 	};
 
 	const conversationSwitched = () => {
-		dispatchPendingStarts({ type: "conversation-switched" });
 		runner.dispatch({ type: "conversation-switched" });
 	};
 
@@ -301,13 +267,13 @@ export function useGenerationController({
 
 	const cancelGeneration = () => {
 		const target = selectedGenerationTarget?.generationId;
-		if (target !== undefined) void stopGeneration(target);
+		return target === undefined ? Promise.resolve() : stopGeneration(target);
 	};
 
 	const submitMessage = (event: FormEvent) => {
 		event.preventDefault();
 		if (!assemblyAvailable || conversation === null || (draft.get().trim() === "" && !hasMoves(moves))) return;
-		requestGeneration({ kind: "send", content: draft.get(), moves, ...clientFormattingContext() });
+		requestGeneration({ target: { kind: "send", content: draft.get(), moves }, ...clientFormattingContext() });
 	};
 
 	const continueMessage = (messageId: number) => {
@@ -318,7 +284,7 @@ export function useGenerationController({
 			latest.continuable !== true ||
 			!isModelAuthoredMessage(latest)
 		) return;
-		requestGeneration({ kind: "continuation", ...clientFormattingContext() });
+		requestGeneration({ target: { kind: "continuation" }, ...clientFormattingContext() });
 	};
 
 	const regenerateResponse = (messageId: number) => {
@@ -329,7 +295,7 @@ export function useGenerationController({
 		if (latest?.id !== messageId || latest.authorParticipantId !== conversation.control.humanParticipantId || shown === undefined) return;
 		const content = shownContent(client, conversation.id, shown);
 		if (content === null || (content.trim() === "" && !hasMoves(latest.moves))) return;
-		requestGeneration({ kind: "send", content, moves: latest.moves, ...clientFormattingContext() });
+		requestGeneration({ target: { kind: "send", content, moves: latest.moves }, ...clientFormattingContext() });
 	};
 
 	const siblingMessage = (messageId: number, reroll = false) => {
@@ -344,7 +310,7 @@ export function useGenerationController({
 				activeGenerationMessageIds,
 			})
 		) return;
-		requestGeneration({ kind: "sibling", messageId, reroll, ...clientFormattingContext() });
+		requestGeneration({ target: { kind: "sibling", messageId, reroll }, ...clientFormattingContext() });
 	};
 
 	const canOfferSiblingMessage = (message: StoryMessage) =>
@@ -368,16 +334,15 @@ export function useGenerationController({
 		retryGeneration,
 		acknowledgeGenerationError,
 		assembly,
+		inspectionLocked,
 		editPromptPlanPreview,
 		refreshPromptPlanPreview,
 		cancelPromptPlanPreview,
 		sendPromptPlanPreview,
 		assemblyAvailable,
 		activeGenerationTargets,
-		activeGenerationMessageIds,
 		selectedGenerationTarget,
 		conversationSwitched,
-		stopGeneration,
 		stopAllGenerations,
 		cancelGeneration,
 		submitMessage,

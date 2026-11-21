@@ -40,7 +40,7 @@ test("a Generation skips Brief instruction and Cast Appearance on its story pres
 	] });
 	const selected = executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "select-prompt-preset", promptPresetId: preset.id } });
 	const requests: unknown[] = [];
-	const app = conversationApp(database, { masterKey: new Uint8Array(32).fill(11), fetch: captureModelFetch((request) => requests.push(request)) });
+	const app = conversationApp(database, { masterKey: new Uint8Array(32).fill(11), fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch });
 	await completeGeneration(app, chat.id, await startGeneration(app, chat.id, selected.revision));
 	expect(JSON.stringify(requests)).toContain("Tell the story.");
 	expect(JSON.stringify(requests)).not.toContain("Only for painting.");

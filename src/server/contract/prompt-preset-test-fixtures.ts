@@ -1,5 +1,7 @@
+import { emptyPromptChannels } from "../../shared/definition";
+import { blankConnectionProfileDraft, type ConnectionProfileDraftPayload } from "../../shared/contract/connection-settings";
 import { createConversation } from "../conversation";
-import { insertBox } from "../test-fixtures/conversation";
+import { insertBox, participantSeed } from "../test-fixtures/conversation";
 import { expect } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createConnectionSettingsModule } from "../connection-settings";
@@ -27,34 +29,60 @@ import type { ConversationSummary } from "../../shared/contract/conversation-sch
 export const key = new Uint8Array(32).fill(11);
 
 export const humanPrompt = {
+	...emptyPromptChannels(),
 	systemInstruction: "Human system text never reaches the plan.",
 	identity: "I write as {{self}} opposite {{other}}.",
-	appearance: "",
 	scenario: "Human scenario never reaches the plan.",
 	exampleDialogue: "Human examples never reach the plan.",
 	postHistoryInstruction: "Human post-history never reaches the plan.",
 };
 
 export const modelPrompt = {
+	...emptyPromptChannels(),
 	systemInstruction: "Answer briefly.",
 	identity: "I am {{self}}.",
-	appearance: "",
 	scenario: "A quiet room.",
 	exampleDialogue: "Writer: Hello\nMaren: Hello back",
 	postHistoryInstruction: "Continue.",
 };
 
-export const profile = {
+export const profile: ConnectionProfileDraftPayload = {
+	...blankConnectionProfileDraft,
 	displayName: "DeepSeek",
-	apiFormat: "chat-completions" as const,
 	requestUrl: "http://127.0.0.1:43131/v1/",
-	modelsUrl: "",
-	modelBackend: "automatic" as const,
-	adapter: "deepseek" as const,
-	outputTokenRepresentation: "automatic" as const,
-	systemPlacement: "none" as const,
-	timeoutMs: 120_000,
-	pinnedModels: [],
+	adapter: "deepseek",
+	systemPlacement: "none",
+};
+
+type SseReplyOptions = {
+	finish?: { reason: string } | { error: { message: string; type: string; code: string } };
+	beforeDeltas?: Promise<void>;
+} & ({ singleChunk: true; beforeFinish?: never } | { singleChunk?: false; beforeFinish?: Promise<void> });
+
+export const sseReply = (
+	deltas: readonly ({ content: string } | { reasoning_content: string })[],
+	{ finish = { reason: "stop" }, beforeDeltas, beforeFinish, singleChunk }: SseReplyOptions = {},
+): Response => {
+	const encoder = new TextEncoder();
+	const frame = (data: string) => `data: ${data}\n\n`;
+	const deltaFrames = deltas.map((delta) => frame(JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })));
+	const finishFrames = "error" in finish
+		? [frame(JSON.stringify(finish))]
+		: [frame(JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish.reason }] })), frame("[DONE]")];
+	return new Response(new ReadableStream({
+		async start(controller) {
+			const emit = (chunk: string) => controller.enqueue(encoder.encode(chunk));
+			if (beforeDeltas !== undefined) await beforeDeltas;
+			if (singleChunk) {
+				emit(deltaFrames.join("") + finishFrames.join(""));
+			} else {
+				deltaFrames.forEach(emit);
+				if (beforeFinish !== undefined) await beforeFinish;
+				finishFrames.forEach(emit);
+			}
+			controller.close();
+		},
+	}), { headers: { "content-type": "text/event-stream" } });
 };
 
 export interface CapturedRequest {
@@ -68,22 +96,8 @@ export const createChat = (
 	const conversation = createConversation(database, {
 		name: names.name ?? "Preset Chat",
 		participants: [
-			{
-				definition: {
-					name: names.human ?? "Writer",
-					prompt: humanPrompt,
-					sendAppearanceImages: true,
-					openings: [],
-				},
-			},
-			{
-				definition: {
-					name: names.model ?? "Maren",
-					prompt: modelPrompt,
-					sendAppearanceImages: true,
-					openings: [],
-				},
-			},
+			participantSeed(names.human ?? "Writer", { prompt: humanPrompt }),
+			participantSeed(names.model ?? "Maren", { prompt: modelPrompt }),
 		],
 		control: { human: 0, model: 1 },
 	});
@@ -96,9 +110,8 @@ export const createChat = (
 };
 
 // @approved
-// Each Box turned on lands right after history: the Author Note at creation,
-// then the fixture Chat's World Clock and Phone. Memory sits before history
-// in the Default recipe already.
+// The Author Note lands after history at creation, then the fixture Chat's
+// World Clock and Phone. Memory sits before history in the Default recipe.
 export const chatBoxBlocks = ["box:phone", "box:world-clock", "box:author-note"] as const;
 
 export const withProfile = (database: Database) => {
@@ -161,7 +174,7 @@ export const exportPreset = async (
 	return await response.json() as NativePromptPreset;
 };
 
-export type NativePromptPresetRequest = {
+type NativePromptPresetRequest = {
 	name: string;
 	slots: Array<{
 		reference: string;
@@ -252,21 +265,13 @@ export const selectPreset = async (
 	return { status: response.status, body };
 };
 
-export const readActiveInspection = async (
-	app: ReturnType<typeof createConversationRoutes>,
-	conversationId: number,
-	generationId: number,
-): Promise<{ kind: string }[]> => {
-	const inspected = await app.handle(new Request(
-		`http://localhost/api/conversations/${conversationId}/generations/${generationId}/inspection`,
-	));
-	expect(inspected.status).toBe(200);
-	// @approved
-	//  SAFETY: the route's response schema is the active inspection payload.
-	const inspection = await inspected.json() as {
-		promptPlan: { blocks: { kind: string }[] };
-	};
-	return inspection.promptPlan.blocks;
+// @approved
+//  A request the test waits for fails the test after `ms` instead of hanging
+// until the runner's timeout, naming what never arrived.
+export const withinBound = <T>(promise: Promise<T>, waitingFor: string, ms = 5_000): Promise<T> => {
+	let timer: ReturnType<typeof setTimeout> | undefined;
+	const expired = new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error(`Timed out after ${ms} ms waiting for ${waitingFor}.`)), ms); });
+	return Promise.race([promise, expired]).finally(() => clearTimeout(timer));
 };
 
 // @approved
@@ -276,18 +281,13 @@ export const readActiveInspection = async (
 export const gatedProvider = () => {
 	const requests: CapturedRequest[] = [];
 	const waiters: (() => void)[] = [];
+	let nextRequest = Promise.withResolvers<void>();
 	let open = false;
-	const encoder = new TextEncoder();
-	const stream = () => new Response(new ReadableStream({
-		start(controller) {
-			controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: "Done." }, finish_reason: null }] })}\n\n`));
-			controller.enqueue(encoder.encode(`data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] })}\n\n`));
-			controller.enqueue(encoder.encode("data: [DONE]\n\n"));
-			controller.close();
-		},
-	}), { headers: { "content-type": "text/event-stream" } });
 	return {
 		requests,
+		waitForRequests: async (count: number) => {
+			while (requests.length < count) await withinBound(nextRequest.promise, `provider request ${requests.length + 1} of ${count}`);
+		},
 		release: () => {
 			open = true;
 			for (const waiter of waiters.splice(0)) waiter();
@@ -296,45 +296,34 @@ export const gatedProvider = () => {
 			// @approved
 			//  SAFETY: the controlled fake receives the AI SDK Chat Completions body.
 			requests.push(JSON.parse(String(init?.body)) as CapturedRequest);
+			nextRequest.resolve();
+			nextRequest = Promise.withResolvers<void>();
 			if (!open) await new Promise<void>((resolve) => { waiters.push(resolve); });
-			return stream();
+			return sseReply([{ content: "Done." }]);
 		}) satisfies ModelFetch,
 	};
 };
 
-// @approved
-//  SAFETY: the controlled fake receives the AI SDK Chat Completions body and
-// answers with a single completed delta.
 export const captureModelFetch = (
-	onCapture: (captured: CapturedRequest) => void,
-	waitFor?: Promise<void>,
-): ModelFetch => {
-	const encoder = new TextEncoder();
-	const payload = [
-		{ choices: [{ index: 0, delta: { content: "Done." }, finish_reason: null }] },
-		{ choices: [{ index: 0, delta: {}, finish_reason: "stop" }] },
-	]
-		.map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`)
-		.join("") + "data: [DONE]\n\n";
-	return async (_input, init) => {
+	{ onCapture, waitFor }: { onCapture?: (request: CapturedRequest) => void; waitFor?: Promise<void> } = {},
+) => {
+	const { promise: captured, resolve } = Promise.withResolvers<CapturedRequest>();
+	const fetch: ModelFetch = async (_input, init) => {
 		// @approved
 		//  SAFETY: this test's fake owns the request body shape.
-		onCapture(JSON.parse(String(init?.body)) as CapturedRequest);
-		return new Response(new ReadableStream({
-			async start(controller) {
-				if (waitFor !== undefined) await waitFor;
-				controller.enqueue(encoder.encode(payload));
-				controller.close();
-			},
-		}), { headers: { "content-type": "text/event-stream" } });
+		const request = JSON.parse(String(init?.body)) as CapturedRequest;
+		resolve(request);
+		onCapture?.(request);
+		return sseReply([{ content: "Done." }], { beforeDeltas: waitFor, singleChunk: true });
 	};
+	return { fetch, get captured() { return withinBound(captured, "the provider request"); } };
 };
 
 export const startGeneration = async (
 	app: ReturnType<typeof createConversationRoutes>,
 	conversationId: number,
 	expectedRevision: number,
-	gate?: { requests: CapturedRequest[] },
+	gate?: Pick<ReturnType<typeof gatedProvider>, "waitForRequests">,
 	minimumRequests = 1,
 ): Promise<number> => {
 	const response = await app.handle(
@@ -348,11 +337,7 @@ export const startGeneration = async (
 	// @approved
 	//  SAFETY: this contract test controls the typed acceptance response.
 	const accepted = await response.json() as { generationId: number };
-	if (gate !== undefined) {
-		while (gate.requests.length < minimumRequests) {
-			await new Promise((resolve) => setTimeout(resolve, 0));
-		}
-	}
+	await gate?.waitForRequests(minimumRequests);
 	return accepted.generationId;
 };
 
@@ -499,7 +484,7 @@ export const saveInstructionContent = (
 ) =>
 	saveBlockPatches(database, presetId, [{ ...content, occurrenceId: blockId, type: "content" }]);
 
-export interface RecipeSlot {
+interface RecipeSlot {
 	id: number;
 	reference: string;
 	enabled: boolean;

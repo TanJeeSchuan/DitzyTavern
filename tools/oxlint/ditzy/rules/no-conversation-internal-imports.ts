@@ -1,9 +1,8 @@
-import { defineRule, type ESTree } from "@oxlint/plugins";
-import { importVisitors, staticSpecifier } from "../imports.ts";
+import { defineRule } from "@oxlint/plugins";
+import { importVisitors, moduleExportName, staticSpecifier } from "../imports.ts";
 import { importTarget, isTestFile, repositoryPath } from "../path.ts";
 
 const tables = new Set(["messageTable", "messageVariantTable", "activeGenerationTable"]);
-const named = (name: ESTree.ModuleExportName) => name.type === "Identifier" ? name.name : name.value;
 
 export const noConversationInternalImportsRule = defineRule({
  meta: {
@@ -29,7 +28,7 @@ export const noConversationInternalImportsRule = defineRule({
     visitors.ImportDeclaration(node);
     if (!readsSchema(node.source.value)) return;
     for (const specifier of node.specifiers) {
-     if (specifier.type === "ImportNamespaceSpecifier" || (specifier.type === "ImportSpecifier" && tables.has(named(specifier.imported)))) {
+     if (specifier.type === "ImportNamespaceSpecifier" || (specifier.type === "ImportSpecifier" && tables.has(moduleExportName(specifier.imported)))) {
       context.report({ node: specifier, messageId: "tableImport" });
      }
     }
@@ -37,7 +36,7 @@ export const noConversationInternalImportsRule = defineRule({
    ExportNamedDeclaration(node) {
     visitors.ExportNamedDeclaration(node);
     if (node.source === null || !readsSchema(node.source.value)) return;
-    for (const specifier of node.specifiers) if (tables.has(named(specifier.local))) context.report({ node: specifier, messageId: "tableImport" });
+    for (const specifier of node.specifiers) if (tables.has(moduleExportName(specifier.local))) context.report({ node: specifier, messageId: "tableImport" });
    },
    ExportAllDeclaration(node) {
     visitors.ExportAllDeclaration(node);

@@ -2,8 +2,9 @@ import { createContext, useEffect, useState, useSyncExternalStore } from "react"
 import { modelSelectionClient } from "./model-selection-client";
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { api } from "./lib/eden";
-import { requestData, requestOutcome } from "./lib/request-outcome";
-import { illustrationsRead, galleryRead, paintingAccepted, paintingErrors, type PaintingCommand, type IllustrationsRead, type ReferenceSet } from "../shared/contract/painting";
+import { requestData } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
+import { illustrationsResponse, galleryResponse, paintingCommandResponse, type PaintingCommand, type IllustrationsRead, type ReferenceSet } from "../shared/contract/painting";
 import { followsChanges } from "./server-changes";
 
 export const illustrationsKey = (conversationId: number | null) => ["illustrations", conversationId] as const;
@@ -12,15 +13,15 @@ export const useIllustrations = (conversationId: number | null, variantId?: numb
 	select: (read: IllustrationsRead) => variantId === undefined ? read : { ...read, paintings: read.paintings.filter((painting) => painting.variantId === variantId) },
 	queryFn: () => {
 		if (conversationId === null) throw new Error("No Chat selected.");
-		return requestData(api.api.conversations({ id: conversationId }).illustrations.get(), illustrationsRead);
+		return requestData(api.api.conversations({ id: conversationId }).illustrations.get(), illustrationsResponse[200]);
 	},
 });
 export const useGallery = (conversationId: number) => useQuery({
 	queryKey: ["gallery", conversationId], meta: followsChanges,
-	queryFn: () => requestData(api.api.conversations({ id: conversationId }).gallery.get(), galleryRead),
+	queryFn: () => requestData(api.api.conversations({ id: conversationId }).gallery.get(), galleryResponse[200]),
 });
 
-export const commandPainting = (conversationId: number, command: PaintingCommand) => requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingAccepted, paintingErrors);
+const commandPainting = (conversationId: number, command: PaintingCommand) => requestOutcome(api.api.conversations({ id: conversationId }).illustrations.commands.post(command), paintingCommandResponse);
 
 export function usePaintingCommand(conversationId: number) {
 	const client = useQueryClient();
@@ -68,7 +69,7 @@ const setPending = (saves: ReferenceSaves, id: string, references: string | unde
 	notify(saves);
 };
 
-export const flushReferences = (client: QueryClient, conversationId: number): Promise<string | null> => {
+const flushReferences = (client: QueryClient, conversationId: number): Promise<string | null> => {
 	const saves = savesOf(conversationId);
 	clearTimeout(saves.timer);
 	saves.saving = saves.saving.then(async () => {
@@ -147,7 +148,7 @@ export function useImageModel() {
 		const result = await imageModelClient.save({ type: "apply", expectedRevision: read.data.revision, profileId, model });
 		if (result.outcome === "available") client.setQueryData(["image-model"], result.value.settings);
 		else if (result.outcome === "conflict") {
-			client.setQueryData(["image-model"], result.currentSettings);
+			client.setQueryData(["image-model"], result.current);
 			setError("The Image Model changed elsewhere. Choose again.");
 		} else setError(result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : "The Image Model could not be saved.");
 	};

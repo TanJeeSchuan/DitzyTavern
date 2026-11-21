@@ -1,10 +1,12 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../../test-fixtures/conversation";
+import { createFakeModelClient } from "../../test-fixtures/model-client";
+import { emptyPromptChannels } from "../../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../../test-fixtures/conversation";
 import { executeConversationCommand} from "../../conversation";
 import { openObservedDatabase } from "../../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { type ParticipantDefinition } from "../../conversation";
-import { createFakeModelClient, type ModelClientGenerationInput } from "../../model-client";
+import { type ModelClientGenerationInput } from "../../model-client";
 import {
 	runGenerationLifecycle,
 } from "..";
@@ -15,19 +17,12 @@ import {
 // there, so these tests drive the workflow entry points rather than any
 // internal derivation.
 
-const definition = (name: string): ParticipantDefinition => ({
-	name,
-	prompt: {
+const definition = (name: string): ParticipantDefinition => participantDefinition(name, { prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "Write well.",
 		identity: "I am {{self}}.",
-		appearance: "",
 		scenario: "A quiet room.",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
-	},
-	sendAppearanceImages: true,
-	openings: [],
-});
+	} });
 
 interface HistoryRole {
 	speakerName: string | null;

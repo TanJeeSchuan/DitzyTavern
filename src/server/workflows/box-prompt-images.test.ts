@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, expect, test } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
@@ -10,8 +11,9 @@ import { writeMessageMoves } from "../box/moves";
 import { uploadImage } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { importNativePromptPreset, selectConversationPromptPreset } from "../prompt-preset";
-import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState } from "../test-fixtures/conversation";
-import { captureGeneration, modelRequestFor, withGenerationBoxOperations } from "./generate-capture";
+import { createConversationWithHistory, insertBox, openObservedDatabase, setBoxState, participantSeed } from "../test-fixtures/conversation";
+import { toMessages } from "../model-client/chat-messages";
+import { captureGeneration, withGenerationBoxOperations } from "./generate-capture";
 import { captureGenerationPreview, createGenerationPreviewAsync } from "./generation-preview";
 
 const macroReference = (name: string, hash: string) => `![${name}](image:{{trim}}${hash})`;
@@ -39,11 +41,11 @@ const fixture = async (literal = false, instructions: (hash: string) => string =
 	};`);
 	await loadBoxes([builtInBoxes, folder]);
 	cleanup.push(async () => { await loadBoxes([builtInBoxes]); rmSync(folder, { recursive: true, force: true }); });
-	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const prompt = emptyPromptChannels();
 	const chat = createConversationWithHistory(database, {
 		name: "Images", participants: [
-			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [], portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } } },
+			participantSeed("Writer", { prompt }),
+			participantSeed("Maren", { prompt, portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } }),
 		], control: { human: 0, model: 1 },
 		messages: [0, 1].map((authorParticipantIndex) => ({
 			timestamp: "2026-11-10T00:00:00Z", authorParticipantIndex,
@@ -73,7 +75,7 @@ test.each([false, true])("a sandboxed advance's Image Reference sends pixels and
 	setup(formatImageReference("scene", owned.hash));
 	const { plan } = await capture();
 	expect(plan.promptPlan.images).toMatchObject([{ hash: owned.hash, name: "scene", disposition: "send", tokens: 1500 }]);
-	expect(plan.budget.tokenEstimate).toBe(1500);
+	expect(plan.budget.breakdown.tokenEstimate).toBe(1500);
 });
 
 test("the trusted Author Note sends the writer's Image References without a Box grant", async () => {
@@ -90,7 +92,7 @@ test.each([formatImageReference, macroReference])("an unchanged preview keeps it
 	setup(reference("portrait", portrait.hash));
 	const target = { kind: "send", content: "Look." } as const;
 	const context = { database, conversationId: chat.id, connection: null };
-	const record = await createGenerationPreviewAsync(database, { ...context, ...target });
+	const record = await createGenerationPreviewAsync(database, { ...context, target });
 	const capture = await withGenerationBoxOperations(context, () => captureGenerationPreview(context, { record, editedPlan: record.capture.plan.promptPlan }, target));
 	expect(capture.plan.promptPlan.images).toEqual([]);
 	expect(capture.plan.promptPlan.warnings).toContainEqual({ block: "Probe Box", macro: "portrait", reason: "ungranted-image" });
@@ -112,7 +114,7 @@ test.each([false, true])("sandboxed items and rendered Moves send only granted i
 		{ block: "Probe Box", macro: "stray", reason: "ungranted-image" },
 		{ block: "Probe Box", macro: "portrait", reason: "ungranted-image" },
 	]));
-	expect(plan.budget.tokenEstimate).toBe(1500);
+	expect(plan.budget.breakdown.tokenEstimate).toBe(1500);
 });
 
 test("macro-built item references cannot send ungranted images or Cast Portraits", async () => {
@@ -178,7 +180,7 @@ test("writer edits to a preview may add an ungranted image to the Box block", as
 	setup(macroReference("portrait", portrait.hash));
 	const target = { kind: "send", content: "Look." } as const;
 	const context = { database, conversationId: chat.id, connection: null };
-	const record = await createGenerationPreviewAsync(database, { ...context, ...target });
+	const record = await createGenerationPreviewAsync(database, { ...context, target });
 	const editedPlan = structuredClone(record.capture.plan.promptPlan);
 	const block = editedPlan.blocks.find(({ kind }) => kind === "box:probe");
 	if (block === undefined) throw new Error("The fixture has no Box block.");
@@ -204,12 +206,15 @@ test.each(["send", "sibling", "continuation"] as const)("%s keeps rendered Moves
 	const target = kind === "send" ? { kind, content: prose, moves: { probe: [rendered] } }
 		: kind === "sibling" ? { kind, messageId: modelMessage.id, reroll: true } : { kind };
 	if (kind === "continuation") {
-		database.query("UPDATE conversation_generation_settings SET continuation_strategy = 'assistant-prefill' WHERE conversation_id = ?").run(chat.id);
+		database.query("UPDATE conversation_generation_settings SET settings_json = json_set(settings_json, '$.continuationStrategy', 'assistant-prefill') WHERE conversation_id = ?").run(chat.id);
 		writeMessageMoves(drizzle(database), modelMessage.id, { probe: [formatImageReference("prefix", portrait.hash)] });
 	}
 	const capture = await captureGeneration(database, target, options);
 	const { plan } = capture;
-	if (kind === "continuation") expect(modelRequestFor(capture, { signal: undefined }).assistantPrefill?.prefix).toBe("[Image: prefix]\nEarlier prose.");
+	if (kind === "continuation") {
+		expect(toMessages({ promptPlan: plan.promptPlan }, () => undefined).at(-1))
+			.toMatchObject({ role: "assistant", content: "[Image: prefix]\nEarlier prose." });
+	}
 	expect(plan.promptPlan.images.every(({ name }) => name === "scene" || name === "writer")).toBe(true);
 	expect(plan.promptPlan.images.some(({ name, disposition }) => name === "writer" && disposition === "send")).toBe(true);
 	expect(plan.promptPlan.blocks.find(({ kind }) => kind === "history")?.content).toBe(`${formatImageReference("scene", owned.hash)} [Image: blocked] ${macroReference("literal", portrait.hash)}\n${prose}`);

@@ -24,13 +24,24 @@ A plugin is a Box folder installed into a running DitzyTavern without rebuilding
 
 ## Row References and stored values
 
+A Box has four places for data about one Chat. Pick by who writes it and whether it follows the story:
+
+| Store | Shape | Written by | Follows swipes and Forks | When the Box is removed |
+|---|---|---|---|---|
+| `record` | one per Variant, folded along the selected path | the Box's hooks | swipes and Forks | kept with history |
+| `setup` | one document | the writer, with `set-box-setup` | Forks only | cleared |
+| `values.chat` | one document per declared key, each with its own revision | the Box's server code, with `putChatValue` | Forks only | cleared |
+| Library value | shared by every Chat | the Box's server code | no | kept |
+
+`setup` is the writer's configuration. `values.chat` is for Chat state the Box maintains itself and that must stay put when the writer swipes back: a cursor, a cache, a label table. Only a trusted Box can write a Chat value, since `commit-box` takes Library, Character and Participant owners.
+
 Declare every Chat and Participant value key in `values.chat` or `values.participant`, with a TypeBox schema for its JSON value. The loader rejects invalid schemas; writes to undeclared keys fail. Library and Character values need no declaration. When a Character seeds a Participant, a loaded Box's Character values are copied only if declared for Participants; an unloaded Box's values are all copied, since there is no descriptor to check them against. Host-owned Chat keys such as `setup` are not Box values.
 
 Use `MessageId`, `VariantId`, and `ParticipantId` from `@/box-sdk/shared` wherever setup, Moves, records, traces, or declared values contain those row ids. For Participant-keyed records use `Type.Record(ParticipantKey, valueSchema)`. These schemas mark Row References so a Fork can rewrite them to copied rows. A missing reference fails the Fork with its path; traces retain missing ids. TypeBox retains `ParticipantKey`'s distinctive digit pattern when building the record, so use the SDK schema instead of spelling that pattern yourself.
 
 ## Hooks
 
-### `label`, `summary`, `role`, `startsEnabled`, `instructions`, `alwaysRender`, `block`
+### `label`, `summary`, `role`, `startsEnabled`, `prompt`, `instructions`, `alwaysRender`, `block`
 
 | Key | The host uses it for |
 |---|---|
@@ -38,6 +49,7 @@ Use `MessageId`, `VariantId`, and `ParticipantId` from `@/box-sdk/shared` wherev
 | `summary` | the Box manager's line for a Box that is not in the Chat yet, and a Box whose client module did not load |
 | `role` | the outgoing role of the Box's preset block (`system`, `user` or `assistant`) until an author changes it |
 | `startsEnabled` | `defaultBoxIds()`: the Boxes a new Chat starts with |
+| `prompt: false` | leaves the Box out of Prompt Presets and Generations |
 | `instructions` | the text a new [preset block](host.md#preset-block) starts with, and what its Reset action restores |
 | `alwaysRender` | renders the block when `advance` returns no items, for a Box whose instructions are its whole contribution |
 | `block` | the preset editor's `{ description, source }` for the block, in place of "Uses the `<label>` Box when it is enabled in this Chat." from "This Chat" |
@@ -155,7 +167,15 @@ const useThoughts = (conversation: ConversationSummary) => useBoxRead(conversati
 
 ### `routes`
 
-Routes the Box serves beside the host's, as an Elysia app built from the database. The server builds it once, when it loads the Box, for the database it serves, and mounts it under `/api/boxes/<id>` there. It refuses the Box if building throws, returns anything but an Elysia app, or mounting throws. Its `/settings` is `/api/boxes/<id>/settings`; the host's own `/api/boxes/<id>/decision-settings` and `/api/boxes/<id>/delegate-settings` are there too, so name none of them that. Declare their schemas in `contract.ts` and export the app's type, `export type <Id>Routes = ReturnType<typeof <id>Routes>`. The client calls them with `boxApi<<Id>Routes>("<id>")` from the client SDK, an Eden client rooted at that prefix, as Memory's `client-api.ts` does. Only Memory declares routes; a Box with a window reads through `read` instead.
+Routes the Box serves beside the host's, as an Elysia app built from the database and `exportsOf(conversationId)`, which answers every Box's declared [Exports](#exports) enabled in one Chat, the only reach into another Box's state. The server builds it once, when it loads the Box, for the database it serves, and mounts it under `/api/boxes/<id>` there. It refuses the Box if building throws, returns anything but an Elysia app, or mounting throws. Its `/settings` is `/api/boxes/<id>/settings`; the host's own `/api/boxes/<id>/decision-settings` and `/api/boxes/<id>/delegate-settings` are there too, so name none of them that. Declare their schemas in `contract.ts` and export the app's type, `export type <Id>Routes = ReturnType<typeof <id>Routes>`. The client calls them with `boxApi<<Id>Routes>("<id>")` from the client SDK, an Eden client rooted at that prefix, as Memory's `client-api.ts` does. A route that streams answers with `subscriptionEvents` from the server SDK, as the Character Drafter's draft stream does: closing the stream calls the cleanup it returns. Memory and the Character Drafter declare routes; a Box with a window that only shows its state reads through `read` instead.
+
+### `exports`
+
+Read-only answers another Box's route handler asks for, declared in both places under the same names. The descriptor's `exports` maps each name to `{ description, input, output }`, the last two schemas; the server Box's `exports` maps it to a function taking `(input, { database, conversationId })` and answering synchronously. An Export that takes no input declares `Type.Undefined()` as its `input`, so its function's first parameter is `undefined` itself. The loader refuses a Box whose two sides name different Exports, and a sandboxed Box may not declare any, so its `descriptor.json` refuses the key.
+
+Nothing in a Generation reaches an Export. A Box's `routes` receive `exportsOf(conversationId)` from the host, which answers every Box enabled in that Chat that declares Exports, each wrapped so its input is checked against the declared `input` schema and its answer against the `output` schema, after refusing an answer that is not plain JSON, such as a Promise, failing naming the Box, the Export and the path, and carrying its declared `description`, `input` and `output`, so a caller can hand an agent its signature; only those routes hold it, as [the rule](README.md#the-rules) records, and a Box's throw crosses to the route that called it.
+
+Each Export's server side is typed from the descriptor's schemas, their one home: annotate the map `ExportsOf<typeof descriptor.exports>` from the server SDK, and each function's input, context and answer type themselves — so a missing or extra name, an answer the output schema's type rejects, or a one-parameter function that would read the context from the input slot fails to compile. A Box with Exports passes `ExportsOf<typeof descriptor.exports>` as `Box`'s seventh type parameter, as Memory does. Memory's Exports are the example: `people()` lists the person labels on the Selected narrative path after the Chat's label merges, and `selectedClaims()` returns the effective Claims on that path with their resolved people and source Messages.
 
 ### Client surfaces
 
@@ -205,7 +225,7 @@ The host wraps `Component` in an `<aside className="details-panel" data-open="tr
 
 `TraceView` receives `{ conversationId, trace, onNavigateSource? }`, where `trace` is that Box's `BoxTrace` from `box_traces_json`. The host renders it in active Generation inspection, saved Variant details and Prompt Plan preview whenever a captured trace exists, regardless of the Box's current Chat state. In a preview, `trace.finalText` follows the editable block, or becomes empty if that block was removed. The Box checks its own trace schema and owns its display and source links; the host never reads the trace payload.
 
-The client SDK exports the surface types, shared controls and dialogs, `PanelHeader`, `SaveFooter`, `ProfileModelPicker`, numeric controls, `useConnectionSettingsQuery`, `useAsyncEffect`, `useSaveGuard`, `useBoxRead`, conversation commands, and digest/catch-up requests. Box-specific requests stay in the Box and use `boxApi`.
+The client SDK exports the surface types, shared controls and dialogs, `PanelHeader`, `SaveFooter`, `ProfileModelPicker`, numeric controls, `useConnectionSettingsQuery`, `useAsyncEffect`, `useSaveGuard`, `useBoxRead`, `CodeView`, conversation commands, digest/catch-up requests, and `openDefinitionDraft(draft, { conversationId, replaces?, onOpened })`, which opens the core Definition editor on a drafted name and Prompt with Add to Cast, Save as Character and, with `replaces`, Replace; the core makes every write. The workspace calls `onOpened` after the unsaved-changes guard approves navigation. Box-specific requests stay in the Box and use `boxApi`.
 
 ### `lens`
 
@@ -236,3 +256,15 @@ Each file in `src/boxes/<id>/` takes its layer from its name. A layer with sever
 | `client*.ts(x)` | client | the registered surfaces and their helpers | `@/box-sdk/client`, `@/box-sdk/shared` |
 
 The layer rules read Box file names too: a `client*` file imports `server*` code only for types, a `shared*` or `contract*` file imports neither, and a `Type.Object` in a `server*` or `client*` file fails `bun run lint`. The SDK entries re-export only what the built-in Boxes use; read them for the list. The server entry exports no table: a Box reaches its stored data through the reads and writes in [Storage](host.md#storage), and a host fact it checks through a read of its own, such as `readProfileApiFormat` for a Connection Profile's API format, so a change to the host's schema changes no Box. When a Box needs something else from the host, add it to its layer's entry.
+
+
+## The code agent
+
+`runCodeAgent(database, { boxId, instructions, globals, submitSchema, verify, signal, onActivity })` runs a libfx agent for a trusted Box. Built-in Boxes and trusted plugins can import it from `@/box-sdk/server`. The SDK is unavailable to sandboxed Boxes. The agent explores frozen `globals` by writing JavaScript and submits a schema-checked draft.
+
+The agent uses the Default delegate model set in Connections and requires a Chat Completions profile. `codeAgentUnavailable(database)` returns the reason a run would be refused. Call the agent from the Box's `routes` and pass a signal that aborts when the writer's request closes. [Delegate setting](#delegate-and-delegateapply)
+
+- **The globals.** Each entry in `globals` has a description, schema, and value. The runtime freezes the value and prevents the agent from reassigning or deleting its name. The agent's instructions include a type for each global. Identifier names use `declare const <name>: <type>`. Other names appear in a comment showing bracket access, such as `globalThis["world-clock"]`. A function can appear inside an object or array. It accepts up to one JSON input.
+- **`run(code)`.** One QuickJS context lasts the whole run. The host shares the compiled WebAssembly module with sandboxed Boxes. Each runtime has its own instance and memory, capped at 128 MiB. Each call evaluates code and runs queued Promise callbacks under the same 2 s deadline. Variables persist across calls. Guest code runs without network, filesystem, clock, or `Math.random` access. It can call `console.log` and functions supplied as globals. The tool returns the logs and the final evaluation value as JSON, with an 8 KiB limit and a notice if output was cut. A guest error appears in the tool result. Exceeding the memory or time limit ends the run.
+- **`submit(draft)`.** The draft is checked against `submitSchema`, then `verify(draft)`, whose returned string refuses it; either refusal goes back to the model as a tool error with its reason. The first valid submit ends the run and is its result.
+- **The run.** Model requests and tool calls count against one 24-step cap (`CODE_AGENT_STEPS`), counted as `delegate.ts` counts them, and a run that ends, fails or is cancelled leaves no QuickJS context behind. `onActivity` receives each `run` as `{ summary, code, output }`, a one-line summary of the code with its full text and reply, for the writer to watch while it runs.

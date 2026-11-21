@@ -6,12 +6,12 @@ import { drizzle, type BunSQLiteDatabase } from "drizzle-orm/bun-sqlite";
 import { boxReference, type BoxDescriptor, type BoxId } from "../../shared/contract/box";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { ParticipantKey } from "../../shared/contract/box-row-reference";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { openInitializedDatabase } from "../database/database";
 import { conversationDataTable, conversationTable, messageDataTable, messageTable, messageVariantDataTable, messageVariantTable, participantDataTable, participantTable } from "../database/schema";
 import type { LoadedBox } from "../box/registry";
 import { holdsRowReferences } from "../box/row-references";
-import { isHostChatKey } from "../box/setup";
+import { boxSetupRefusal, isHostChatKey } from "../box/setup";
 import { sha256 } from "../hash";
 
 const parsed = (text: string): BoxValue | undefined => {
@@ -47,7 +47,7 @@ const remappedPlaces = (schema: TSchema | undefined, path: string): string[] => 
 	return here;
 };
 /** @approved Every place a version's schemas name a row Fork remaps. */
-export const remappedRowPlaces = ({ setup, values, record, moves }: BoxDescriptor): string[] => [
+const remappedRowPlaces = ({ setup, values, record, moves }: BoxDescriptor): string[] => [
 	...remappedPlaces(setup?.schema, "setup"),
 	...Object.entries(values?.chat ?? {}).flatMap(([key, schema]) => remappedPlaces(schema, `chat value ${encodeURIComponent(key)}`)),
 	...Object.entries(values?.participant ?? {}).flatMap(([key, schema]) => remappedPlaces(schema, `participant value ${encodeURIComponent(key)}`)),
@@ -96,8 +96,7 @@ export const upgradeRefusals = (db: BunSQLiteDatabase, conversationId: number, f
 			if (descriptor.setup === undefined) refusals.push("Setup: this version takes none");
 			else if (!Value.Check(descriptor.setup.schema, stored)) refusals.push("Setup");
 			else {
-				let error: string | undefined;
-				try { error = box.setupError?.(stored, stored); } catch (thrown) { error = thrown instanceof Error ? thrown.message : String(thrown); }
+				const error = boxSetupRefusal(box, stored, stored);
 				if (error !== undefined) refusals.push(`Setup: ${error}`);
 			}
 		} else if (!isHostChatKey(key)) {

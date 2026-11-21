@@ -1,3 +1,4 @@
+import { generationTarget as target } from "./test-fixtures/conversation";
 import { describe, expect, test } from "bun:test";
 import type { GenerationEvent, GenerationStatePayload } from "../shared/contract/generation-events";
 import type { GenerationStreamResult } from "./conversation-stream";
@@ -18,15 +19,6 @@ import {
 // plus ordered effects out, so subscription phases, cursors, stop state,
 // errors, and terminal handling stay verifiable without React or a network.
 
-const target = (
-	generationId: number,
-	overrides: Partial<GenerationSessionTarget> = {},
-): GenerationSessionTarget => ({
-	generationId,
-	messageId: 900 + generationId,
-	variantId: 9_000 + generationId,
-	...overrides,
-});
 
 const targetsFor = (...generationIds: readonly number[]): readonly GenerationSessionTarget[] =>
 	generationIds.map((generationId) => target(generationId));
@@ -541,7 +533,7 @@ describe("the Generation session collection", () => {
 	});
 
 	test.each(["failed", "applied", "stopped"] as const)("a live session missing from a refreshed snapshot still observes its %s terminal outcome", (outcome) => {
-		const accepted = run(createGenerationSessions(), { type: "generation-accepted", target: { ...target(7), conversationId: 42 } });
+		const accepted = run(createGenerationSessions(), observed([7]));
 		const refreshed = run(accepted.state, observed([]));
 		expect(refreshed.state.sessions.has(7)).toBe(true);
 		expect(refreshed.effects).toEqual([]);

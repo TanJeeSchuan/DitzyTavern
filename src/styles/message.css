@@ -1,37 +1,5 @@
-.writer-message {
-	width: min(100%, 34rem);
-	margin: 0 0 2.8rem auto;
-	padding: 1rem 1.15rem 1.05rem;
-	border: 1px solid color-mix(in oklch, var(--accent) 28%, var(--border));
-	border-radius: 1rem;
-	background: var(--accent-softer);
-}
-
-.writer-message header {
-	display: flex;
-	align-items: center;
-	justify-content: space-between;
-	gap: 1rem;
-	margin-bottom: 0.55rem;
-}
-
-.writer-message header span {
-	color: var(--accent);
-	font-size: 0.74rem;
-	font-weight: 690;
-}
-
-.writer-message time,
 .message-meta {
 	font-variant-numeric: tabular-nums;
-}
-
-.writer-message p {
-	margin: 0;
-	color: color-mix(in oklch, var(--foreground) 88%, var(--accent));
-	font-family: var(--font-reading);
-	font-size: var(--font-reading-size);
-	line-height: 1.5;
 }
 
 .story-message {

@@ -1,9 +1,11 @@
+import { installFetch } from "./test-fixtures/conversation";
+import { emptyPromptChannels } from "../shared/definition";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createChatImportRoutes } from "../server/contract";
+import { createChatImportRoutes } from "../server/contract/chat-import";
 import { createCharacterLibraryModule } from "../server/character-library";
 import {
 	headerFixture as header,
@@ -22,17 +24,9 @@ import type { WirePayload } from "./lib/wire-decode";
 // the SillyTavern module seam tests, so no ground-truth payloads are
 // re-asserted here.
 
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const originalFetch = globalThis.fetch;
 const { commitImport, discardImport, previewImport, stageImport } = await import("./import-chat");
 
-const installFetch = (handler: (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>): void => {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-};
 
 const json = (status: number, payload: WirePayload): Response =>
 	new Response(JSON.stringify(payload), {
@@ -80,14 +74,7 @@ describe("Chat import client boundary", () => {
 			type: "create",
 			definition: {
 				name: "Writer",
-				prompt: {
-					systemInstruction: "",
-					identity: "",
-					appearance: "",
-					scenario: "",
-					exampleDialogue: "",
-					postHistoryInstruction: "",
-				},
+				prompt: emptyPromptChannels(),
 				sendAppearanceImages: true,
 				openings: [],
 			},

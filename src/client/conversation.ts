@@ -1,65 +1,46 @@
-import type { StaticDecode } from "@sinclair/typebox";
 import { api } from "./lib/eden";
-import type { BoxMoves } from "../shared/contract/box-generation";
 import type {
 	ConversationAction,
 	ConversationGenerationSettings,
 	ConversationSummary,
 	ForkConversationBody,
 	GenerationPreviewBody,
-	GenerationFormattingContext,
-	PromptPlan,
+	GenerationBody,
 } from "../shared/contract/conversation-schema";
 import {
-	activeGenerationDetails,
-	castCharacterErrors,
-	characterAppliedResponse,
-	conversationAppliedResponse,
-	conversationCommandErrors,
-	conversationConflictErrors,
-	conversationGenerationSettings,
-	conversationSummary,
-	forkConversationResponse,
-	generationAccepted,
-	generationPreview,
-	generationPreviewErrors,
-	generationStartErrors,
-	generationStopped,
-	generationsStopped,
-	variantDetails,
+	addCharacterToCastResponse,
+	conversationCommandResponse,
+	conversationForkResponse,
+	conversationGenerationSettingsResponse,
+	conversationReadResponse,
+	generationInspectionResponse,
+	generationPreviewResponse,
+	generationStartResponse,
+	generationStopResponse,
+	generationsStopResponse,
+	saveParticipantAsCharacterResponse,
+	variantDetailsResponse,
 } from "../shared/contract/conversation-schema";
-import { macroVariables, macroVariablesAppliedResponse } from "../shared/contract/macro-variables";
-import type { MacroValue } from "../shared/contract/macro-variables";
-import { notFoundOutcome, readOutcomeErrors } from "../shared/contract/outcomes";
-import type { ConversationPromptPreset } from "../shared/contract/prompt-preset";
-import { conversationPromptPreset } from "../shared/contract/prompt-preset";
-import { foundOrNull, requestData, requestOutcome, type RequestOutcome } from "./lib/request-outcome";
+import { macroVariablesEditResponse, macroVariablesReadResponse, type MacroValue } from "../shared/contract/macro-variables";
+import { conversationPromptPresetResponse, type ConversationPromptPreset } from "../shared/contract/prompt-preset";
+import { foundOrNull, requestData } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
 
 export type {
 	ActiveGenerationDetails,
 	CastParticipant,
 	ConversationAction,
 	ConversationControl,
-	ConversationControlValidity,
 	ConversationGenerationSettings,
 	ConversationSummary,
 	ContinuationPrefillSuffix,
 	GenerationInspectionStatus,
 	GenerationProvenance,
 	GenerationRequestOverrides,
-	ParticipantDefinition,
 	VariantDetails,
-	LoreActivationRecord,
 } from "../shared/contract/conversation-schema";
-export type { MacroVariable, MacroVariables, MacroVariablesEditBody } from "../shared/contract/macro-variables";
+export type { MacroVariable, MacroVariables } from "../shared/contract/macro-variables";
 export type { GenerationPreview, GenerationPreviewBody } from "../shared/contract/conversation-schema";
-export type { PromptChannels } from "../shared/contract/prompt-schema";
-export type {
-	GenerationStreamDelta,
-	GenerationStreamResult,
-	GenerationStreamState,
-} from "./conversation-stream";
-export { subscribeConversationGeneration } from "./conversation-stream";
 
 export async function loadConversation(
 	conversationId: number,
@@ -67,8 +48,7 @@ export async function loadConversation(
 ): Promise<ConversationSummary | null> {
 	return foundOrNull(await requestOutcome(
 		api.api.conversations({ id: conversationId }).get({ fetch: { signal } }),
-		conversationSummary,
-		notFoundOutcome,
+		conversationReadResponse,
 	));
 }
 
@@ -89,13 +69,12 @@ export async function applyConversationCommand(
 			expectedRevision,
 			action,
 		}),
-		conversationAppliedResponse,
-		conversationCommandErrors,
+		conversationCommandResponse,
 	);
 }
 
 export async function forkConversation(conversationId: number, body: ForkConversationBody) {
-	return requestOutcome(api.api.conversations({ id: conversationId }).fork.post(body), forkConversationResponse, conversationCommandErrors);
+	return requestOutcome(api.api.conversations({ id: conversationId }).fork.post(body), conversationForkResponse);
 }
 
 export async function addCharacterToCast(input: {
@@ -112,8 +91,7 @@ export async function addCharacterToCast(input: {
 				characterId: input.characterId,
 				expectedCharacterRevision: input.expectedCharacterRevision,
 			}),
-		conversationAppliedResponse,
-		castCharacterErrors,
+		addCharacterToCastResponse,
 	);
 }
 
@@ -127,8 +105,7 @@ export async function saveParticipantAsCharacter(input: {
 			.conversations({ id: input.conversationId })
 			.cast.participants({ participantId: input.participantId })
 			.characters.post({ expectedConversationRevision: input.expectedConversationRevision }),
-		characterAppliedResponse,
-		conversationConflictErrors,
+		saveParticipantAsCharacterResponse,
 	);
 }
 
@@ -138,7 +115,7 @@ export async function loadConversationGenerationSettings(
 ): Promise<ConversationGenerationSettings> {
 	return requestData(
 		api.api.conversations({ id: conversationId })["generation-settings"].get({ fetch: { signal } }),
-		conversationGenerationSettings,
+		conversationGenerationSettingsResponse[200],
 	);
 }
 
@@ -149,8 +126,7 @@ export async function loadConversationPromptPreset(
 ): Promise<ConversationPromptPreset | null> {
 	return foundOrNull(await requestOutcome(
 		api.api.conversations({ id: conversationId })["prompt-preset"].get({ query: { presetId }, fetch: { signal } }),
-		conversationPromptPreset,
-		notFoundOutcome,
+		conversationPromptPresetResponse,
 	));
 }
 
@@ -162,12 +138,11 @@ export async function loadMacroVariables(
 		api.api
 			.conversations({ id: conversationId })["macro-variables"]
 			.get({ query: input }),
-		macroVariables,
-		readOutcomeErrors,
+		macroVariablesReadResponse,
 	);
 }
 
-export type MacroVariableEditResult = RequestOutcome<StaticDecode<typeof macroVariablesAppliedResponse>, StaticDecode<typeof conversationConflictErrors>>;
+export type MacroVariableEditResult = Awaited<ReturnType<typeof editMacroVariable>>;
 
 export async function editMacroVariable(
 	conversationId: number,
@@ -181,8 +156,7 @@ export async function editMacroVariable(
 		api.api
 			.conversations({ id: conversationId })["macro-variables"]
 			.post(input),
-		macroVariablesAppliedResponse,
-		conversationConflictErrors,
+		macroVariablesEditResponse,
 	);
 }
 
@@ -195,8 +169,7 @@ export async function loadActiveGenerationDetails(
 			.conversations({ id: conversationId })
 			.generations({ generationId })
 			.inspection.get(),
-		activeGenerationDetails,
-		readOutcomeErrors,
+		generationInspectionResponse,
 	);
 }
 
@@ -211,8 +184,7 @@ export async function loadVariantDetails(
 			.messages({ messageId })
 			.variants({ variantId })
 			.details.get(),
-		variantDetails,
-		readOutcomeErrors,
+		variantDetailsResponse,
 	);
 }
 
@@ -223,8 +195,7 @@ export async function previewConversationGeneration(
 ) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).generations.preview.post(input, { fetch: { signal } }),
-		generationPreview,
-		generationPreviewErrors,
+		generationPreviewResponse,
 	);
 }
 
@@ -233,53 +204,10 @@ export async function previewConversationGeneration(
 //  stream. Call subscribeConversationGeneration separately for each observing
 // client, including clients that reconnect after a reload.
 
-export async function startConversationGeneration(
-	conversationId: number,
-	expectedRevision: number,
-	content: string,
-	moves: BoxMoves | undefined,
-	formatting?: GenerationFormattingContext,
-	preview?: { previewId: string; promptPlan: PromptPlan },
-	signal?: AbortSignal,
-) {
+export async function startConversationGeneration(conversationId: number, input: GenerationBody, signal?: AbortSignal) {
 	return requestOutcome(
-		api.api.conversations({ id: conversationId }).generations.post({ kind: "send", expectedRevision, content, moves, ...formatting, ...preview }, { fetch: { signal } }),
-		generationAccepted,
-		generationStartErrors,
-	);
-}
-
-export async function startConversationSiblingGeneration(
-	conversationId: number,
-	messageId: number,
-	formatting?: GenerationFormattingContext,
-	preview?: { previewId: string; promptPlan: PromptPlan },
-	signal?: AbortSignal,
-	reroll?: boolean,
-) {
-	return requestOutcome(
-		api.api.conversations({ id: conversationId }).messages({ messageId }).sibling.generations.post({
-			kind: "sibling",
-			reroll,
-			...formatting,
-			...preview,
-		}, { fetch: { signal } }),
-		generationAccepted,
-		generationPreviewErrors,
-	);
-}
-
-export async function startConversationContinuationGeneration(
-	conversationId: number,
-	expectedRevision: number,
-	formatting?: GenerationFormattingContext,
-	preview?: { previewId: string; promptPlan: PromptPlan },
-	signal?: AbortSignal,
-) {
-	return requestOutcome(
-		api.api.conversations({ id: conversationId }).continue.generations.post({ kind: "continuation", expectedRevision, ...formatting, ...preview }, { fetch: { signal } }),
-		generationAccepted,
-		generationStartErrors,
+		api.api.conversations({ id: conversationId }).generations.post(input, { fetch: { signal } }),
+		generationStartResponse,
 	);
 }
 
@@ -287,21 +215,18 @@ export async function startConversationContinuationGeneration(
 // Stop is an explicit server command. The caller may separately abort its
 //  local subscription after this request; closing that subscription alone never
 // reaches this function and therefore cannot cancel provider work.
-export type GenerationStopResult =
-	RequestOutcome<StaticDecode<typeof generationStopped> | StaticDecode<typeof generationsStopped>, StaticDecode<typeof notFoundOutcome>>;
+export type GenerationStopResult = Awaited<ReturnType<typeof stopConversationGeneration | typeof stopAllConversationGenerations>>;
 
 export async function stopConversationGeneration(conversationId: number, generationId: number) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).generations({ generationId }).stop.post({}),
-		generationStopped,
-		notFoundOutcome,
+		generationStopResponse,
 	);
 }
 
 export async function stopAllConversationGenerations(conversationId: number) {
 	return requestOutcome(
 		api.api.conversations({ id: conversationId }).generations["stop-all"].post({}),
-		generationsStopped,
-		notFoundOutcome,
+		generationsStopResponse,
 	);
 }

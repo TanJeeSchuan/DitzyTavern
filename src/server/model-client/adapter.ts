@@ -3,7 +3,7 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import type { ModelFetch } from "./model-fetch";
 
-export const MODEL_ADAPTERS = [
+const MODEL_ADAPTERS = [
 	"deepseek",
 	"openrouter",
 	"openai-compatible",

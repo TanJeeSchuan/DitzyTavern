@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { IllustrationActionsContext, type PaintTarget } from "../painting";
 import type { ComposerHandle } from "../story/Composer";
 import { PaintPanel } from "../PaintPanel";
@@ -10,6 +11,8 @@ import {
 	SaveNavigationContext,
 	UnsavedChangesDialog,
 	useSaveNavigation,
+	type CommitNavigation,
+	type SaveGuard,
 } from "../SaveGuard";
 import { ChatInformationPanel } from "../ChatInformationPanel";
 import { BoxBoundary } from "../box-windows/BoxBoundary";
@@ -20,12 +23,8 @@ import { PanelHeader } from "../PanelHeader";
 import { MacroVariablesPanel } from "../MacroVariablesPanel";
 import { PromptPlanPreviewPanel } from "../PromptPlanPreviewPanel";
 import { GenerationDetailsPanel } from "../GenerationDetailsPanel";
-import {
-	createStoryState,
-	previewNavigationNeedsConfirmation,
-	reduceStory,
-} from "../story";
-import type { Workspace, ChatSummary, ThemePreference } from "../workspace";
+import { isStoryReady, previewNavigationNeedsConfirmation } from "../story";
+import { invalidateChatLists, type ThemePreference } from "../workspace";
 import type { PrimaryPanelName } from "./types";
 import { NavigationDrawer, NavigationRail } from "./NavigationRail";
 import { NewChatSurface } from "./NewChatSurface";
@@ -56,11 +55,12 @@ import { runConversationCommand } from "../conversation-command-runner";
 import type { ForkConversationBody } from "../../shared/contract/conversation-schema";
 import { hasMoves } from "../../shared/contract/box-generation";
 import { VariantStreamsContext } from "../story/variant-streams";
+import { openedDefinitionDraft, requestedDefinitionDraft } from "../characters/definition-draft";
 
 const PROMPT_PLAN_INSPECTION_KEY = "ditzytavern.inspect-prompt-plan-before-generating";
 
 export function ActiveWritingWorkspace({
-	initialWorkspace,
+	initialChatId,
 	onNewChat,
 	newChatOpen,
 	onNewChatClose,
@@ -68,7 +68,7 @@ export function ActiveWritingWorkspace({
 	onImportLaunched,
 	onReload,
 }: {
-	initialWorkspace: Workspace & { activeChat: ChatSummary };
+	initialChatId: string;
 	onNewChat: () => void;
 	newChatOpen: boolean;
 	onNewChatClose: () => void;
@@ -76,7 +76,10 @@ export function ActiveWritingWorkspace({
 	onImportLaunched: (conversationId: number) => void;
 	onReload: () => void;
 }) {
-	const [story, dispatchStory] = useReducer(reduceStory, undefined, createStoryState);
+	const client = useQueryClient();
+	const session = useConversationSession({ initialChatId });
+	const { story, dispatchStory } = session;
+	const onNavigateSource = (messageId: number) => { void session.navigateToSourceMessage(messageId).catch(() => undefined); };
 	const [panelState, dispatchPanel] = useReducer(
 		(state: PanelCoordinationState, action: PanelCoordinationAction) => reducePanelCoordination(state, action, story.preview !== null),
 		undefined,
@@ -87,18 +90,25 @@ export function ActiveWritingWorkspace({
 	);
 	const [navigationOpen, setNavigationOpen] = useState(false);
 	const [delegateTarget, setDelegateTarget] = useState<{ box: BoxId; request: number }>();
-	const [forkAt, setForkAt] = useState<ForkConversationBody["at"] | null>(null);
+	const [forkRequest, setForkRequest] = useState<{ at: ForkConversationBody["at"]; commit: CommitNavigation } | null>(null);
 	const [forkNotice, setForkNotice] = useState<string | null>(null);
 	const saveNavigation = useSaveNavigation();
+	const inspectionNavigation = useSaveNavigation();
 	const paintNavigation = useSaveNavigation();
-	const registerPaintGuard = useCallback((guard: Parameters<typeof saveNavigation.registerSaveGuard>[0]) => {
-		const unregister = [saveNavigation.registerSaveGuard(guard), paintNavigation.registerSaveGuard(guard)];
+	const registerInspectionGuard = useCallback((guard: SaveGuard) => {
+		const unregister = [saveNavigation.registerSaveGuard(guard), inspectionNavigation.registerSaveGuard(guard)];
 		return () => unregister.forEach((remove) => remove());
-	}, [saveNavigation.registerSaveGuard, paintNavigation.registerSaveGuard]);
+	}, [saveNavigation.registerSaveGuard, inspectionNavigation.registerSaveGuard]);
+	const registerPaintGuard = useCallback((guard: SaveGuard) => {
+		const unregister = [registerInspectionGuard(guard), paintNavigation.registerSaveGuard(guard)];
+		return () => unregister.forEach((remove) => remove());
+	}, [registerInspectionGuard, paintNavigation.registerSaveGuard]);
+	const registerWorkspaceGuard = useCallback((guard: SaveGuard) =>
+		guard.save === undefined ? registerInspectionGuard(guard) : saveNavigation.registerSaveGuard(guard),
+	[registerInspectionGuard, saveNavigation.registerSaveGuard]);
 	const [theme, setPersistedTheme] = useThemePreference();
 	const [swipeBrowsing, setSwipeBrowsing] = useSwipeBrowsing();
 
-	const session = useConversationSession({ initialWorkspace, story, dispatchStory });
 	const connectionSettings = useConnectionSettingsController();
 	const generationSettings = useGenerationSettingsDraft({
 		conversation: session.conversation,
@@ -114,7 +124,7 @@ export function ActiveWritingWorkspace({
 		refreshStory: session.refreshStory,
 		ensureLatest: session.ensureLatest,
 		inspectPromptPlanBeforeGenerating,
-		beforeInspect: paintNavigation.requestNavigation,
+		beforeInspect: inspectionNavigation.requestNavigation,
 	});
 	const assembly = generation.assembly;
 	const assemblyActive = assembly !== null;
@@ -129,7 +139,6 @@ export function ActiveWritingWorkspace({
 	const preview = usePreviewController({
 		signal: session.signal,
 		story,
-		conversation: session.conversation,
 		dispatchStory,
 		setConversation: session.setConversation,
 	});
@@ -151,11 +160,36 @@ export function ActiveWritingWorkspace({
 
 	// @approved
 	// Settings stays reachable during Prompt Plan inspection; it cannot change the captured plan.
-	const togglePanel = (panel: PrimaryPanelName) => {
-		if (assemblyActive && panel !== "settings") return;
+	const { inspectionLocked } = generation;
+	const panelAccess = useRef({ inspecting: inspectionLocked, swiping: story.preview !== null });
+	panelAccess.current = { inspecting: inspectionLocked, swiping: story.preview !== null };
+	const requestPrimaryPanel = useCallback((panel: PrimaryPanelName, action: () => void) => {
+		const canOpen = () => !panelAccess.current.inspecting || panel === "settings";
+		if (canOpen()) saveNavigation.requestNavigation(() => { if (canOpen()) action(); });
+	}, [saveNavigation.requestNavigation]);
+	const togglePanel = (panel: PrimaryPanelName) => requestPrimaryPanel(panel, () => {
 		setDelegateTarget(undefined);
 		dispatchPanel({ type: "primary-toggled", panel });
-	};
+	});
+
+	// @approved
+	//  A Box's draft for this Chat opens in the Characters panel once unsaved
+	// edits are dealt with; a draft for another Chat has nowhere to open.
+	useEffect(() => requestedDefinitionDraft.subscribe(() => {
+		const request = requestedDefinitionDraft.get();
+		if (request === null) return;
+		requestedDefinitionDraft.set(null);
+		const canOpen = () => !panelAccess.current.swiping && String(request.conversationId) === session.activeChatIdRef.current;
+		if (!canOpen()) return;
+		requestPrimaryPanel("characters", () => {
+			if (!canOpen()) return;
+			const { onOpened, ...draft } = request;
+			openedDefinitionDraft.set(draft);
+			setDelegateTarget(undefined);
+			dispatchPanel({ type: "primary-opened", panel: "characters" });
+			onOpened();
+		});
+	}), [session.activeChatIdRef, requestPrimaryPanel]);
 
 	const openConnections = (box?: BoxId) => saveNavigation.requestNavigation(() => {
 		if (box !== undefined) connectionSettings.closeEditor();
@@ -164,54 +198,55 @@ export function ActiveWritingWorkspace({
 	});
 
 	const openChat = (chatId: string, messageId: number | null = null) => {
-		dispatchStory({ type: "preview-cancelled" });
+		dispatchStory({ type: "preview-changed", preview: null });
 		if (chatId !== session.activeChatId) generation.conversationSwitched();
 		session.selectChat(chatId, messageId);
 		dispatchPanel({ type: "workspace-reset" });
 	};
 	const selectChat = (chatId: string, messageId: number | null = null) => {
-		// @approved
-		//  Workspace chat ids are wire strings; the story read model speaks
-		// numeric Conversation ids, so the coercion happens at this boundary.
-		if (
-			previewNavigationNeedsConfirmation(
-				story.preview,
-				Number(session.activeChatId),
-				Number(chatId),
-			) &&
-			!window.confirm("Discard Preview mode and open another Chat?")
-		) return;
-		openChat(chatId, messageId);
+		const open = () => openChat(chatId, messageId);
+		if (chatId === session.activeChatId) {
+			saveNavigation.requestNavigation(open);
+			return;
+		}
+		saveNavigation.requestChatLeave((commit) => {
+			if (previewNavigationNeedsConfirmation(story.preview, Number(session.activeChatId), Number(chatId)) &&
+				!window.confirm("Discard Preview mode and open another Chat?")) return;
+			commit(open);
+		});
 	};
 
 	const conversation = session.conversation;
 	const generationRunning = generation.isGenerating || (conversation?.activeGenerations.length ?? 0) > 0;
 	const fork = async (name: string, trimVariants: boolean): Promise<string | null> => {
-		if (conversation === null || forkAt === null) return "The Chat is not available.";
+		if (conversation === null || forkRequest === null) return "The Chat is not available.";
 		let error: string | null = null;
 		const applied = await runConversationCommand({
-			conversationId: conversation.id, revision: () => conversation.revision,
+			conversationId: conversation.id, revision: () => isStoryReady(story) ? story.revision : null, exact: true,
 			onConversationChange: session.setConversation, setNotice: (notice) => { error = notice; },
 			isCurrent: () => !session.signal.aborted,
 		}, async (revision) => {
-			const result = await forkConversation(conversation.id, { expectedRevision: revision, at: forkAt, name, trimVariants });
+			const result = await forkConversation(conversation.id, { expectedRevision: revision, at: forkRequest.at, name, trimVariants });
 			return result.outcome === "available" ? { outcome: "operation", operation: result.value } : result;
 		}, { onOperation: (result) => {
-			openChat(String(result.conversation.id));
-			if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
+			invalidateChatLists(client);
+			forkRequest.commit(() => {
+				openChat(String(result.conversation.id));
+				if (result.rewind) generation.restoreRewind(result.conversation, result.rewind);
+			});
 			setForkNotice(result.omittedBoxes.length ? `Boxes not copied because they are not installed: ${result.omittedBoxes.join(", ")}.` : null);
-			setForkAt(null);
+			setForkRequest(null);
 		} });
 		return applied ? null : error ?? "The Fork could not be created. Try again.";
 	};
 	const unlinkFork = () => {
 		if (conversation === null) return;
-		void runConversationCommand({ conversationId: conversation.id, revision: () => conversation.revision, onConversationChange: session.setConversation, setNotice: setForkNotice, isCurrent: () => !session.signal.aborted }, { type: "unlink-fork" });
+		void runConversationCommand({ conversationId: conversation.id, revision: () => conversation.revision, exact: true, onConversationChange: session.setConversation, setNotice: setForkNotice, isCurrent: () => !session.signal.aborted }, { type: "unlink-fork" });
 	};
 	const openForkSource = () => {
 		const source = conversation?.forkedFrom;
 		if (!source) return;
-		saveNavigation.requestNavigation(() => selectChat(String(source.conversationId), source.messageId));
+		selectChat(String(source.conversationId), source.messageId);
 	};
 	const boxWindows = useBoxWindows(conversation?.id ?? null);
 	const generationDetailsTarget = panelState.generationDetailsTarget;
@@ -277,32 +312,31 @@ export function ActiveWritingWorkspace({
 		<Toast.Provider duration={8_000} swipeDirection="right">
 		<div className="workspace" data-ambience="coral">
 			<div className="ambient-field" aria-hidden="true" />
-			<NavigationRail activePanel={panelState.primaryPanel} inspecting={assemblyActive} onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))} />
+			<NavigationRail activePanel={panelState.primaryPanel} inspecting={inspectionLocked} onOpenPanel={togglePanel} />
 			<NavigationDrawer
 				open={navigationOpen}
 				onOpenChange={setNavigationOpen}
 				activePanel={panelState.primaryPanel}
-				inspecting={assemblyActive}
-				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
+				inspecting={inspectionLocked}
+				onOpenPanel={togglePanel}
 			/>
 
-			<SaveGuardContext.Provider value={saveNavigation.registerSaveGuard}>
+			<SaveGuardContext.Provider value={registerWorkspaceGuard}>
 			<SaveNavigationContext.Provider value={saveNavigation.requestNavigation}>
 			<CoveredLayer inert={narrow && (newChatOpen || panelState.inspector !== null)}>
 			<PrimaryPanelView
 				panel={panelState.primaryPanel}
-				workspace={initialWorkspace}
-				activeChat={session.activeChat}
+				activeChatId={session.activeChatId}
 				theme={theme}
 				onThemeChange={setPersistedTheme}
 				swipeBrowsing={swipeBrowsing}
 				onSwipeBrowsingChange={setSwipeBrowsing}
 				inspectPromptPlanBeforeGenerating={inspectPromptPlanBeforeGenerating}
 				onInspectPromptPlanBeforeGeneratingChange={setInspectPromptPlanBeforeGenerating}
-				onSelectChat={(chatId) => saveNavigation.requestNavigation(() => selectChat(chatId))}
+				onSelectChat={selectChat}
 				onNewChat={onNewChat}
 				onClose={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-closed" }))}
-				onImportLaunched={onImportLaunched}
+				onImportLaunched={(id) => saveNavigation.requestChatLeave((commit) => commit(() => onImportLaunched(id)))}
 				onActiveChatDeleted={onReload}
 				conversation={session.conversation}
 				onConversationChange={session.setConversation}
@@ -312,8 +346,8 @@ export function ActiveWritingWorkspace({
 				onOpenInspector={(inspector: SplitInspector) => {
 					if (!assemblyActive) dispatchPanel({ type: "inspector-opened", inspector });
 				}}
-				mutationsDisabled={story.preview !== null}
-				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
+				mutationsDisabled={story.preview !== null || inspectionLocked}
+				onOpenPanel={togglePanel}
 				onOpenWindow={boxWindows.open}
 			/>
 			</CoveredLayer>
@@ -329,20 +363,20 @@ export function ActiveWritingWorkspace({
 				generation={generation}
 				preview={preview}
 				boxWindows={boxWindows}
-				onFork={(at) => saveNavigation.requestNavigation(() => {
+				onFork={(at) => saveNavigation.requestChatLeave((commit) => {
 					if ("rewind" in at && (generation.draft.get().trim() !== "" || hasMoves(generation.moves)) && !window.confirm("Replace the current draft and Moves with the rewound Message?")) return;
-					setForkAt(at);
+					setForkRequest({ at, commit });
 				})}
 				swipeBrowsing={swipeBrowsing}
-				onEnterPreview={(enter) => paintNavigation.requestNavigation(() => {
+				onEnterPreview={(enter) => inspectionNavigation.requestNavigation(() => {
 					dispatchPanel({ type: "preview-entered" });
 					onNewChatClose();
 					enter();
 				})}
 				onOpenNavigation={() => setNavigationOpen(true)}
-				onOpenCast={() => saveNavigation.requestNavigation(() => togglePanel("characters"))}
+				onOpenCast={() => togglePanel("characters")}
 				onOpenConnections={openConnections}
-				onOpenPanel={(panel) => saveNavigation.requestNavigation(() => togglePanel(panel))}
+				onOpenPanel={togglePanel}
 				onOpenInfo={() => {
 					if (assemblyActive) return;
 					saveNavigation.requestNavigation(() => dispatchPanel({ type: "chat-info-opened" }));
@@ -369,9 +403,9 @@ export function ActiveWritingWorkspace({
 					onPlanChange={generation.editPromptPlanPreview}
 					onRefresh={generation.refreshPromptPlanPreview}
 					onSend={generation.sendPromptPlanPreview}
-					onNavigateSource={session.navigateToSourceMessage}
+					onNavigateSource={onNavigateSource}
 					onClose={generation.cancelPromptPlanPreview}
-					onOpenSettings={() => saveNavigation.requestNavigation(() => togglePanel("settings"))}
+					onOpenSettings={() => togglePanel("settings")}
 				/>
 			)}
 			</CoveredLayer>
@@ -379,6 +413,7 @@ export function ActiveWritingWorkspace({
 			<CoveredLayer inert={narrow && newChatOpen}>
 			{!assemblyActive && panelState.detailsSurface === "paint" && panelState.paintTarget !== null && conversation !== null && (
 				<SaveGuardContext.Provider value={registerPaintGuard}>
+				<SaveNavigationContext.Provider value={paintNavigation.requestNavigation}>
 				<PaintPanel
 					key={`${conversation.id}:${panelState.paintTarget.requestId}`}
 					conversation={conversation} onConversationChange={session.setConversation} target={panelState.paintTarget}
@@ -388,12 +423,14 @@ export function ActiveWritingWorkspace({
 					}}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
+				</SaveNavigationContext.Provider>
 				</SaveGuardContext.Provider>
 			)}
 			{!assemblyActive && panelState.detailsSurface === "chat-info" && (
 				<ChatInformationPanel
+					key={session.activeChatId}
 					conversationId={Number(session.activeChatId)}
-					chatTitle={session.activeChat.title}
+					chatTitle={session.activeChatTitle}
 					conversation={session.conversation}
 					onConversationChange={session.setConversation}
 					onOpenForkSource={openForkSource}
@@ -410,7 +447,7 @@ export function ActiveWritingWorkspace({
 							onConversationChange={session.setConversation}
 							focusRequest={panelState.boxFocus}
 							onClose={() => dispatchPanel({ type: "details-closed" })}
-							onNavigateSource={session.navigateToSourceMessage}
+							onNavigateSource={onNavigateSource}
 							onOpenSettings={() => saveNavigation.requestNavigation(() => dispatchPanel({ type: "primary-opened", panel: `box-settings:${inspectorBox}` }))}
 							onOpenConnections={() => openConnections()}
 						/>
@@ -421,7 +458,7 @@ export function ActiveWritingWorkspace({
 			{!assemblyActive && panelState.detailsSurface === "generation-details" && generationDetailsTarget !== null && (
 				<GenerationDetailsPanel
 					target={generationDetailsTarget}
-					onNavigateSource={session.navigateToSourceMessage}
+					onNavigateSource={onNavigateSource}
 					onClose={() => dispatchPanel({ type: "details-closed" })}
 				/>
 			)}
@@ -442,7 +479,7 @@ export function ActiveWritingWorkspace({
 				/>
 			)}
 			</CoveredLayer>
-			{newChatOpen && <NewChatSurface onCreated={onNewChatCreated} onClose={onNewChatClose} />}
+			{newChatOpen && <NewChatSurface beforeCreate={saveNavigation.requestChatLeave} onCreated={onNewChatCreated} onClose={onNewChatClose} />}
 		</div>
 		<GenerationErrorToast
 			error={generation.generationError}
@@ -455,9 +492,10 @@ export function ActiveWritingWorkspace({
 			<Toast.Description className="workspace-toast-description">{forkNotice}</Toast.Description>
 			<Toast.Close className="icon-button" aria-label="Dismiss Fork notice"><X aria-hidden="true" /></Toast.Close>
 		</Toast.Root>}
-		{forkAt !== null && conversation !== null && <ForkDialog name={conversation.name} running={generationRunning} onClose={() => setForkAt(null)} onFork={fork} />}
+		{forkRequest !== null && conversation !== null && <ForkDialog name={conversation.name} running={generationRunning} onClose={() => setForkRequest(null)} onFork={fork} />}
 		<Toast.Viewport className="toast-viewport" />
 		<UnsavedChangesDialog {...saveNavigation.dialogProps} />
+		<UnsavedChangesDialog {...inspectionNavigation.dialogProps} />
 		<UnsavedChangesDialog {...paintNavigation.dialogProps} />
 		</Toast.Provider>
 		</VariantStreamsContext>

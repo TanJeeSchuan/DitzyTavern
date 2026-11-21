@@ -5,7 +5,7 @@ import { and, eq, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, messageVariantDataTable } from "../database/schema";
 import { illustration, keptImage, paintingSettings, referenceSet, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead, type ReferenceSet } from "../../shared/contract/painting";
-import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantData, readChatVariantIds, readChatVariants, readConversationSummary, readPaintPresetSettings, commandPaintPreset } from "../conversation";
+import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantData, readChatVariantIds, readChatVariants, readConversationSummary, readPaintPresetSettings } from "../conversation";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import { readImageModelSettings } from "./image-model-settings";
 import { paintImage, type ModelFetch } from "../model-client";
@@ -79,7 +79,6 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	};
 	const command = (conversationId: number, command: PaintingCommand) => {
 		requireChat(conversationId);
-		if (command.type === "select-paint-preset" || command.type === "set-brief-message-count") return commandPaintPreset(database, conversationId, command);
 		if (command.type === "set-aspect-ratio") return void writeChatRow(conversationId, "aspect-ratio", JSON.stringify({ aspectRatio: command.aspectRatio }));
 		const setName = (name: string) => {
 			if (!name.trim()) throw new InvalidConversationCommandError("Name the Reference Set.");

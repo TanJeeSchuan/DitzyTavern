@@ -1,8 +1,9 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { prepareConversationEffects } from "../application/conversation-effects";
 import { createGenerationPreviewAsync } from "../workflows/generation-preview";
 import { expect, test } from "bun:test";
-import { createConversationWithHistory, openObservedDatabase, checkpointFromStart } from "../test-fixtures/conversation";
-import { executeConversationCommand, readConversationSummary, observeConversationWrites, acceptConversationContinuationGeneration } from "../conversation";
+import { createConversationWithHistory, openObservedDatabase, checkpointFromStart, participantSeed, acceptTestGeneration } from "../test-fixtures/conversation";
+import { executeConversationCommand, readConversationSummary, observeConversationWrites } from "../conversation";
 import { createConnectionSettingsModule } from "../connection-settings";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
@@ -21,10 +22,10 @@ const setup = () => {
 	const connections = createConnectionSettingsModule(database);
 	connections.createProfile({ expectedRevision: 0, profile: { ...blankConnectionProfileDraft, displayName: "Painter", apiFormat: "images", adapter: "openrouter", requestUrl: "https://example.com/images" } });
 	applyImageModelSettings(database, { type: "apply", expectedRevision: 0, profileId: connections.get().profiles[0]!.id, model: "painter" });
-	const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+	const prompt = emptyPromptChannels();
 	const chat = createConversationWithHistory(database, { name: "Painting", participants: [
-		{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-		{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["First scene", "Other scene"] } },
+		participantSeed("Writer", { prompt }),
+		participantSeed("Maren", { prompt, openings: ["First scene", "Other scene"] }),
 	], control: { human: 0, model: 1 } });
 	const stop = watchDatabaseChanges(database);
 	return { database, chat, [Symbol.dispose]: () => { stop(); processStateFor(database).dispose(); database.close(); } };
@@ -41,7 +42,7 @@ test("an Illustration lands on its original Variant after a swipe without a Conv
 	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "painting", variantId }]);
 	expect(database.query("SELECT * FROM message_variant_data WHERE namespace = 'painting'").all()).toHaveLength(0);
 	const targets = [{ kind: "send", content: "Continue the scene" }, { kind: "continuation" }, { kind: "sibling", messageId: message.id }] as const;
-	const plans = async () => Promise.all(targets.map(async (target) => (await createGenerationPreviewAsync(database, { conversationId: chat.id, connection: null, ...target })).capture.plan.promptPlan));
+	const plans = async () => Promise.all(targets.map(async (target) => (await createGenerationPreviewAsync(database, { conversationId: chat.id, connection: null, target })).capture.plan.promptPlan));
 	const provisionalPlans = await plans();
 	expect(JSON.stringify(provisionalPlans)).not.toContain("Private painted scene");
 	const selected = executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "select-variant", messageId: message.id, variantId: message.variants[1]!.id } });
@@ -251,14 +252,9 @@ test("the gallery includes live Image References while a Generation is active", 
 	const { database, chat } = fixture;
 	const image = await uploadImage(database, pngFixture({ width: 72, height: 32 }));
 	const opening = chat.messages[0]!;
-	const active = acceptConversationContinuationGeneration(database, {
-		generationIntent: { type: "continuation", strategy: "instruction", instruction: "Continue." },
-		seed: "gallery-generation", conversationId: chat.id, expectedRevision: chat.revision, timestamp: "2026-11-12T00:00:00Z",
-		precedingMessageId: opening.id, precedingVariantId: opening.variants[0]!.id,
-		humanParticipantId: chat.control.humanParticipantId!, modelParticipantId: chat.control.modelParticipantId!,
-		capturedHumanName: "Writer", capturedModelName: "Maren", modelId: "fixture-model",
-		promptPlan: { blocks: [], warnings: [], images: [] },
-		promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+	const active = acceptTestGeneration(database, chat, { kind: "continuation", expectedRevision: chat.revision, intent: { type: "continuation", strategy: "instruction", instruction: "Continue." }, precedingMessageId: opening.id, precedingVariantId: opening.variants[0]!.id }, {
+		seed: "gallery-generation",
+		timestamp: "2026-11-12T00:00:00Z",
 	});
 	checkpointFromStart(database, { conversationId: chat.id, generationId: active.generationId, content: formatImageReference("Live picture", image.hash) });
 	expect(createPaintingModule(database).gallery(chat.id)).toEqual([{ hash: image.hash, name: "Live picture", source: "Message" }]);

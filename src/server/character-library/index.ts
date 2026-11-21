@@ -24,19 +24,14 @@ export { collectReleasedCharacterTombstones } from "./cleanup";
 // @approved
 //  Storage codec for the Prompt channels and Portrait columns shared by
 //  Character Definitions and Conversation Participants.
-export { fromPortraitColumns, toPromptChannelRow, toPromptChannels } from "./prompt-rows";
+export { fromPortraitColumns, toPromptChannelRow } from "./prompt-rows";
 // @approved
 //  Canonical copy-into-Conversation seam: the Library validates the
 // revision the caller read and projects the Definition with its provenance.
-export { forkCharacter, type CharacterFork } from "./fork";
+export { characterDefinitionOf, forkCharacter } from "./fork";
 export type {
-	CharacterDeletionImpact,
-	CharacterDeletionMode,
-	CharacterDeletionResult,
 	CharacterDefinition,
 	CharacterCommand,
-	CharacterDeletionCommand,
-	CharacterMutationCommand,
 	CharacterLibraryModule,
 	CharacterSnapshot,
 	CharacterLibrarySummary,

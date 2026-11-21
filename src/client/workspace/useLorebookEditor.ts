@@ -61,7 +61,7 @@ export function useLorebookEditor(bookId: number) {
 		onSuccess: (result, submission) => {
 			if (submission.signal.aborted) return;
 			if (result.outcome === "available" && result.value.outcome === "applied") cacheBook(result.value.book);
-			else if (result.outcome === "conflict") cacheBook(result.currentBook);
+			else if (result.outcome === "conflict") cacheBook(result.current);
 			else if (result.outcome === "available" && result.value.outcome === "deleted") {
 				client.removeQueries({ queryKey: ["lorebook", result.value.bookId] });
 				void client.invalidateQueries({ queryKey: ["lorebooks"] });
@@ -84,9 +84,9 @@ export function useLorebookEditor(bookId: number) {
 			return saved;
 		}
 		if (result.outcome === "conflict") {
-			dispatch(target.action({ type: "conflicted", submitted, theirs: target.project(result.currentBook, live.entryId) }));
+			dispatch(target.action({ type: "conflicted", submitted, theirs: target.project(result.current, live.entryId) }));
 			const lost = target.session(current())?.status === "conflict";
-			dispatch({ type: "applied", book: result.currentBook, notice: lost ? null : CHANGED_ELSEWHERE });
+			dispatch({ type: "applied", book: result.current, notice: lost ? null : CHANGED_ELSEWHERE });
 			return null;
 		}
 		dispatch(target.action({ type: "failed", submitted }));
@@ -143,7 +143,7 @@ export function useLorebookEditor(bookId: number) {
 				if (result.outcome === "available" && result.value.outcome === "applied" && result.value.book.id !== bookId) { onOpenBook?.(result.value.book.id, success); return; }
 				if (result.outcome === "available" && result.value.outcome === "applied") {
 					dispatch({ type: "applied", book: result.value.book, notice: success ?? null, enabled: action.type === "set-entry-enabled" && action.entryId === current().entryId ? action.enabled : undefined });
-				} else if (result.outcome === "conflict") dispatch({ type: "applied", book: result.currentBook, notice: CHANGED_ELSEWHERE });
+				} else if (result.outcome === "conflict") dispatch({ type: "applied", book: result.current, notice: CHANGED_ELSEWHERE });
 				else dispatch({ type: "notice", notice: failureNotice(result, "That Lorebook no longer exists.") });
 			},
 		});

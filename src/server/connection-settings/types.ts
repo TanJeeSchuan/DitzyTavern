@@ -10,24 +10,16 @@ import type {
 //  The shared wire contract is the canonical declaration of every Connection
 // Settings shape; the server-side types below derive from it so the two
 // representations can no longer drift apart.
-export type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
+type ConnectionApiFormat = ConnectionProfileDraftPayload["apiFormat"];
 
 export type ChatApiFormat = Exclude<ConnectionApiFormat, "embeddings" | "system-one" | "images">;
 export type SystemPlacement = ConnectionProfileDraftPayload["systemPlacement"];
-
-export type ModelBackend = ConnectionProfileDraftPayload["modelBackend"];
-
-export type ConnectionAdapter = ConnectionProfileDraftPayload["adapter"];
-
-export type OutputTokenRepresentation = ConnectionProfileDraftPayload["outputTokenRepresentation"];
 
 export type ConnectionHeaderOperation = ConnectionHeaderOperationPayload;
 
 // Null or zero disables inactivity expiry. A positive value is the maximum
 // quiet interval, not a total Generation duration.
 export type ConnectionProfileDraft = ConnectionProfileDraftPayload;
-
-export type RedactedHeader = ConnectionProfilePayload["headers"][number];
 
 export type ConnectionProfile = ConnectionProfilePayload;
 

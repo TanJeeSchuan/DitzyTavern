@@ -1,8 +1,7 @@
 import { api } from "./lib/eden";
-import { requestOutcome } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
 import { clientFormattingContext } from "./lib/formatting-context";
 import { nativeConversationResponse } from "../shared/contract/native-conversation";
-import { characterCommandErrors } from "../shared/contract/character-library";
 import type { PromptChannels } from "../shared/contract/prompt-schema";
 import { emptyPromptChannels } from "../shared/definition";
 
@@ -27,13 +26,6 @@ export type SeatDraft =
 			};
 	  };
 
-// @approved
-// The native-creation route's outcome is the wire's own: the created
-//  Conversation under `available`, the typed 409/404/422 envelopes verbatim,
-// network when the transport could not complete the request, and the shared
-// unusable fallback when the response could not be read.
-export type CreationOutcome = Awaited<ReturnType<typeof createNativeConversation>>;
-
 export const emptySeatDraft = (): Extract<SeatDraft, { type: "adhoc" }> => ({
 	type: "adhoc",
 	definition: { name: "", prompt: emptyPromptChannels(), sendAppearanceImages: true, openings: [] },
@@ -55,6 +47,5 @@ export async function createNativeConversation(input: {
 			...formatting,
 		}),
 		nativeConversationResponse,
-		characterCommandErrors,
 	);
 }

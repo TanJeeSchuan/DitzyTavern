@@ -8,7 +8,6 @@ import {
 	reduceChatImportFlow,
 } from "./import-chat-flow";
 import { PanelHeader } from "./PanelHeader";
-import type { ChatSummary } from "./workspace";
 
 // @approved
 //  Keep this host mounted while the panel is closed so an open import retains
@@ -20,12 +19,8 @@ interface ImportChatHostProps {
 	//  The Chats panel is currently open; the host keeps its state mounted
 	// across panel toggles and renders nothing while closed.
 	open: boolean;
-	chats: ChatSummary[];
 	activeId: string;
 	mutationsDisabled?: boolean;
-	// @approved
-	//  Library Characters the resolver can fork from.
-	characters: { id: number; name: string }[];
 	onSelect: (chatId: string) => void;
 	onNewChat: () => void;
 	onClose: () => void;
@@ -38,10 +33,8 @@ interface ImportChatHostProps {
 
 export function ImportChatHost({
 	open,
-	chats,
 	activeId,
 	mutationsDisabled = false,
-	characters,
 	onSelect,
 	onNewChat,
 	onClose,
@@ -64,7 +57,6 @@ export function ImportChatHost({
 				<ImportChatPanel
 					flow={importFlow}
 					onDispatch={dispatchImportFlow}
-					characters={characters}
 					onImportLaunched={(conversationId) => {
 						onImportLaunched(conversationId);
 						closeImport();
@@ -91,7 +83,6 @@ export function ImportChatHost({
 		<>
 			<PanelHeader title="Chats" onClose={onClose} />
 			<ChatsPanel
-				chats={chats}
 				activeId={activeId}
 				mutationsDisabled={mutationsDisabled}
 				onSelect={onSelect}

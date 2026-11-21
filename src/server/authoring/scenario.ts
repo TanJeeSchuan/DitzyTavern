@@ -8,11 +8,12 @@ import { snapshotQuery } from "../../shared/contract/box-sandboxed";
 import type { BoxValue } from "../../shared/contract/box-value";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import type { ScenarioInput, ScenarioResult } from "../../shared/contract/authoring";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { checkedDecisionAnswers } from "../decision-model";
 import type { BoxContext, DigestPassage } from "../box/contract";
 import { withBoxOperations, checkSandboxedFolder, type CheckedSandboxedBox, type LoadedBox } from "../box/registry";
 import { boxSeed } from "../box/seed";
+import { boxSetupRefusal } from "../box/setup";
 import { assertPlainHome, readLatest, VERSION_PATTERN, versionFolder } from "../box/versions";
 import { playedRefusals, refusedUpgrade } from "../conversation";
 
@@ -32,7 +33,7 @@ const runnerOf = (id: BoxId, { descriptor, box }: Pick<CheckedSandboxedBox, "des
 	const setup = input.setup === undefined ? descriptor.setup?.initial : input.setup;
 	if (descriptor.setup !== undefined) {
 		assertChecked(descriptor.setup.schema, setup, "The scenario's setup");
-		const refused = input.setup === undefined ? undefined : box.setupError?.(setup, upgraded ? setup : descriptor.setup.initial);
+		const refused = input.setup === undefined ? undefined : boxSetupRefusal(box, setup, upgraded ? setup : descriptor.setup.initial);
 		if (refused !== undefined) throw new Error(`The ${id} Box refuses the scenario's setup: ${refused}`);
 	}
 	return { descriptor, box, setup, fold: (records: readonly GenerationJsonValue[]) => box.records?.foldAll?.(box.records.initial, records, setup) };

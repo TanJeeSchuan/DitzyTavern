@@ -3,7 +3,7 @@ import type { PromptImage } from "../../shared/contract/conversation-schema";
 import { ModelClientTransportError } from "./errors";
 import type { ModelClientGenerationInput } from "./types";
 
-export interface LoadedImage {
+interface LoadedImage {
 	readonly bytes: Uint8Array;
 	readonly mediaType: string;
 }
@@ -77,7 +77,7 @@ const followingImages = (segments: readonly Segment[]): UserPart[] =>
 		"image" in segment ? [{ type: "text", text: segment.anchor }, imagePart(segment.image)] : []);
 
 export function toMessages(
-	input: Pick<ModelClientGenerationInput, "promptPlan" | "assistantPrefill">,
+	{ promptPlan }: Pick<ModelClientGenerationInput, "promptPlan">,
 	load: ImageLoader,
 ): ChatMessage[] {
 	const messages: ChatMessage[] = [];
@@ -86,7 +86,7 @@ export function toMessages(
 		if (!loaded.has(hash)) loaded.set(hash, load(hash));
 		return loaded.get(hash);
 	};
-	const images = new Map(input.promptPlan.images.map((image) => [`${image.block}:${image.start}`, image]));
+	const images = new Map(promptPlan.images.map((image) => [`${image.block}:${image.start}`, image]));
 	const renderBlock = (blockIndex: number, content: string) =>
 		renderContent(blockIndex, content, images, loadImage);
 	let systemImages: UserPart[] = [];
@@ -111,49 +111,30 @@ export function toMessages(
 		if (sent) messages.push({ role: "user", content: followingImages(segments) });
 	};
 
-	const continuationIntent = input.promptPlan.intent?.type === "continuation"
-		? input.promptPlan.intent
+	const continuationIntent = promptPlan.intent?.type === "continuation"
+		? promptPlan.intent
 		: undefined;
-	const assistantPrefill = continuationIntent?.strategy === "assistant-prefill";
-	if (assistantPrefill && !isPrefillSuffix(continuationIntent.suffix)) {
+	const prefill = continuationIntent?.strategy === "assistant-prefill" ? continuationIntent : undefined;
+	if (prefill !== undefined && !isPrefillSuffix(prefill.suffix)) {
 		throw new ModelClientTransportError(
 			"The selected Assistant prefill suffix is unsupported by this adapter.",
 			"protocol",
 		);
 	}
-	if (
-		assistantPrefill &&
-		input.assistantPrefill !== undefined &&
-		input.assistantPrefill.suffix !== continuationIntent.suffix
-	) {
-		throw new ModelClientTransportError(
-			"Assistant prefill metadata does not match the selected suffix.",
-			"protocol",
-		);
-	}
-	const lastModelHistoryIndex = input.promptPlan.blocks.reduce(
-		(last, block, index) => block.kind === "history" && block.role === "model"
-			? index
-			: last,
-		-1,
-	);
-	let lastModelHistoryContent: string | undefined;
+	const prefillIndex = prefill === undefined ? -1 : promptPlan.blocks.findLastIndex((block) =>
+		block.kind === "history" && block.role === "model");
 	let lastHistoryMessage: ChatMessage | undefined;
-	for (const [blockIndex, block] of input.promptPlan.blocks.entries()) {
+	for (const [blockIndex, block] of promptPlan.blocks.entries()) {
 		if (block.kind === "history") {
-			const role = block.role;
-			if (role === "model") {
-				lastModelHistoryContent = block.content;
-			}
 			// @approved
 			//  The selected preceding model text is moved to the final assistant
 			// message below when prefill is active. Leaving the history copy in
 			// place would send the prefix twice and would not be a true prefill.
-			if (assistantPrefill && blockIndex === lastModelHistoryIndex) {
+			if (blockIndex === prefillIndex) {
 				continue;
 			}
 			if (block.content.length > 0) {
-				push(role === "model" ? "assistant" : "user", renderBlock(blockIndex, block.content));
+				push(block.role === "model" ? "assistant" : "user", renderBlock(blockIndex, block.content));
 				lastHistoryMessage = messages.at(-1);
 			}
 			continue;
@@ -176,15 +157,15 @@ export function toMessages(
 			content: projectImageAnchors(continuationIntent.instruction),
 		});
 	}
-	if (continuationIntent?.strategy === "assistant-prefill") {
-		const prefix = input.assistantPrefill?.prefix ?? lastModelHistoryContent;
-		if (lastModelHistoryIndex < 0 || prefix === undefined || prefix.length === 0) {
+	if (prefill !== undefined) {
+		const prefix = promptPlan.blocks[prefillIndex]?.content;
+		if (prefix === undefined || prefix.length === 0) {
 			throw new ModelClientTransportError(
 				"Assistant prefill requires a visible preceding model message.",
 				"protocol",
 			);
 		}
-		if (input.promptPlan.images.some((image) => image.block === lastModelHistoryIndex && image.disposition === "send")) {
+		if (promptPlan.images.some((image) => image.block === prefillIndex && image.disposition === "send")) {
 			throw new ModelClientTransportError(
 				"Assistant prefill cannot continue text that contains an Image. Continue with an instruction instead.",
 				"protocol",
@@ -192,7 +173,7 @@ export function toMessages(
 		}
 		messages.push({
 			role: "assistant",
-			content: `${projectImageAnchors(prefix)}${continuationIntent.suffix}`,
+			content: `${projectImageAnchors(prefix)}${prefill.suffix}`,
 		});
 		lastHistoryMessage = messages.at(-1);
 	}

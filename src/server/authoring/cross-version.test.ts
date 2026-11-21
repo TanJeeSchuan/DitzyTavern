@@ -144,6 +144,14 @@ test("a from run keeps the setup the Update check accepted, though a transition-
 	expect(await run({ ...tips(1, 1), setup: 2, from: { version: "latest", turns: 1 } })).toMatchObject({ ok: true, state: 2 });
 });
 
+test("a throwing setup hook reports a scenario setup refusal", async () => {
+	const { run } = await installed(counted("setup > 5 ? (() => { throw new Error('too big'); })() : undefined"), { ...tips(1), setup: 1 });
+	expect(await run({ ...tips(1), setup: 7 })).toMatchObject({
+		ok: false,
+		diagnostics: [expect.stringMatching(/^The authored-.* Box refuses the scenario's setup: .*too big/)],
+	});
+});
+
 test("Install skips a saved scenario whose setup the installed version refused, since it left no Chat behind", async () => {
 	const { candidate, plugins, revise, run } = await installed(counted("setup > 5 ? 'too big' : undefined"), { ...tips(1), setup: 1 });
 	await revise(counted("setup > 3 ? 'too big' : undefined"));

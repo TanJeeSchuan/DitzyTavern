@@ -12,7 +12,6 @@ export {
 export { resolvePromptImages, type ImageLookup, type PromptImageResolution } from "./images";
 export {
 	budgetPromptPlan,
-	budgetEditedPromptPlan,
 	measurePromptPlan,
 	PromptBudgetExceededError,
 	toEstimationTranscript,
@@ -24,22 +23,14 @@ export type {
 	PromptLoreEntry,
 	CompilePromptInput,
 	GenerationIntent,
-	MacroEnvironment,
 	MacroAttemptState,
 	PromptBlock,
 	PromptContextEntry,
 	LiteralPromptMessage,
-	PromptHistoryRole,
-	PromptImage,
 	PromptPlan,
 	PromptWarning,
 } from "./types";
 export type {
-	PromptBudgetBreakdown,
-	PromptBudgetFailure,
-	PromptBudgetInput,
-	PromptBudgetResult,
 	PromptBudgetMeasurement,
-	PromptBudgetMeasurementInput,
 	TokenEstimator,
 } from "./budget";

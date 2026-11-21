@@ -1,16 +1,14 @@
-import { readActiveGenerationsForRecovery } from "../conversation";
-import { resolveConversationGeneration, removeConversationGeneration } from "../conversation";
 import type { Database } from "bun:sqlite";
-
-import { cleanupRetainedGenerationInspections } from "../conversation";
+import {
+	cleanupRetainedGenerationInspections,
+	readActiveGenerationsForRecovery,
+	stopConversationGeneration,
+	type GenerationRecoveryCause,
+} from "../conversation";
 import {
 	generationRuntimeFor,
 	type GenerationRuntimeRegistry,
 } from "./generation-runtime";
-import { interruptedGenerationData } from "./generate-server-owned";
-
-/** @approved The only local terminal causes used by startup and graceful shutdown. */
-export type GenerationRecoveryCause = "server-restart" | "server-shutdown";
 
 export interface GenerationRecoverySummary {
 	readonly inspected: number;
@@ -36,31 +34,14 @@ export function recoverActiveGenerations(
 	let removed = 0;
 	let failed = 0;
 	for (const row of rows) {
-		const content = row.checkpointContent;
-		const reasoning = row.checkpointReasoning;
 		try {
-			if (content.length > 0 || reasoning.length > 0) {
-				const data = interruptedGenerationData(cause, reasoning);
-				resolveConversationGeneration(database, {
-					conversationId: row.conversationId,
-					generationId: row.id,
-					timestamp: new Date().toISOString(),
-					content,
-					data,
-				});
-				interrupted += 1;
-			} else {
-				// @approved
-				//  The canonical removal seam reads the persisted intent itself:
-				// Sibling attempts lose their provisional Variant, Tail and
-				// Continuation attempts their provisional Message. The accepted
-				// human Message of a Tail attempt is never removed here.
-				removeConversationGeneration(database, {
-					conversationId: row.conversationId,
-					generationId: row.id,
-				});
-				removed += 1;
-			}
+			stopConversationGeneration(database, {
+				conversationId: row.conversationId,
+				generationId: row.id,
+				cause,
+			});
+			if (row.checkpointContent.length > 0 || row.checkpointReasoning.length > 0) interrupted += 1;
+			else removed += 1;
 		} catch (error) {
 			const detail = error instanceof Error ? error.stack ?? error.message : String(error);
 			console.error(
@@ -74,7 +55,7 @@ export function recoverActiveGenerations(
 }
 
 /** @approved Terminalize local Active Generations before a graceful database close. */
-export const shutdownActiveGenerations = (database: Database): GenerationRecoverySummary =>
+const shutdownActiveGenerations = (database: Database): GenerationRecoverySummary =>
 	recoverActiveGenerations(database, { cause: "server-shutdown" });
 
 /** @approved Stop preparation and providers, terminalize persisted rows, then join detached work before closing the database. */

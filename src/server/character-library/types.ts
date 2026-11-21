@@ -1,7 +1,6 @@
 import type {
 	CharacterCommand,
 	CharacterDeletionImpact,
-	CharacterDeletionMode,
 	CharacterDeletionResult,
 	CharacterDefinition,
 	CharacterLibrarySummary,
@@ -23,7 +22,7 @@ export type { CharacterDefinition };
 // deletion mode that follows from it. Zero references means deletion
 // hard-deletes; any reference demands the hidden nonrestorable tombstone.
 // Derived, never stored and never reconstructed by clients.
-export type { CharacterDeletionMode, CharacterDeletionImpact };
+export type { CharacterDeletionImpact };
 
 // Library list entry without the full Definition payload. The preview is a
 // derived short Prompt excerpt so pickers (such as the Cast drawer's

@@ -1,5 +1,6 @@
 import type { Box, BoxWindowRead } from "@/box-sdk/server";
-import { stripThoughts, type ThoughtRead } from "./shared";
+import { stripThoughts } from "@/box-sdk/shared";
+import type { ThoughtRead } from "./shared";
 
 // @approved
 //  Inner monologue lives in the prose as `<thought>` markup, which the prompt

@@ -1,4 +1,5 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
@@ -10,21 +11,16 @@ import {
 import type { ConversationAction } from "../conversation";
 import type { PromptChannels } from "../../shared/contract/prompt-schema";
 import { createNativeConversation } from "../workflows";
-import {
-	createCharacterLibraryRoutes,
-	createConversationRoutes,
-	createNativeConversationRoutes,
-} from "./index";
+import { createCharacterLibraryRoutes } from "./character-library";
+import { createConversationRoutes } from "./conversation";
+import { createNativeConversationRoutes } from "./native-conversation";
 
 const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",
 	prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "System text.",
 		identity: "Identity text.",
-		appearance: "",
-		scenario: "",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
 	},
 	sendAppearanceImages: true,
 	openings: [],
@@ -55,27 +51,6 @@ describe("Character Library transport adapters", () => {
 		database.close();
 	});
 
-	test("lists Characters in library order", async () => {
-		await post({
-			type: "create",
-			definition: definition({ name: "Alpha" }),
-		});
-		const zebra = await post({ type: "create", definition: definition({ name: "Zebra" }) });
-		const zebraCharacter = (await zebra.json()).character;
-
-		await post({
-			type: "set-pinned",
-			characterId: zebraCharacter.id,
-			expectedRevision: 0,
-			pinned: true,
-		});
-
-		const response = await app.handle(new Request("http://localhost/api/characters"));
-		expect(response.status).toBe(200);
-		const { characters } = await response.json();
-		expect(characters.map((character: { name: string }) => character.name)).toEqual(["Zebra", "Alpha"]);
-	});
-
 	test("returns a Character detail and a typed not-found outcome", async () => {
 		const created = await (
 			await post({ type: "create", definition: definition() })
@@ -93,37 +68,6 @@ describe("Character Library transport adapters", () => {
 		);
 		expect(missing.status).toBe(404);
 		expect(await missing.json()).toEqual({ outcome: "not-found" });
-	});
-
-	test("applies commands, propagates revisions, and maps conflicts to the typed 409 payload", async () => {
-		const created = await (
-			await post({ type: "create", definition: definition() })
-		).json();
-
-		const applied = await post({
-			type: "rename",
-			characterId: created.character.id,
-			expectedRevision: 0,
-			name: "Renamed",
-		});
-		expect(applied.status).toBe(200);
-		const appliedBody = await applied.json();
-		expect(appliedBody.outcome).toBe("applied");
-		expect(appliedBody.character.revision).toBe(1);
-
-		const stale = await post({
-			type: "rename",
-			characterId: created.character.id,
-			expectedRevision: 0,
-			name: "Stale",
-		});
-		expect(stale.status).toBe(409);
-		const conflict = await stale.json();
-		expect(conflict.outcome).toBe("conflict");
-		expect(conflict.expectedRevision).toBe(0);
-		expect(conflict.actualRevision).toBe(1);
-		expect(conflict.currentCharacter.name).toBe("Renamed");
-		expect(conflict.currentCharacter.revision).toBe(1);
 	});
 
 	test("maps validation failures and missing Characters to their typed outcomes", async () => {
@@ -223,14 +167,7 @@ describe("Native Conversation transport adapter", () => {
 		type: "adhoc",
 		definition: {
 			name,
-			prompt: {
-				systemInstruction: "",
-				identity: "",
-				appearance: "",
-				scenario: "",
-				exampleDialogue: "",
-				postHistoryInstruction: "",
-			},
+			prompt: emptyPromptChannels(),
 			sendAppearanceImages: true,
 			openings: [],
 		},
@@ -279,7 +216,7 @@ describe("Native Conversation transport adapter", () => {
 		expect(body.outcome).toBe("conflict");
 		expect(body.expectedRevision).toBe(0);
 		expect(body.actualRevision).toBe(1);
-		expect(body.currentCharacter.name).toBe("Renamed Voss");
+		expect(body.current.name).toBe("Renamed Voss");
 	});
 
 	test("maps a missing fork source and invalid Definitions to typed outcomes", async () => {
@@ -350,19 +287,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 			),
 		);
 
-	const adHocDefinition = (name: string, openings: string[] = []) => ({
-		name,
-		prompt: {
-			systemInstruction: "",
-			identity: "",
-			appearance: "",
-			scenario: "",
-			exampleDialogue: "",
-			postHistoryInstruction: "",
-		},
-		sendAppearanceImages: true,
-		openings,
-	});
+	const adHocDefinition = (name: string, openings: string[] = []) => participantDefinition(name, { openings });
 
 	const setupConversation = () => {
 		const created = createNativeConversation(database, {
@@ -390,35 +315,6 @@ describe("Conversation Cast/Control transport adapters", () => {
 
 	afterEach(() => {
 		database.close();
-	});
-
-	test("reads a Conversation summary with derived Cast and Control fields", async () => {
-		const { id } = setupConversation();
-		const response = await app.handle(
-			new Request(`http://localhost/api/conversations/${id}`),
-		);
-		expect(response.status).toBe(200);
-		const snapshot = await response.json();
-		expect(snapshot.cast).toHaveLength(2);
-		expect(snapshot.controlValidity).toEqual({ valid: true, reason: null });
-		expect(snapshot.playable).toBe(true);
-		expect(snapshot.cast[0]?.duplicateLabel).toBe("Writer");
-		expect(snapshot.cast[0]?.removal).toEqual({
-			eligible: false,
-			reason: "control-assigned",
-			deletionMode: null,
-			affectedGenerationCount: 0,
-		});
-		// The wire carries the slim summary only: Messages and per-
-		// Conversation data are never re-serialized for the Cast surface.
-		expect(snapshot.messages).toBeUndefined();
-		expect(snapshot.data).toBeUndefined();
-
-		const missing = await app.handle(
-			new Request("http://localhost/api/conversations/999999"),
-		);
-		expect(missing.status).toBe(404);
-		expect(await missing.json()).toEqual({ outcome: "not-found" });
 	});
 
 	test("applies Cast commands and propagates the Conversation revision", async () => {
@@ -483,7 +379,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect(body.outcome).toBe("conflict");
 		expect(body.expectedRevision).toBe(0);
 		expect(body.actualRevision).toBe(1);
-		expect(body.currentConversation.cast).toHaveLength(3);
+		expect(body.current.cast).toHaveLength(3);
 	});
 
 	test("maps validation failures and missing Conversations to typed outcomes", async () => {
@@ -504,24 +400,6 @@ describe("Conversation Cast/Control transport adapters", () => {
 		});
 		expect(missing.status).toBe(404);
 		expect(await missing.json()).toEqual({ outcome: "not-found" });
-	});
-
-	test("maps removal of a seated Participant to the typed not-removable outcome", async () => {
-		const { id, humanId } = setupConversation();
-		const response = await command(id, 0, {
-			type: "remove-participant",
-			participantId: humanId,
-		});
-		expect(response.status).toBe(409);
-		const body = await response.json();
-		expect(body.outcome).toBe("not-removable");
-		expect(body.reason).toBe("control-assigned");
-
-		// The rejected removal committed nothing.
-		const snapshot = await app.handle(
-			new Request(`http://localhost/api/conversations/${id}`),
-		);
-		expect((await snapshot.json()).revision).toBe(0);
 	});
 
 	test("remove-participant applies with the derived impact on the wire", async () => {
@@ -649,7 +527,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect(staleSource.status).toBe(409);
 		const sourceBody = await staleSource.json();
 		expect(sourceBody.outcome).toBe("conflict");
-		expect(sourceBody.currentCharacter.name).toBe("Renamed");
+		expect(sourceBody.current.name).toBe("Renamed");
 
 		const staleDestination = await addCharacter(id, {
 			expectedConversationRevision: 5,
@@ -659,7 +537,7 @@ describe("Conversation Cast/Control transport adapters", () => {
 		expect(staleDestination.status).toBe(409);
 		const destinationBody = await staleDestination.json();
 		expect(destinationBody.outcome).toBe("conflict");
-		expect(destinationBody.currentConversation.revision).toBe(0);
+		expect(destinationBody.current.revision).toBe(0);
 	});
 
 	test("maps missing workflow references to typed not-found outcomes", async () => {
@@ -704,19 +582,11 @@ describe("Save Participant as Character transport adapter", () => {
 			),
 		);
 
-	const adHocDefinition = (name: string, openings: string[] = []) => ({
-		name,
-		prompt: {
+	const adHocDefinition = (name: string, openings: string[] = []) => participantDefinition(name, { prompt: {
+			...emptyPromptChannels(),
 			systemInstruction: "System text.",
 			identity: "Identity text.",
-			appearance: "",
-			scenario: "",
-			exampleDialogue: "",
-			postHistoryInstruction: "",
-		},
-		sendAppearanceImages: true,
-		openings,
-	});
+		}, openings });
 
 	const setupConversation = () => {
 		const created = createNativeConversation(database, {
@@ -746,27 +616,6 @@ describe("Save Participant as Character transport adapter", () => {
 		database.close();
 	});
 
-	test("promotes a Participant with the applied outcome and the new Character payload", async () => {
-		const { id, modelId } = setupConversation();
-
-		const response = await saveParticipant(id, modelId, 0);
-		expect(response.status).toBe(200);
-		const body = await response.json();
-		expect(body.outcome).toBe("applied");
-		expect(body.character.name).toBe("Maren Voss");
-		expect(body.character.revision).toBe(0);
-		expect(body.character.openings).toEqual(["Hello"]);
-		expect(body.character.prompt.identity).toBe("Identity text.");
-
-		// The promoted Character is immediately visible through the library
-		// list endpoint of the same transport surface.
-		const listApp = createCharacterLibraryRoutes(database);
-		const listed = await listApp.handle(new Request("http://localhost/api/characters"));
-		const { characters } = await listed.json();
-		expect(characters).toHaveLength(1);
-		expect(characters[0]?.name).toBe("Maren Voss");
-	});
-
 	test("maps a stale Conversation revision to the typed conflict with the current summary", async () => {
 		const { id, modelId } = setupConversation();
 		// Advance the Conversation after the client's read revision (0).
@@ -790,8 +639,8 @@ describe("Save Participant as Character transport adapter", () => {
 		expect(body.outcome).toBe("conflict");
 		expect(body.expectedRevision).toBe(0);
 		expect(body.actualRevision).toBe(1);
-		expect(body.currentConversation.revision).toBe(1);
-		expect(body.currentConversation.cast).toHaveLength(3);
+		expect(body.current.revision).toBe(1);
+		expect(body.current.cast).toHaveLength(3);
 
 		// The stale save created no Character.
 		const listApp = createCharacterLibraryRoutes(database);

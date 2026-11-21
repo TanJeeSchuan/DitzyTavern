@@ -62,7 +62,7 @@ export const libfxProvider = (profile: ConnectionProfile, secrets: ConnectionPro
 			model: choice.model,
 			provider: { name: "connection", baseUrl: url.href.slice(0, -requestPath.length), models: { [choice.model]: { supportsToolUse: true } } },
 			fetch: (input: string, init: RequestInit) => {
-				const authorized = { ...init, headers: authenticatedHeaders(init.headers, credential, headers) };
+				const authorized: RequestInit = { ...init, redirect: "error", headers: authenticatedHeaders(init.headers, credential, headers) };
 				return timeout === null || timeout <= 0 ? fetch(input, authorized) : inactive(input, authorized, timeout);
 			},
 		},

@@ -1,25 +1,6 @@
-.author-detail {
-	display: flex;
-	align-items: center;
-	gap: 0.8rem;
-	padding-bottom: 1rem;
-	border-bottom: 1px solid var(--border);
-}
-
-.author-detail > div {
-	display: grid;
-	gap: 0.1rem;
-}
-
-.author-detail span,
 .detail-list dt {
 	color: var(--text-muted);
 	font-size: 0.7rem;
-}
-
-.author-detail strong {
-	font-size: 0.9rem;
-	font-weight: 670;
 }
 
 .detail-list {

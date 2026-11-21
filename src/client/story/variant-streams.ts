@@ -24,7 +24,7 @@ const baseOf = (streamed: Streamed | undefined, generationId: number, placed: St
 	return own ?? checkpoint ?? (placed === undefined ? { generationId, eventId: 0, content: "", reasoning: "" } : undefined);
 };
 
-export const applyObservation = (streamed: Streamed | undefined, observation: VariantObservation, placed: StoryVariant | undefined): Streamed | undefined => {
+const applyObservation = (streamed: Streamed | undefined, observation: VariantObservation, placed: StoryVariant | undefined): Streamed | undefined => {
 	const base = baseOf(streamed, observation.generationId, placed);
 	if (base === undefined || observation.eventId <= base.eventId) return undefined;
 	const { generationId, eventId } = observation;
@@ -53,6 +53,10 @@ export const streamedVariant = (variant: StoryVariant, streamed: Streamed | unde
 //  Streamed text lives here, outside story state, so a chunk re-renders only the Message showing its Variant.
 export function createVariantStreams() {
 	const streams = new Map<number, Streamed>();
+	// @approved
+	// Variants the latest page holds live. An ended Generation's text stays until a page settles its Variant,
+	// or the story shows the page's older checkpoint in between.
+	let live = new Set<number>();
 	const listeners = new Map<number, Set<() => void>>();
 	const notify = (variantId: number) => {
 		for (const listener of listeners.get(variantId) ?? []) listener();
@@ -69,6 +73,7 @@ export function createVariantStreams() {
 			notify(observation.variantId);
 		},
 		checkpoint(variants: readonly StoryVariant[]) {
+			live = new Set(variants.flatMap((variant) => variant.generationId === undefined ? [] : [variant.id]));
 			for (const variant of variants) {
 				if (variant.generationId === undefined) { remove(variant.id); continue; }
 				const previous = streams.get(variant.id);
@@ -79,7 +84,11 @@ export function createVariantStreams() {
 			}
 		},
 		retain(generationIds: ReadonlySet<number>) {
-			for (const [variantId, stream] of streams) if (!generationIds.has(stream.generationId)) remove(variantId);
+			for (const [variantId, stream] of streams) if (!generationIds.has(stream.generationId) && !live.has(variantId)) remove(variantId);
+		},
+		clear() {
+			live = new Set();
+			for (const variantId of streams.keys()) remove(variantId);
 		},
 		get: (variantId: number) => streams.get(variantId),
 		subscribe(variantId: number, listener: () => void) {

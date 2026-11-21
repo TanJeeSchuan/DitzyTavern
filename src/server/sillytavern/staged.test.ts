@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -11,7 +12,7 @@ import {
 } from "../character-library";
 import { openInitializedDatabase } from "../database/database";
 import { artifactTable, conversationTable, participantTable } from "../database/schema";
-import { importSillyTavernChat } from "./import";
+import { importChatFixture, stageImportBytes } from "../test-fixtures/chat-import";
 import {
 	STAGED_IMPORT_SESSION_TTL_MS,
 	createChatImportModule,
@@ -35,12 +36,9 @@ import {
 const definition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
 	name: "Maren Voss",
 	prompt: {
+		...emptyPromptChannels(),
 		systemInstruction: "System text.",
 		identity: "Identity text.",
-		appearance: "",
-		scenario: "",
-		exampleDialogue: "",
-		postHistoryInstruction: "",
 	},
 	sendAppearanceImages: true,
 	openings: [],
@@ -71,13 +69,7 @@ describe("staged SillyTavern chat import", () => {
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});
 
-	const stageBytes = (bytes: Buffer, filename = "lantern-house.jsonl") =>
-		module.stageFile({
-			// SAFETY: the copy into a fresh Uint8Array carries the exact bytes
-			// while satisfying Blob's ArrayBuffer typing at the test boundary.
-			bytes: new Blob([new Uint8Array(bytes)]).stream(),
-			originalFilename: filename,
-		});
+	const stageBytes = (bytes: Buffer, filename?: string) => stageImportBytes(module, bytes, filename);
 
 	const stageText = (records: unknown[], filename = "lantern-house.jsonl") =>
 		stageBytes(Buffer.from(jsonl(records), "utf8"), filename);
@@ -89,14 +81,6 @@ describe("staged SillyTavern chat import", () => {
 			type: "create",
 			definition: definition(overrides),
 		});
-
-	// Imports one source through the developer path so prior-import evidence
-	// exists exactly like committed Chats would.
-	const priorImport = (records: unknown[], filename = "prior.jsonl") => {
-		const path = join(files[0] ?? "", filename);
-		writeFileSync(path, jsonl(records), "utf8");
-		return importSillyTavernChat(database, path, artifactDirectory).conversation;
-	};
 
 	test("stages a valid export once and previews it without creating any domain record", async () => {
 		const records = [header, writer, rulership, blankName];
@@ -278,13 +262,13 @@ describe("staged SillyTavern chat import", () => {
 	test("classifies matching SHA-256 as exact duplicates and integrity-only matches as related sources", async () => {
 		// A prior Chat imported from the exact same bytes (sha + integrity
 		// both match) is an exact duplicate of a later staged file.
-		const priorBytesSource = await priorImport([header, writer, rulership]);
+		const { conversation: prior } = await importChatFixture(module, jsonl([header, writer, rulership]), "prior.jsonl");
 		const sameBytes = await stageBytes(
 			Buffer.from(jsonl([header, writer, rulership]), "utf8"),
 			"copy.jsonl",
 		);
 		expect(sameBytes.preview.duplicates.exact).toEqual([
-			{ id: priorBytesSource.id, name: priorBytesSource.name },
+			{ id: prior.id, name: prior.name },
 		]);
 		expect(sameBytes.preview.duplicates.related).toEqual([]);
 
@@ -295,7 +279,7 @@ describe("staged SillyTavern chat import", () => {
 		const relatedBytesSource = await stageText([header, blankName], "related.jsonl");
 		expect(relatedBytesSource.preview.duplicates.exact).toEqual([]);
 		expect(relatedBytesSource.preview.duplicates.related).toEqual([
-			{ id: priorBytesSource.id, name: priorBytesSource.name },
+			{ id: prior.id, name: prior.name },
 		]);
 	});
 

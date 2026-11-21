@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -6,7 +7,7 @@ import { sweepOrphanedImages } from "../image";
 import { pngFixture } from "../image/image-fixtures";
 import { createContract } from ".";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+const prompt = emptyPromptChannels();
 
 describe("Image routes", () => {
 	let database: Database;

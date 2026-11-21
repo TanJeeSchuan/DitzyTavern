@@ -13,14 +13,12 @@ import type { ChatApiFormat, SystemPlacement } from "../connection-settings/type
 import type {
 	GenerationEvent,
 	GenerationFailureKind,
-	GenerationFinishReason,
 	GenerationUsage,
 } from "../../shared/contract/generation-events";
 import type { ModelClientGenerationSettings } from "./generation-settings";
 
 export type ModelClientEvent = GenerationEvent;
 export type ModelClientUsage = GenerationUsage;
-export type ModelClientFinishReason = GenerationFinishReason;
 export type ModelClientFailureKind = GenerationFailureKind;
 
 export interface ModelClientGenerationInput {
@@ -32,31 +30,16 @@ export interface ModelClientGenerationInput {
 	// and travel with the opaque Prompt Plan into the transport seam.
 	modelId: string;
 	generationSettings: ModelClientGenerationSettings;
-	// Request-only assistant prefill. The prefix is copied from the selected
-	// preceding model Variant and is never persisted as part of the new
-	// continuation Message. Adapters that support prefill place this in their
-	// provider-specific assistant-prefix position.
-	assistantPrefill?: AssistantPrefill | undefined;
 	connection?: ModelClientConnectionSnapshot | null;
 	// A caller-owned signal targets only this Generation. The transport must
 	// never reuse it for another request or turn cancellation into retry.
 	signal?: AbortSignal;
 }
 
-export interface AssistantPrefill {
-	readonly prefix: string;
-	readonly suffix: "" | " " | "\n" | "\n\n";
-}
-
 export type ModelFetch = (
 	input: RequestInfo | URL,
 	init?: RequestInit,
 ) => Promise<Response>;
-
-// The Model Client settings input derives from the canonical Generation
-// Settings declaration through the named exhaustive projection in
-// ./generation-settings; this seam re-states no settings fields of its own.
-export type { ModelClientGenerationSettings };
 
 // Safe connection identity only. URLs, credentials, and custom header values
 // are intentionally absent so this shape is safe for events and provenance.

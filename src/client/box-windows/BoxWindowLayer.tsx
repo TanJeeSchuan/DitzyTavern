@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type P
 import { boxMetadata, type BoxId, type BoxWindowLayout } from "../../shared/contract/box";
 import type { ConversationSummary } from "../conversation";
 import { useNarrow } from "../lib/use-media";
-import { useNavigationRequest } from "../SaveGuard";
+import { SaveGuardScope, useNavigationRequest } from "../SaveGuard";
 import { BoxBlockNotice, BoxOffNotice, DelegateNotice } from "./BoxBlockNotice";
 import { BoxBoundary, BoxIcon } from "./BoxBoundary";
 import { boxPresent, chatBoxClients, chatBoxVersion, type MoveStaging } from "./registry";
@@ -195,7 +195,7 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				onRaise={() => raise(id)}
 				onMove={(x, y) => controller.move(id, x, y)}
 				onMinimize={() => controller.minimize(id)}
-				onClose={() => requestNavigation(() => controller.close(id))}
+				onClose={() => requestNavigation(() => controller.close(id), id)}
 			>
 				<BoxOffNotice conversation={conversation} box={id} disabled={disabled} onConversationChange={onConversationChange} className="mb-3" />
 				<BoxBlockNotice conversation={conversation} box={id} disabled={disabled} className="mb-3" />
@@ -204,8 +204,10 @@ export function BoxWindowLayer({ conversation, controller, disabled, staging, on
 				  The window's content is keyed by the version its Chat runs, so an
 				  upgrade remounts it, frame and Worker included, on the new version. */}
 				<BoxBoundary key={chatBoxVersion(conversation, id) ?? id} box={id}>
-					<Panel visible={!layout.minimized && (!narrow || id === top)} conversation={conversation} disabled={disabled}
-						staging={conversation.boxes[id] === "enabled" ? staging : null} onConversationChange={onConversationChange} />
+					<SaveGuardScope.Provider value={id}>
+						<Panel visible={!layout.minimized && (!narrow || id === top)} conversation={conversation} disabled={disabled}
+							staging={conversation.boxes[id] === "enabled" ? staging : null} onConversationChange={onConversationChange} />
+					</SaveGuardScope.Provider>
 				</BoxBoundary>
 			</FloatingWindow>;
 		})}

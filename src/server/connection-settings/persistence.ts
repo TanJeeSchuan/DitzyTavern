@@ -29,7 +29,7 @@ import {
 	normalizeDiscoveryCatalog,
 } from "./validation";
 
-export const SETTINGS_ROW_ID = 1;
+const SETTINGS_ROW_ID = 1;
 export type ConnectionSettingsDb = ReturnType<typeof drizzle>;
 export type ConnectionSettingsRow = typeof connectionSettingsTable.$inferSelect;
 export type ConnectionProfileRow = typeof connectionProfileTable.$inferSelect;
@@ -106,16 +106,16 @@ export function readProfile(
 	}
 }
 
-export type EncryptedSecretRow = {
+type EncryptedSecretRow = {
 	format_version: number;
 	key_id: string;
 	nonce: string;
 	ciphertext: string;
 	tag: string;
 };
-export type NullableEncryptedSecretRow = { [Column in keyof EncryptedSecretRow]: EncryptedSecretRow[Column] | null };
+type NullableEncryptedSecretRow = { [Column in keyof EncryptedSecretRow]: EncryptedSecretRow[Column] | null };
 
-export function readEncryptedSecret(
+function readEncryptedSecret(
 	row: NullableEncryptedSecretRow | undefined,
 	id: number,
 	masterKey: Uint8Array,
@@ -137,7 +137,7 @@ export function readEncryptedSecret(
 	};
 }
 
-export function writeEncryptedSecret(
+function writeEncryptedSecret(
 	payload: ConnectionProfileSecretSnapshot,
 	id: number,
 	masterKey: Uint8Array,

@@ -1,24 +1,16 @@
+import { profile as chatProfile } from "./prompt-preset-test-fixtures";
+import { Value } from "@sinclair/typebox/value";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { createConnectionSettingsRoutes } from "./connection-settings";
 import type { ModelFetch } from "../model-client";
 import type { ConnectionProfileDraft } from "../connection-settings";
+import { connectionPresetsResponse } from "../../shared/contract/connection-settings";
 
 const key = new Uint8Array(32).fill(11);
 
-const deepSeekProfile = {
-	displayName: "DeepSeek",
-	apiFormat: "chat-completions" as const,
-	requestUrl: "https://api.deepseek.com/",
-	modelsUrl: "https://api.deepseek.com/models",
-	modelBackend: "automatic" as const,
-	adapter: "deepseek" as const,
-	outputTokenRepresentation: "automatic" as const,
-	systemPlacement: "strict" as const,
-	timeoutMs: 120000,
-	pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"],
-};
+const deepSeekProfile = { ...chatProfile, requestUrl: "https://api.deepseek.com/", modelsUrl: "https://api.deepseek.com/models", systemPlacement: "strict", pinnedModels: ["deepseek-v4-flash", "deepseek-v4-pro"] } satisfies typeof chatProfile;
 
 type ConnectionCommandPayload =
 	| { type: "create-profile"; expectedRevision: number; profile: ConnectionProfileDraft; credential?: string | null }
@@ -70,6 +62,8 @@ describe("Connection Settings transport adapter", () => {
 
 		const presets = await get("/api/connection-settings/presets");
 		expect(presets.status).toBe(200);
+		const body = Value.Parse(connectionPresetsResponse[200], await presets.json());
+		expect(body.presets.map(({ profile }) => profile.apiFormat)).toContain("system-one");
 	});
 
 	test("creates the first Profile with a redacted credential through the contract", async () => {
@@ -223,7 +217,7 @@ describe("Connection Settings transport adapter", () => {
 			outcome: "conflict",
 			expectedRevision: createdBody.settings.revision,
 			actualRevision: createdBody.settings.revision + 1,
-			currentSettings: {
+			current: {
 				profiles: [{ id: profileId, modelsUrl: "http://127.0.0.1:43127/new-models", discoveryCatalog: [] }],
 			},
 		});

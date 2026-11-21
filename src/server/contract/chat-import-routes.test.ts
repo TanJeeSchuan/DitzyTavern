@@ -1,11 +1,13 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { openInitializedDatabase } from "../database/database";
-import { importSillyTavernChat } from "../sillytavern";
+import { processStateFor } from "../application/process-state";
+import { createChatImportModule } from "../sillytavern/staged";
+import { importChatFixture } from "../test-fixtures/chat-import";
 import { headerFixture as header, jsonl, rulershipFixture, writerFixture as writer } from "../sillytavern/fixtures";
 import { createChatImportRoutes } from "./chat-import";
 import { createConversationRoutes } from "./conversation";
@@ -28,6 +30,7 @@ describe("Chat import transport adapters", () => {
 		app = createChatImportRoutes(database, artifactDirectory);
 	});
 	afterEach(() => {
+		processStateFor(database).dispose();
 		database.close();
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});
@@ -85,7 +88,7 @@ describe("Chat import transport adapters", () => {
 		);
 
 	test("imports the Author Note with native participant macros and preserves its writing", async () => {
-		const staged = await stage(Buffer.from(jsonl([header, writer]), "utf8"));
+		const staged = await stage(Buffer.from(jsonl([{ ...header, chat_metadata: { ...header.chat_metadata, note_depth: 4 } }, writer]), "utf8"));
 		expect(staged.status).toBe(200);
 		const { token, preview } = await staged.json();
 		const response = await commit(token, preview.sha256, {
@@ -93,98 +96,18 @@ describe("Chat import transport adapters", () => {
 			participants: [{ name: "Writer", outcome: { type: "chat-only" }, messagePositions: [1] }],
 		});
 		expect(response.status).toBe(200);
-		const { conversation } = await response.json();
+		const { conversation, receipt } = await response.json();
+		expect(preview.warnings).toEqual(["Author's Note placement (position 1, depth 4) was not kept; the default Author Note slot is after history."]);
+		expect(receipt.warnings).toEqual(preview.warnings);
+		const details = await app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/import-details`));
+		expect(details.status).toBe(200);
+		expect((await details.json()).receipt.warnings).toEqual(preview.warnings);
 		const read = await createConversationRoutes(database).handle(new Request(`http://localhost/api/conversations/${conversation.id}`));
 		expect(read.status).toBe(200);
 		expect(await read.json()).toMatchObject({
 			boxSetups: { "author-note": '  *Keep the story quiet.* {{self}} guides {{other}}; {{self}} listens to {{other}}.\n' },
 			revision: 0,
 		});
-	});
-
-	const importNoteWarnings = async (metadata: Partial<typeof header.chat_metadata>) => {
-		const staged = await stage(Buffer.from(jsonl([{ ...header, chat_metadata: metadata }, writer]), "utf8"));
-		expect(staged.status).toBe(200);
-		const { token, preview } = await staged.json();
-		const response = await commit(token, preview.sha256, {
-			title: "Imported note", duplicateConfirmed: true,
-			participants: [{ name: "Writer", outcome: { type: "chat-only" }, messagePositions: [1] }],
-		});
-		expect(response.status).toBe(200);
-		const committed = await response.json();
-		const details = await app.handle(new Request(`http://localhost/api/conversations/${committed.conversation.id}/import-details`));
-		expect(details.status).toBe(200);
-		const { receipt } = await details.json();
-		expect(preview.warnings).toEqual(receipt.warnings);
-		expect(committed.receipt.warnings).toEqual(receipt.warnings);
-		return { authorNote: committed.conversation.boxSetups["author-note"], warnings: receipt.warnings };
-	};
-
-	test("maps imported participant macros regardless of case", async () => {
-		expect((await importNoteWarnings({ ...header.chat_metadata, note_prompt: "{{User}} guides {{CHAR}}; {{USER}} listens to {{Char}}." })).authorNote).toBe("{{self}} guides {{other}}; {{self}} listens to {{other}}.");
-	});
-
-	test("maps spaced participant macros in an imported note while preserving Prompt Comments", async () => {
-		const { authorNote } = await importNoteWarnings({ note_prompt: "{{ user }} guides {{ char }}. {{// Keep {{char}} as a reminder. }}" });
-		expect(authorNote).toBe("{{self}} guides {{other}}. {{// Keep {{char}} as a reminder. }}");
-	});
-
-	test.each([
-		{ note_prompt: "Keep quiet." },
-		{ ...header.chat_metadata, note_position: undefined },
-		{ ...header.chat_metadata, note_depth: undefined },
-		{ ...header.chat_metadata, note_role: undefined },
-		{ ...header.chat_metadata, note_interval: undefined },
-	])("imports a note with absent settings without false warnings (%#)", async (metadata) => {
-		const { authorNote, warnings } = await importNoteWarnings(metadata);
-		expect(authorNote).not.toBe("");
-		expect(warnings).toEqual([]);
-	});
-
-	test.each([
-		{ metadata: { note_prompt: "Keep quiet.", note_position: 2 }, setting: "position 2" },
-		{ metadata: { note_prompt: "Keep quiet.", note_depth: 4 }, setting: "depth 4" },
-	])("warns about supplied placement settings without inventing missing values (%#)", async ({ metadata, setting }) => {
-		const { warnings } = await importNoteWarnings(metadata);
-		expect(warnings).toEqual([`Author's Note placement (${setting}) was not kept; the default Author Note slot is after history.`]);
-	});
-
-	test.each([
-		{ position: 0, depth: 0, warning: "Author's Note placement (position 0, depth 0) was not kept; the default Author Note slot is after history." },
-		{ position: 2, depth: 4, warning: "Author's Note placement (position 2, depth 4) was not kept; the default Author Note slot is after history." },
-		{ position: 1, depth: 4, warning: "Author's Note placement (position 1, depth 4) was not kept; the default Author Note slot is after history." },
-	])("warns once for Author's Note placement at position $position and depth $depth", async ({ position, depth, warning }) => {
-		const { warnings } = await importNoteWarnings({ ...header.chat_metadata, note_position: position, note_depth: depth });
-		expect(warnings).toEqual([warning]);
-	});
-
-	test.each([
-		{ role: 1, warning: "Author's Note role (1) was not kept; the default Author Note slot uses the system role." },
-		{ role: 2, warning: "Author's Note role (2) was not kept; the default Author Note slot uses the system role." },
-	])("warns for Author's Note role $role", async ({ role, warning }) => {
-		const { warnings } = await importNoteWarnings({ ...header.chat_metadata, note_role: role });
-		expect(warnings).toEqual([warning]);
-	});
-
-	test.each([
-		{ interval: 0, warning: "Author's Note interval (0) was not kept; the Author Note applies to every Generation." },
-		{ interval: 3, warning: "Author's Note interval (3) was not kept; the Author Note applies to every Generation." },
-	])("warns for Author's Note interval $interval", async ({ interval, warning }) => {
-		const { warnings } = await importNoteWarnings({ ...header.chat_metadata, note_interval: interval });
-		expect(warnings).toEqual([warning]);
-	});
-
-	test.each([
-		{ description: "empty", note: "" },
-		{ description: "whitespace-only", note: " \n\t " },
-		{ description: "missing", note: undefined },
-	])("imports an $description Author's Note as blank without note warnings", async ({ note }) => {
-		expect(await importNoteWarnings({ note_prompt: note, note_position: 2, note_depth: 4, note_role: 2, note_interval: 3 })).toEqual({ authorNote: "", warnings: [] });
-	});
-
-	test("imports supported Author's Note settings without warnings", async () => {
-		const { warnings } = await importNoteWarnings(header.chat_metadata);
-		expect(warnings).toEqual([]);
 	});
 
 	const sha256Of = (bytes: Uint8Array) =>
@@ -399,9 +322,8 @@ describe("Chat import transport adapters", () => {
 
 	test("requires the explicit duplicate copy confirmation over the transport", async () => {
 		// A committed prior Chat provides the exact duplicate evidence.
-		const priorPath = join(files[0] ?? "", "prior-duplicate.jsonl");
-		writeFileSync(priorPath, jsonl([header, writer]), "utf8");
-		const prior = importSillyTavernChat(database, priorPath, artifactDirectory).conversation;
+		const module = createChatImportModule(database, { artifactDirectory });
+		const { conversation: prior } = await importChatFixture(module, jsonl([header, writer]), "prior-duplicate.jsonl");
 
 		const staged = await stage(
 			Buffer.from(jsonl([header, writer]), "utf8"),

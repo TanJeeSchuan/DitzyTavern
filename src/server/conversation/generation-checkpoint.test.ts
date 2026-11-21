@@ -1,20 +1,8 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import { createConversationWithHistory, openObservedDatabase } from "../test-fixtures/conversation";
-import {
-	acceptConversationTailGeneration,
-	checkpointConversationGeneration,
-	cleanupRetainedGenerationInspections,
-	executeConversationCommand,
-	listChatSummaries,
-	readActiveGenerationDetails,
-	readConversationRevision,
-	readSelectedHistory,
-	resolveConversationGeneration,
-	stopConversationGeneration,
-} from ".";
+import { openObservedDatabase, pairChat, acceptTestGeneration } from "../test-fixtures/conversation";
+import { checkpointConversationGeneration, cleanupRetainedGenerationInspections, executeConversationCommand, listChatSummaries, readActiveGenerationDetails, readConversationRevision, readSelectedHistory, resolveConversationGeneration, stopConversationGeneration } from ".";
 
-const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
 
 describe("Generation checkpoints", () => {
 	let database: Database;
@@ -22,24 +10,22 @@ describe("Generation checkpoints", () => {
 	afterEach(() => database.close());
 
 	const accept = () => {
-		const created = createConversationWithHistory(database, {
-			name: "Checkpoint Chat",
-			participants: [{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } }, { definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } }],
-			control: { human: 0, model: 1 },
-		});
-		const accepted = acceptConversationTailGeneration(database, {
-			seed: "seed", conversationId: created.id, expectedRevision: created.revision, timestamp: "2026-10-25T00:00:00.000Z",
-			humanContent: "Go on.", humanParticipantId: created.cast[0]!.id, modelParticipantId: created.cast[1]!.id, capturedHumanName: created.cast[0]!.name, capturedModelName: "Maren",
+		const created = pairChat(database, "Checkpoint Chat");
+		const accepted = acceptTestGeneration(database, created, { kind: "send", expectedRevision: created.revision, content: "Go on." }, {
+			seed: "seed",
+			timestamp: "2026-10-25T00:00:00.000Z",
 			promptPlan: { blocks: [{ kind: "instruction", role: "system", content: "Answer." }], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
+			promptInspection: { tokenEstimate: 1, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 65, omittedContext: [] },
 		});
+		const { humanMessageId } = accepted;
+		if (humanMessageId === null) throw new Error("Send did not retain its Human Message.");
 		const checkpoint = (contentOffset: number, contentDelta: string, reasoningOffset: number, reasoningDelta: string, latestEventId: number) =>
 			checkpointConversationGeneration(database, {
 				conversationId: created.id, generationId: accepted.generationId, contentOffset, contentDelta, reasoningOffset, reasoningDelta, latestEventId,
 			});
 		const details = () => readActiveGenerationDetails(database, created.id, accepted.generationId);
 		const rows = (table: string) => database.query<{ n: number }, [number]>(`SELECT count(*) n FROM ${table} WHERE generation_id = ?`).get(accepted.generationId)!.n;
-		return { conversationId: created.id, ...accepted, checkpoint, details, rows };
+		return { conversationId: created.id, ...accepted, humanMessageId, checkpoint, details, rows };
 	};
 
 	test("deltas assemble into both streams and the latest event position", () => {
@@ -61,7 +47,7 @@ describe("Generation checkpoints", () => {
 	test("deltas end with the Generation and its capture ends with the retained inspection", () => {
 		const generation = accept();
 		generation.checkpoint(0, "Partial", 0, "", 1);
-		stopConversationGeneration(database, { conversationId: generation.conversationId, generationId: generation.generationId });
+		stopConversationGeneration(database, { cause: "user-stop", conversationId: generation.conversationId, generationId: generation.generationId });
 		expect(generation.rows("generation_checkpoint")).toBe(0);
 		expect(generation.details()).toMatchObject({ status: "interrupted", checkpoint: { content: "Partial", latestEventId: 1 } });
 		cleanupRetainedGenerationInspections(database, new Date(Date.now() + 24 * 60 * 60 * 1000));
@@ -71,7 +57,7 @@ describe("Generation checkpoints", () => {
 
 	test("a discarded target takes its capture with it", () => {
 		const generation = accept();
-		stopConversationGeneration(database, { conversationId: generation.conversationId, generationId: generation.generationId });
+		stopConversationGeneration(database, { cause: "user-stop", conversationId: generation.conversationId, generationId: generation.generationId });
 		expect(generation.rows("generation_capture")).toBe(0);
 	});
 
@@ -100,7 +86,7 @@ describe("Generation checkpoints", () => {
 			expectedRevision: readConversationRevision(database, generation.conversationId) ?? 0,
 			action: { type: "delete-message", messageId: generation.humanMessageId },
 		})).toThrow("Stop the running Generation");
-		stopConversationGeneration(database, { conversationId: generation.conversationId, generationId: generation.generationId });
+		stopConversationGeneration(database, { cause: "user-stop", conversationId: generation.conversationId, generationId: generation.generationId });
 		executeConversationCommand(database, {
 			conversationId: generation.conversationId,
 			expectedRevision: readConversationRevision(database, generation.conversationId) ?? 0,

@@ -1,4 +1,4 @@
-import { boxSetups, boxes } from "./test-fixtures/box-setups";
+import { conversationSummary as summary } from "./test-fixtures/conversation";
 import { describe, expect, test } from "bun:test";
 import {
 	CONVERSATION_REVISION_UNAVAILABLE_NOTICE,
@@ -9,28 +9,6 @@ import {
 	type ConversationCommandSurface,
 } from "./conversation-command-runner";
 import type { CommandOutcome } from "./conversation";
-import type { ConversationSummary } from "../shared/contract/conversation-schema";
-
-// A minimal authoritative snapshot: the runner only forwards snapshots, so
-// the fixture carries the contract shape without populating Cast details.
-const summary = (overrides: Partial<ConversationSummary> = {}): ConversationSummary => ({
-	boxSetups, boxes, boxVersions: {}, forkedFrom: null,
-	background: null,
-	id: 1,
-	name: "Seaside Letters",
-	revision: 7,
-	cast: [],
-	control: { humanParticipantId: null, modelParticipantId: null },
-	controlValidity: { valid: false, reason: "missing-seat" },
-	playable: false,
-	capabilities: {
-		compose: { available: false, reason: "conversation-not-playable" },
-		generate: { available: false, reason: "conversation-not-playable" },
-		swipe: { available: false, reason: "conversation-not-playable" },
-	},
-	activeGenerations: [],
-	...overrides,
-});
 
 // The fake surface records every side effect in order, so the tests observe
 // adoption, notices, and their sequencing without React or global state.
@@ -117,7 +95,7 @@ describe("runConversationCommand", () => {
 	test("a conflict adopts the current Conversation, shows the conflict notice, and calls the conflict callback", async () => {
 		const events: string[] = [];
 		const current = summary({ revision: 9 });
-		await run(events, fakeSend(events, { outcome: "conflict", expectedRevision: 7, actualRevision: 9, currentConversation: current }), {
+		await run(events, fakeSend(events, { outcome: "conflict", reason: "stale-revision", expectedRevision: 7, actualRevision: 9, current: current }), {
 			onConflict: (conversation) => {
 				events.push("conflict-callback");
 				expect(conversation).toBe(current);
@@ -128,7 +106,7 @@ describe("runConversationCommand", () => {
 
 	test("a conflict without a conflict callback still adopts and shows the notice", async () => {
 		const events: string[] = [];
-		await run(events, fakeSend(events, { outcome: "conflict", expectedRevision: 7, actualRevision: 9, currentConversation: summary({ revision: 9 }) }));
+		await run(events, fakeSend(events, { outcome: "conflict", reason: "stale-revision", expectedRevision: 7, actualRevision: 9, current: summary({ revision: 9 }) }));
 		expect(events).toEqual(["send:7", "adopt:9", "notice:conflict notice"]);
 	});
 
@@ -188,10 +166,10 @@ describe("runConversationCommand", () => {
 		]);
 	});
 
-	test("a superseded surface adopts nothing and shows no notice", async () => {
+	test("a superseded surface never sends, adopts or shows a notice", async () => {
 		const events: string[] = [];
 		await run(events, applied(events), {}, { isCurrent: () => false });
-		expect(events).toEqual(["send:7"]);
+		expect(events).toEqual([]);
 	});
 
 	test("an operation outcome is forwarded untouched to the typed operation callback", async () => {
@@ -261,4 +239,13 @@ test("a refusal between two commands preserves the revision the first command pr
 	const last = run(events, applied(events));
 	expect(await Promise.all([first, refused, last])).toEqual([true, false, true]);
 	expect(events).toEqual(["send:7", "adopt:8", "send:8", "notice:No change applied.", "send:8", "adopt:7"]);
+});
+
+
+test("an exact command without a displayed base cannot borrow a queued revision", async () => {
+	const events: string[] = [];
+	const first = run(events, applied(events));
+	const unbased = run(events, applied(events), {}, { exact: true, revision: () => null });
+	expect(await Promise.all([first, unbased])).toEqual([true, false]);
+	expect(events).toEqual(["send:7", "adopt:7", `notice:${CONVERSATION_REVISION_UNAVAILABLE_NOTICE}`]);
 });

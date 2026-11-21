@@ -1,13 +1,10 @@
+import { databaseAtMigration, migrateThrough } from "../test-fixtures/migrations";
 import { Database } from "bun:sqlite";
 import { expect, test } from "bun:test";
-import { cp, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
-import { initializeDatabase } from "./database";
-import journal from "./migrations/meta/_journal.json";
+import { initializeDatabase, openDatabase } from "./database";
 import { builtInBoxes, loadBoxes } from "../box/registry";
-import { observeConversationWrites, readActiveGenerationDetails, readConversationSummary, readVariantData } from "../conversation";
+import { observeConversationWrites, readActiveGenerationDetails, readConversationGenerationSettings, readConversationSummary, readVariantData, type ConversationGenerationSettings } from "../conversation";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { readBoxDecisionSettings } from "../box/decision-settings";
 import { readRecordSlots } from "../box/records";
@@ -18,52 +15,36 @@ import { createMemorySettingsModule } from "../../boxes/memory/server-settings";
 import { readMemoryChatSettings, readMemoryLabelState } from "../../boxes/memory/server-chat";
 
 test("0041 adds Appearance after each Default Identity with its role when upgrading an existing database", async () => {
-	const database = new Database(":memory:");
-	const scratch = join(process.cwd(), ".scratch");
-	await mkdir(scratch, { recursive: true });
-	const folder = await mkdtemp(join(scratch, "appearance-upgrade-"));
-	try {
-		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
-		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 40) }));
-		initializeDatabase(database, folder);
-		database.exec(`
+	using database = await databaseAtMigration(40);
+	database.exec(`
 			UPDATE prompt_preset SET revision = 7 WHERE is_default = 1;
 			UPDATE prompt_preset_block SET role = 'assistant' WHERE reference = 'human-identity';
 			UPDATE prompt_preset_block SET role = 'user' WHERE reference = 'model-identity';
 		`);
 
-		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 41) }));
-		initializeDatabase(database, folder);
-		expect(database.query(`
+	await migrateThrough(database, 41);
+	expect(database.query(`
 			SELECT b.reference, b.role FROM prompt_preset_block b
 			JOIN prompt_preset p ON p.id = b.preset_id WHERE p.is_default = 1 ORDER BY b.position
 		`).all()).toEqual([
-			{ reference: "model-system-instruction", role: "system" },
-			{ reference: "human-identity", role: "assistant" },
-			{ reference: "human-appearance", role: "assistant" },
-			{ reference: "model-identity", role: "user" },
-			{ reference: "model-appearance", role: "user" },
-			{ reference: "model-scenario", role: "system" },
-			{ reference: "model-example-dialogue", role: "user" },
-			{ reference: "lore", role: "system" },
-			{ reference: "box:memory", role: "system" },
-			{ reference: "history", role: null },
-			{ reference: "model-post-history-instruction", role: "system" },
-		]);
-		expect(database.query("SELECT revision FROM prompt_preset WHERE is_default = 1").get()).toEqual({ revision: 8 });
-	} finally {
-		database.close();
-		await rm(folder, { recursive: true, force: true });
-	}
+		{ reference: "model-system-instruction", role: "system" },
+		{ reference: "human-identity", role: "assistant" },
+		{ reference: "human-appearance", role: "assistant" },
+		{ reference: "model-identity", role: "user" },
+		{ reference: "model-appearance", role: "user" },
+		{ reference: "model-scenario", role: "system" },
+		{ reference: "model-example-dialogue", role: "user" },
+		{ reference: "lore", role: "system" },
+		{ reference: "box:memory", role: "system" },
+		{ reference: "history", role: null },
+		{ reference: "model-post-history-instruction", role: "system" },
+	]);
+	expect(database.query("SELECT revision FROM prompt_preset WHERE is_default = 1").get()).toEqual({ revision: 8 });
 });
 
 test.each([true, false])("preserves pre-Box chats and Memory when globally enabled=%s", async (enabled) => {
-	const database = new Database(":memory:");
-	const folder = await mkdtemp(join(tmpdir(), "ditzy-upgrade-"));
 	try {
-		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
-		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 16) }));
-		initializeDatabase(database, folder);
+		using database = await databaseAtMigration(16);
 		database.exec(`
 			INSERT INTO conversation (id, name, creation_time, last_message_time, author_note)
 			VALUES (1, 'Upgrade', '2026-10-01', '2026-10-01', 'Keep "quoted" guidance. 日本語'), (2, 'Empty note', '2026-10-01', '2026-10-01', '');
@@ -124,9 +105,7 @@ test.each([true, false])("preserves pre-Box chats and Memory when globally enabl
 
 		expect(database.query("SELECT name FROM sqlite_schema WHERE name IN ('memory_collection', 'memory_catchup_run')").all()).toEqual([]);
 	} finally {
-		database.close();
 		await loadBoxes([builtInBoxes]);
-		await rm(folder, { recursive: true, force: true });
 	}
 });
 
@@ -158,14 +137,72 @@ test("upgrades Request Overrides namespaces without replacing authored overrides
 	}
 });
 
+test("0045 preserves each Chat's Generation Settings when migrating the stored columns to JSON", async () => {
+	using database = await databaseAtMigration(44, () => openDatabase({ path: ":memory:" }));
+	database.exec(`
+			INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES
+				(1, 'Custom sampling', '2026-11-19', '2026-11-19'),
+				(2, 'Provider sampling', '2026-11-19', '2026-11-19');
+			INSERT INTO connection_profile (id, display_name, api_format, request_url, model_backend, adapter)
+			VALUES (7, 'Story', 'chat-completions', 'https://example.test/', 'automatic', 'openai-compatible');
+		`);
+	const custom: ConversationGenerationSettings = {
+		connectionProfileId: 7,
+		modelId: "story-model",
+		temperature: 0.625,
+		topP: 0.875,
+		frequencyPenalty: -0.5,
+		presencePenalty: 1.25,
+		contextLimit: 16384,
+		responseBudget: 640,
+		safetyAllowance: 0,
+		siblingGenerationLimit: 2,
+		continuationStrategy: "assistant-prefill",
+		continuationInstruction: 'Keep the "夜" imagery.',
+		continuationPrefillSuffix: "\n\n",
+		repeatedImagePlacement: "every",
+		requestOverrides: {
+			"chat-completions": { stop: ["END", "\nHuman:"], extra: { flag: false, unset: null } },
+			responses: { reasoning: { effort: "low" } },
+			"anthropic-messages": { top_k: 9 },
+		},
+	};
+	const provider: ConversationGenerationSettings = {
+		...custom,
+		connectionProfileId: null,
+		modelId: "another-model",
+		temperature: null,
+		topP: null,
+		frequencyPenalty: null,
+		presencePenalty: null,
+		continuationStrategy: "instruction",
+		continuationPrefillSuffix: " ",
+		repeatedImagePlacement: "last",
+		requestOverrides: { "chat-completions": {}, responses: { max_output_tokens: 320 }, "anthropic-messages": {} },
+	};
+	const insertLegacySettings = database.query(`
+			INSERT INTO conversation_generation_settings (
+				conversation_id, connection_profile_id, model_id, temperature, top_p, frequency_penalty, presence_penalty,
+				context_limit, response_budget, safety_allowance, sibling_generation_limit, continuation_strategy,
+				continuation_instruction, continuation_prefill_suffix, repeated_image_placement, request_overrides_json
+			) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		`);
+	const chats = [[1, custom], [2, provider]] as const;
+	for (const [id, settings] of chats) {
+		insertLegacySettings.run(id, settings.connectionProfileId, settings.modelId, settings.temperature, settings.topP,
+			settings.frequencyPenalty, settings.presencePenalty, settings.contextLimit, settings.responseBudget, settings.safetyAllowance,
+			settings.siblingGenerationLimit, settings.continuationStrategy, settings.continuationInstruction, settings.continuationPrefillSuffix,
+			settings.repeatedImagePlacement, JSON.stringify(settings.requestOverrides));
+	}
+
+	initializeDatabase(database);
+	for (const [id, settings] of chats) expect(readConversationGenerationSettings(database, id)).toEqual(settings);
+	expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
+});
+
 test("an Active Generation interrupted by the checkpoint-delta upgrade still recovers its output", async () => {
-	const database = new Database(":memory:");
-	const folder = await mkdtemp(join(tmpdir(), "ditzy-upgrade-"));
-	try {
-		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
-		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 29) }));
-		initializeDatabase(database, folder);
-		database.exec(`
+	using database = await databaseAtMigration(29);
+	database.exec(`
 			INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES (1, 'Upgrade', '2026-10-25', '2026-10-25');
 			INSERT INTO participant (id, conversation_id, name, position) VALUES (1, 1, 'Writer', 1), (2, 1, 'Maren', 2);
 			INSERT INTO messages (id, conversation_id, position, timestamp) VALUES (1, 1, 0, '2026-10-25');
@@ -174,25 +211,16 @@ test("an Active Generation interrupted by the checkpoint-delta upgrade still rec
 				prompt_plan_json, prompt_context_json, generation_settings_json, connection_json, checkpoint_content, checkpoint_reasoning, checkpoint_event_id)
 			VALUES (1, 1, 1, 1, 1, 2, 'Maren', '2026-10-25', '{"blocks":[],"warnings":[],"images":[]}', '[]', '{}', '{}', 'The tide turns.', 'Watch the pier.', 7);
 		`);
-		initializeDatabase(database);
-		observeConversationWrites(database, () => () => {});
-		expect(recoverActiveGenerations(database)).toMatchObject({ interrupted: 1, removed: 0, failed: 0 });
-		expect(database.query<{ content: string }, []>("SELECT content FROM message_variant WHERE id = 1").get()?.content).toBe("The tide turns.");
-		expect(readVariantData(drizzle(database), [1], ["reasoning"]).get(1)?.reasoning).toBe("Watch the pier.");
-	} finally {
-		database.close();
-		await rm(folder, { recursive: true, force: true });
-	}
+	initializeDatabase(database);
+	observeConversationWrites(database, () => () => {});
+	expect(recoverActiveGenerations(database)).toMatchObject({ interrupted: 1, removed: 0, failed: 0 });
+	expect(database.query<{ content: string }, []>("SELECT content FROM message_variant WHERE id = 1").get()?.content).toBe("The tide turns.");
+	expect(readVariantData(drizzle(database), [1], ["reasoning"]).get(1)?.reasoning).toBe("Watch the pier.");
 });
 
 test("a Generation capture stored before inspection kept its model is cleared rather than inspected without one", async () => {
-	const database = new Database(":memory:");
-	const folder = await mkdtemp(join(tmpdir(), "ditzy-upgrade-"));
-	try {
-		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
-		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 34) }));
-		initializeDatabase(database, folder);
-		database.exec(`
+	using database = await databaseAtMigration(34);
+	database.exec(`
 			INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES (1, 'Upgrade', '2026-11-01', '2026-11-01');
 			INSERT INTO participant (id, conversation_id, name, position) VALUES (1, 1, 'Writer', 1), (2, 1, 'Maren', 2);
 			INSERT INTO messages (id, conversation_id, position, timestamp) VALUES (1, 1, 0, '2026-11-01');
@@ -201,14 +229,10 @@ test("a Generation capture stored before inspection kept its model is cleared ra
 				generation_settings_json, connection_json)
 			VALUES (1, 1, 1, 1, 1, 2, 'Maren', '2026-11-01', '{}', 'null');
 		`);
-		const oldCapture = { promptPlan: { blocks: [], warnings: [], images: [] }, promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] }, promptContext: [] };
-		database.query("INSERT INTO generation_capture (generation_id, capture, image_references) VALUES (1, ?, '')").run(Bun.zstdCompressSync(JSON.stringify(oldCapture)));
-		initializeDatabase(database);
-		expect(readActiveGenerationDetails(database, 1, 1)).toBeUndefined();
-	} finally {
-		database.close();
-		await rm(folder, { recursive: true, force: true });
-	}
+	const oldCapture = { promptPlan: { blocks: [], warnings: [], images: [] }, promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] }, promptContext: [] };
+	database.query("INSERT INTO generation_capture (generation_id, capture, image_references) VALUES (1, ?, '')").run(Bun.zstdCompressSync(JSON.stringify(oldCapture)));
+	initializeDatabase(database);
+	expect(readActiveGenerationDetails(database, 1, 1)).toBeUndefined();
 });
 
 // @approved
@@ -216,14 +240,9 @@ test("a Generation capture stored before inspection kept its model is cleared ra
 // schema, and a held Writer override would make every Race read throw; the
 // upgrade clears them, and only them.
 test("the sandboxed Race upgrade clears the Race's old records, Writer overrides and pending ones included, and no other Box's", async () => {
-	const database = new Database(":memory:");
-	const folder = await mkdtemp(join(tmpdir(), "ditzy-upgrade-"));
-	try {
-		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
-		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 37) }));
-		initializeDatabase(database, folder);
-		const oldRecord = JSON.stringify({ raceId: "r", stretch: 1, metres: 400, finished: false, standings: [], intents: [], replay: [] });
-		database.exec(`
+	using database = await databaseAtMigration(37);
+	const oldRecord = JSON.stringify({ raceId: "r", stretch: 1, metres: 400, finished: false, standings: [], intents: [], replay: [] });
+	database.exec(`
 			INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES (1, 'Upgrade', '2026-11-03', '2026-11-03');
 			INSERT INTO participant (id, conversation_id, name, position) VALUES (1, 1, 'Writer', 1), (2, 1, 'Maren', 2);
 			INSERT INTO messages (id, conversation_id, position, timestamp) VALUES (1, 1, 0, '2026-11-03');
@@ -232,41 +251,28 @@ test("the sandboxed Race upgrade clears the Race's old records, Writer overrides
 				box_records_json)
 			VALUES (1, 1, 1, 1, 1, 2, 'Maren', '2026-11-03', '{"race":{"instance":"a","record":${oldRecord}},"world-clock":{"instance":"b","record":{"minutes":5,"weather":null}}}');
 		`);
-		const slot = (namespace: string, key: string, value: string) => database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (1, ?, ?, ?)").run(namespace, key, value);
-		slot("box:race", "record:a", JSON.stringify({ automatic: JSON.parse(oldRecord), writer: JSON.parse(oldRecord) }));
-		slot("box:race", "notes", "kept");
-		slot("box:world-clock", "record:b", JSON.stringify({ writer: { minutes: 5, weather: null } }));
-		initializeDatabase(database);
-		expect(database.query("SELECT namespace, key FROM message_variant_data ORDER BY namespace").all()).toEqual([{ namespace: "box:race", key: "notes" }, { namespace: "box:world-clock", key: "record:b" }]);
-		expect(JSON.parse(database.query<{ records: string }, []>("SELECT box_records_json AS records FROM active_generation").get()!.records)).toEqual({ "world-clock": { instance: "b", record: { minutes: 5, weather: null } } });
-	} finally {
-		database.close();
-		await rm(folder, { recursive: true, force: true });
-	}
+	const slot = (namespace: string, key: string, value: string) => database.query("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (1, ?, ?, ?)").run(namespace, key, value);
+	slot("box:race", "record:a", JSON.stringify({ automatic: JSON.parse(oldRecord), writer: JSON.parse(oldRecord) }));
+	slot("box:race", "notes", "kept");
+	slot("box:world-clock", "record:b", JSON.stringify({ writer: { minutes: 5, weather: null } }));
+	initializeDatabase(database);
+	expect(database.query("SELECT namespace, key FROM message_variant_data ORDER BY namespace").all()).toEqual([{ namespace: "box:race", key: "notes" }, { namespace: "box:world-clock", key: "record:b" }]);
+	expect(JSON.parse(database.query<{ records: string }, []>("SELECT box_records_json AS records FROM active_generation").get()!.records)).toEqual({ "world-clock": { instance: "b", record: { minutes: 5, weather: null } } });
 });
 
 test.each(["enabled", "disabled", "removed"] as const)("the cache-saving copy of Default moves Lore and Memory below history only when history is enabled (history %s)", async (history) => {
-	const database = new Database(":memory:");
-	const folder = await mkdtemp(join(tmpdir(), "ditzy-upgrade-"));
-	try {
-		await cp(join(import.meta.dir, "migrations"), folder, { recursive: true });
-		await writeFile(join(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter(({ idx }) => idx <= 39) }));
-		initializeDatabase(database, folder);
-		if (history === "disabled") database.exec("UPDATE prompt_preset_block SET enabled = 0 WHERE reference = 'history'");
-		if (history === "removed") database.exec("DELETE FROM prompt_preset_block WHERE reference = 'history'");
-		const order = (name: string) => database.query<{ reference: string }, [string]>(
-			"SELECT b.reference FROM prompt_preset_block b JOIN prompt_preset p ON p.id = b.preset_id WHERE p.name = ? ORDER BY b.position",
-		).all(name).map((row) => row.reference);
-		const before = order("Default");
+	using database = await databaseAtMigration(39);
+	if (history === "disabled") database.exec("UPDATE prompt_preset_block SET enabled = 0 WHERE reference = 'history'");
+	if (history === "removed") database.exec("DELETE FROM prompt_preset_block WHERE reference = 'history'");
+	const order = (name: string) => database.query<{ reference: string }, [string]>(
+		"SELECT b.reference FROM prompt_preset_block b JOIN prompt_preset p ON p.id = b.preset_id WHERE p.name = ? ORDER BY b.position",
+	).all(name).map((row) => row.reference);
+	const before = order("Default");
 
-		database.exec(await Bun.file(new URL("./migrations/0040_cache_saving_default_preset.sql", import.meta.url)).text());
-		expect(order("Default")).toEqual(before);
-		expect(order("Default (cache-saving)")).toEqual(history !== "enabled" ? before : [
-			"model-system-instruction", "human-identity", "model-identity", "model-scenario", "model-example-dialogue",
-			"history", "lore", "box:memory", "model-post-history-instruction",
-		]);
-	} finally {
-		database.close();
-		await rm(folder, { recursive: true, force: true });
-	}
+	database.exec(await Bun.file(new URL("./migrations/0040_cache_saving_default_preset.sql", import.meta.url)).text());
+	expect(order("Default")).toEqual(before);
+	expect(order("Default (cache-saving)")).toEqual(history !== "enabled" ? before : [
+		"model-system-instruction", "human-identity", "model-identity", "model-scenario", "model-example-dialogue",
+		"history", "lore", "box:memory", "model-post-history-instruction",
+	]);
 });

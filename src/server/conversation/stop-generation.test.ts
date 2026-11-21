@@ -1,10 +1,7 @@
-import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart } from "../test-fixtures/conversation";
-import { editMacroVariables, readMacroVariables, executeConversationCommand, readVariantDetails, acceptConversationSiblingGeneration } from "./index";
+import { readTestConversationSnapshot, createConversationWithHistory, checkpointFromStart, shortReplyPrompt, participantSeed } from "../test-fixtures/conversation";
+import { editMacroVariables, readMacroVariables, executeConversationCommand, readVariantDetails, acceptGeneration } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
-import {
-	acceptConversationTailGeneration,
-} from ".";
 // The raw durable stop transitions are private implementation details of the
 // Conversation module; only these durable-transaction tests reach them
 // directly. Production stop flows compose them through the Generation
@@ -15,14 +12,7 @@ import {
 } from "./commands/active-generation";
 import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 
-const prompt = {
-	systemInstruction: "Answer briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "The room is quiet.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt();
 
 describe("explicit Conversation Generation Stop", () => {
 	let database: Database;
@@ -38,8 +28,8 @@ describe("explicit Conversation Generation Stop", () => {
 		const created = createConversationWithHistory(module, {
 			name: "Stop Chat",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original answer."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original answer."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -50,19 +40,18 @@ describe("explicit Conversation Generation Stop", () => {
 	};
 
 	const acceptTail = (input: ReturnType<typeof setup>, content = "Try this.") =>
-		acceptConversationTailGeneration(database, {
+		acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			expectedRevision: input.created.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
-			humanContent: content,
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "send", expectedRevision: input.created.revision, content: content });
 
 	test("persists partial Tail output as an interrupted Variant", () => {
 		const input = setup();
@@ -76,6 +65,7 @@ describe("explicit Conversation Generation Stop", () => {
 		});
 
 		stopConversationGeneration(database, {
+			cause: "user-stop",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 			timestamp: "2026-08-27T00:00:01.000Z",
@@ -110,6 +100,7 @@ describe("explicit Conversation Generation Stop", () => {
 		const accepted = acceptTail(input, "Keep my input.");
 
 		stopConversationGeneration(database, {
+			cause: "user-stop",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
@@ -126,18 +117,18 @@ describe("explicit Conversation Generation Stop", () => {
 	const acceptSibling = (input: ReturnType<typeof setup>) => {
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
-		return acceptConversationSiblingGeneration(database, {
+		return acceptGeneration(database, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			messageId: target.id,
 			timestamp: "2026-08-27T00:00:01.000Z",
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: target.id });
 	};
 
 	for (const target of ["human-message", "model-message", "historical-message"] as const) {
@@ -152,7 +143,7 @@ describe("explicit Conversation Generation Stop", () => {
 				action: { type: "delete-message", messageId },
 			})).toThrow("Stop the running Generation before deleting Messages or Variants.");
 			checkpointFromStart(database, { conversationId: input.created.id, generationId: accepted.generationId, content: "Still owned." });
-			stopConversationGeneration(database, { conversationId: input.created.id, generationId: accepted.generationId });
+			stopConversationGeneration(database, { cause: "user-stop", conversationId: input.created.id, generationId: accepted.generationId });
 			expect(requireSnapshot(database, input.created.id).messages.at(-1)?.variants[0]?.content).toBe("Still owned.");
 		});
 	}
@@ -166,7 +157,7 @@ describe("explicit Conversation Generation Stop", () => {
 				conversationId: input.created.id, expectedRevision: accepted.conversation.revision,
 				action: { type: "delete-variant", messageId: accepted.messageId, variantId },
 			})).toThrow("Stop the running Generation before deleting Messages or Variants.");
-			stopConversationGeneration(database, { conversationId: input.created.id, generationId: accepted.generationId });
+			stopConversationGeneration(database, { cause: "user-stop", conversationId: input.created.id, generationId: accepted.generationId });
 			expect(requireSnapshot(database, input.created.id).messages[0]?.variants).toMatchObject([{ content: "Original answer.", selected: true }]);
 		});
 	}
@@ -196,6 +187,7 @@ describe("explicit Conversation Generation Stop", () => {
 		});
 
 		stopConversationGeneration(database, {
+			cause: "user-stop",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
@@ -231,6 +223,7 @@ describe("explicit Conversation Generation Stop", () => {
 		const accepted = acceptSibling(input);
 
 		stopConversationGeneration(database, {
+			cause: "user-stop",
 			conversationId: input.created.id,
 			generationId: accepted.generationId,
 		});
@@ -247,18 +240,18 @@ describe("explicit Conversation Generation Stop", () => {
 		const input = setup();
 		const target = input.created.messages[0];
 		if (target === undefined) throw new Error("Opening target missing.");
-		const accept = (timestamp: string) => acceptConversationSiblingGeneration(input.module, {
+		const accept = (timestamp: string) => acceptGeneration(input.module, {
 			seed: "test-generation-seed",
 			conversationId: input.created.id,
-			messageId: target.id,
 			timestamp,
 			humanParticipantId: input.humanId,
 			modelParticipantId: input.modelId,
 			capturedHumanName: "Writer",
 			capturedModelName: input.modelName,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: target.id });
 		const first = accept("2026-08-27T00:00:01.000Z");
 		const second = accept("2026-08-27T00:00:02.000Z");
 		const revisionBeforeStop = readTestConversationSnapshot(input.module, input.created.id)?.revision;

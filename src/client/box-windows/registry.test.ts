@@ -1,3 +1,4 @@
+import { installFetch } from "../test-fixtures/conversation";
 import { expect, test } from "bun:test";
 import { addBoxClients, boxVersionsBuilt, chatBoxClient, loadBoxVersions, loadedBoxes } from "./registry";
 import tipJar from "../../../e2e/fixtures/boxes/tip-jar-sandboxed/descriptor.json";
@@ -19,10 +20,10 @@ test("an earlier version made latest again lists its own label, keeping the clie
 	const descriptor = (label: string) => ({ ...tipJar, id: "jar", label });
 	let listing = [{ id: "jar", label: "New", summary: "Counts tips.", instructions: "", sandboxed: descriptor("New"), version: v2 }];
 	const original = globalThis.fetch;
-	globalThis.fetch = Object.assign(async (input: RequestInfo | URL) => {
+	installFetch(async (input: RequestInfo | URL) => {
 		const path = new URL(String(input), "http://localhost").pathname;
 		return path === "/api/boxes" ? Response.json(listing) : Response.json({ sandboxed: descriptor("Old") });
-	}, { preconnect() {} });
+	});
 	try {
 		await loadBoxVersions({ boxVersions: { jar: v1 } });
 		const client = chatBoxClient({ boxVersions: { jar: v1 } }, "jar");
@@ -43,7 +44,7 @@ test("a client module whose delegate differs from the server's listing is refuse
 	const client = new URL("../../../e2e/fixtures/boxes/tip-jar/client.tsx", import.meta.url).href;
 	const listing = [{ id: "tip-jar", label: "Tip Jar", summary: "", instructions: "", client, delegate: { tag: "jar", summary: "", description: "", off: "" } }];
 	const original = globalThis.fetch;
-	globalThis.fetch = Object.assign(async () => Response.json(listing), { preconnect() {} });
+	installFetch(async () => Response.json(listing));
 	try {
 		await addBoxClients();
 		expect(loadedBoxes().get("tip-jar")).toMatchObject({ failure: "Its client module delegates no tag, but the server loaded it delegating jar." });

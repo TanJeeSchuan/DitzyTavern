@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { boxDescriptor, boxDescriptors } from "../../shared/contract/box";
+import type { GenerationBody, GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import type { BoxValue } from "../../shared/contract/box-value";
 import { sha256 } from "../hash";
 import { readBoxFolds, writeAutomaticRecord } from "./records";
@@ -13,15 +14,36 @@ import { createConversationRoutes } from "../contract/conversation";
 import { initializeConnectionSecretKey } from "../connection-secrets";
 import { configureDecisionModels } from "../contract/decision-model-test-fixtures";
 import { captureModelFetch, completeGeneration, createChat, duplicateBlock, key, readConversation, readInspection, readPreset, startGeneration, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { acceptConversationTailGeneration, observeConversationWrites } from "../conversation";
+import { InvalidConversationCommandError, observeConversationWrites } from "../conversation";
 import { openInitializedDatabase } from "../database/database";
-import { insertBox, openObservedDatabase, setBoxState, checkpointFromStart } from "../test-fixtures/conversation";
-import { setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
+import { applyCommand, createConversationWithHistory, insertBox, openObservedDatabase, setBoxState, checkpointFromStart, acceptTestGeneration } from "../test-fixtures/conversation";
+import { addPromptPresetBlock, setPromptPresetBlockEnabled } from "../prompt-preset/blocks";
+import { readConversationPromptPresetRecipeFromConnection } from "../prompt-preset";
 import { recoverActiveGenerations } from "../workflows/generation-recovery";
 import { prepareGenerationInputsSnapshot } from "../workflows/generate-capture";
 import { readBoxCatchUp, startBoxCatchUp, startBoxDigests } from "./digest";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "./decision-settings";
 import { advanceBoxes, builtInBoxes, captureBoxes, discoverBoxes, fingerprintBoxes, loadBoxes, participatingBoxes, serverBoxes } from "./registry";
+import { boxExports } from "./exports";
+
+test("the Character Drafter starts enabled without a preset block and cannot participate in a Generation", () => {
+	const database = openObservedDatabase();
+	try {
+		const chat = createConversationWithHistory(database, { name: "Box test" });
+		const recipe = () => readConversationPromptPresetRecipeFromConnection(drizzle(database), chat.id)!;
+		const box = "character-drafter";
+		const reference = "box:character-drafter";
+		expect(chat.boxes[box]).toBe("enabled");
+		expect(recipe().slots.some((slot) => slot.reference === reference)).toBe(false);
+		setBoxState(database, chat.id, box, "disabled");
+		setBoxState(database, chat.id, box, "enabled");
+		expect(recipe().slots.some((slot) => slot.reference === reference)).toBe(false);
+		expect(() => addPromptPresetBlock(database, recipe().id, reference)).toThrow("has no Prompt Preset block");
+		const slots = [...recipe().slots, { reference, enabled: true, role: "system", content: "" }] satisfies Parameters<typeof participatingBoxes>[1];
+		const boxes = participatingBoxes(serverBoxes(), slots, { [box]: { state: "enabled", instance: "instance" } });
+		expect(boxes.has(box)).toBe(false);
+	} finally { database.close(); }
+});
 
 test("a Box's Decision Model selection is part of its preview fingerprint, and its credential is not", () => {
 	const database = openObservedDatabase();
@@ -68,11 +90,16 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 	const plugins = installPlugins({
 		lantern: {},
 		constructor: {},
+		"exports-mismatched": {
+			fields: 'exports: { greet: { description: "Greets.", input: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, output: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" } } }',
+			server: "export default { exports: { farewell: (name) => name } };",
+		},
 		unlabelled: { fields: "label: 3" },
 		"bad-value-schema": { fields: "values: { chat: { settings: {} } }" },
 		unschemed: { fields: "setup: { schema: {}, initial: null }" },
 		"bad-initial": { fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, initial: 3 }' },
 		"old-sdk": { fields: `sdk: ${boxSdkVersion - 1}` },
+		"promptless-moves": { fields: `prompt: false, ${movesField}`, server: 'export default { moves: { render: () => "A Move." } };' },
 		mood: {},
 		renamed: { fields: 'id: "lantern"' },
 		broken: { server: 'throw new Error("The wick is wet.");' },
@@ -82,6 +109,7 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		"hollow-moves": { server: "export default { moves: {} };" },
 		"hollow-records": { fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }', server: "export default { records: { initial: 0 } };" },
 		"hollow-advance": { server: 'export default { advance: { run: "soon" } };' },
+		"hollow-exports": { server: "export default { exports: { greet: 3 } };" },
 		"hollow-routes": { server: "export default { routes: () => ({}) };" },
 		"map-initial": { fields: 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }', server: "export default { records: { initial: new Map(), fold: (state) => state } };" },
 	});
@@ -93,13 +121,16 @@ test("a plugin Box that cannot load is refused with its reason, and the rest sti
 		["bad-value-schema", "Its descriptor is invalid at /values/chat/settings: Expected kind 'BoxSchema'."],
 		["broken", "The wick is wet."],
 		["constructor", "Its id, constructor, names an Object.prototype property."],
+		["exports-mismatched", "The exports-mismatched Box must declare the same Exports its descriptor declares."],
 		["hollow-advance", "Its server module is invalid at /advance/run: Expected function."],
+		["hollow-exports", "Its server module is invalid at /exports/greet: Expected function."],
 		["hollow-moves", "Its server module is invalid at /moves/render: Expected required property."],
 		["hollow-records", "The hollow-records Box must declare a fold exactly when it declares an initial state."],
 		["hollow-routes", "The hollow-routes Box's routes must return an Elysia app."],
 		["map-initial", "The map-initial Box's records.initial is invalid at /: Expected union value."],
 		["mood", "A Box with the id mood is already loaded."],
 		["old-sdk", `It was built for Box SDK ${boxSdkVersion - 1}; this host runs ${boxSdkVersion}.`],
+		["promptless-moves", "The promptless-moves Box must declare no Moves, since it declares prompt: false."],
 		["renamed", "Its folder must be named for its id, lantern."],
 		["unhooked", "The unhooked Box must declare a digest exactly when it declares a decision."],
 		["unlabelled", "Its descriptor is invalid at /label: Expected string."],
@@ -122,6 +153,7 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 	sandboxed("jar");
 	sandboxed("both", { "server.ts": "export default {};" });
 	sandboxed("emailed", { "descriptor.json": descriptor("emailed", { setup: { schema: { type: "string", format: "email" }, initial: "" } }) });
+	sandboxed("exporting", { "descriptor.json": descriptor("exporting", { exports: { people: { description: "Lists people.", input: { type: "string" }, output: { type: "string" } } } }) });
 	// @approved Twenty backtracking alternatives before a plain string, checked against an initial value that makes each backtrack, held startup for longer than five seconds.
 	const backtracking = { anyOf: [...Array.from({ length: 20 }, () => ({ type: "string", pattern: "^(a+)+$" })), { type: "string" }] };
 	sandboxed("backtracking", { "descriptor.json": descriptor("backtracking", { setup: { schema: backtracking, initial: `${"a".repeat(34)}!` } }) });
@@ -142,12 +174,120 @@ test("a sandboxed Box loads from its descriptor.json, logic.js and ui.js, and a 
 		["backtracking", "Its string at /setup/schema/anyOf/0 has a pattern; a sandboxed Box may only use ParticipantKey's."],
 		["both", "It holds both server.ts and sandboxed logic; a Box folder is trusted or sandboxed, not both."],
 		["emailed", "Its schema at /setup/schema uses format, which a sandboxed Box cannot."],
+		["exporting", "Its descriptor.json is invalid at /exports: Never."],
 		["fetching", "The fetching Box's ui.js did not build: ui.js imports https://example.com/tip.js; a sandboxed Box imports its own files by relative path and the packages its descriptor.json declares."],
 		["importing", "The importing Box's logic.js did not build: logic.js imports ./tip.js, which is not a .js or .mjs file of the Box's own."],
 		["keyed", "Its record at /record keys by ^(a+)+$; a sandboxed Box keys a record by any string or by ParticipantKey."],
 		["labelled", "Its descriptor.json is invalid at /moves/render: Unexpected property."],
 		["unhooked", "The unhooked Box must declare a Move render exactly when it declares Moves."],
 	]);
+});
+
+test("a Box's Exports answer through boxExports only while the Box is enabled in the Chat", async () => {
+	const plugins = installPlugins({ greeter: {
+		fields: exportsField.replace("greet: {", 'greet: { name: "Greeting metadata",'),
+		server: "export default { exports: { greet: ({ name }) => ({ greeting: `Hello, ${name}.` }) } };",
+	} });
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins]);
+		const chat = createConversationWithHistory(database, { name: "Box test" });
+		expect(boxExports(database, chat.id).greeter).toBeUndefined();
+		insertBox(database, chat.id, "greeter");
+		const exports = boxExports(database, chat.id);
+		expect(exports.greeter).toBeDefined();
+		expect(exports["author-note"]).toBeUndefined();
+		expect(exports.toString).toBeUndefined();
+		expect(exports.greeter?.toString).toBeUndefined();
+		const greet = exports.greeter?.greet;
+		if (greet === undefined) throw new Error("The greeter Box's Export is missing.");
+		expect(greet({ name: "Ann" })).toEqual({ greeting: "Hello, Ann." });
+		setBoxState(database, chat.id, "greeter", "disabled");
+		expect(boxExports(database, chat.id).greeter).toBeUndefined();
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("an Export's input and output are checked against its declared schemas, failing naming the Box, the Export and the path", async () => {
+	const plugins = installPlugins({ crooked: { fields: exportsField, server: "export default { exports: { greet: ({ name }) => ({ greeting: name.length }) } };" } });
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins]);
+		const chat = createConversationWithHistory(database, { name: "Box test" });
+		insertBox(database, chat.id, "crooked");
+		const greet = boxExports(database, chat.id).crooked?.greet;
+		if (greet === undefined) throw new Error("The crooked Box's Export is missing.");
+		expect(() => greet(undefined)).toThrow("The crooked Box's greet Export input is invalid at /: Expected object.");
+		expect(() => greet({ name: 3 })).toThrow("The crooked Box's greet Export input is invalid at /name: Expected string.");
+		expect(() => greet({ name: "Ann" })).toThrow("The crooked Box's greet Export output is invalid at /greeting: Expected string.");
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("an Export with a loose schema still refuses non-JSON answers and names the failing path", async () => {
+	const unrestricted = `{ [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: {} }`;
+	const looseExports = `exports: { greet: {
+		description: "Greets.",
+		input: ${objectField(`name: ${stringField}`, "name")},
+		output: ${unrestricted},
+	} }`;
+	const plugins = installPlugins({
+		eager: { fields: looseExports, server: "export default { exports: { greet: async ({ name }) => ({ greeting: name }) } };" },
+		dated: { fields: looseExports, server: "export default { exports: { greet: ({ name }) => ({ greeting: name, at: [new Date(0)] }) } };" },
+		cyclic: { fields: looseExports, server: `export default { exports: { greet: () => {
+			const answer = {};
+			answer["a/b~c"] = answer;
+			return answer;
+		} } };` },
+		decorated: { fields: looseExports, server: `export default { exports: { greet: () => ({ at: Object.assign([1], { extra: 2 }) }) } };` },
+		subclassed: { fields: looseExports, server: `
+			class HiddenArray extends Array { toJSON() { return []; } }
+			export default { exports: { greet: () => ({ at: new HiddenArray(1, 2) }) } };
+		` },
+	});
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins]);
+		const chat = createConversationWithHistory(database, { name: "Box test" });
+		insertBox(database, chat.id, "eager");
+		insertBox(database, chat.id, "dated");
+		insertBox(database, chat.id, "cyclic");
+		insertBox(database, chat.id, "decorated");
+		insertBox(database, chat.id, "subclassed");
+		const exports = boxExports(database, chat.id);
+		expect(() => exports.eager?.greet?.({ name: "Ann" })).toThrow("The eager Box's greet Export answered with a Promise; an Export answers synchronously.");
+		expect(() => exports.dated?.greet?.({ name: "Ann" })).toThrow("The dated Box's greet Export output is not JSON at /at/0.");
+		expect(() => exports.cyclic?.greet?.({ name: "Ann" })).toThrow("The cyclic Box's greet Export output is not JSON at /a~1b~0c.");
+		expect(() => exports.decorated?.greet?.({ name: "Ann" })).toThrow("The decorated Box's greet Export output is not JSON at /at/extra.");
+		expect(() => exports.subclassed?.greet?.({ name: "Ann" })).toThrow("The subclassed Box's greet Export output is not JSON at /at.");
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});
+
+test("a Box's routes read another Box's Exports through the exportsOf the host hands them", async () => {
+	const plugins = installPlugins({
+		greeter: { fields: exportsField, server: "export default { exports: { greet: ({ name }) => ({ greeting: `Hello, ${name}.` }) } };" },
+		reader: { server: `${elysia} export default {
+			routes: (database, exportsOf) => new Elysia().get("/greetings/:id", ({ params }) => exportsOf(Number(params.id)).greeter?.greet?.({ name: "Ann" }))
+		};` },
+	});
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins], database);
+		const chat = createConversationWithHistory(database, { name: "Box test" });
+		insertBox(database, chat.id, "greeter");
+		const response = await serverBoxes().get("reader")?.routes?.handle(new Request(`http://localhost/api/boxes/reader/greetings/${chat.id}`));
+		expect(await response?.json()).toEqual({ greeting: "Hello, Ann." });
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
 });
 
 for (const disabledBy of ["chat", "preset"] as const) test(`a Box disabled by its ${disabledBy} neither folds nor decodes records during generation`, async () => {
@@ -160,7 +300,7 @@ for (const disabledBy of ["chat", "preset"] as const) test(`a Box disabled by it
 		const conversation = createChat(database);
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 		const send = async () => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations`, {
 			method: "POST", headers: { "content-type": "application/json" },
 			body: JSON.stringify({ kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it." }),
@@ -193,11 +333,13 @@ test("an unchanged preview of a Box block whose pinned items exceed its allowanc
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
 		let sent = "";
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { sent = JSON.stringify(request.messages); }) });
-		const post = async (path: string, body: { readonly kind: "send"; readonly content: string; readonly expectedRevision?: number; readonly previewId?: string; readonly promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { sent = JSON.stringify(request.messages); } }).fetch });
+		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const { previewId, promptPlan } = await (await post("/preview", { kind: "send", content: "Light it." })).json();
+		const preview = await post("/preview", { target: { kind: "send", content: "Light it." } });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
 		const accepted = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });
 		expect(accepted.status).toBe(200);
 		await completeGeneration(app, conversation.id, (await accepted.json()).generationId);
@@ -217,12 +359,9 @@ test("a Generation holding a record of a Box no longer loaded still settles on r
 		} })]);
 		const conversation = createChat(database);
 		const instance = insertBox(database, conversation.id, "lantern");
-		const [human, model] = conversation.cast;
-		if (human === undefined || model === undefined) throw new Error("Control Participants missing.");
-		const accepted = acceptConversationTailGeneration(database, {
-			seed: "lantern-seed", conversationId: conversation.id, expectedRevision: conversation.revision, timestamp: "2026-10-14T00:00:00.000Z",
-			humanContent: "Light it.", humanParticipantId: human.id, modelParticipantId: model.id, capturedHumanName: human.name, capturedModelName: model.name,
-			promptPlan: { blocks: [], warnings: [], images: [] }, modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		const accepted = acceptTestGeneration(database, conversation, { kind: "send", expectedRevision: conversation.revision, content: "Light it." }, {
+			seed: "lantern-seed",
+			timestamp: "2026-10-14T00:00:00.000Z",
 			boxRecords: { lantern: { instance, record: { lit: true } } },
 		});
 		checkpointFromStart(database, { conversationId: conversation.id, generationId: accepted.generationId, content: "The wick catches." });
@@ -244,7 +383,7 @@ test("a Chat keeps its preset and its Generations once a Box in it is no longer 
 		insertBox(database, conversation.id, "lantern");
 		await loadBoxes([builtInBoxes]);
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 		const preset = await readPreset(app, conversation.id);
 		const block = preset.slots.find(({ reference }) => reference === "box:lantern");
 		if (block === undefined) throw new Error("The preset lost the Lantern's block.");
@@ -290,11 +429,13 @@ test("reinserting a participating Box makes its inspected Prompt Plan stale", as
 		const conversation = createChat(database);
 		insertBox(database, conversation.id, "lantern");
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
-		const post = async (path: string, body: { readonly kind: "send"; readonly content: string; readonly expectedRevision?: number; readonly previewId?: string; readonly promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
+		const post = async (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${conversation.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const { previewId, promptPlan } = await (await post("/preview", { kind: "send", content: "Light it." })).json();
+		const preview = await post("/preview", { target: { kind: "send", content: "Light it." } });
+		expect(preview.status).toBe(200);
+		const { previewId, promptPlan } = await preview.json();
 		setBoxState(database, conversation.id, "lantern", "absent");
 		insertBox(database, conversation.id, "lantern");
 		const response = await post("", { kind: "send", expectedRevision: (await readConversation(app, conversation.id)).revision, content: "Light it.", previewId, promptPlan });
@@ -408,6 +549,12 @@ const recordField = 'record: { [Symbol.for("TypeBox.Kind")]: "Object", type: "ob
 const decisionField = 'decision: { summary: "", description: "", off: "", context: "" }';
 const movesField = 'moves: { schema: { [Symbol.for("TypeBox.Kind")]: "Any" }, max: 1, label: () => "" }';
 // @approved
+//  The one Export the Export tests declare: an input `name`, an output
+// `greeting`, each schema written as the JSON a TypeBox schema serializes to.
+const stringField = '{ [Symbol.for("TypeBox.Kind")]: "String", type: "string" }';
+const objectField = (fields: string, required: string) => `{ [Symbol.for("TypeBox.Kind")]: "Object", type: "object", properties: { ${fields} }, required: ["${required}"] }`;
+const exportsField = `exports: { greet: { description: "Greets one person.", input: ${objectField(`name: ${stringField}`, "name")}, output: ${objectField(`greeting: ${stringField}`, "greeting")} } }`;
+// @approved
 //  A receiver row's hook throws naming the object it ran on, which must be
 // the one that declares it, as the module calls it.
 const ranOn = (hook: string, owner: string) => `{ throw new Error("The lantern Box's ${hook} ran on " + (this === ${owner} ? "its own object." : "another object.")); }`;
@@ -429,6 +576,7 @@ for (const [hook, outcome, server, fields = ""] of [
 	["records.digest.run", "ran on its own object.", `records: { digest: { window: 0, async run() ${ranOn("records.digest.run", "box.records.digest")} } }`, `${recordField}, ${decisionField}`],
 	["advance.run", "ran on its own object.", `advance: { async run() ${ranOn("advance.run", "box.advance")} }`],
 	["advance.fingerprint", "ran on its own object.", `advance: { run: async () => ({ items: [] }), fingerprint() ${ranOn("advance.fingerprint", "box.advance")} }`],
+	["exports.greet", "ran on its own object.", `exports: { greet() ${ranOn("exports.greet", "box.exports")} }`, exportsField],
 ] as const) test(`${hook} runs on its own object and its output is checked: ${server}`, async () => {
 	const { boxes: [lantern] } = await discoverBoxes([installPlugins({ lantern: { fields, server: `const box = { ${server} }; export default box;` } })]);
 	// SAFETY: each plugin's hook ignores its arguments.
@@ -445,7 +593,8 @@ for (const [hook, outcome, server, fields = ""] of [
 		box?.importSillyTavernNote?.("");
 		box?.status?.(none, none);
 		box?.read?.(none);
-		box?.routes?.(none);
+		box?.routes?.(none, none);
+		box?.exports?.greet?.({ name: "Ann" }, none);
 		box?.records?.fold?.(none, none, none);
 		await box?.records?.digest?.run(none, context);
 	};
@@ -466,3 +615,32 @@ test("the host stops waiting for a trusted Box's async hook that ignores its sig
 	}
 });
 
+test("set-box-setup reports a throwing plugin hook as an invalid command without writing", async () => {
+	const plugins = installPlugins({ "throwing-setup": {
+		fields: 'setup: { schema: { [Symbol.for("TypeBox.Kind")]: "String", type: "string" }, initial: "initial" }',
+		server: 'export default { setupError: () => { throw new Error("The setup hook broke."); } };',
+	} });
+	const database = openObservedDatabase();
+	try {
+		await loadBoxes([builtInBoxes, plugins], database);
+		const chat = createConversationWithHistory(database, { name: "Throwing setup", participants: [] });
+		insertBox(database, chat.id, "throwing-setup");
+		let thrown: unknown;
+		try {
+			applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "throwing-setup", setup: "changed" } });
+		} catch (error) { thrown = error; }
+		expect(thrown).toBeInstanceOf(InvalidConversationCommandError);
+		expect(thrown).toMatchObject({ message: "The setup hook broke." });
+		expect(database.query("SELECT value FROM conversation_data WHERE conversation_id = ? AND namespace = 'box:throwing-setup' AND key = 'setup'").get(chat.id)).toBeNull();
+		database.query("INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES (?, 'box:throwing-setup', 'setup', 'malformed')").run(chat.id);
+		thrown = undefined;
+		try {
+			applyCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "set-box-setup", box: "throwing-setup", setup: "changed" } });
+		} catch (error) { thrown = error; }
+		expect(thrown).not.toBeInstanceOf(InvalidConversationCommandError);
+		expect(thrown).toMatchObject({ message: `Stored Box JSON at Chat ${chat.id} box:throwing-setup setup is malformed.` });
+	} finally {
+		database.close();
+		await loadBoxes([builtInBoxes]);
+	}
+});

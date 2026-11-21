@@ -27,7 +27,7 @@ for (const useAppearance of [true, false]) {
 			portrait: { hash: pictures[2]!.hash, focalX: 0.5, focalY: 0.5 },
 		};
 		let captured: unknown;
-		const app = createDescribeRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+		const app = createDescribeRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 		const response = await app.handle(new Request("http://localhost/api/describe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hashes: appearanceImageHashes(definition), ask: "Focus on clothing." }) }));
 		expect(response.status).toBe(200);
 		expect(Value.Decode(description, await response.json())).toEqual({ text: "Done." });
@@ -61,7 +61,7 @@ test("a Text-only describing model refuses Describe without sending a provider r
 	applyDescribingModelSettings(database, { type: "apply", expectedRevision: 0, profileId, model: "text-only" });
 	const picture = await uploadImage(database, pngFixture({ width: 10 }));
 	const captured: unknown[] = [];
-	const app = createDescribeRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => captured.push(request)) });
+	const app = createDescribeRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => captured.push(request) }).fetch });
 	const response = await app.handle(new Request("http://localhost/api/describe", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hashes: [picture.hash] }) }));
 	expect(response.status).toBe(422);
 	expect(await response.json()).toEqual({ outcome: "invalid", reason: "Choose a describing model that accepts Images" });
@@ -90,7 +90,7 @@ test("Describe sends each chosen Image once and keeps Ask References as Anchors"
 	const chosen = await uploadImage(database, chosenBytes);
 	const other = await uploadImage(database, pngFixture({ width: 21 }));
 	let captured: unknown;
-	const app = createDescribeRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+	const app = createDescribeRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 	const response = await app.handle(new Request("http://localhost/api/describe", {
 		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ hashes: [chosen.hash, chosen.hash], ask: `Describe the coat. ${formatImageReference("Other", other.hash)}` }),
 	}));

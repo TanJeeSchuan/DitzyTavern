@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import type { StoryVariant } from "../story";
+import { toStoryMessage, type StoryMessage, type StoryVariant } from "../story";
+import type { ChatHistoryPage } from "../chat-history";
+import { historyMessage as message, historyPage as page, historyVariant } from "../test-fixtures/conversation";
 import { createVariantStreamReader, createVariantStreams, streamedVariant, type VariantObservation } from "./variant-streams";
 
 const checkpoint = (lastEventId: number, content: string, reasoning = ""): StoryVariant => ({
@@ -58,6 +60,18 @@ describe("Variant stream checkpoints", () => {
 		expect(streams.get(101)?.content).toBe("Active");
 	});
 
+	test("an ended Generation keeps its text until a page settles its Variant", () => {
+		const streams = createVariantStreams();
+		const started = checkpoint(1, "One.");
+		streams.checkpoint([started]);
+		streams.observe(append(2, " Two."), started);
+		streams.retain(new Set());
+		// Reject falling back to the page's older checkpoint between the stream's end and the settled page.
+		expect(streamedVariant(started, streams.get(100)).content).toBe("One. Two.");
+		streams.checkpoint([{ id: 100, position: 1, content: "One. Two.", empty: false, hasReasoning: false }]);
+		expect(streams.get(100)).toBeUndefined();
+	});
+
 	test("the last unsubscribe stops notifications and a new subscriber can use the same Variant", () => {
 		const streams = createVariantStreams();
 		let notifications = 0;
@@ -105,5 +119,138 @@ describe("the Swipes browser stream reader", () => {
 		streams.observe(otherDelta(2, " More."), undefined);
 		// Reject keeping browser-only subscriptions after the browser closes.
 		expect(notifications).toBe(1);
+	});
+});
+
+function reader() {
+	const streams = createVariantStreams();
+	let messages: StoryMessage[] = [];
+	const placed = (messageId: number, variantId: number) =>
+		messages.find((entry) => entry.id === messageId)?.swipes.find((variant) => variant.id === variantId);
+
+	return {
+		receive(received: ChatHistoryPage) { messages = received.messages.map(toStoryMessage); },
+		observe(...observations: VariantObservation[]) {
+			for (const observation of observations) streams.observe(observation, placed(observation.messageId, observation.variantId));
+		},
+		shown(variantId: number) {
+			const variant = messages.flatMap((entry) => entry.swipes).find((entry) => entry.id === variantId);
+			return variant && streamedVariant(variant, streams.get(variantId));
+		},
+	};
+}
+
+const target = { messageId: 10, variantId: 100, generationId: 55 };
+const delta = (eventId: number, text: string, stream: "content" | "reasoning" = "content", at = target): VariantObservation =>
+	({ ...at, eventId, mode: "append", stream, text });
+const replace = (eventId: number, content: string, reasoning = "", at = target): VariantObservation =>
+	({ ...at, eventId, mode: "replace", content, reasoning });
+
+describe("streaming Provisional Variant content", () => {
+	const provisional = { id: 100, position: 1, content: "", empty: true, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
+		liveGeneration: { generationId: 55, eventId: 0, content: "", reasoning: "" } };
+	const stateWithProvisional = () => {
+		const story = reader();
+		story.receive(page({ revision: 4, messages: [message({ id: 10, variants: [provisional] })] }));
+		return story;
+	};
+
+	for (const observedLive of [false, true]) test(`terminal history rejects later replay after live history was ${observedLive ? "observed" : "not observed"}`, () => {
+		const story = observedLive ? stateWithProvisional() : reader();
+		const content = "The tide turns against the pier.\n\nThen the";
+		story.receive(page({ revision: 5, messages: [message({ id: 10, variants: [historyVariant({ content, hasReasoning: true })] })] }));
+		for (const [index, text] of ["The tide turns against the pier.\n\n", "Then the"].entries()) {
+			story.observe(delta(index + 1, text));
+			expect(story.shown(100)?.content).toBe(content);
+		}
+		story.observe(replace(3, "Stale checkpoint", "Stale thought"));
+		expect(story.shown(100)).toMatchObject({ content, reasoning: "", hasReasoning: true });
+	});
+
+	test("Content deltas append to the Provisional Variant and update the empty placeholder", () => {
+		const story = stateWithProvisional();
+		story.observe(delta(1, "Once upon "), delta(2, "a time"));
+		expect(story.shown(100)).toMatchObject({ content: "Once upon a time", empty: false });
+	});
+
+	test("an authoritative Content replace overwrites the accumulated text", () => {
+		const story = stateWithProvisional();
+		story.observe(delta(1, "Stale tail"), replace(2, "Authoritative"));
+		expect(story.shown(100)?.content).toBe("Authoritative");
+	});
+
+	test("Reasoning Content streams separately, and authoritative history hands it to the Variant text read", () => {
+		const story = stateWithProvisional();
+		story.observe(delta(1, "First thought. ", "reasoning"));
+		expect(story.shown(100)).toMatchObject({ content: "", reasoning: "First thought. ", hasReasoning: true });
+		story.observe(replace(2, "Finished.", "Authoritative thought."));
+		expect(story.shown(100)?.reasoning).toBe("Authoritative thought.");
+
+		story.receive(page({ revision: 5, messages: [message({ id: 10, variants: [
+			historyVariant({ content: "Finished.", hasReasoning: true }),
+		] })] }));
+		// A stream that missed its end must not stand in for the persisted text.
+		expect(story.shown(100)).toMatchObject({ content: "Finished.", reasoning: "", hasReasoning: true });
+	});
+
+	const unplaced = { messageId: 11, variantId: 110, generationId: 55 };
+	const placing = (live: { eventId: number; content: string } | null, content = "") => {
+		const variant: ChatHistoryPage["messages"][number]["variants"][number] = historyVariant({ id: 110, content, empty: content === "" });
+		if (live) variant.liveGeneration = { generationId: 55, eventId: live.eventId, content: live.content, reasoning: "" };
+		return page({ messages: [message({ id: 11, variants: [variant] })] });
+	};
+
+	test("stream events that land before the page placing their Variant show once it arrives", () => {
+		const early = () => {
+			const story = reader();
+			story.observe(delta(1, "The tide.", "content", unplaced), delta(2, " The lights.", "content", unplaced), delta(3, " Then the", "content", unplaced));
+			return story;
+		};
+		const live = early();
+		live.receive(placing({ eventId: 0, content: "" }));
+		expect(live.shown(110)?.content).toBe("The tide. The lights. Then the");
+
+		const checkpointed = early();
+		checkpointed.receive(placing({ eventId: 2, content: "The tide. The lights." }));
+		expect(checkpointed.shown(110)?.content).toBe("The tide. The lights. Then the");
+
+		const finished = early();
+		finished.receive(placing(null, "The tide. The lights. Then the end."));
+		expect(finished.shown(110)?.content).toBe("The tide. The lights. Then the end.");
+	});
+
+	test("off-window observations survive until placement, and a snapshot supersedes earlier ones", () => {
+		const detached = () => {
+			const story = reader();
+			story.receive(page({ messages: [] }));
+			story.observe(delta(1, "One.", "content", unplaced), delta(2, " Two.", "content", unplaced), delta(3, " Three.", "content", unplaced));
+			return story;
+		};
+		const latest = placing({ eventId: 1, content: "One." });
+		const returned = detached();
+		returned.receive(latest);
+		expect(returned.shown(110)?.content).toBe("One. Two. Three.");
+
+		const snapshot = detached();
+		snapshot.observe(replace(4, "One. Two. Three. Four.", "", unplaced));
+		snapshot.receive(latest);
+		expect(snapshot.shown(110)?.content).toBe("One. Two. Three. Four.");
+
+		const staleSnapshot = detached();
+		staleSnapshot.observe(replace(1, "One.", "", unplaced));
+		staleSnapshot.receive(latest);
+		expect(staleSnapshot.shown(110)?.content).toBe("One. Two. Three.");
+	});
+
+	test("history checkpoint and replay resume share one ordered projection", () => {
+		const story = reader();
+		story.receive(page({ messages: [message({ id: 10, variants: [{
+			id: 100, position: 1, content: "Saved", empty: false, hasReasoning: false, timestamp: "2026-01-01T00:00:00.000Z", selected: true,
+			liveGeneration: { generationId: 55, eventId: 1, content: "Saved", reasoning: "" },
+		}] })] }));
+		story.observe(delta(1, "Saved"));
+		expect(story.shown(100)?.content).toBe("Saved");
+		story.observe(delta(2, " next"));
+		expect(story.shown(100)?.content).toBe("Saved next");
 	});
 });

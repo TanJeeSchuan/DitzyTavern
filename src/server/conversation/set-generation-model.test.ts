@@ -1,35 +1,16 @@
 import { blankConnectionProfileDraft } from "../../shared/contract/connection-settings";
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { pairChat } from "../test-fixtures/conversation";
 import { executeConversationCommand, readConversationGenerationSettings } from ".";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { InvalidConversationCommandError } from ".";
-import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "./generation-settings";
-import {
-	GENERATION_SETTINGS_FIELDS,
-	type CanonicalGenerationSettings,
-} from "../../shared/contract/generation-settings";
+import type { CanonicalGenerationSettings } from "../../shared/contract/generation-settings";
 import { createConnectionSettingsModule } from "../connection-settings";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
 
 const createTestConversation = (database: Database, name: string) =>
-	createConversationWithHistory(database, {
-		name,
-		participants: [
-			{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-			{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-		],
-		control: { human: 0, model: 1 },
-	});
+	pairChat(database, name);
 
 // One editor's complete Generation Settings write: distinctive values in
 // every canonical field so a stale-field restore anywhere in the aggregate
@@ -103,24 +84,20 @@ const createConnection = (database: Database): number => {
 			action: { type: "set-generation-model", connectionProfileId, modelId: "  qwen3-max  " },
 		});
 		const stored = readConversationGenerationSettings(module, conversation.id);
-		if (stored === undefined) throw new Error("Stored settings missing.");
-
 		// The owning domain adapter owns trimming, so the submitted model ID
 		// survives normalized while every other canonical field keeps the
 		// other editor's committed values.
-		expect(stored.modelId).toBe("qwen3-max");
-		expect(stored.connectionProfileId).toBe(connectionProfileId);
-		for (const field of GENERATION_SETTINGS_FIELDS) {
-			if (field === "modelId") continue;
-			expect(stored[field]).toEqual(before[field]);
-		}
+		expect(stored).toEqual({ ...before, modelId: "qwen3-max", connectionProfileId });
 		expect(updated.revision).toBe(conversation.revision + 2);
 	});
 
-	test("creates the default settings under the submitted model when none are stored", () => {
+	test("changes the model and keeps the settings a new Conversation starts with", () => {
 		const connectionProfileId = createConnection(database);
 		const conversation = createTestConversation(database, "Unconfigured model command");
 		const module = database;
+		const before = readConversationGenerationSettings(module, conversation.id);
+		if (before === undefined) throw new Error("Stored settings missing.");
+		expect(before.responseBudget).toBe(1024);
 
 		executeConversationCommand(module, {
 			conversationId: conversation.id,
@@ -129,7 +106,7 @@ const createConnection = (database: Database): number => {
 		});
 
 		const stored = readConversationGenerationSettings(module, conversation.id);
-		expect(stored).toEqual({ ...DEFAULT_CONVERSATION_GENERATION_SETTINGS, connectionProfileId, modelId: "qwen3-max" });
+		expect(stored).toEqual({ ...before, connectionProfileId, modelId: "qwen3-max" });
 	});
 
 	test("clears the Conversation selection when its Connection Profile is deleted", () => {

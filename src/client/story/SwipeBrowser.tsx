@@ -10,7 +10,7 @@ import { Prose } from "./prose";
 const CARD_STEP = 88;
 const FLICK_MS = 140;
 
-type Browse = { variants: StoryVariant[]; shownIndex: number; onSelect: (index: number) => void };
+type Browse = { disabled: boolean; variants: StoryVariant[]; shownIndex: number; onSelect: (index: number) => void };
 
 /**
  * @approved A Message's Swipes in a dialog, as a held fan of cards or as a plain list. The Message mounts it only
@@ -51,7 +51,8 @@ export function SwipeBrowser({ mode, returnFocus, onClose, ...browse }: Browse &
 
 // @approved
 //  One Swipe as a card: its position, whether it is the shown Swipe, and its prose. Enter or Space picks it.
-function Card({ variant, index, count, current, onSelect, ref, ...props }: {
+function Card({ disabled, variant, index, count, current, onSelect, ref, ...props }: {
+	disabled: boolean;
 	variant: StoryVariant;
 	index: number;
 	count: number;
@@ -74,11 +75,13 @@ function Card({ variant, index, count, current, onSelect, ref, ...props }: {
 			{...props}
 			ref={ref}
 			role="button"
+			aria-disabled={disabled}
+			onClick={disabled ? undefined : props.onClick}
 			aria-label={`Swipe ${index + 1} of ${count}`}
 			aria-describedby={id}
 			aria-current={current || undefined}
 			onKeyDown={(event) => {
-				if (event.key !== "Enter" && event.key !== " ") return;
+				if (disabled || (event.key !== "Enter" && event.key !== " ")) return;
 				event.preventDefault();
 				onSelect();
 			}}
@@ -94,7 +97,7 @@ function Card({ variant, index, count, current, onSelect, ref, ...props }: {
 	);
 }
 
-function List({ variants, shownIndex, onSelect }: Browse) {
+function List({ disabled, variants, shownIndex, onSelect }: Browse) {
 	const cards = useRef<(HTMLElement | null)[]>([]);
 	// @approved
 	//  Focus the shown card on opening, and again if the focused card's Variant goes away while the list is open.
@@ -116,6 +119,7 @@ function List({ variants, shownIndex, onSelect }: Browse) {
 			{variants.map((variant, index) => (
 				<li key={variant.id}>
 					<Card
+						disabled={disabled}
 						variant={variant}
 						index={index}
 						count={variants.length}
@@ -132,7 +136,7 @@ function List({ variants, shownIndex, onSelect }: Browse) {
 	);
 }
 
-function Deck({ variants, shownIndex, onSelect, onDismiss }: Browse & { onDismiss: () => void }) {
+function Deck({ disabled, variants, shownIndex, onSelect, onDismiss }: Browse & { onDismiss: () => void }) {
 	const last = variants.length - 1;
 	const clamp = (position: number) => Math.min(last, Math.max(0, position));
 	const [position, setPosition] = useState(shownIndex);
@@ -204,6 +208,7 @@ function Deck({ variants, shownIndex, onSelect, onDismiss }: Browse & { onDismis
 					const offset = index - position;
 					return (
 						<Card
+							disabled={disabled}
 							key={variant.id}
 							variant={variant}
 							index={index}

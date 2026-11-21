@@ -1,7 +1,5 @@
 import { durableOutcome, type TerminalOutcome } from "../../shared/contract/generation-phase";
 import { GENERATION_DATA_NAMESPACE, GENERATION_DATA_KEYS } from "../../shared/variant-data-codecs";
-import { variantDataCodecs, toVariantDataEntry } from "../../shared/variant-data-codecs";
-import type { AcceptedGenerationRecord } from "./generate";
 import {
 	collectModelClientGeneration,
 	ModelClientGenerationError,
@@ -14,7 +12,7 @@ import {
 	type ModelClientUsage,
 } from "../model-client";
 import type { ConnectionSettingsModuleOptions } from "../connection-settings";
-import type { ConversationDataEntry } from "../conversation";
+import type { AcceptedGeneration, ConversationDataEntry } from "../conversation";
 import type { TokenEstimator } from "../prompt-compiler";
 import type { ModelFetch } from "../model-client/types";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
@@ -23,7 +21,7 @@ import type { GenerationFormattingContext } from "../../shared/contract/conversa
 //  Detached server-owned Generation scaffolding: the attempt input shared by
 // every workflow, the accept/result handle detached from its observing
 // request, and the provider-attempt tail (normalized outcome collection,
-// empty-output removal, terminal provenance and data assembly). The workflow
+// Stop on failed or empty output, terminal provenance and data assembly). The workflow
 // entry points own the Conversation lifecycle; this module owns everything
 // that is identical across Send, Continue, and Sibling.
 
@@ -72,22 +70,17 @@ export interface ServerOwnedGenerationControl {
 /** @approved The detached server-owned Generation handle shared by every lifecycle. */
 export interface ServerOwnedGeneration {
 	/** @approved Resolves as soon as the provisional target is committed. */
-	readonly accepted: Promise<AcceptedGenerationRecord>;
+	readonly accepted: Promise<AcceptedGeneration>;
 	/** @approved Resolves/rejects when the provider attempt and terminal commit finish. */
-	readonly result: Promise<AcceptedGenerationRecord>;
+	readonly result: Promise<AcceptedGeneration>;
 	/** @approved Cancellation owned by the generation, never by an observing request. */
 	readonly signal: AbortSignal;
 }
 
 export interface ServerOwnedGenerationCallbacks {
-	onAccepted?: (accepted: AcceptedGenerationRecord, control: ServerOwnedGenerationControl) => void | Promise<void>;
+	onAccepted?: (accepted: AcceptedGeneration, control: ServerOwnedGenerationControl) => void | Promise<void>;
 	onEvent?: (event: ModelClientEvent) => void | Promise<void>;
 }
-
-export type GenerationInterruptionCause =
-	| ModelClientFailureKind
-	| "server-restart"
-	| "server-shutdown";
 
 export interface GenerationOutcome {
 	content: string;
@@ -95,7 +88,7 @@ export interface GenerationOutcome {
 	usage: ModelClientUsage | null;
 	finishReason: "stop" | "length" | "other" | null;
 	status: TerminalOutcome;
-	interruptionCause: GenerationInterruptionCause | null;
+	interruptionCause: ModelClientFailureKind | null;
 	error: string | null;
 }
 
@@ -104,7 +97,7 @@ export interface GenerationOutcome {
 // generations: preserve visible output when a stream fails after producing it,
 // but leave zero-output failures to the caller. Keeping that policy here means
 // commit paths only decide which Conversation operation receives the outcome.
-export async function runGeneration(
+async function runGeneration(
 	modelClient: ModelClient,
 	input: ModelClientGenerationInput,
 	onEvent: GenerationAttemptInput["onEvent"],
@@ -137,9 +130,9 @@ export async function runGeneration(
 
 export interface AcceptedGenerationLifecycle {
 	/** @approved Commit the normalized terminal outcome to the accepted target. */
-	resolve(outcome: GenerationOutcome): AcceptedGenerationRecord | Promise<AcceptedGenerationRecord>;
-	/** @approved Remove the accepted target only after a confirmed zero-output result. */
-	remove(): void | Promise<void>;
+	resolve(outcome: GenerationOutcome): AcceptedGeneration | Promise<AcceptedGeneration>;
+	/** @approved Stop a failed or empty attempt, retaining any checkpointed output. */
+	stop(cause: ModelClientFailureKind): void | Promise<void>;
 }
 
 /** @approved
@@ -155,7 +148,7 @@ export async function runAcceptedGeneration(
 	input: GenerationAttemptInput,
 	request: ModelClientGenerationInput,
 	lifecycle: AcceptedGenerationLifecycle,
-): Promise<AcceptedGenerationRecord> {
+): Promise<AcceptedGeneration> {
 	let outcome: GenerationOutcome;
 	try {
 		outcome = await runGeneration(input.modelClient, request, input.onEvent);
@@ -163,12 +156,11 @@ export async function runAcceptedGeneration(
 		// @approved
 		//  Only a provider failure reaches this path: resolution runs
 		// outside the try, so a persistence error can never delete committed
-		// output. Removal stays a zero-output cleanup because removeGeneration
-		// refuses a target that already holds durable checkpointed output —
-		// such a target survives here for recovery to finish.
+		// output. Stop retains any checkpointed output even when the provider
+		// failure itself carries none.
 		await input.onBeforeTerminal?.();
 		try {
-			await lifecycle.remove();
+			await lifecycle.stop(error instanceof ModelClientGenerationError ? error.kind : "provider");
 		} catch {
 			// @approved
 			// Preserve the provider error; recovery owns any surviving target.
@@ -177,7 +169,7 @@ export async function runAcceptedGeneration(
 	}
 	await input.onBeforeTerminal?.();
 	if (outcome.content.length === 0 && outcome.reasoning.length === 0) {
-		await lifecycle.remove();
+		await lifecycle.stop("provider");
 		throw new ModelClientGenerationError("provider", "Generation produced no usable output.");
 	}
 	return lifecycle.resolve(outcome);
@@ -187,9 +179,6 @@ export function generationOutcomeData(input: GenerationOutcome): ConversationDat
 	const data: ConversationDataEntry[] = [];
 	if (input.status !== "complete") {
 		data.push({ namespace: GENERATION_DATA_NAMESPACE, key: GENERATION_DATA_KEYS.outcome, value: input.status });
-	}
-	if (input.reasoning.length > 0) {
-		data.push(toVariantDataEntry(variantDataCodecs.reasoning, variantDataCodecs.reasoning.encode(input.reasoning)));
 	}
 	if (input.usage !== null) {
 		data.push({
@@ -223,20 +212,3 @@ export function generationOutcomeData(input: GenerationOutcome): ConversationDat
 	}
 	return data;
 }
-
-/** @approved
- * Encode a recovered or gracefully stopped Generation with the same terminal
- * data vocabulary used by a live interrupted provider attempt.
- */
-export const interruptedGenerationData = (
-	cause: GenerationInterruptionCause,
-	reasoning: string,
-): ConversationDataEntry[] => generationOutcomeData({
-		content: "",
-		reasoning,
-		usage: null,
-		finishReason: null,
-		status: durableOutcome({ status: "stopped" }),
-		interruptionCause: cause,
-		error: null,
-});

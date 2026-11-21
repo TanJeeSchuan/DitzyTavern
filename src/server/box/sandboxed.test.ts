@@ -7,10 +7,11 @@ import { writeAutomaticRecord } from "./records";
 import { sha256 } from "../hash";
 import { createConversationRoutes } from "../contract/conversation";
 import { captureModelFetch, completeGeneration, createChat, key, withProfile } from "../contract/prompt-preset-test-fixtures";
-import { insertBox, openObservedDatabase } from "../test-fixtures/conversation";
+import { insertBox, openObservedDatabase, participantDefinition as definition } from "../test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { openInitializedDatabase } from "../database/database";
 import { createConversationWithHistory } from "../test-fixtures/conversation";
+import type { GenerationBody, GenerationPreviewBody } from "../../shared/contract/conversation-schema";
 import type { DecisionAnswer } from "../../shared/contract/decision-model";
 import type { ConversationAction } from "../conversation";
 import type { DigestContext } from "./contract";
@@ -80,8 +81,7 @@ test("logic.js may declare only the hooks a sandboxed Box supports", async () =>
 // `snapshot` in a global has nothing for a later call.
 test("a read's snapshot reads only the Box's own values, takes no other query, and no later call can keep it", async () => {
 	const database = openInitializedDatabase({ path: ":memory:" });
-	const definition = (name: string) => ({ name, prompt: { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" }, sendAppearanceImages: true, openings: [] });
-	const chat = createConversationWithHistory(database, { name: "Snapshot", participants: [{ definition: definition("Ann") }] });
+		const chat = createConversationWithHistory(database, { name: "Snapshot", participants: [{ definition: definition("Ann") }] });
 	for (const namespace of ["box:probe", "box:other"]) database.query("INSERT INTO library_data (namespace, key, value, revision) VALUES (?, 'avatar:Ann', ?, 3)").run(namespace, namespace);
 	const box = await load(`export default {
 		read: (_, { snapshot }) => { globalThis.kept = snapshot; return { view: snapshot({ scope: "library", prefix: "" }), status: "ok" }; },
@@ -299,11 +299,11 @@ test("sending an unchanged preview uses the same fold and dependency context as 
 		const variant = database.query<{ id: number }, [number]>("INSERT INTO message_variant (message_id, position, content, timestamp, selected) VALUES (?, 0, 'A record.', '2026-01-01', 1) RETURNING id").get(message.id)!;
 		writeAutomaticRecord(drizzle(database), boxDescriptor("probe"), instance, variant.id, { n: 1 }, sha256("A record."));
 		withProfile(database);
-		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
-		const post = (path: string, body: { kind: "send"; content: string; expectedRevision?: number; previewId?: string; promptPlan?: unknown }) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
+		const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
+		const post = (path: string, body: GenerationBody | GenerationPreviewBody) => app.handle(new Request(`http://localhost/api/conversations/${chat.id}/generations${path}`, {
 			method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
 		}));
-		const preview = await post("/preview", { kind: "send", content: "Continue." });
+		const preview = await post("/preview", { target: { kind: "send", content: "Continue." } });
 		expect(preview.status).toBe(200);
 		const { previewId, promptPlan } = await preview.json();
 		const expectedRevision = readConversationSummaryFromConnection(drizzle(database), chat.id)!.revision; // @approved This test created the Chat.

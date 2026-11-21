@@ -40,7 +40,7 @@ const asNumber = (value: string | number): number | undefined => {
 };
 
 const randomFloat = (environment: MacroEnvironment): number => {
-	const value = environment.random?.() ?? Math.random();
+	const value = environment.random();
 	return Number.isFinite(value) && value >= 0 && value < 1 ? value : Math.abs(value % 1);
 };
 
@@ -151,32 +151,17 @@ const dateForTimeZone = (date: Date, timeZone: string): { date: Date; intlTimeZo
 
 const dateParts = (date: Date, zone: { readonly timeZone: string; readonly locale: string }) => {
 	const target = dateForTimeZone(date, zone.timeZone);
-	let formatter: Intl.DateTimeFormat;
-	try {
-		formatter = new Intl.DateTimeFormat(zone.locale, {
-			timeZone: target.intlTimeZone,
-			year: "numeric",
-			month: "2-digit",
-			day: "2-digit",
-			hour: "2-digit",
-			minute: "2-digit",
-			second: "2-digit",
-			weekday: "long",
-			hourCycle: "h23",
-		});
-	} catch {
-		formatter = new Intl.DateTimeFormat("en-US", {
-			timeZone: "UTC",
-			year: "numeric",
-			month: "2-digit",
-			day: "2-digit",
-			hour: "2-digit",
-			minute: "2-digit",
-			second: "2-digit",
-			weekday: "long",
-			hourCycle: "h23",
-		});
-	}
+	const formatter = new Intl.DateTimeFormat(zone.locale, {
+		timeZone: target.intlTimeZone,
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+		weekday: "long",
+		hourCycle: "h23",
+	});
 	const parts = Object.fromEntries(formatter.formatToParts(target.date).map((part) => [part.type, part.value]));
 	return {
 		year: parts.year ?? "",
@@ -213,7 +198,8 @@ const localeOf = (value: string | undefined): string => {
 	}
 };
 
-const formatDate = (date: Date, format: string, environment: MacroEnvironment, timezoneArg?: string): string => {
+const formatDate = (format: string, environment: MacroEnvironment, timezoneArg?: string): string => {
+	const date = environment.now;
 	const timezone = timezoneOf(timezoneArg, timezoneOf(environment.timeZone, "UTC"));
 	const locale = localeOf(environment.locale);
 	const target = dateForTimeZone(date, timezone);
@@ -474,16 +460,16 @@ const macroDefinitions: ReadonlyMap<string, MacroDefinition> = new Map([
 		}
 		return dice(formula, context.environment);
 	} }],
-	["time", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "LT", context.environment, args[0]) }],
-	["date", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "LL", context.environment, args[0]) }],
-	["weekday", { volatile: true, changes: true, handler: (_node, args, context) => dateParts(context.environment.now ?? new Date(0), { timeZone: timezoneOf(args[0], timezoneOf(context.environment.timeZone, "UTC")), locale: localeOf(context.environment.locale) }).weekday }],
-	["isotime", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "HH:mm", context.environment, args[0]) }],
-	["isodate", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), "YYYY-MM-DD", context.environment, args[0]) }],
-	["datetimeformat", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(context.environment.now ?? new Date(0), args[0] ?? "", context.environment, args[1]) }],
+	["time", { volatile: true, changes: true, handler: (_node, args, context) => formatDate("LT", context.environment, args[0]) }],
+	["date", { volatile: true, changes: true, handler: (_node, args, context) => formatDate("LL", context.environment, args[0]) }],
+	["weekday", { volatile: true, changes: true, handler: (_node, args, context) => dateParts(context.environment.now, { timeZone: timezoneOf(args[0], timezoneOf(context.environment.timeZone, "UTC")), locale: localeOf(context.environment.locale) }).weekday }],
+	["isotime", { volatile: true, changes: true, handler: (_node, args, context) => formatDate("HH:mm", context.environment, args[0]) }],
+	["isodate", { volatile: true, changes: true, handler: (_node, args, context) => formatDate("YYYY-MM-DD", context.environment, args[0]) }],
+	["datetimeformat", { volatile: true, changes: true, handler: (_node, args, context) => formatDate(args[0] ?? "", context.environment, args[1]) }],
 	["timediff", { volatile: true, changes: true, handler: (node, args, context) => {
 		const then = Date.parse(args[0] ?? "");
 		if (Number.isNaN(then)) return "";
-		return humanizeDuration((context.environment.now ?? new Date(0)).getTime() - then);
+		return humanizeDuration(context.environment.now.getTime() - then);
 	} }],
 	["if", { evaluateArgs: false, handler: (node, _args, context) => {
 		const condition = evaluateCondition(node.args[0], node, context);

@@ -1,3 +1,4 @@
+import { installFetch } from "../test-fixtures/conversation";
 import { afterEach, expect, test } from "bun:test";
 import { QueryClient } from "@tanstack/react-query";
 import { flushHook, renderHook } from "../test-fixtures/render-hook";
@@ -9,10 +10,10 @@ afterEach(() => { globalThis.fetch = originalFetch; });
 
 test("a closed Swipe browser releases its query observers and reopens with loaded text", async () => {
 	let requests = 0;
-	globalThis.fetch = Object.assign(async () => {
+	installFetch(async () => {
 		requests++;
 		return Response.json({ content: "The other take.", reasoning: "" });
-	}, { preconnect() {} });
+	});
 	const variants: StoryVariant[] = [
 		{ id: 1, position: 1, content: "The first take.", empty: false, hasReasoning: false },
 		{ id: 2, position: 2, content: null, empty: false, hasReasoning: false },

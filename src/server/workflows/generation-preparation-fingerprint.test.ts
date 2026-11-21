@@ -1,18 +1,11 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_CONVERSATION_GENERATION_SETTINGS } from "../conversation";
-import { effectiveGenerationSettingsFor } from "../generation-plan";
 import type { PreparationSnapshot } from "./generate-capture";
 import { generationPreparationFingerprint } from "./generation-preparation-fingerprint";
 import type { SemanticSettingsSnapshot } from "../lorebook/semantic";
 
-const emptyPrompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
+const emptyPrompt = emptyPromptChannels();
 
 const participant = (id: number, name: string) => ({
 	id,
@@ -37,7 +30,6 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 	return {
 		seed: "preview-seed",
 		target: { kind: "send", content: "", reuseHumanMessageId: undefined },
-		scanMessages: [],
 		conversationId: 1,
 		boxes: [],
 		boxWarnings: [],
@@ -49,13 +41,8 @@ const preparationWithSemanticSettings = (semanticSettings: SemanticSettingsSnaps
 			model: participant(2, "Maren"),
 			context: [],
 		},
-		participation: {
-			messages: [],
-			control: { humanParticipantId: 1, modelParticipantId: 2 },
-		},
 		settings,
 		pendingHumanText: undefined,
-		effectiveSettings: effectiveGenerationSettingsFor(settings, undefined, null),
 		recipe: { id: 1, name: "Default", slots: [] },
 		connection: null,
 		macroState: new Map<string, never>(),
@@ -93,4 +80,12 @@ describe("generation preparation snapshot fingerprint", () => {
 			expect(generationPreparationFingerprint(preparationWithSemanticSettings(changed))).not.toBe(baseline);
 		}
 	});
+});
+
+test("preview fingerprint changes when a Box image grant changes", () => {
+	const snapshot = preparationWithSemanticSettings(settings);
+	const grants = (hashes: string[]) => new Map([["box:gallery", { label: "Gallery", hashes: new Set(hashes) }]]);
+	const baseline = generationPreparationFingerprint({ ...snapshot, boxImages: grants(["first"]) });
+	expect(generationPreparationFingerprint({ ...snapshot, boxImages: grants(["second"]) })).not.toBe(baseline);
+	expect(generationPreparationFingerprint({ ...snapshot, boxImages: grants([]) })).not.toBe(baseline);
 });

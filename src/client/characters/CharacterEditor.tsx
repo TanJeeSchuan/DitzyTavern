@@ -1,10 +1,10 @@
 import { MoreHorizontal, Pin, Plus, Trash2 } from "lucide-react";
-import { useCallback, useState } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
-	applyCommand,
+	useCharacterCommand,
 	getCharacter,
 	type CharacterCommand,
 	type CharacterSnapshot,
@@ -16,6 +16,7 @@ import { LoreAttachmentEditor } from "../lorebook/LoreAttachmentEditor";
 import { useSaveGuard } from "../SaveGuard";
 import { useRevisionedDraft, type DraftSaveResult } from "../lib/revisioned-draft";
 import { ConflictBanner } from "../ConflictBanner";
+import { SaveFooter } from "../SaveFooter";
 import { DefinitionEditor, definitionOf, sameDefinition, submittableDefinition } from "./DefinitionEditor";
 import type { ParticipantDefinition } from "../../shared/contract/conversation-schema";
 
@@ -24,19 +25,18 @@ export function CharacterEditor({
 	autoSelectName,
 	canAddToChat,
 	onAddToChat,
-	onChanged,
 	onClosed,
 }: {
 	characterId: number;
 	autoSelectName: boolean;
 	canAddToChat: boolean;
 	onAddToChat: (character: CharacterSnapshot) => void;
-	onChanged: () => void;
 	onClosed: (notice: string | null) => void;
 }) {
+	const applyCommand = useCharacterCommand();
 	const [snapshot, setSnapshot] = useState<CharacterSnapshot | null>(null);
 	const [notice, setNotice] = useState<string | null>(null);
-	const [pendingAction, setPendingAction] = useState<"save" | "pin" | "delete" | null>(null);
+	const [pendingAction, setPendingAction] = useState<"save" | "pin" | "delete" | "lore" | null>(null);
 	const [confirmingDelete, setConfirmingDelete] = useState(false);
 
 	useAsyncEffect((isCancelled) => {
@@ -48,48 +48,46 @@ export function CharacterEditor({
 	}, [characterId]);
 
 	/** @approved Runs one Character command; resolves the Character it left, or the one it lost to. */
-	const run = useCallback(async (action: "save" | "pin" | "delete", command: CharacterCommand): Promise<{ applied: CharacterSnapshot } | { conflict: CharacterSnapshot } | null> => {
+	const run = async (action: NonNullable<typeof pendingAction>, command: CharacterCommand): Promise<{ applied: CharacterSnapshot } | { conflict: CharacterSnapshot } | null> => {
 		setPendingAction(action);
+		const report = action === "lore" ? () => {} : setNotice;
 		try {
 			const outcome = await applyCommand(command);
 			switch (outcome.outcome) {
 				case "available": {
 					const applied = outcome.value;
 					if ("result" in applied) {
-						onChanged();
 						onClosed(deletionResultNotice(applied.result));
 						return null;
 					}
 					setSnapshot(applied.character);
 					setNotice(null);
-					onChanged();
 					return { applied: applied.character };
 				}
 				case "conflict":
 					// @approved
 					//  A pin or delete that lost has loaded the change, so trying again applies.
-					setSnapshot(outcome.currentCharacter);
-					if (action !== "save") setNotice("This Character changed elsewhere. Try again.");
-					return { conflict: outcome.currentCharacter };
+					setSnapshot(outcome.current);
+					if (action === "pin" || action === "delete") setNotice("This Character changed elsewhere. Try again.");
+					return { conflict: outcome.current };
 				case "not-found":
-					onChanged();
 					onClosed("That Character is no longer in the Library.");
 					return null;
 				case "invalid":
 				case "unusable":
-					setNotice(outcome.reason);
+					report(outcome.reason);
 					return null;
 				default:
-					setNotice(LIBRARY_UNREACHABLE_NOTICE);
+					report(LIBRARY_UNREACHABLE_NOTICE);
 					return null;
 			}
 		} catch (cause) {
-			setNotice(cause instanceof Error ? cause.message : LIBRARY_UNREACHABLE_NOTICE);
+			report(cause instanceof Error ? cause.message : LIBRARY_UNREACHABLE_NOTICE);
 			return null;
 		} finally {
 			setPendingAction(null);
 		}
-	}, [onChanged, onClosed]);
+	};
 
 	const revisioned = (character: CharacterSnapshot) => ({ value: definitionOf(character), revision: character.revision });
 	const editor = useRevisionedDraft(snapshot === null ? null : revisioned(snapshot), {
@@ -111,12 +109,8 @@ export function CharacterEditor({
 				draft={draft}
 				onDraftChange={editor.edit}
 				subtitle={`Library Character · ${usedCountLabel(snapshot.deletionImpact.provenanceReferenceCount)}`}
-				dirty={editor.dirty}
-				saving={editor.saving}
-				error={notice}
-				valid={!editor.conflict}
+				footer={(named) => <SaveFooter dirty={editor.dirty} saving={editor.saving} valid={named && !editor.conflict} error={notice} onSave={() => void editor.save()} />}
 				autoSelectName={autoSelectName}
-				onSave={() => void editor.save()}
 				onBack={() => onClosed(null)}
 				actions={<>
 					<Button
@@ -158,7 +152,13 @@ export function CharacterEditor({
 					onLoadSaved={editor.discard}
 				/>}
 			>
-				<LoreAttachmentEditor owner="character" ownerId={snapshot.id} disabled={pendingAction !== null} />
+				<LoreAttachmentEditor owner="character" ownerId={snapshot.id} disabled={pendingAction !== null}
+					onCommand={async ({ type, ...attachment }, expectedRevision) => {
+						const result = await run("lore", {
+							...attachment, characterId: snapshot.id, expectedRevision, type: type === "attach" ? "attach-lorebook" : "detach-lorebook",
+						});
+						return result !== null && "applied" in result;
+					}} />
 			</DefinitionEditor>
 			<Dialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
 				<DialogContent showCloseButton={false} className="sm:max-w-sm">

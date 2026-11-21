@@ -1,16 +1,10 @@
+import { installFetch } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { GenerationStreamDelta, GenerationStreamState } from "./conversation-stream";
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const {
 	startConversationGeneration,
-	startConversationSiblingGeneration,
-	startConversationContinuationGeneration,
 	stopConversationGeneration,
 	stopAllConversationGenerations,
 } = await import("./conversation");
@@ -26,11 +20,7 @@ const attemptTarget = {
 const terminalPayload = <Payload extends object>(payload: Payload): string =>
 	JSON.stringify({ ...attemptTarget, ...payload });
 
-type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
-const installFetch = (handler: FetchHandler): void => {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-};
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
@@ -144,7 +134,7 @@ describe("server-owned Generation client", () => {
 			}), { status: 200, headers: { "content-type": "application/json" } });
 		});
 
-		const result = await startConversationGeneration(42, 3, "Keep going.", undefined);
+		const result = await startConversationGeneration(42, { kind: "send", expectedRevision: 3, content: "Keep going." });
 		expect(requestUrl).toBe("http://localhost/api/conversations/42/generations");
 		expect(requestBody).toBe(JSON.stringify({ kind: "send", expectedRevision: 3, content: "Keep going." }));
 		expect(result).toEqual({
@@ -199,16 +189,16 @@ describe("server-owned Generation client", () => {
 			});
 		});
 
-		await startConversationGeneration(42, 3, "Keep going.", undefined);
-		await startConversationSiblingGeneration(42, 9);
-		await startConversationContinuationGeneration(42, 3);
+		await startConversationGeneration(42, { kind: "send", expectedRevision: 3, content: "Keep going." });
+		await startConversationGeneration(42, { kind: "sibling", messageId: 9 });
+		await startConversationGeneration(42, { kind: "continuation", expectedRevision: 3 });
 		await stopConversationGeneration(42, 7);
 		await stopAllConversationGenerations(42);
 
 		expect(requestUrls).toEqual([
 			"http://localhost/api/conversations/42/generations",
-			"http://localhost/api/conversations/42/messages/9/sibling/generations",
-			"http://localhost/api/conversations/42/continue/generations",
+			"http://localhost/api/conversations/42/generations",
+			"http://localhost/api/conversations/42/generations",
 			"http://localhost/api/conversations/42/generations/7/stop",
 			"http://localhost/api/conversations/42/generations/stop-all",
 		]);

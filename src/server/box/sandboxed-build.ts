@@ -6,7 +6,7 @@ import { esmOrigin, pinnedPackages } from "./sandboxed-deps";
 import { replaceFile, type SandboxedFiles } from "./sandboxed-folder";
 
 /** @approved The most each bundle a sandboxed Box's build writes may hold. */
-export const SANDBOXED_BUNDLE_BYTES = { logic: 1024 * 1024, ui: 4 * 1024 * 1024 } as const;
+const SANDBOXED_BUNDLE_BYTES = { logic: 1024 * 1024, ui: 4 * 1024 * 1024 } as const;
 type Part = keyof typeof SANDBOXED_BUNDLE_BYTES;
 
 const transpiler = new Bun.Transpiler({ loader: "js" });

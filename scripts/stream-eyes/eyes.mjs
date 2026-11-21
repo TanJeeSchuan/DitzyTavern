@@ -4,8 +4,7 @@
 //                                                          per-frame animation progress and geometry) + screencast frames
 //   node scripts/stream-eyes/eyes.mjs scrub <cps> <out>   → freezes the second paragraph's reveal and screenshots it
 //                                                          at fixed animation times, plus its keyframes
-// Then: python scripts/stream-eyes/analyze.py <out>   and   VH=<same> python scripts/stream-eyes/viz.py <out>
-import { chromium } from "playwright";
+import { chromium } from "@playwright/test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { spawn } from "node:child_process";
 import { tmpdir } from "node:os";

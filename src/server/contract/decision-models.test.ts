@@ -8,7 +8,7 @@ import { initializeConnectionSecretKey } from "../connection-secrets";
 import { captureSemanticSettings, evaluateSemanticLore } from "../lorebook/semantic";
 import { createSemanticTriggerSettingsModule } from "../lorebook/semantic-settings";
 import { tokenxEstimator } from "../prompt-compiler";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { configureDecisionModels } from "./decision-model-test-fixtures";
 import { createChat } from "./prompt-preset-test-fixtures";
 import { applyBoxDecisionSettings, readBoxDecisionSettings } from "../box/decision-settings";

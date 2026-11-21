@@ -1,5 +1,7 @@
-import { readTestConversationSnapshot, createConversationWithHistory, insertBox } from "../test-fixtures/conversation";
-import { executeConversationCommand } from "../conversation";
+import { createFakeModelClient } from "../test-fixtures/model-client";
+import { emptyPromptChannels } from "../../shared/definition";
+import { readTestConversationSnapshot, createConversationWithHistory, insertBox, participantDefinition } from "../test-fixtures/conversation";
+import { executeConversationCommand, readActiveGenerationDetails } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { eq } from "drizzle-orm";
@@ -12,7 +14,6 @@ import {
 	type PromptPlan,
 } from "../prompt-compiler";
 import {
-	createFakeModelClient,
 	type ModelClientGenerationInput,
 } from "../model-client";
 import {
@@ -27,9 +28,9 @@ import { importNativeLorebook } from "../lorebook/library";
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
 ): ParticipantDefinition["prompt"] => ({
+	...emptyPromptChannels(),
 	systemInstruction: "Keep the reply literary.",
 	identity: "I am {{self}}, speaking to {{other}}.",
-	appearance: "",
 	scenario: "The fog closes in on the lantern house.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?",
 	postHistoryInstruction: "End with a question.",
@@ -40,12 +41,7 @@ const adHoc = (
 	name: string,
 	openings: string[] = [],
 	promptOverrides: Partial<ParticipantDefinition["prompt"]> = {},
-): ParticipantDefinition => ({
-	name,
-	prompt: prompt(promptOverrides),
-	sendAppearanceImages: true,
-	openings,
-});
+): ParticipantDefinition => participantDefinition(name, { prompt: prompt(promptOverrides), openings });
 
 const fakeModelClient = (
     response: (plan: PromptPlan) => string | Promise<string>,
@@ -59,17 +55,16 @@ const sendPreview = async (
 ) => {
 	const preview = await createGenerationPreviewAsync(database, {connection: null,
 		conversationId,
-		kind: "send",
-		content: options.content ?? "Draft",
+		target: { kind: "send", content: options.content ?? "Draft" },
 		tokenEstimator: options.tokenEstimator,
 	});
-	if (preview.capture.target.kind !== "send") throw new Error("Expected a Send preview.");
+	if (preview.capture.preparation.target.kind !== "send") throw new Error("Expected a Send preview.");
 	return preview.capture;
 };
 
 const continuationPreview = async (database: Database, conversationId: number) => {
-	const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, kind: "continuation" });
-	if (preview.capture.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
+	const preview = await createGenerationPreviewAsync(database, {connection: null, conversationId, target: { kind: "continuation" } });
+	if (preview.capture.preparation.target.kind !== "continuation") throw new Error("Expected a Continuation preview.");
 	return preview.capture;
 };
 
@@ -110,8 +105,10 @@ describe("Generation runtime behavior", () => {
 		const capture = await sendPreview(database, conversationId);
 		const plan = capture.plan.promptPlan;
 
-		expect(capture.humanParticipant).toEqual({ id: humanId, name: "Writer" });
-		expect(capture.author).toEqual({ participantId: modelId, capturedName: "Maren Voss" });
+		expect(capture.preparation.derivation).toMatchObject({
+			human: { id: humanId, name: "Writer" },
+			model: { id: modelId, name: "Maren Voss" },
+		});
 		expect(plan.blocks.map((block) => block.kind)).toEqual([
 			"system-instruction",
 			"identity",
@@ -163,10 +160,10 @@ describe("Generation runtime behavior", () => {
 			block: "example-dialogue",
 			macro: "{{user}}",
 		});
-		expect(capture.plan.budget.responseBudget).toBe(1_024);
-		expect(capture.plan.budget.safetyAllowance).toBe(500);
+		expect(capture.plan.budget.breakdown.responseBudget).toBe(1_024);
+		expect(capture.plan.budget.breakdown.safetyAllowance).toBe(500);
 		expect(capture.plan.budget.fits).toBe(true);
-		expect(capture.plan.budget.omittedContext).toEqual([]);
+		expect(capture.plan.omittedContext).toEqual([]);
 		// Provider vocabulary never leaks into the Prompt Plan.
 		expect(JSON.stringify(plan)).not.toContain("assistant");
 		expect(JSON.stringify(plan)).not.toContain('"user"');
@@ -565,7 +562,7 @@ describe("Generation runtime behavior", () => {
 					topP: null,
 					frequencyPenalty: null,
 					presencePenalty: null,
-					contextLimit: 102,
+					contextLimit: 202,
 					responseBudget: 1,
 					safetyAllowance: 0,
 					siblingGenerationLimit: 4,
@@ -582,20 +579,28 @@ describe("Generation runtime behavior", () => {
 			},
 		});
 
-		const estimates = [200, 100];
+		const estimates = [300, 100];
+		const preview = await createGenerationPreviewAsync(database, {
+			connection: null, conversationId, target: { kind: "send", content: "Latest human input." },
+			tokenEstimator: (transcript) => transcript.startsWith("ditzytavern-estimation-transcript") ? estimates.shift() ?? 100 : 0,
+		});
+		expect(preview.capture.plan.omittedContext).toHaveLength(1);
 		let receivedPlan: PromptPlan | undefined;
-		await runGenerationLifecycle(database, {connection: null,
-			conversationId,
-			expectedRevision: current.revision,
+		let inspection: ReturnType<typeof readActiveGenerationDetails>;
+		await runGenerationLifecycle(database, {
+			connection: null, conversationId, expectedRevision: current.revision,
 			target: { kind: "send", content: "Latest human input." },
+			preview: { record: preview, editedPlan: preview.capture.plan.promptPlan },
 			modelClient: createFakeModelClient(({ promptPlan }) => {
 				receivedPlan = promptPlan;
 				return "Budgeted Tail output.";
 			}),
-			// Only whole Prompt Plans cost tokens, so the stable history cut never rounds past the smallest one.
-			tokenEstimator: (transcript) => transcript.startsWith("ditzytavern-estimation-transcript") ? estimates.shift() ?? 100 : 0,
+			onAccepted: ({ generationId }) => {
+				inspection = readActiveGenerationDetails(database, conversationId, generationId);
+			},
 		});
 
+		expect(inspection?.budget.omittedContext).toMatchObject([{ speakerName: "Maren Voss", content: "The lamp turns above you." }]);
 		expect(receivedPlan?.blocks.filter((block) => block.kind === "history")).toEqual([
 			{ kind: "history", speakerName: "Maren Voss", content: "Older model history.", role: "model" },
 			{ kind: "history", speakerName: "Writer", content: "Latest human input.", role: "human" },
@@ -655,7 +660,7 @@ describe("Generation runtime behavior", () => {
 		const withLoreSettings = applyCommand(conversation, {
 			conversationId,
 			expectedRevision: withLore.revision,
-			action: { type: "save-settings", scanDepth: 3, allowance: 2048 },
+			action: { type: "save-lore-settings", scanDepth: 3, allowance: 2048 },
 		});
 
 		const plans: PromptPlan[] = [];
@@ -751,7 +756,7 @@ describe("Generation runtime behavior", () => {
 		expect(contacted).toBe(false);
 		expect(readTestConversationSnapshot(conversation, conversationId)).toEqual(before);
 		// The protected element is the Send candidate's own human input.
-		expect(failure.result.failure?.reason).toBe("protected-history-too-large");
+		expect(failure.failure).toBe("protected-history-too-large");
 		expect(failure.breakdown).toMatchObject({
 			tokenEstimate: 20,
 			responseBudget: 1,

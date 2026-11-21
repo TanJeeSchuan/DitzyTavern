@@ -7,8 +7,8 @@ export const blankEntry = (): LoreEntryFields => ({
 	requireAny: [], requireAll: [], excludeAny: [], excludeAll: [], caseSensitive: false, wholeWord: true,
 	keywordMode: "literal", regexFlags: "", priority: 0, enabled: true,
 });
-export const fieldsOf = ({ id: _id, position: _position, ...entry }: LoreEntry): LoreEntryFields => entry;
-export const sameEntry = (left: LoreEntryFields, right: LoreEntryFields) => JSON.stringify(left) === JSON.stringify(right);
+const fieldsOf = ({ id: _id, position: _position, ...entry }: LoreEntry): LoreEntryFields => entry;
+const sameEntry = (left: LoreEntryFields, right: LoreEntryFields) => JSON.stringify(left) === JSON.stringify(right);
 export interface BookFields {
 	name: string;
 	description: string;
@@ -24,7 +24,7 @@ export interface BookDeleteConfirmation {
 	name: string;
 	detail: string;
 }
-export type LorebookEditorDialog =
+type LorebookEditorDialog =
 	| { type: "leave"; intent: LeaveIntent }
 	| { type: "book-delete"; confirmation: BookDeleteConfirmation }
 	| { type: "entry-delete" };

@@ -1,16 +1,11 @@
+import { requestVariantSelection, type SelectionHistory, type VariantSelectionSurface } from "../variant-selection";
 import type { BoxMoves } from "../../shared/contract/box-generation";
-import type { Dispatch } from "react";
-import {
-	applyConversationCommand,
-	type ConversationSummary,
-} from "../conversation";
 import { runConversationCommand } from "../conversation-command-runner";
 import {
 	classifyVariantSelection,
+	canWriteMessage,
 	displayedVariantId,
-	shownVariant,
-	type StoryAction,
-	type StoryState,
+	previewOnMessage,
 	isStoryReady,
 } from "../story";
 
@@ -30,70 +25,39 @@ const STORY_COMMAND_NOTICES = {
 // outcomes, made explicit so the runner never flattens them for this surface.
 const noPresentation = () => undefined;
 
-type RequestedSelection = { messageId: number; variantId: number };
-// Each Chat visit's latest-wins slot, keyed by the visit's signal: whether a select-variant waits in the command
-// queue, and the Variant it will send. A later visit never shares a slot with a command an earlier one queued.
-const selections = new WeakMap<AbortSignal, { queued: boolean; requested: RequestedSelection | null }>();
-
-type StoryMessageActionsOptions = {
-	signal: AbortSignal;
-	story: StoryState;
-	conversation: ConversationSummary | null;
-	dispatchStory: Dispatch<StoryAction>;
-	setConversation: (conversation: ConversationSummary | null) => void;
+type StoryMessageActionsOptions = VariantSelectionSurface & {
+	waitForHistory: SelectionHistory;
 	queueSwipeScroll: (messageId: number) => void;
 	canEnterPreview: boolean;
 	onEnterPreview: (enter: () => void) => void;
 };
 
-/**
- * Coordinates user commands that mutate or preview a story Message. Preview state and Requested selections are
- * immediate local presentation; the persisted selection moves only after the server applies the command, and a
- * Requested selection whose command fails is dropped, so a failed Swipe never diverges the two state owners.
- * Selections are latest-wins: at most one select-variant waits in the command queue per Chat, and it sends
- * whichever Variant is requested when its turn comes.
- */
 export function useStoryMessageActions({
 	signal,
 	story,
-	conversation,
 	dispatchStory,
 	setConversation,
+	waitForHistory,
 	queueSwipeScroll,
 	canEnterPreview,
 	onEnterPreview,
 }: StoryMessageActionsOptions) {
 	const surface = {
-		revision: () => conversation?.revision ?? (isStoryReady(story) ? story.revision : null),
+		exact: true,
 		onConversationChange: setConversation,
 		setNotice: noPresentation,
 		isCurrent: () => !signal.aborted,
 	};
-	const requestSelection = async (conversationId: number, requested: RequestedSelection) => {
-		const current = selections.get(signal) ?? { queued: false, requested: null };
-		selections.set(signal, current);
-		current.requested = requested;
-		dispatchStory({ type: "selection-requested", ...requested });
-		if (current.queued) return;
-		current.queued = true;
-		let sent: RequestedSelection | undefined;
-		const applied = await runConversationCommand({ ...surface, conversationId }, (expectedRevision) => {
-			current.queued = false;
-			sent = current.requested ?? requested;
-			return applyConversationCommand(conversationId, expectedRevision, { type: "select-variant", ...sent });
-		}, {
-			notices: STORY_COMMAND_NOTICES,
-			onApplied: () => { if (sent !== undefined) dispatchStory({ type: "swipe-selected", ...sent }); },
-		});
-		current.queued = false;
-		if (!applied || current.requested === sent) current.requested = null;
-		if (!applied && !signal.aborted) dispatchStory({ type: "selection-dropped", messageId: requested.messageId });
+	const messageForWrite = (messageId: number, revision: number) => {
+		if (!isStoryReady(story) || story.revision !== revision || !canWriteMessage(story, messageId)) return undefined;
+		const message = story.messages.find((entry) => entry.id === messageId);
+		return message === undefined ? undefined : { message, commandSurface: { ...surface, conversationId: story.conversationId, revision: () => revision } };
 	};
 
 	const changeSwipe = async (messageId: number, direction: -1 | 1) => {
 		const storyMessage = story.messages.find((entry) => entry.id === messageId);
 		if (storyMessage === undefined) return;
-		const shownId = displayedVariantId(storyMessage, story.preview, story.requestedSelections);
+		const shownId = displayedVariantId(story, storyMessage);
 		const currentIndex = storyMessage.swipes.findIndex((variant) => variant.id === shownId);
 		if (currentIndex === -1) return;
 		const target = storyMessage.swipes[Math.min(storyMessage.swipes.length - 1, Math.max(0, currentIndex + direction))];
@@ -103,46 +67,41 @@ export function useStoryMessageActions({
 	const selectSwipe = async (messageId: number, variantId: number) => {
 		const preview = story.preview;
 		if (preview !== null) {
-			if (preview.messageId !== messageId) return;
+			if (preview.messageId !== messageId || preview.variantId === variantId) return;
+			const message = story.messages.find((entry) => entry.id === messageId);
+			if (!message?.swipes.some((variant) => variant.id === variantId)) return;
 			queueSwipeScroll(messageId);
-			dispatchStory({ type: "preview-retargeted", messageId, variantId });
+			dispatchStory({ type: "preview-changed", preview: previewOnMessage(message, variantId) });
 			return;
 		}
 		if (!canEnterPreview) return;
-		if (conversation === null) return;
+		if (!isStoryReady(story)) return;
 
 		const selection = classifyVariantSelection(story, messageId, variantId);
 		if (selection.kind === "noop" || selection.kind === "blocked") return;
 		if (selection.kind === "preview") {
 			onEnterPreview(() => {
 				queueSwipeScroll(messageId);
-				dispatchStory({
-					type: "preview-started",
-					messageId: selection.messageId,
-					variantId: selection.variantId,
-				});
+				dispatchStory({ type: "preview-changed", preview: { messageId, variantId } });
 			});
 			return;
 		}
 
-		if (!isStoryReady(story)) return;
 		queueSwipeScroll(selection.messageId);
-		await requestSelection(story.conversationId, { messageId: selection.messageId, variantId: selection.variantId });
+		await requestVariantSelection({ signal, story, dispatchStory, setConversation }, selection.messageId, selection.variantId, { kind: "swipe", waitForHistory });
 	};
 
 	// @approved
-	//  Saving as new copies the shown Variant, with its edited text, to a new
+	//  Saving as new copies the selected Variant, with its edited text, to a new
 	// selected Swipe at the end and leaves the source untouched.
-	const editStoryMessage = async (messageId: number, content: string, asNew: boolean) => {
-		if (!isStoryReady(story) || story.preview !== null) return false;
-		const storyMessage = story.messages.find((entry) => entry.id === messageId);
-		if (storyMessage === undefined) return false;
-		const variantId = shownVariant(story, storyMessage)?.id;
-		const conversationId = story.conversationId;
-		if (variantId === undefined) return false;
+	const editStoryMessage = async (messageId: number, variantId: number, content: string, asNew: boolean, baseRevision: number) => {
+		const write = messageForWrite(messageId, baseRevision);
+		if (write === undefined) return false;
+		const { message, commandSurface } = write;
+		if (message.swipes[message.activeSwipe]?.id !== variantId) return false;
 
 		let applied = false;
-		await runConversationCommand({ ...surface, conversationId, revision: () => story.revision }, asNew
+		await runConversationCommand(commandSurface, asNew
 			? { type: "create-variant", messageId, sourceVariantId: variantId, content }
 			: { type: "edit-variant", messageId, variantId, content }, {
 			notices: STORY_COMMAND_NOTICES,
@@ -151,26 +110,27 @@ export function useStoryMessageActions({
 		return applied;
 	};
 
-	const setMessageMoves = async (messageId: number, moves: BoxMoves) => {
-		if (!isStoryReady(story) || story.preview !== null) return;
-		dispatchStory({ type: "moves-requested", messageId, moves });
-		const applied = await runConversationCommand({ ...surface, conversationId: story.conversationId, revision: () => story.revision }, { type: "set-message-moves", messageId, moves }, {
+	const setMessageMoves = async (messageId: number, moves: BoxMoves, baseRevision: number) => {
+		const write = messageForWrite(messageId, baseRevision);
+		if (write === undefined) return;
+		const request = { value: moves };
+		dispatchStory({ type: "moves-requested", messageId, request });
+		const applied = await runConversationCommand(write.commandSurface, { type: "set-message-moves", messageId, moves }, {
 			notices: STORY_COMMAND_NOTICES,
-			onApplied: () => dispatchStory({ type: "moves-set", messageId, moves }),
+			onApplied: (result) => dispatchStory({ type: "moves-settled", messageId, request, revision: result.revision }),
 		});
-		if (!applied && !signal.aborted) dispatchStory({ type: "moves-dropped", messageId });
+		if (!applied && !signal.aborted) dispatchStory({ type: "moves-settled", messageId, request, revision: null });
 	};
 
-	const deleteStoryMessage = async (messageId: number) => {
-		if (!isStoryReady(story) || story.preview !== null) return;
-		const conversationId = story.conversationId;
-		if (!story.messages.some((entry) => entry.id === messageId)) return;
-
-		await runConversationCommand({ ...surface, conversationId }, {
+	const deleteStoryMessage = async (messageId: number, baseRevision: number) => {
+		const write = messageForWrite(messageId, baseRevision);
+		if (write === undefined) return;
+		await runConversationCommand(write.commandSurface, {
 			type: "delete-message",
 			messageId,
 		}, {
 			notices: STORY_COMMAND_NOTICES,
+			onApplied: () => dispatchStory({ type: "inline-draft-changed", messageId, draft: undefined }),
 		});
 	};
 

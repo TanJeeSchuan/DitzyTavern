@@ -15,19 +15,19 @@ export type MemoryCandidateJudgment = Static<typeof memoryCandidate>;
 /** @approved One Variant's Memory record: the claims its digest kept, or the Writer's whole corrected list. */
 export const memoryRecord = Type.Object({ claims: Type.Array(memoryCandidate) });
 export type MemoryRecord = Static<typeof memoryRecord>;
-export const memoryIdentity = Type.Union([Type.Object({ kind: Type.Literal("themselves") }), Type.Object({ kind: Type.Literal("excluded") }), Type.Object({ kind: Type.Literal("plays"), person: Type.String({ minLength: 1, maxLength: 1024 }) })]);
+const memoryIdentity = Type.Union([Type.Object({ kind: Type.Literal("themselves") }), Type.Object({ kind: Type.Literal("excluded") }), Type.Object({ kind: Type.Literal("plays"), person: Type.String({ minLength: 1, maxLength: 1024 }) })]);
 export type MemoryIdentity = Static<typeof memoryIdentity>;
-export const memoryIdentities = Type.Record(ParticipantKey, memoryIdentity);
+const memoryIdentities = Type.Record(ParticipantKey, memoryIdentity);
 export type MemoryIdentities = Static<typeof memoryIdentities>;
 export const memoryIdentityCommand = Type.Object({ expectedRevision: Type.String(), participantId: Type.Integer(), identity: memoryIdentity });
 export type MemoryIdentityCommand = Static<typeof memoryIdentityCommand>;
-export const memoryLabelMerge = Type.Object({ from: Type.String(), to: Type.String() });
+const memoryLabelMerge = Type.Object({ from: Type.String(), to: Type.String() });
 export type MemoryLabelMerge = Static<typeof memoryLabelMerge>;
-export const memoryLabelMerges = Type.Array(memoryLabelMerge);
+const memoryLabelMerges = Type.Array(memoryLabelMerge);
 // @approved
 //  One Variant as the Memories panel lists it: its effective claims as stored
 // (labels apply when shown) and its slot status.
-export const memorySource = Type.Object({
+const memorySource = Type.Object({
 	messageId: MessageId, variantId: VariantId, selected: Type.Boolean(),
 	claims: Type.Union([Type.Array(memoryCandidate), Type.Null()]), status: boxSlotStatus,
 });
@@ -71,7 +71,6 @@ export const memoryExtractionResponse = Type.Object({
 }, { additionalProperties: false });
 export type MemoryExtractionResponse = Static<typeof memoryExtractionResponse>;
 export type MemoryCandidate = MemoryExtractionResponse["candidates"][number];
-export type MemoryEvidence = MemoryCandidate["evidence"][number];
 /** @approved A Message as extraction reads it: `speaker` is its captured author name. */
 export type CapturedMemoryMessage = { readonly messageId: number; readonly speaker: string | null; readonly content: string };
 
@@ -97,13 +96,12 @@ export const memorySettingsValue = Type.Object({
 	embeddingModel: Type.String(),
 });
 export type MemorySettingsValue = Static<typeof memorySettingsValue>;
-export const memorySettings = Type.Composite([memorySettingsValue, Type.Object({ revision: Type.Integer() })]);
-export type MemorySettingsPayload = Static<typeof memorySettings>;
+export const memorySettingsResponse = Type.Composite([memorySettingsValue, Type.Object({ revision: Type.Integer() })]);
+export type MemorySettingsPayload = Static<typeof memorySettingsResponse>;
 
-export const memorySettingsResponse = memorySettings;
-export const memorySettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: memorySettings });
+export const memorySettingsApplied = Type.Object({ outcome: Type.Literal("applied"), settings: memorySettingsResponse });
 export const memorySettingsConflict = Type.Object({
-	outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: memorySettings,
+	outcome: Type.Literal("conflict"), expectedRevision: Type.Integer(), actualRevision: Type.Integer(), currentSettings: memorySettingsResponse,
 });
 
 // @approved
@@ -114,7 +112,7 @@ export const memorySettingsCommandErrors = Type.Union([memorySettingsConflict, i
 export const memorySettingsCommandBody = Type.Composite([Type.Object({ expectedRevision: Type.Integer() }), memorySettingsValue]);
 export type MemorySettingsCommand = Static<typeof memorySettingsCommandBody>;
 
-export const memoryRelevanceScore = Type.Union([
+const memoryRelevanceScore = Type.Union([
 	Type.Literal("irrelevant"),
 	Type.Literal("incidental"),
 	Type.Literal("useful"),
@@ -124,14 +122,14 @@ export const memoryRelevanceScore = Type.Union([
 // @approved
 //  How far recall took a claim: `admitted` ones were offered to the prompt,
 // where the host's admission of their text decides the rest.
-export const memoryAdmissionReason = Type.Union([
+const memoryAdmissionReason = Type.Union([
 	Type.Literal("admitted"),
 	Type.Literal("not-retained"),
 	Type.Literal("duplicate-rendering"),
 	Type.Literal("request-limit"),
 ]);
 
-export const memoryRecallCandidate = Type.Object({
+const memoryRecallCandidate = Type.Object({
 	identity: Type.String(),
 	messageId: MessageId,
 	variantId: VariantId,
@@ -179,7 +177,6 @@ export const memoryActivationRecord = Type.Object({
 });
 
 export type MemoryActivationRecord = Static<typeof memoryActivationRecord>;
-export type MemoryRelevanceScore = Static<typeof memoryRelevanceScore>;
 export type MemoryRecallCandidateRecord = Static<typeof memoryRecallCandidate>;
 
 // @approved
@@ -187,8 +184,23 @@ export type MemoryRecallCandidateRecord = Static<typeof memoryRecallCandidate>;
 // view links only to those. Each list is comma-separated ids.
 const idList = Type.String({ pattern: "^(\\d+(,\\d+)*)?$" });
 export const memorySourcesQuery = Type.Object({ messageIds: idList, variantIds: idList });
+const publicClaim = Type.Pick(memoryCandidate, ["claim", "attribution", "people", "evidence"]);
 export const memorySources = Type.Object({
 	messageIds: Type.Array(Type.Integer()), variantIds: Type.Array(Type.Integer()),
-	records: Type.Array(Type.Object({ variantId: VariantId, fingerprint: Type.String(), claims: Type.Array(Type.Pick(memoryCandidate, ["claim", "attribution", "people", "evidence"])) })),
+	records: Type.Array(Type.Object({ variantId: VariantId, fingerprint: Type.String(), claims: Type.Array(publicClaim) })),
 });
 export type MemorySources = Static<typeof memorySources>;
+
+// @approved
+//  Memory's Exports, which another Box's route handler reads through the
+// `exportsOf` its routes receive. Both answer from the effective Claims on the Selected
+// narrative path, resolved under the Chat's Cast labels exactly as the
+// Memories panel resolves them: identities and label merges apply to the
+// answer, never to stored records. `people` takes no input, so its input
+// schema is `undefined` itself, as is the input for `selectedClaims`.
+export const memoryExportInput = Type.Undefined();
+/** @approved The output contract for Memory's `people()` Export. */
+export const memoryPeople = Type.Array(Type.String());
+export type MemoryPeople = Static<typeof memoryPeople>;
+export const memorySelectedClaims = Type.Array(Type.Object({ messageId: MessageId, ...publicClaim.properties }));
+export type MemorySelectedClaims = Static<typeof memorySelectedClaims>;

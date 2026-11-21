@@ -1,3 +1,4 @@
+import { emptyPromptChannels } from "../../shared/definition";
 import { readTestConversationSnapshot } from "../test-fixtures/conversation";
 import { executeConversationCommand } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
@@ -19,12 +20,11 @@ import { requireSnapshot } from "../test-fixtures/conversation";
 import { addCharacterToCast, createNativeConversation } from ".";
 
 const prompt = () => ({
+	...emptyPromptChannels(),
 	systemInstruction: "Keep the scene grounded.",
 	identity: "Lighthouse archivist on the northern coast.",
-	appearance: "",
 	scenario: "A storm season begins.",
 	exampleDialogue: "<START>\n{{user}}: Who tends the light?",
-	postHistoryInstruction: "",
 });
 
 const sourceDefinition = (overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({

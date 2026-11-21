@@ -12,10 +12,8 @@
 // Author identity is the Import Projection's concern, not the decoder's:
 // the decoded source carries the per-record exact raw captured author value
 // (never trimmed or normalized) plus the parallel Message list, and the
-// shared projection maps them onto native Participants under the resolution
-// supplied by the import path — the Default Import Policy for the developer
-// import, the user-confirmed Resolved Participant Plan for the Staged
-// Import. `is_user`, header roles, a captured `Writer` name, and other
+// projection maps them onto native Participants under the user-confirmed
+// Resolved Participant Plan. `is_user`, header roles, a captured `Writer` name, and other
 // legacy role hints never influence Participant identity or Control. Every
 // imported Message receives a native immutable Author Stamp for its
 // resolved Participant; no historical Control pair is ever fabricated.
@@ -130,11 +128,8 @@ const isJsonInteger = (value: unknown): value is number =>
 	typeof value === "number" && Number.isInteger(value);
 
 // @approved
-//  The sealed single-pass source decode shared by the developer import path
-// and the Staged Import: identical validation, counts, archive, and report,
-// plus the per-record exact author values the import groups on. Previewing
-// and committing re-decode the exact same staged bytes, so the review can
-// never describe one file while another is committed.
+//  Preview and commit decode the same staged bytes, with identical validation,
+// counts, archive, report, and captured author values.
 export function decodeSillyTavernImportSource(
 	sourceText: string,
 	meta: SillyTavernImportMeta,

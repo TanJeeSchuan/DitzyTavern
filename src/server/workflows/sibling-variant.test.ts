@@ -1,4 +1,5 @@
-import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
+import { emptyPromptChannels } from "../../shared/definition";
+import { type TestConversationSnapshot, readTestConversationSnapshot, createConversationWithHistory, participantDefinition } from "../test-fixtures/conversation";
 import { executeConversationCommand, readVariantDetails } from "../conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
@@ -11,7 +12,7 @@ import {
 	type ParticipantDefinition,
 } from "../conversation";
 import type { PromptPlan } from "../prompt-compiler";
-import { createFakeModelClient } from "../model-client";
+import { createFakeModelClient } from "../test-fixtures/model-client";
 import {
 	runGenerationLifecycle,
 	startServerOwnedGeneration,
@@ -28,11 +29,10 @@ import { openObservedDatabase, applyCommand, requireSnapshot } from "../test-fix
 const prompt = (
 	overrides: Partial<ParticipantDefinition["prompt"]> = {},
 ): ParticipantDefinition["prompt"] => ({
+	...emptyPromptChannels(),
 	systemInstruction: "Keep the reply literary.",
 	identity: "I am {{self}}, speaking to {{other}}.",
-	appearance: "",
 	scenario: "The fog closes in on the lantern house.",
-	exampleDialogue: "",
 	postHistoryInstruction: "End in silence.",
 	...overrides,
 });
@@ -41,12 +41,7 @@ const adHoc = (
 	name: string,
 	openings: string[] = [],
 	promptOverrides: Partial<ParticipantDefinition["prompt"]> = {},
-): ParticipantDefinition => ({
-	name,
-	prompt: prompt(promptOverrides),
-	sendAppearanceImages: true,
-	openings,
-});
+): ParticipantDefinition => participantDefinition(name, { prompt: prompt(promptOverrides), openings });
 
 const fakeModelClient = (
     response: (plan: PromptPlan) => string | Promise<string>,
@@ -226,11 +221,10 @@ describe("Historical sibling Variant generation", () => {
 				type: "replace-participant-prompt",
 				participantId: modelId,
 				prompt: {
+					...emptyPromptChannels(),
 					systemInstruction: "Keep the reply literary.",
 					identity: "I am the keeper of {{other}}'s light.",
-					appearance: "",
 					scenario: "The fog closes in on the lantern house.",
-					exampleDialogue: "",
 					postHistoryInstruction: "End in silence.",
 				},
 			},
@@ -617,6 +611,10 @@ describe("Historical sibling Variant generation", () => {
 			messageId: greeting.id,
 			provisionalVariantId: secondAccepted.provisionalVariantId,
 		}));
-		expect(readTestConversationSnapshot(database, conversation.id)?.activeGenerations).toEqual([]);
+		const settled = requireSnapshot(database, conversation.id);
+		const variants = settled.messages.find(({ id }) => id === greeting.id)?.variants ?? [];
+		expect(variants.map(({ content }) => content)).toEqual(["The lamp turns above you.", "First sibling", "Second sibling"]);
+		expect(variants.filter(({ selected }) => selected)).toHaveLength(1);
+		expect(settled.activeGenerations).toEqual([]);
 	});
 });

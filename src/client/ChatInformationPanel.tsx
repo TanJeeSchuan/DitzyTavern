@@ -1,22 +1,9 @@
 import { CheckCircle2, Download, FileArchive, GitFork, TriangleAlert, Unlink } from "lucide-react";
-import { useReducer, useState } from "react";
-import {
-	artifactAvailabilityLabel,
-	createChatInformationState,
-	reduceChatInformation,
-	sourceDownloadAvailable,
-	type ChatInformationState,
-	type ArtifactAvailabilityLabel,
-	type SourceDownloadAvailability,
-} from "./chat-info";
-import {
-	downloadExactSource,
-	loadImportDetails,
-	type ChatSourceDownloadOutcome,
-} from "./chat-history";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { downloadExactSource, loadImportDetails, type ChatImportDetails, type ChatSourceDownloadOutcome } from "./chat-history";
+import { foundOrNull } from "./lib/request-outcome";
 import { downloadFileInBrowser } from "./lib/download";
 import { ImportWarningsList } from "./import-chat/ImportNotices";
-import { useAsyncEffect } from "./lib/use-async";
 import { formatSize } from "./lib/format";
 import { PanelHeader } from "./PanelHeader";
 import { ChatBackgroundSetting } from "./ChatBackground";
@@ -45,48 +32,21 @@ export function ChatInformationPanel({
 	onUnlinkFork,
 	onClose,
 }: ChatInformationPanelProps) {
-	const [state, dispatch] = useReducer(
-		reduceChatInformation,
-		undefined,
-		createChatInformationState,
-	);
-	const [downloadOutcome, setDownloadOutcome] = useState<
-		{ outcome: "idle" } | { outcome: "downloading" } | ChatSourceDownloadOutcome
-	>({ outcome: "idle" });
+	const details = useQuery({
+		queryKey: ["import-details", conversationId],
+		queryFn: async ({ signal }) => foundOrNull(await loadImportDetails(conversationId, signal)),
+		retry: false,
+		gcTime: 0,
+		refetchOnReconnect: false,
+		refetchOnWindowFocus: false,
+	});
+	const download = useMutation({ mutationFn: () => downloadExactSource(conversationId) });
 
-	useAsyncEffect((isCancelled) => {
-		dispatch({ type: "chat-opened" });
-		void loadImportDetails(conversationId).then((outcome) => {
-			if (isCancelled()) return;
-			if (outcome.outcome === "available") {
-				if (outcome.value.provenanceState === "unreadable") {
-					dispatch({ type: "details-unreadable" });
-					return;
-				}
-				dispatch({ type: "details-loaded", details: outcome.value });
-				return;
-			}
-			if (outcome.outcome === "not-found") {
-				dispatch({ type: "no-import-details" });
-				return;
-			}
-			dispatch({ type: "details-failed" });
-		});
-	}, [conversationId]);
-
-	const runDownload = async () => {
-		const download = sourceDownloadAvailable(state);
-		if (!download.available) return;
-		setDownloadOutcome({ outcome: "downloading" });
-		const outcome = await downloadExactSource(conversationId);
-		if (outcome.outcome === "available") {
-			downloadFileInBrowser(outcome.filename, outcome.mediaType, outcome.bytes);
-		}
-		setDownloadOutcome(outcome);
-	};
-
-	const availability = artifactAvailabilityLabel(state);
-	const download = sourceDownloadAvailable(state);
+	const runDownload = () => download.mutate(undefined, {
+		onSuccess: (outcome) => {
+			if (outcome.outcome === "available") downloadFileInBrowser(outcome.filename, outcome.mediaType, outcome.bytes);
+		},
+	});
 
 	return (
 		<aside className="details-panel" data-open="true">
@@ -113,13 +73,13 @@ export function ChatInformationPanel({
 
 				{conversation !== null && <ChatBackgroundSetting conversation={conversation} onConversationChange={onConversationChange} />}
 
-				{state.status === "loading" && (
+				{details.isPending && (
 					<p className="panel-note" role="status">
 						Loading Chat information…
 					</p>
 				)}
 
-				{state.status === "no-import-details" && (
+				{details.data === null && (
 					<>
 						<p className="panel-note">
 							This Chat was created in DitzyTavern.
@@ -127,27 +87,26 @@ export function ChatInformationPanel({
 					</>
 				)}
 
-				{state.status === "unreadable-import-details" && (
+				{details.data?.provenanceState === "unreadable" && (
 					<p className="import-problem" role="alert">
 						Import provenance could not be read. You can still read and edit
 						this Chat, but Import Details are unavailable.
 					</p>
 				)}
 
-				{state.status === "error" && (
+				{details.isError && (
 					<p className="import-problem" role="alert">
 						Chat information could not be loaded. Close and reopen this panel
 						to try again.
 					</p>
 				)}
 
-				{state.status === "available" && (
+				{details.data?.provenanceState === "readable" && (
 					<ImportDetailsSection
-						state={state}
-						availability={availability}
-						download={download}
-						downloadOutcome={downloadOutcome}
-						onDownload={() => void runDownload()}
+						details={details.data}
+						downloading={download.isPending}
+						downloadOutcome={download.data}
+						onDownload={runDownload}
 					/>
 				)}
 			</div>
@@ -156,19 +115,17 @@ export function ChatInformationPanel({
 }
 
 function ImportDetailsSection({
-	state,
-	availability,
-	download,
+	details,
+	downloading,
 	downloadOutcome,
 	onDownload,
 }: {
-	state: Extract<ChatInformationState, { status: "available" }>;
-	availability: ArtifactAvailabilityLabel;
-	download: SourceDownloadAvailability;
-	downloadOutcome: { outcome: "idle" } | { outcome: "downloading" } | ChatSourceDownloadOutcome;
+	details: Extract<ChatImportDetails, { provenanceState: "readable" }>;
+	downloading: boolean;
+	downloadOutcome: ChatSourceDownloadOutcome | undefined;
 	onDownload: () => void;
 }) {
-	const { details } = state;
+	const availability = details.artifact?.availability.status;
 	const duplicates = [...details.duplicates.exact, ...details.duplicates.related];
 
 	return (
@@ -231,13 +188,13 @@ function ImportDetailsSection({
 
 			<div className="import-details-artifact">
 				<h3>Preserved source</h3>
-				{availability !== null && availability.status === "available" && (
+				{availability === "available" && (
 					<div className="import-details-available">
 						<CheckCircle2 aria-hidden="true" />
 						<span>The original file is present and matches its recorded checksum.</span>
 					</div>
 				)}
-				{availability !== null && availability.status === "cleaned-up" && (
+				{availability === "cleaned-up" && (
 					<div className="import-details-cleaned" role="alert">
 						<TriangleAlert aria-hidden="true" />
 						<span>
@@ -250,25 +207,22 @@ function ImportDetailsSection({
 				<button
 					className="secondary-button"
 					type="button"
-					disabled={
-						!download.available ||
-						downloadOutcome.outcome === "downloading"
-					}
+					disabled={availability !== "available" || downloading}
 					onClick={onDownload}
 				>
 					<Download aria-hidden="true" />
-					{downloadOutcome.outcome === "downloading"
+					{downloading
 						? "Preparing download…"
 						: "Download original file"}
 				</button>
-				{downloadOutcome.outcome === "cleaned-up" && (
+				{downloadOutcome?.outcome === "cleaned-up" && (
 					<p className="import-problem" role="alert">
 						The original file is missing or no longer matches its recorded
 						checksum. You can still read and edit this Chat, but you cannot
 						download the original file.
 					</p>
 				)}
-				{downloadOutcome.outcome === "network" && (
+				{downloadOutcome?.outcome === "network" && (
 					<p className="import-problem" role="alert">
 						The download could not be prepared. Check the connection and
 						try again.

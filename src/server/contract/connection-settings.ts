@@ -14,44 +14,17 @@ import { invalidResponse, notFoundResponse } from "./responses";
 
 import {
 	connectionCommandBody,
+	connectionCommandResponse,
 	connectionProfileDraftOf,
 	connectionDiscoveryBody,
 	connectionDiscoveryResponse,
-	connectionInvalidResponse,
-	connectionNotFoundResponse,
 	connectionPresetsResponse,
-	connectionSettingsApplied,
-	connectionSettingsConflict,
 	connectionSettingsResponse,
 	connectionTestBody,
-	connectionTextOnlyBody,
 	connectionTestResponse,
+	connectionTextOnlyBody,
+	connectionTextOnlyResponse,
 } from "../../shared/contract/connection-settings";
-
-const commandResponse = {
-	200: connectionSettingsApplied,
-	409: connectionSettingsConflict,
-	404: connectionNotFoundResponse,
-	422: connectionInvalidResponse,
-};
-
-const testConnectionResponse = {
-	200: connectionTestResponse,
-	422: connectionInvalidResponse,
-};
-
-const textOnlyModelResponse = {
-	200: connectionSettingsApplied,
-	404: connectionNotFoundResponse,
-	422: connectionInvalidResponse,
-};
-
-const discoveryResponse = {
-	200: connectionDiscoveryResponse,
-	404: connectionNotFoundResponse,
-	422: connectionInvalidResponse,
-	409: connectionSettingsConflict,
-};
 
 export interface ConnectionSettingsRouteOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: import("../model-client").ModelFetch;
@@ -106,7 +79,7 @@ export const createConnectionSettingsRoutes = (
 						profile.modelsUrl,
 					);
 				} catch (error) {
-					return presentDomainError(error, discoveryResponse);
+					return presentDomainError(error, connectionDiscoveryResponse);
 				}
 				return {
 					outcome: "success" as const,
@@ -116,7 +89,7 @@ export const createConnectionSettingsRoutes = (
 			},
 			{
 				body: connectionDiscoveryBody,
-				response: discoveryResponse,
+				response: connectionDiscoveryResponse,
 			},
 		)
 		.post(
@@ -125,12 +98,12 @@ export const createConnectionSettingsRoutes = (
 				try {
 					return { outcome: "applied" as const, settings: toSettingsPayload(settings.setTextOnlyModel(body)) };
 				} catch (error) {
-					return presentDomainError(error, textOnlyModelResponse);
+					return presentDomainError(error, connectionTextOnlyResponse);
 				}
 			},
 			{
 				body: connectionTextOnlyBody,
-				response: textOnlyModelResponse,
+				response: connectionTextOnlyResponse,
 			},
 		)
 		.post(
@@ -153,12 +126,12 @@ export const createConnectionSettingsRoutes = (
 					);
 					return result satisfies TestConnectionResult;
 				} catch (error) {
-					return presentDomainError(error, testConnectionResponse);
+					return presentDomainError(error, connectionTestResponse);
 				}
 			},
 			{
 				body: connectionTestBody,
-				response: testConnectionResponse,
+				response: connectionTestResponse,
 			},
 		)
 		.post(
@@ -178,12 +151,12 @@ export const createConnectionSettingsRoutes = (
 						}
 					}
 				} catch (error) {
-					return presentDomainError(error, commandResponse);
+					return presentDomainError(error, connectionCommandResponse);
 				}
 			},
 			{
 				body: connectionCommandBody,
-				response: commandResponse,
+				response: connectionCommandResponse,
 			},
 		);
 };

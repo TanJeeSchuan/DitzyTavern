@@ -1,18 +1,10 @@
-import { createConversationWithHistory } from "../test-fixtures/conversation";
+import { createConversationWithHistory, participantSeed } from "../test-fixtures/conversation";
 import { readSelectedHistory } from "./index";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { openInitializedDatabase } from "../database/database";
 import { macroWritesToData } from "../prompt-macros";
 
-const prompt = {
-	systemInstruction: "",
-	identity: "",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
-};
 
 describe("Conversation selected history", () => {
 	let database: Database;
@@ -24,8 +16,8 @@ describe("Conversation selected history", () => {
 		const conversation = createConversationWithHistory(database, {
 			name: "Focused history",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Model", prompt, sendAppearanceImages: true, openings: [] } },
+				participantSeed("Writer"),
+				participantSeed("Model"),
 			],
 			control: { human: 0, model: 1 },
 			messages: [1, 2, 3].map((position) => {

@@ -1,4 +1,8 @@
+import { emptyPromptChannels } from "../../shared/definition";
+import { uploadImage } from "../image";
+import { pngFixture } from "../image/image-fixtures";
 import { requireSnapshot } from "../test-fixtures/conversation";
+import { stageImportBytes } from "../test-fixtures/chat-import";
 import { afterEach, beforeEach, describe, expect, setSystemTime, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
@@ -58,12 +62,9 @@ import {
 // through public domain seams.
 
 const prompt = (): CharacterDefinition["prompt"] => ({
+	...emptyPromptChannels(),
 	systemInstruction: "System text.",
 	identity: "Identity text.",
-	appearance: "",
-	scenario: "",
-	exampleDialogue: "",
-	postHistoryInstruction: "",
 });
 
 const definition = (name: string, overrides: Partial<CharacterDefinition> = {}): CharacterDefinition => ({
@@ -102,13 +103,7 @@ describe("staged SillyTavern chat import commit", () => {
 		for (const path of files) rmSync(path, { recursive: true, force: true });
 	});
 
-	const stageBytes = (bytes: Buffer, filename = "lantern-house.jsonl") =>
-		module.stageFile({
-			// SAFETY: the copy into a fresh Uint8Array carries the exact bytes
-			// while satisfying Blob's ArrayBuffer typing at the test boundary.
-			bytes: new Blob([new Uint8Array(bytes)]).stream(),
-			originalFilename: filename,
-		});
+	const stageBytes = (bytes: Buffer, filename?: string) => stageImportBytes(module, bytes, filename);
 
 	const stageText = async (records: unknown[], filename = "lantern-house.jsonl") => {
 		const staged = await stageBytes(Buffer.from(jsonl(records), "utf8"), filename);
@@ -299,7 +294,9 @@ describe("staged SillyTavern chat import commit", () => {
 	});
 
 	test("forking an existing Character uses the Profile's current name and creates an independent Participant without a live link", async () => {
+		const portrait = { ...(await uploadImage(database, pngFixture())), focalX: 0.25, focalY: 0.75 };
 		const character = addCharacter({
+			portrait,
 			name: "Maren Voss",
 			prompt: {
 				...prompt(),
@@ -325,6 +322,7 @@ describe("staged SillyTavern chat import commit", () => {
 		// Definition with immutable provenance, but no live link.
 		expect(conversation.cast).toHaveLength(1);
 		const participant = conversation.cast[0]!;
+		expect(participant?.portrait).toEqual(portrait);
 		expect(participant?.name).toBe("Maren Voss");
 		expect(participant?.sourceCharacterId).toBe(character.id);
 		expect(participant?.prompt.identity).toBe(
@@ -573,7 +571,7 @@ describe("staged SillyTavern chat import commit", () => {
 					},
 				],
 			}),
-		).toThrow();
+		).toThrow(/no such table: (?:main\.)?participant/);
 
 		// The transaction rolled the Profile branch back: no new Profile row
 		// exists and the pre-existing library is untouched. No Chat, Message,

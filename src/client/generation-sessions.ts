@@ -1,6 +1,6 @@
 // @approved
-//  The client Generation session collection: one pure state machine keyed by
-// Generation ID that owns subscription phases, event cursors, stop state,
+//  The client Generation owner: one pure state machine holds the local request
+// through acceptance, then sessions keyed by Generation ID own subscription phases, event cursors, stop state,
 // errors, and terminal handling for every Active Generation the browser
 // observes. The machine is deliberately not a durable-state owner: it holds
 // no accumulated story model, it addresses story effects by Message and
@@ -18,6 +18,7 @@ import type {
 	GenerationStatePayload,
 	GenerationStatus,
 } from "../shared/contract/generation-events";
+import { awaitsGenerationAcceptance, generationStartAt, reduceGenerationStart, type GenerationStart, type GenerationStartEvent } from "./generation-start";
 import type { GenerationStreamResult } from "./conversation-stream";
 
 // @approved
@@ -37,7 +38,7 @@ export type GenerationSessionTarget = Omit<GenerationAttemptTarget, "conversatio
 //   session keeps its cursor and awaits reconciliation for reattachment.
 // - `terminal`: a terminal outcome was observed; the session is inert until
 //   a Conversation switch garbage-collects it.
-export type GenerationSessionPhase = "subscribing" | "observing" | "detached" | "terminal";
+type GenerationSessionPhase = "subscribing" | "observing" | "detached" | "terminal";
 
 export type GenerationSessionTerminal =
 	| { outcome: "applied" }
@@ -45,7 +46,7 @@ export type GenerationSessionTerminal =
 	| { outcome: "not-found" }
 	| { outcome: "failed"; reason: string; imageModel?: GenerationImageModel };
 
-export interface GenerationSession {
+interface GenerationSession {
 	readonly conversationId: number;
 	readonly generationId: number;
 	readonly messageId: number;
@@ -70,6 +71,7 @@ export interface GenerationSession {
 }
 
 export interface GenerationSessionsState {
+	readonly start: GenerationStart | null;
 	// @approved
 	//  The Conversation whose story the collection currently feeds. Events for
 	// sessions of any other Conversation are rejected deterministically.
@@ -90,7 +92,7 @@ export type GenerationSessionsAction =
 	//  An authoritative Conversation snapshot was observed; the collection
 	// reconciles against its Active Generation targets.
 	| { type: "targets-observed"; conversationId: number; targets: readonly GenerationSessionTarget[] }
-	| { type: "generation-accepted"; target: GenerationAttemptTarget }
+	| { type: "start-event"; event: GenerationStartEvent }
 	// @approved
 	//  The view is leaving the current Chat: every live local subscription of
 	// the active Conversation detaches (cursors reset), terminal sessions
@@ -107,7 +109,7 @@ export type GenerationSessionsAction =
 	//  The user moved on (new start, new Stop): session errors stop being news.
 	| { type: "errors-acknowledged" };
 
-export type GenerationSessionStoryEffect = { kind: "story" } & import("./story/variant-streams").VariantObservation;
+type GenerationSessionStoryEffect = { kind: "story" } & import("./story/variant-streams").VariantObservation;
 
 export type GenerationSessionEffect =
 	// @approved
@@ -140,7 +142,7 @@ export interface GenerationSessionsTransition {
 // @approved
 //  One reconcile/detach step's outcome: the next session map plus the teardown
 // effects its changes require.
-export interface GenerationSessionMapChange {
+interface GenerationSessionMapChange {
 	sessions: Map<number, GenerationSession>;
 	effects: GenerationSessionEffect[];
 }
@@ -152,6 +154,7 @@ export const MAX_SESSION_RECONNECTS = 5;
 
 export const createGenerationSessions = (): GenerationSessionsState => ({
 	activeConversationId: null,
+	start: null,
 	sessions: new Map(),
 });
 
@@ -182,7 +185,7 @@ const detachConversationSessions = (
 	const effects: GenerationSessionEffect[] = [];
 	for (const [generationId, session] of next) {
 		if (session.conversationId !== conversationId || session.terminal !== null) continue;
-		next.set(generationId, { ...session, phase: "detached", lastEventId: 0 });
+		next.set(generationId, { ...session, phase: "detached", lastEventId: 0, stopPending: false });
 		if (livePhases.has(session.phase)) effects.push({ kind: "unsubscribe", generationId });
 	}
 	return { sessions: next, effects };
@@ -200,7 +203,7 @@ const dropTerminalSessions = (
 
 const reconcileTargets = (
 	state: GenerationSessionsState,
-	action: Extract<GenerationSessionsAction, { type: "targets-observed" | "generation-accepted" }>,
+	action: Extract<GenerationSessionsAction, { type: "targets-observed" }> | { type: "generation-accepted"; target: GenerationAttemptTarget },
 ): GenerationSessionsTransition => {
 	const effects: GenerationSessionEffect[] = [];
 	let sessions: Map<number, GenerationSession> = new Map(state.sessions);
@@ -292,7 +295,7 @@ const reconcileTargets = (
 };
 
 const switchConversation = (state: GenerationSessionsState): GenerationSessionsTransition => {
-	if (state.activeConversationId === null) return unchanged(state);
+	if (state.activeConversationId === null) return state.start === null ? unchanged(state) : { state: { ...state, start: null }, effects: [] };
 	const effects: GenerationSessionEffect[] = [];
 	const detached = detachConversationSessions(state.sessions, state.activeConversationId);
 	// @approved
@@ -306,7 +309,7 @@ const switchConversation = (state: GenerationSessionsState): GenerationSessionsT
 	}
 	sessions = dropTerminalSessions(sessions);
 	effects.push(...detached.effects);
-	return { state: { ...state, activeConversationId: null, sessions }, effects };
+	return { state: { ...state, activeConversationId: null, start: null, sessions }, effects };
 };
 
 const activeSession = (
@@ -570,8 +573,16 @@ export function reduceGenerationSessions(
 ): GenerationSessionsTransition {
 	switch (action.type) {
 		case "targets-observed":
-		case "generation-accepted":
 			return reconcileTargets(state, action);
+		case "start-event": {
+			const current = state.start ?? generationStartAt(null, action.event.visit);
+			const start = reduceGenerationStart(current, action.event);
+			if (start === current) return unchanged(state);
+			const next = { ...state, start };
+			return action.event.type === "start-accepted"
+				? reconcileTargets(next, { type: "generation-accepted", target: action.event.target })
+				: { state: next, effects: [] };
+		}
 		case "conversation-switched":
 			return switchConversation(state);
 		case "event-observed":
@@ -594,9 +605,11 @@ export function reduceGenerationSessions(
 }
 
 // @approved
-//  True while any session of the active Conversation is still watching a
+//  True while a start awaits acceptance or a session is still watching a
 // server-owned Active Generation (including reconnection gaps).
 export const hasActiveGenerationSessions = (state: GenerationSessionsState): boolean => {
+	const start = state.start;
+	if (start !== null && !start.visit.aborted && awaitsGenerationAcceptance(start)) return true;
 	for (const session of state.sessions.values()) {
 		if (session.conversationId === state.activeConversationId && session.terminal === null) {
 			return true;

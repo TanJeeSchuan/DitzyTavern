@@ -1,4 +1,4 @@
-import { boxSetups, boxes } from "./test-fixtures/box-setups";
+import { conversationSummary, installFetch, type FetchHandler } from "./test-fixtures/conversation";
 import { afterEach, describe, expect, test } from "bun:test";
 import type { ConversationGenerationSettings, ConversationSummary } from "../shared/contract/conversation-schema";
 import type { BudgetValues, SamplingValues } from "./generation-settings-draft";
@@ -15,41 +15,15 @@ import type { BudgetValues, SamplingValues } from "./generation-settings-draft";
 // real database in src/server/conversation/set-generation-model.test.ts.
 
 const originalFetch = globalThis.fetch;
-Object.defineProperty(globalThis, "window", {
-	configurable: true,
-	// SAFETY: the test supplies the minimal browser location read by Eden.
-	value: { location: { origin: "http://localhost" } } as Window,
-});
 const { commitConversationModel } = await import("./model-selection-command");
 const { saveGenerationSettingsDraft } = await import("./workspace/useGenerationSettingsDraft");
 
-type FetchHandler = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
-
-const installFetch = (handler: FetchHandler): void => {
-	globalThis.fetch = Object.assign(handler, { preconnect: () => {} });
-};
 
 afterEach(() => {
 	globalThis.fetch = originalFetch;
 });
 
-const summary = (revision: number): ConversationSummary => ({
-	boxSetups, boxes, boxVersions: {}, forkedFrom: null,
-	background: null,
-	id: 1,
-	name: "Seaside Letters",
-	revision,
-	cast: [],
-	control: { humanParticipantId: null, modelParticipantId: null },
-	controlValidity: { valid: false, reason: "missing-seat" },
-	playable: false,
-	capabilities: {
-		compose: { available: false, reason: "conversation-not-playable" },
-		generate: { available: false, reason: "conversation-not-playable" },
-		swipe: { available: false, reason: "conversation-not-playable" },
-	},
-	activeGenerations: [],
-});
+const summary = (revision: number): ConversationSummary => conversationSummary({ revision });
 
 const baseSettings = (): ConversationGenerationSettings => ({
 	connectionProfileId: 7,
@@ -116,7 +90,7 @@ function createConversationBackend() {
 			};
 			if (body.expectedRevision !== revision) {
 				return Response.json(
-					{ outcome: "conflict", currentConversation: summary(revision) },
+					{ outcome: "conflict", reason: "stale-revision", expectedRevision: body.expectedRevision, actualRevision: revision, current: summary(revision) },
 					{ status: 409 },
 				);
 			}

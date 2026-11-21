@@ -1,3 +1,4 @@
+import { loreEntryFixture } from "../../server/lorebook/fixtures";
 import { readConversationGenerationSettings } from "../../server/conversation";
 import { openObservedDatabase } from "../../server/test-fixtures/conversation";
 import { createLorebookRoutes } from "../../server/contract/lorebook-routes";
@@ -53,7 +54,7 @@ test("Author Note saves exact text, rejects stale edits, and clears with an empt
 
 const preview = async (app: ReturnType<typeof createConversationRoutes>, id: number) => {
 	const response = await app.handle(new Request(`http://localhost/api/conversations/${id}/generations/preview`, {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ kind: "send", content: "Open the door." }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ target: { kind: "send", content: "Open the door." } }),
 	}));
 	expect(response.status).toBe(200);
 	return Value.Decode(generationPreview, await response.json());
@@ -89,7 +90,7 @@ test("Author Note is omitted when blank after expansion or disabled, and follows
 test("Author Note variable writes persist in Macro State after sending", async () => {
 	const chat = createChat(database);
 	withProfile(database);
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch(() => {}) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch().fetch });
 	await saveNote(app, chat.id, chat.revision, "{{setvar::weather::rain}}{{getvar::weather}} for {{other}}");
 	const planned = await preview(app, chat.id);
 	expect(planned.pendingWrites).toContainEqual({ operation: "set", name: "weather", value: "rain" });
@@ -131,7 +132,7 @@ test("oversized Author Note refuses sending instead of dropping the note", async
 	const chat = createChat(database);
 	withProfile(database);
 	const requests: unknown[] = [];
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => requests.push(request)) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => requests.push(request) }).fetch });
 	const note = "Keep this standing guidance. ".repeat(30_000);
 	await saveNote(app, chat.id, chat.revision, note);
 	const planned = await preview(app, chat.id);
@@ -150,7 +151,7 @@ test("Author Note Image References send their anchor and pixels, or only the anc
 	const bytes = pngFixture({ width: 100, height: 100 });
 	const image = await uploadImage(database, bytes);
 	let captured: unknown;
-	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch((request) => { captured = request; }) });
+	const app = createConversationRoutes(database, { masterKey: key, fetch: captureModelFetch({ onCapture: (request) => { captured = request; } }).fetch });
 	await saveNote(app, chat.id, chat.revision, `Study ${formatImageReference("map", image.hash)}`);
 	const planned = await preview(app, chat.id);
 	expect(planned.promptPlan.images).toMatchObject([{ name: "map", disposition: "send" }]);
@@ -179,19 +180,12 @@ test("a keyword only in the Author Note activates no Lore Entry", async () => {
 	const chat = createChat(database);
 	const lore = createLorebookRoutes(database);
 	const imported = await lore.handle(new Request("http://localhost/api/lorebooks/import", {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Secrets", description: "", entries: [{
-			title: "Dragon", content: "A dragon sleeps here.", keywords: ["dragon"], semanticTriggers: [], matchOperator: "or", always: false,
-			requireAny: [], requireAll: [], excludeAny: [], excludeAll: [], caseSensitive: false, wholeWord: true, keywordMode: "literal", regexFlags: "", priority: 0, enabled: true,
-		}] }),
+		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name: "Secrets", description: "", entries: [loreEntryFixture({ title: "Dragon", content: "A dragon sleeps here.", keywords: ["dragon"] })] }),
 	}));
 	expect(imported.status).toBe(200);
-	const attachmentResponse = await lore.handle(new Request(`http://localhost/api/lorebooks/attachments?conversationId=${chat.id}`));
-	const { revision } = await attachmentResponse.json();
-	const attached = await lore.handle(new Request("http://localhost/api/lorebooks/attachments/commands", {
-		method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "attach-chat", conversationId: chat.id, bookId: 1, expectedRevision: revision }),
-	}));
-	expect(attached.status).toBe(200);
 	const app = createConversationRoutes(database);
+	const attached = await command(app, chat.id, chat.revision, { type: "attach-chat", bookId: 1 });
+	expect(attached.status).toBe(200);
 	const current = await readConversation(app, chat.id);
 	await saveNote(app, chat.id, current.revision, "Include a dragon.");
 	const planned = await preview(app, chat.id);

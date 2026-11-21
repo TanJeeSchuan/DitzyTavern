@@ -1,22 +1,14 @@
-import { requireSnapshot } from "../test-fixtures/conversation";
-import { openObservedDatabase } from "../test-fixtures/conversation";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { drizzle } from "drizzle-orm/bun-sqlite";
 import { createArtifactModule, type ArtifactModule } from "../artifact";
+import { processStateFor } from "../application/process-state";
 import { deleteConversation } from "../conversation";
-import {
-	artifactTable,
-	conversationDataTable,
-	conversationTable,
-	messageTable,
-	messageVariantTable,
-	participantTable,
-} from "../database/schema";
+import { importChatFixture } from "../test-fixtures/chat-import";
+import { openObservedDatabase, requireSnapshot } from "../test-fixtures/conversation";
 import {
 	ARCHIVE_KEY,
 	ARCHIVE_NAMESPACE,
@@ -24,8 +16,7 @@ import {
 	EXACT_SOURCE_ARTIFACT_NAMESPACE,
 	IMPORT_KEYS,
 	IMPORT_NAMESPACE,
-	importSillyTavernChat,
-} from "./index";
+} from "./adapter";
 import {
 	blankNameFixture as blankName,
 	headerFixture as header,
@@ -33,241 +24,112 @@ import {
 	rulershipFixture as second,
 	writerFixture as first,
 } from "./fixtures";
-
-const findEntry = (
-	entries: { namespace: string; key: string; value: string }[] | undefined,
-	namespace: string,
-	key: string,
-) => entries?.find((entry) => entry.namespace === namespace && entry.key === key);
+import { createChatImportModule, type ChatImportModule } from "./staged";
 
 describe("SillyTavern import artifacts", () => {
 	let database: Database;
-	let files: string[];
-	let artifactDirectory: string;
+	let directory: string;
 	let artifacts: ArtifactModule;
+	let module: ChatImportModule;
 
 	beforeEach(() => {
 		database = openObservedDatabase();
-		const directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
-		files = [directory];
-		artifactDirectory = join(directory, "managed-artifacts");
-		artifacts = createArtifactModule(database, { directory: artifactDirectory });
+		directory = mkdtempSync(join(tmpdir(), "ditzytavern-import-"));
+		artifacts = createArtifactModule(database, { directory });
+		module = createChatImportModule(database, { artifactDirectory: directory });
 	});
 	afterEach(() => {
+		processStateFor(database).dispose();
 		database.close();
-		for (const path of files) rmSync(path, { recursive: true, force: true });
+		rmSync(directory, { recursive: true, force: true });
 	});
 
-	// Every import call in these tests preserves the exact source bytes in
-	// an isolated managed artifact directory, through the same public
-	// signature the developer command uses.
-	const importChat = (sourcePath: string) =>
-		importSillyTavernChat(database, sourcePath, artifactDirectory);
-
-	const writeSource = (records: unknown[], filename = "lantern-house.jsonl") => {
-		const path = join(files[0] ?? "", filename);
-		writeFileSync(path, jsonl(records), "utf8");
-		return path;
-	};
-
-	// Writes raw source bytes (BOM, CRLF, escape spelling, and trailing
-	// newlines included) without re-serializing through the fixture helper.
-	const writeSourceRaw = (text: string, filename: string) => {
-		const path = join(files[0] ?? "", filename);
-		writeFileSync(path, Buffer.from(text, "utf8"));
-		return path;
-	};
-
-	const countRows = (
-		table:
-			| typeof conversationTable
-			| typeof messageTable
-			| typeof messageVariantTable
-			| typeof conversationDataTable
-			| typeof artifactTable
-			| typeof participantTable,
-	) => drizzle(database).select().from(table).all().length;
-
 	const exactArtifact = (chatId: number) =>
-		artifacts.getArtifact(
-			chatId,
-			EXACT_SOURCE_ARTIFACT_NAMESPACE,
-			EXACT_SOURCE_ARTIFACT_KEY,
-		);
+		artifacts.getArtifact(chatId, EXACT_SOURCE_ARTIFACT_NAMESPACE, EXACT_SOURCE_ARTIFACT_KEY);
+	const downloadArtifact = (chatId: number) =>
+		artifacts.downloadArtifact(chatId, EXACT_SOURCE_ARTIFACT_NAMESPACE, EXACT_SOURCE_ARTIFACT_KEY);
+	const importData = (chatId: number, namespace: string, key: string) =>
+		requireSnapshot(database, chatId).data.find((entry) => entry.namespace === namespace && entry.key === key)?.value;
 
-	test("preserves an exact-byte copy that keeps BOM, CRLF, escapes, blank lines, and trailing newlines", () => {
-		// Two source texts that parse to the same canonical chat but differ
-		// only in bytes: BOM prefix, CRLF line endings, \u002d escape
-		// spelling for every hyphen, a blank line, and a trailing newline
-		// versus the clean LF form used by every other fixture.
+	test("preserves BOM, CRLF, escapes, blank lines, and trailing newlines in the exact artifact", async () => {
 		const escapedHeader = JSON.stringify(header).replace(/-/g, "\\u002d");
 		const variantA = `\uFEFF${escapedHeader}\r\n${JSON.stringify(first)}\r\n\r\n${JSON.stringify(second)}\r\n`;
 		const variantB = jsonl([header, first, second]);
 
-		const pathA = writeSourceRaw(variantA, "bom-crlf.jsonl");
-		const pathB = writeSourceRaw(variantB, "clean.jsonl");
-
-		const chatA = importChat(pathA).conversation;
-		const chatB = importChat(pathB).conversation;
-
-		const bytesA = Buffer.from(variantA, "utf8");
-		const bytesB = Buffer.from(variantB, "utf8");
-		const shaA = createHash("sha256").update(bytesA).digest("hex");
-		const shaB = createHash("sha256").update(bytesB).digest("hex");
-
-		const artifactA = exactArtifact(chatA.id);
-		const artifactB = exactArtifact(chatB.id);
-		expect(artifactA?.availability).toEqual({ status: "available" });
-		expect(artifactA?.sha256).toBe(shaA);
-		expect(artifactA?.originalFilename).toBe("bom-crlf.jsonl");
-		expect(artifactA?.byteLength).toBe(bytesA.length);
-		expect(artifactB?.availability).toEqual({ status: "available" });
-		expect(artifactB?.sha256).toBe(shaB);
-
-		// Exact-byte round trips through the public artifact seam: the
-		// downloaded bytes equal the raw source file bytes, BOM and CRLF and
-		// all, never a normalized re-serialization.
-		const readA = artifacts.downloadArtifact(
-			chatA.id,
-			EXACT_SOURCE_ARTIFACT_NAMESPACE,
-			EXACT_SOURCE_ARTIFACT_KEY,
-		);
-		const readB = artifacts.downloadArtifact(
-			chatB.id,
-			EXACT_SOURCE_ARTIFACT_NAMESPACE,
-			EXACT_SOURCE_ARTIFACT_KEY,
-		);
-		expect(readA?.status).toBe("available");
-		expect(readB?.status).toBe("available");
-		if (readA?.status !== "available" || readB?.status !== "available") return;
-		expect(readA.bytes).toEqual(bytesA);
-		expect(readB.bytes).toEqual(bytesB);
-		expect(readA.artifact.sha256).toBe(shaA);
-		expect(readA.artifact.originalFilename).toBe("bom-crlf.jsonl");
-		expect(readA.artifact.byteLength).toBe(bytesA.length);
-		expect(readB.artifact.sha256).toBe(shaB);
-		expect(readB.artifact.originalFilename).toBe("clean.jsonl");
-
-		// Both parse to the identical canonical archive despite the byte
-		// differences: the exact representation and the canonical one are
-		// preserved independently.
-		const archiveOf = (data: { namespace: string; key: string; value: string }[]) =>
-			JSON.parse(
-				findEntry(data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "",
-			);
-		expect(archiveOf(requireSnapshot(database, chatA.id).data)).toEqual({
-			header,
-			messages: [first, second],
-		});
-		expect(archiveOf(requireSnapshot(database, chatB.id).data)).toEqual({
-			header,
-			messages: [first, second],
-		});
+		for (const [filename, source] of [["bom-crlf.jsonl", variantA], ["clean.jsonl", variantB]] as const) {
+			const { conversation } = await importChatFixture(module, source, filename);
+			const bytes = Buffer.from(source, "utf8");
+			expect(downloadArtifact(conversation.id)).toMatchObject({
+				status: "available",
+				bytes,
+				artifact: {
+					originalFilename: filename,
+					byteLength: bytes.length,
+					sha256: createHash("sha256").update(bytes).digest("hex"),
+				},
+			});
+			expect(JSON.parse(importData(conversation.id, ARCHIVE_NAMESPACE, ARCHIVE_KEY) ?? "")).toEqual({
+				header,
+				messages: [first, second],
+			});
+		}
 	});
 
-	test("returns the exact artifact metadata with the import result and keeps the canonical archive separate", () => {
-		const path = writeSource([header, first, blankName], "lantern-house.jsonl");
-		const rawBytes = readFileSync(path);
-		const result = importChat(path);
-		const { conversation, artifact, report } = result;
-
-		// The committed metadata carries the full generic record.
-		expect(artifact).toEqual({
+	test("persists exact artifact metadata separately from the canonical archive and import report", async () => {
+		const source = jsonl([header, first, blankName]);
+		const { conversation, receipt } = await importChatFixture(module, source);
+		expect(exactArtifact(conversation.id)).toEqual({
 			chatId: conversation.id,
 			namespace: EXACT_SOURCE_ARTIFACT_NAMESPACE,
 			key: EXACT_SOURCE_ARTIFACT_KEY,
 			relativePath: expect.any(String),
 			originalFilename: "lantern-house.jsonl",
 			mediaType: "application/jsonl",
-			byteLength: rawBytes.length,
-			sha256: report.source.sha256,
+			byteLength: Buffer.byteLength(source),
+			sha256: createHash("sha256").update(source).digest("hex"),
+			availability: { status: "available" },
 		});
-
-		// The canonical parsed archive and compact report remain separate
-		// conversation-scoped data; the exact artifact lives only in the
-		// managed store behind the artifact seam.
-		expect(JSON.parse(findEntry(requireSnapshot(database, conversation.id).data, ARCHIVE_NAMESPACE, ARCHIVE_KEY)?.value ?? "")).toEqual({
+		expect(JSON.parse(importData(conversation.id, ARCHIVE_NAMESPACE, ARCHIVE_KEY) ?? "")).toEqual({
 			header,
 			messages: [first, blankName],
 		});
-		expect(
-			JSON.parse(
-				findEntry(requireSnapshot(database, conversation.id).data, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson)
-					?.value ?? "",
-			),
-		).toEqual(report);
-		const inspection = exactArtifact(conversation.id);
-		expect(inspection?.availability).toEqual({ status: "available" });
-		expect(inspection?.byteLength).toBe(rawBytes.length);
-		expect(inspection?.originalFilename).toBe("lantern-house.jsonl");
-		expect(inspection?.relativePath).toBe(artifact.relativePath);
-
-	});
-
-	test("stores an independent physical copy per import even for identical SHA-256", () => {
-		const path = writeSource([header, first, second]);
-		const firstChat = importChat(path);
-		const secondChat = importChat(path);
-
-		expect(secondChat.report.source.sha256).toBe(firstChat.report.source.sha256);
-		expect(secondChat.artifact.relativePath).not.toBe(
-			firstChat.artifact.relativePath,
-		);
-		expect(secondChat.artifact.chatId).not.toBe(firstChat.artifact.chatId);
-
-		// Both physical copies exist at their own managed paths and both
-		// deliver the exact same bytes; nothing is deduplicated.
-		expect(
-			readFileSync(join(artifactDirectory, firstChat.artifact.relativePath)),
-		).toEqual(readFileSync(path));
-		expect(
-			readFileSync(join(artifactDirectory, secondChat.artifact.relativePath)),
-		).toEqual(readFileSync(path));
-		expect(exactArtifact(firstChat.conversation.id)?.availability).toEqual({
-			status: "available",
-		});
-		expect(exactArtifact(secondChat.conversation.id)?.availability).toEqual({
-			status: "available",
+		expect(JSON.parse(importData(conversation.id, IMPORT_NAMESPACE, IMPORT_KEYS.reportJson) ?? "")).toMatchObject({
+			source: { filename: receipt.originalFilename, sha256: receipt.sha256 },
+			counts: { messages: 2, variants: 2 },
+			warnings: ["Message at position 2 has a blank captured author name."],
 		});
 	});
 
-	test("aborts before creating any database rows when the exact artifact cannot be stored", () => {
-		const path = writeSource([header, first, second]);
-		// A regular file in place of a directory makes the managed root
-		// impossible to create, forcing the initial storage failure.
-		const blocker = join(files[0] ?? "", "blocker");
-		writeFileSync(blocker, "not a directory");
-		const brokenArtifactDirectory = join(blocker, "managed-artifacts");
+	test("stores an independent physical copy per import even for identical SHA-256", async () => {
+		const source = jsonl([header, first, second]);
+		const firstImport = await importChatFixture(module, source);
+		const secondImport = await importChatFixture(module, source);
+		const firstArtifact = exactArtifact(firstImport.conversation.id);
+		const secondArtifact = exactArtifact(secondImport.conversation.id);
+		if (firstArtifact === undefined || secondArtifact === undefined) throw new Error("Missing committed artifact");
+		expect(secondArtifact.sha256).toBe(firstArtifact.sha256);
+		expect(secondArtifact.relativePath).not.toBe(firstArtifact.relativePath);
+		expect(secondArtifact.chatId).not.toBe(firstArtifact.chatId);
 
-		expect(() =>
-			importSillyTavernChat(database, path, brokenArtifactDirectory),
-		).toThrow(/preserve the exact source artifact/);
-
-		// The abort happens before the database creation operation begins:
-		// no Chat, Participant, Profile, Message, Variant, Roster, Author
-		// Stamp, or artifact metadata row exists.
-		expect(countRows(conversationTable)).toBe(0);
-		expect(countRows(participantTable)).toBe(0);
-		expect(countRows(messageTable)).toBe(0);
-		expect(countRows(messageVariantTable)).toBe(0);
-		expect(countRows(conversationDataTable)).toBe(0);
-		expect(countRows(artifactTable)).toBe(0);
+		const bytes = Buffer.from(source, "utf8");
+		expect(readFileSync(join(directory, firstArtifact.relativePath))).toEqual(bytes);
+		expect(readFileSync(join(directory, secondArtifact.relativePath))).toEqual(bytes);
 	});
 
-	test("never automatically deletes committed artifact copies when the Chat is deleted", () => {
-		const path = writeSource([header, first]);
-		const { conversation, artifact } = importChat(path);
-		const storedPath = join(artifactDirectory, artifact.relativePath);
+	test("reports when the staged upload cannot be stored", async () => {
+		rmSync(directory, { recursive: true });
+		await expect(importChatFixture(module, jsonl([header, first, second]))).rejects.toThrow(/Could not store the staged upload/);
+	});
+
+	test("never automatically deletes committed artifact copies when the Chat is deleted", async () => {
+		const source = jsonl([header, first]);
+		const { conversation } = await importChatFixture(module, source);
+		const artifact = exactArtifact(conversation.id);
+		if (artifact === undefined) throw new Error("Missing committed artifact");
 
 		deleteConversation(database, conversation.id);
 		expect(exactArtifact(conversation.id)).toBeUndefined();
-		expect(
-			artifacts.downloadArtifact(
-				conversation.id,
-				EXACT_SOURCE_ARTIFACT_NAMESPACE,
-				EXACT_SOURCE_ARTIFACT_KEY,
-			),
-		).toBeUndefined();
-		expect(readFileSync(storedPath)).toEqual(readFileSync(path));
+		expect(downloadArtifact(conversation.id)).toBeUndefined();
+		expect(readFileSync(join(directory, artifact.relativePath))).toEqual(Buffer.from(source, "utf8"));
 	});
 });

@@ -4,7 +4,7 @@ import type { Database } from "bun:sqlite";
 import { Kind, Type, TypeRegistry } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import type { BoxDescriptor } from "../../shared/contract/box";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { openObservedDatabase } from "../test-fixtures/conversation";
 import type { CheckedBox, HostBox } from "./contract";
 import { checkStoredBoxValues, clearHeldBoxValues } from "./schema-check";

@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { stripThoughts } from "./shared";
+import { stripThoughts } from "@/box-sdk/shared";
 
 test("stripThoughts lifts each closed thought out of the prose", () => {
 	expect(stripThoughts("She smiles.\n<thought> He knows. </thought>\nShe pours the tea.<thought>Stay calm.</thought>")).toEqual([

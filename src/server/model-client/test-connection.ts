@@ -13,11 +13,11 @@ import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics"
 import { formatProviderError, providerErrorFields, providerErrorStatus, snapshotProviderError } from "./provider-errors";
 import { providerDiagnosticError, type ProviderErrorLike } from "../../shared/contract/provider-response";
 
-export const TEST_CONNECTION_MAX_OUTPUT_TOKENS = 8;
-export const TEST_CONNECTION_TIMEOUT_MS = 10_000;
-export const TEST_CONNECTION_PROMPT = "Reply with exactly OK.";
+const TEST_CONNECTION_MAX_OUTPUT_TOKENS = 8;
+const TEST_CONNECTION_TIMEOUT_MS = 10_000;
+const TEST_CONNECTION_PROMPT = "Reply with exactly OK.";
 
-export type TestConnectionFailureKind =
+type TestConnectionFailureKind =
 	| "authentication"
 	| "endpoint"
 	| "timeout"

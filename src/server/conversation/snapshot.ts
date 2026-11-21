@@ -40,7 +40,7 @@ const playCapability = (playable: boolean): CapabilityAvailability => ({
 	reason: playable ? null : "conversation-not-playable",
 });
 
-export function deriveCapabilities(playable: boolean): ConversationCapabilities {
+function deriveCapabilities(playable: boolean): ConversationCapabilities {
 	return {
 		compose: playCapability(playable),
 		generate: playCapability(playable),

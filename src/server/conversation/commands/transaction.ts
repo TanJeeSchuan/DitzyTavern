@@ -1,12 +1,11 @@
 import type { Database } from "bun:sqlite";
-import { and, eq, sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { conversationTable } from "../../database/schema";
 import type { ConversationWriteChange } from "../../../shared/contract/conversation-write-change";
 import {
 	ConversationNotFoundError,
 	ConversationWriteObserverMissingError,
 } from "../errors";
-import { StaleRevisionError } from "../../revision";
 import {
 	connectConversationDatabase,
 	type ConversationDatabase,
@@ -132,39 +131,4 @@ export function requireConversationSummary(
 		throw new ConversationNotFoundError(conversationId);
 	}
 	return summary;
-}
-
-/** @approved
- * Advance the Conversation revision only while it still matches
- * expectedRevision, throwing the shared stale-revision conflict otherwise.
- * The conflict's reported current revision is caller-owned: command
- * execution reports the revision read at transaction start, while the
- * acceptance seams report the pre-bump revision as expectedRevision + 1.
- */
-export function advanceConversationRevisionGuarded(
-	db: ConversationDatabase,
-	conversationId: number,
-	expectedRevision: number,
-	staleActualRevision: number,
-	lastMessageTime?: string,
-): void {
-	const advanced = db
-		.update(conversationTable)
-		.set(revisionAdvanceSet(lastMessageTime))
-		.where(
-			and(
-				eq(conversationTable.id, conversationId),
-				eq(conversationTable.revision, expectedRevision),
-			),
-		)
-		.returning({ revision: conversationTable.revision })
-		.get();
-	if (advanced === undefined) {
-		throw new StaleRevisionError(
-			"conversation",
-			expectedRevision,
-			staleActualRevision,
-			requireConversationSummary(db, conversationId),
-		);
-	}
 }

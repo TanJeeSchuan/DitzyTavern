@@ -1,3 +1,5 @@
+import { queryOptions, type QueryClient } from "@tanstack/react-query";
+import { charactersQuery } from "./character-library";
 import { applyConversationCommand, type ConversationSummary } from "./conversation";
 import { api } from "./lib/eden";
 import { requestData } from "./lib/request-outcome";
@@ -16,16 +18,6 @@ export type ChatSummary = {
 	excerpt: string;
 };
 
-export type Workspace = {
-	activeChat: ChatSummary | null;
-	chats: ChatSummary[];
-	characters: { id: number; name: string }[];
-};
-
-export interface WorkspaceClient {
-	loadActiveWorkspace(preferredChatId?: string): Promise<Workspace>;
-}
-
 export function resolveWorkspaceActiveChat(
 	chats: ChatSummary[],
 	authoritativeActiveChatId: string | null,
@@ -42,7 +34,7 @@ export function resolveWorkspaceActiveChat(
 const fetchWorkspace = async () => {
 	const data = await requestData(api.api.workspace.get(), workspaceResponse);
 	return {
-		...data,
+		activeChatId: data.activeChatId === null ? null : String(data.activeChatId),
 		chats: data.chats.map((chat): ChatSummary => ({
 			id: String(chat.id),
 			title: chat.name,
@@ -54,7 +46,12 @@ const fetchWorkspace = async () => {
 	};
 };
 
-export const listChats = async () => (await fetchWorkspace()).chats;
+export const workspaceQuery = queryOptions({ queryKey: ["workspace"], queryFn: fetchWorkspace });
+
+export function invalidateChatLists(client: QueryClient) {
+	void client.invalidateQueries({ queryKey: workspaceQuery.queryKey });
+	void client.invalidateQueries({ queryKey: charactersQuery.queryKey });
+}
 
 export async function deleteChat(chatId: string): Promise<string | null> {
 	const { error } = await api.api.conversations({ id: Number(chatId) }).delete();
@@ -68,24 +65,12 @@ export async function deleteChat(chatId: string): Promise<string | null> {
 export async function renameChat(chat: Pick<ChatSummary, "id" | "revision">, name: string): Promise<{ outcome: "renamed"; conversation: ConversationSummary } | { outcome: "failed"; reason: string }> {
 	const id = Number(chat.id);
 	let outcome = await applyConversationCommand(id, chat.revision, { type: "rename-conversation", name });
-	if (outcome.outcome === "conflict") outcome = await applyConversationCommand(id, outcome.currentConversation.revision, { type: "rename-conversation", name });
+	if (outcome.outcome === "conflict") outcome = await applyConversationCommand(id, outcome.current.revision, { type: "rename-conversation", name });
 	if (outcome.outcome === "available") return { outcome: "renamed", conversation: outcome.value.conversation };
 	return { outcome: "failed", reason: outcome.outcome === "invalid" || outcome.outcome === "unusable" ? outcome.reason : "The Chat could not be renamed." };
 }
 
-export const workspaceClient: WorkspaceClient = {
-	async loadActiveWorkspace(preferredChatId?: string) {
-		const data = await fetchWorkspace();
-		const chats = data.chats;
-
-		return {
-			activeChat: resolveWorkspaceActiveChat(
-				chats,
-				data.activeChatId === null ? null : String(data.activeChatId),
-				preferredChatId,
-			),
-			chats,
-			characters: data.characters.map((character) => ({ ...character })),
-		};
-	},
-};
+export async function loadActiveChatId(client: QueryClient, preferredChatId?: string) {
+	const { chats, activeChatId } = await client.fetchQuery(workspaceQuery);
+	return resolveWorkspaceActiveChat(chats, activeChatId, preferredChatId)?.id ?? null;
+}

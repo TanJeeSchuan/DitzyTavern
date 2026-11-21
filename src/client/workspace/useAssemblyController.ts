@@ -1,30 +1,22 @@
 import { skipToken, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, useSyncExternalStore, type Dispatch, type RefObject } from "react";
+import { useSyncExternalStore, type Dispatch, type RefObject } from "react";
 import {
 	previewConversationGeneration,
-	startConversationContinuationGeneration,
 	startConversationGeneration,
-	startConversationSiblingGeneration,
 	type ConversationSummary,
 	type GenerationPreviewBody,
 } from "../conversation";
 import type { GenerationPreview, PromptPlan } from "../../shared/contract/conversation-schema";
 import type { GenerationAttemptTarget } from "../../shared/contract/generation-events";
 import { canStartAssembly } from "../assembly";
-import { store } from "../lib/store";
 import { useConversationVisit } from "../lib/visit";
 import { hasMoves, pickMoves, seatBound } from "../../shared/contract/box-generation";
 import { chatBoxDescriptor } from "../box-windows/registry";
 import { queueConversationCommand } from "../conversation-command-runner";
 import type { StoryAction } from "../story";
 import { isAssemblyPending, type AssemblySession, type AssemblySessionPhase } from "../assembly-session";
-import { generationStartAt, reduceGenerationStart, type GenerationStart, type GenerationStartEvent, type StartRequest } from "../generation-start";
-
-type GenerationStartLifecycle = {
-	begin: () => number;
-	settle: (startId: number) => void;
-	accepted: (startId: number, target: GenerationAttemptTarget) => void;
-};
+import { generationStartAt, type GenerationStartEvent, type StartRequest } from "../generation-start";
+import type { GenerationSessionRunner } from "../generation-session-runner";
 
 type AssemblyControllerOptions = {
 	signal: AbortSignal;
@@ -36,7 +28,7 @@ type AssemblyControllerOptions = {
 	variantPreviewActive: boolean;
 	inspectPromptPlanBeforeGenerating: boolean;
 	beforeInspect: (inspect: () => void) => void;
-	generationStart: GenerationStartLifecycle;
+	generations: GenerationSessionRunner;
 	dispatchStory: Dispatch<StoryAction>;
 	// @approved
 	//  Empties the composer for a Send and returns how to put its text and staged Moves back if the Send fails while its visit is current.
@@ -66,8 +58,8 @@ const loadPreview = async (request: StartRequest, signal: AbortSignal): Promise<
 };
 
 /** @approved
- * Owns a Generation start: the generation-start reducer holds its phase, react-query holds the Prompt Plan preview read
- * keyed by its request, and the story and pending starts hear of each start, acceptance and failure the reducer allows.
+ * Prepares and sends requests through the Generation session owner. React Query holds the Prompt Plan preview
+ * keyed by its request; the story holds only the requested transcript placeholder.
  */
 export function useAssemblyController({
 	signal: selection,
@@ -79,21 +71,14 @@ export function useAssemblyController({
 	variantPreviewActive,
 	inspectPromptPlanBeforeGenerating,
 	beforeInspect,
-	generationStart,
+	generations,
 	dispatchStory,
 	takeComposer,
 }: AssemblyControllerOptions) {
 	const client = useQueryClient();
 	const signal = useConversationVisit(selection, conversation?.id);
-	// @approved
-	//  A store rather than state: a second call in the same tick must see the transition the first one made.
-	const [machine] = useState(() => store<GenerationStart>({ visit: signal, last: null, phase: "idle", error: null }));
-	const start = generationStartAt(useSyncExternalStore(machine.subscribe, machine.get), signal);
-	const transition = (event: GenerationStartEvent) => {
-		const previous = machine.get();
-		machine.set(reduceGenerationStart(previous, event));
-		return machine.get() !== previous;
-	};
+	const start = generationStartAt(useSyncExternalStore(generations.subscribe, () => generations.getSnapshot().start), signal);
+	const transition = (event: GenerationStartEvent) => generations.dispatch({ type: "start-event", event });
 	const inspecting = start.phase === "inspecting" ? start : null;
 	const assemblyRequest = inspecting?.request ?? null;
 
@@ -112,21 +97,19 @@ export function useAssemblyController({
 		if (latest === null || Number(activeChatIdRef.current) !== submission.conversationId) throw new Error("The Chat changed.");
 		// @approved
 		//  A seat change queued ahead of this start applied first: its seat-bound Moves would be sent as the new seat's.
-		if (submission.request.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.moves ?? {}, (id) => seatBound(chatBoxDescriptor(latest, id))))) {
+		if (submission.request.target.kind === "send" && latest.control.humanParticipantId !== submission.seat && hasMoves(pickMoves(submission.request.target.moves ?? {}, (id) => seatBound(chatBoxDescriptor(latest, id))))) {
 			throw new Error("The writer changed before this Send went out, so it was not sent.");
 		}
 		// @approved
 		//  An upgrade applied first: Moves staged for the version the Chat left would be sent to the one it moved to.
-		if (submission.request.kind === "send" && hasMoves(pickMoves(submission.request.moves ?? {}, (id) => latest.boxVersions[id] !== submission.versions[id]))) {
+		if (submission.request.target.kind === "send" && hasMoves(pickMoves(submission.request.target.moves ?? {}, (id) => latest.boxVersions[id] !== submission.versions[id]))) {
 			throw new Error("A Box in this Chat was updated before this Send went out, so it was not sent.");
 		}
 		const revision = Math.max(latest.revision, previous ?? 0);
-		const formatting = { timeZone: submission.request.timeZone, locale: submission.request.locale };
-		const outcome = submission.request.kind === "send"
-			? await startConversationGeneration(submission.conversationId, revision, submission.request.content, submission.request.moves, formatting, submission.preview, submission.signal)
-			: submission.request.kind === "continuation"
-				? await startConversationContinuationGeneration(submission.conversationId, revision, formatting, submission.preview, submission.signal)
-				: await startConversationSiblingGeneration(submission.conversationId, submission.request.messageId, formatting, submission.preview, submission.signal, submission.request.reroll);
+		const { target, ...formatting } = submission.request;
+		const options = { ...formatting, ...submission.preview };
+		const body = target.kind === "sibling" ? { ...target, ...options } : { ...target, ...options, expectedRevision: revision };
+		const outcome = await startConversationGeneration(submission.conversationId, body, submission.signal);
 		submission.signal.throwIfAborted();
 		if (outcome.outcome === "available") return { target: outcome.value, sentRevision: revision };
 		throw new Error(outcome.outcome === "not-found"
@@ -154,18 +137,16 @@ export function useAssemblyController({
 	//  lands, and the story holds the output it streams until the refresh
 	//  places its Variant.
 	const launch = (request: StartRequest, preview?: GenerationStartSubmission["preview"]) => {
-		const startId = generationStart.begin();
-		dispatchStory({ type: "generation-requested", request: request.request });
-		const restoreComposer = request.request.kind === "send" ? takeComposer() : undefined;
+		generations.dispatch({ type: "errors-acknowledged" });
+		dispatchStory({ type: "generation-requested", request: request.request.target });
+		const restoreComposer = request.request.target.kind === "send" ? takeComposer() : undefined;
 		issueGeneration({ ...request, signal, preview }).then(({ target, sentRevision }) => {
-			if (!transition({ type: "start-accepted", visit: signal })) return;
+			if (!transition({ type: "start-accepted", visit: signal, target })) return;
 			dispatchStory({ type: "generation-request-accepted", generationId: target.generationId, variantId: target.variantId, sentRevision });
-			generationStart.accepted(startId, target);
 			void refreshStory(request.conversationId, signal).catch(() => null);
 		}, (error: Error) => {
 			if (!transition({ type: "failed", visit: signal, error: error.message })) return;
 			restoreComposer?.();
-			generationStart.settle(startId);
 			dispatchStory({ type: "generation-request-failed" });
 		});
 	};
@@ -214,10 +195,10 @@ export function useAssemblyController({
 		const requested = { conversationId: conversation.id, seat, versions, request };
 		const inspect = inspectPromptPlanBeforeGenerating;
 		const prepare = () => {
-			if (!transition({ type: "requested", visit: signal, request: requested })) return;
+			if (!transition({ type: "requested", visit: signal, request: requested, inspect })) return;
 			void ensureLatest().then(() => {
 				if (Number(activeChatIdRef.current) !== requested.conversationId) return void transition({ type: "cancelled", visit: signal });
-				if (!transition({ type: "prepared", visit: signal, inspect })) return;
+				if (!transition({ type: "prepared", visit: signal })) return;
 				if (inspect) client.removeQueries({ queryKey: ["assembly-preview"] });
 				else launch(requested);
 			}, () => transition({ type: "failed", visit: signal, error: "The latest Messages could not be loaded." }));
@@ -230,6 +211,7 @@ export function useAssemblyController({
 
 	return {
 		assembly,
+		inspectionLocked: assembly !== null || (start.phase === "preparing" && start.inspect),
 		directStartError: start.phase === "idle" ? start.error : null,
 		acknowledgeDirectStartError: () => void transition({ type: "error-acknowledged", visit: signal }),
 		assemblyAvailable: canStartAssembly({

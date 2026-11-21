@@ -1,5 +1,7 @@
 import type { ESTree } from "@oxlint/plugins";
 
+export const moduleExportName = (name: ESTree.ModuleExportName): string => name.type === "Identifier" ? name.name : name.value;
+
 type Check = (node: ESTree.Node, source: string, typeOnly: boolean) => void;
 
 export const staticSpecifier = (node: ESTree.Expression): string | undefined => {

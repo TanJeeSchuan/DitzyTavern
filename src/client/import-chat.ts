@@ -4,16 +4,14 @@
 // server's typed results so the view recovers without re-uploading.
 
 import { api } from "./lib/eden";
-import { requestOutcome } from "./lib/request-outcome";
+import { requestOutcome } from "./lib/request-route-outcome";
 import {
-	chatImportCommandErrors,
-	importCommittedResponse,
-	importPreviewResponse,
-	importStagedResponse,
+	chatImportCommitResponse,
+	chatImportPreviewResponse,
+	chatImportStageResponse,
 	type ChatImportCommitBody,
 	type ChatImportReceipt,
 } from "../shared/contract/chat-import";
-import { invalidOutcome } from "../shared/contract/outcomes";
 
 export type { ChatImportReceipt };
 
@@ -32,8 +30,7 @@ export async function stageImport(bytes: Blob, originalFilename: string) {
 			undefined,
 			{ headers: { "x-import-filename": originalFilename }, fetch: { body: bytes } },
 		),
-		importStagedResponse,
-		invalidOutcome,
+		chatImportStageResponse,
 	);
 }
 
@@ -43,8 +40,7 @@ export async function stageImport(bytes: Blob, originalFilename: string) {
 export async function previewImport(token: string, sha256: string) {
 	return requestOutcome(
 		api.api["imports"].chats({ token }).preview.post({ sha256 }),
-		importPreviewResponse,
-		chatImportCommandErrors,
+		chatImportPreviewResponse,
 	);
 }
 
@@ -58,8 +54,7 @@ export async function commitImport(
 ) {
 	return requestOutcome(
 		api.api["imports"].chats({ token }).commit.post({ sha256, ...input }),
-		importCommittedResponse,
-		chatImportCommandErrors,
+		chatImportCommitResponse,
 	);
 }
 

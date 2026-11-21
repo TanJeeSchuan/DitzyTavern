@@ -76,5 +76,3 @@ export const gifFixture = (options: { comment?: string } = {}) => {
 		Buffer.from([0x3b]),
 	);
 };
-
-export const base64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");

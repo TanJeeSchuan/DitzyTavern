@@ -62,7 +62,7 @@ export const slotTitle = (slot: TitledSlot): string =>
 // Short human label for the affected-Conversation count presented on every
 //  library list row, so the deletion confirmation can state the exact
 // consequence before any command is sent.
-export function affectedConversationsLabel(count: number): string {
+function affectedConversationsLabel(count: number): string {
 	if (count === 0) return "Not selected by any Chat";
 	if (count === 1) return "Selected by 1 Chat";
 	return `Selected by ${count} Chats`;

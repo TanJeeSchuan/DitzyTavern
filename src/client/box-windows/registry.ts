@@ -83,7 +83,7 @@ export type LoadedBox = { readonly metadata: BoxMetadata; readonly version?: str
 let loaded: ReadonlyMap<BoxId, LoadedBox> = new Map();
 const versions = new Map<string, LoadedBox>();
 const loadingVersions = new Map<string, Promise<void>>();
-export const boxVersionKey = (id: BoxId, version: string) => `${id}@${version}`;
+const boxVersionKey = (id: BoxId, version: string) => `${id}@${version}`;
 /** @approved Every Box the server loaded, by id, in registry order, whether or not its client module loaded. */
 export const loadedBoxes = (): ReadonlyMap<BoxId, LoadedBox> => loaded;
 /** @approved Each catalog Box's client module, by id, in registry order. */

@@ -1,3 +1,4 @@
+import type { Static } from "@sinclair/typebox";
 import { ChevronLeft } from "lucide-react";
 import { useCallback, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -12,10 +13,11 @@ import { SaveFooter } from "../SaveFooter";
 import { useSaveGuard, useNavigationRequest } from "../SaveGuard";
 import { NumberGroup, NumberRow } from "./NumberControls";
 import { MIN_DECISION_STATE_TOKEN_LIMIT, type DecisionSelection } from "../../shared/contract/decision-model";
+import type { invalidOutcome, notFoundOutcome, RevisionConflict } from "../../shared/contract/outcomes";
 
 type Revisioned = { revision: number };
 type Settings = DecisionSelection & Revisioned;
-type SaveOutcome<S> = RequestOutcome<{ settings: S }, { outcome: "conflict"; currentSettings: S } | { outcome: "invalid"; reason: string } | { outcome: "not-found" }>;
+type SaveOutcome<S> = RequestOutcome<{ settings: S }, RevisionConflict<S> | Static<typeof invalidOutcome> | Static<typeof notFoundOutcome>>;
 type Read<S> = { settings: S | null; loading: boolean; error: string | null };
 
 const CONFLICT_ERROR = "These settings changed elsewhere. Review your draft before saving again.";
@@ -53,7 +55,7 @@ export function useSettingsDraft<S extends Revisioned>(
 			setRead((current) => ({ ...current, error: null }));
 			const result = await apply({ ...submitted, type: "apply", expectedRevision });
 			if (result.outcome === "available") return { outcome: "saved", saved: revisioned(result.value.settings) };
-			if (result.outcome === "conflict") return { outcome: "conflict", theirs: revisioned(result.currentSettings) };
+			if (result.outcome === "conflict") return { outcome: "conflict", theirs: revisioned(result.current) };
 			setRead((current) => ({ ...current, error: result.outcome === "invalid" || result.outcome === "unusable" ? result.reason : `${name} could not be saved.` }));
 			return { outcome: "failed" };
 		},

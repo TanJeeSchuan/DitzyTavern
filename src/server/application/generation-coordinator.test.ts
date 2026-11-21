@@ -1,9 +1,5 @@
-import { readTestConversationSnapshot, createConversationWithHistory } from "../test-fixtures/conversation";
-import {
-	acceptConversationTailGeneration,
-	acceptConversationSiblingGeneration,
-	resolveConversationGeneration,
-} from "../conversation";
+import { readTestConversationSnapshot, createConversationWithHistory, shortReplyPrompt, participantSeed, pairChat } from "../test-fixtures/conversation";
+import { acceptGeneration, resolveConversationGeneration } from "../conversation";
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { processStateFor } from "../application/process-state";
@@ -23,14 +19,7 @@ import {
 } from "./generation-coordinator";
 
 const key = new Uint8Array(32).fill(31);
-const prompt = {
-	systemInstruction: "Write briefly.",
-	identity: "I am {{self}}.",
-	appearance: "",
-	scenario: "A quiet room.",
-	exampleDialogue: "",
-	postHistoryInstruction: "Continue.",
-};
+const prompt = shortReplyPrompt({ systemInstruction: "Write briefly.", scenario: "A quiet room." });
 const profile = {
 	displayName: "Coordinator Test",
 	apiFormat: "chat-completions" as const,
@@ -64,14 +53,7 @@ describe("GenerationCoordinator", () => {
 		requireSnapshot(database, conversationId);
 
 	test("shares runtime and transport setup across tail, continuation, and sibling starts", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Coordinator Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Coordinator Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -123,14 +105,7 @@ describe("GenerationCoordinator", () => {
 	});
 
 	test("shutdown joins a provider that settles after cancellation before closing the database", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Shutdown Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Shutdown Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0, profile, credential: "shutdown-test-secret",
 		});
@@ -164,14 +139,7 @@ describe("GenerationCoordinator", () => {
 	}, 10_000);
 
 	test("stops a running attempt through one application entrance", async () => {
-		const conversation = createConversationWithHistory(database, {
-			name: "Coordinator Stop Chat",
-			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: [] } },
-			],
-			control: { human: 0, model: 1 },
-		});
+		const conversation = pairChat(database, "Coordinator Stop Chat", { prompt });
 		createConnectionSettingsModule(database, { masterKey: key }).createProfile({
 			expectedRevision: 0,
 			profile,
@@ -265,8 +233,8 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Stop lifecycle",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -277,33 +245,32 @@ describe("Generation Coordinator Stop lifecycle", () => {
 	};
 
 	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
-		acceptConversationTailGeneration(input.module, {
+		acceptGeneration(input.module, {
 			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
-			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
-			humanContent: content,
 			humanParticipantId: input.human.id,
 			modelParticipantId: input.model.id,
 			capturedHumanName: input.human.name,
 			capturedModelName: input.model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "send", expectedRevision: input.conversation.revision, content: content });
 
 	const acceptSibling = (input: ReturnType<typeof setup>, messageId: number, timestamp: string) =>
-		acceptConversationSiblingGeneration(input.module, {
+		acceptGeneration(input.module, {
 			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
-			messageId,
 			timestamp,
 			humanParticipantId: input.human.id,
 			modelParticipantId: input.model.id,
 			capturedHumanName: input.human.name,
 			capturedModelName: input.model.name,
 			promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "sibling", messageId: messageId });
 
 	const startRuntime = (
 		conversationId: number,
@@ -360,7 +327,8 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		const addressed = setup();
 		const owner = setup();
 		const accepted = acceptTail(owner, "Owned elsewhere.");
-		const runtime = startRuntime(owner.conversation.id, accepted);
+		let cancelled = false;
+		const runtime = startRuntime(owner.conversation.id, accepted, { onStop: () => { cancelled = true; } });
 		const coordinator = createGenerationCoordinator(database);
 
 		const outcome = await coordinator.stopGeneration(addressed.conversation.id, accepted.generationId);
@@ -370,7 +338,7 @@ describe("Generation Coordinator Stop lifecycle", () => {
 		// never consulted under another Conversation's name.
 		expect(readTestConversationSnapshot(owner.module, owner.conversation.id)?.activeGenerations).toHaveLength(1);
 		expect(runtime.state.status).toBe("active");
-		expect(runtime.isStopRequested).toBe(false);
+		expect(cancelled).toBe(false);
 	});
 
 	test("Stop does not commit stale output when the runtime checkpoint fails", async () => {
@@ -531,8 +499,8 @@ describe("Generation Coordinator terminal races", () => {
 		const conversation = createConversationWithHistory(module, {
 			name: "Terminal race",
 			participants: [
-				{ definition: { name: "Writer", prompt, sendAppearanceImages: true, openings: [] } },
-				{ definition: { name: "Maren", prompt, sendAppearanceImages: true, openings: ["Original."] } },
+				participantSeed("Writer", { prompt }),
+				participantSeed("Maren", { prompt, openings: ["Original."] }),
 			],
 			control: { human: 0, model: 1 },
 		});
@@ -543,19 +511,18 @@ describe("Generation Coordinator terminal races", () => {
 	};
 
 	const acceptTail = (input: ReturnType<typeof setup>, content: string) =>
-		acceptConversationTailGeneration(input.module, {
+		acceptGeneration(input.module, {
 			seed: "test-generation-seed",
 			conversationId: input.conversation.id,
-			expectedRevision: input.conversation.revision,
 			timestamp: "2026-08-27T00:00:00.000Z",
-			humanContent: content,
 			humanParticipantId: input.human.id,
 			modelParticipantId: input.model.id,
 			capturedHumanName: input.human.name,
 			capturedModelName: input.model.name,
-		promptPlan: { blocks: [], warnings: [], images: [] },
-			modelId: "fixture-model", promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
-		});
+			promptPlan: { blocks: [], warnings: [], images: [] },
+			modelId: "fixture-model",
+			promptInspection: { tokenEstimate: 0, responseBudget: 64, safetyAllowance: 0, contextLimit: 128, totalRequiredTokens: 64, omittedContext: [] },
+		}, { kind: "send", expectedRevision: input.conversation.revision, content: content });
 
 	test("Stop releases terminal ownership when the provider wins during cancellation", async () => {
 		const input = setup();

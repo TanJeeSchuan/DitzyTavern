@@ -1,3 +1,4 @@
+import { withDeadline } from "../src/shared/test-fixtures/deadline";
 import type { Page } from "@playwright/test";
 import { test, expect, send, story } from "./fixtures";
 
@@ -8,6 +9,31 @@ const forkOrigin = async (page: Page) => {
 	await page.getByRole("button", { name: "Chat information", exact: true }).click();
 	return page.getByRole("button", { name: /Forked from/ });
 };
+
+test("Remove Fork link uses the Summary while the Fork's history is loading", async ({ page, request }) => {
+	await page.goto("/");
+	const message = story(page).locator("article[data-message-id]").last();
+	await message.hover();
+	await message.getByRole("button", { name: "Fork", exact: true }).click();
+	const held = Promise.withResolvers<void>();
+	await page.route("**/api/conversations/*/history*", async (route) => { await withDeadline(held.promise, "release of the held history route"); await route.continue(); });
+	try {
+		const forked = page.waitForResponse((response) => response.url().endsWith("/fork") && response.ok(), { timeout: 5_000 });
+		await page.getByRole("dialog", { name: "Fork Chat" }).getByRole("button", { name: "Fork", exact: true }).click();
+		const { conversation } = await (await forked).json();
+		const origin = await forkOrigin(page);
+		await expect(origin).toBeVisible();
+		await expect(story(page).locator("article[data-message-id]")).toHaveCount(0);
+		const url = `/api/conversations/${conversation.id}`;
+		const unlink = page.waitForResponse((response) => response.url().endsWith(`${url}/commands`) && response.ok(), { timeout: 5_000 });
+		await page.getByRole("button", { name: "Remove Fork link" }).click();
+		expect((await unlink).request().postDataJSON()).toMatchObject({ expectedRevision: conversation.revision, action: { type: "unlink-fork" } });
+		await expect(origin).toBeHidden();
+		expect((await (await request.get(url)).json()).forkedFrom).toBeNull();
+	} finally {
+		held.resolve();
+	}
+});
 
 test("a trimmed Fork is independent and Rewind restores the human draft", async ({ page, llm }) => {
 	await llm.chat({ chunks: ["First answer."] }, { chunks: ["Second answer."] }, { chunks: ["Fork answer."] }, { chunks: ["Rewritten answer."] });
@@ -77,6 +103,7 @@ test("forking protects an inline edit and Rewind asks before replacing a draft",
 	await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Keep editing" }).click();
 	await expect(reply.getByRole("textbox", { name: "Edit Message" })).toHaveText("Unsaved edit");
 	await reply.getByRole("button", { name: "Cancel", exact: true }).click();
+	await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Discard", exact: true }).click();
 	await page.getByRole("textbox", { name: "Message draft" }).fill("Existing draft");
 	const human = story(page).locator("article").filter({ hasText: "Original guidance." });
 	await human.hover();
@@ -85,3 +112,27 @@ test("forking protects an inline edit and Rewind asks before replacing a draft",
 	await expect(page.getByRole("textbox", { name: "Message draft" })).toHaveText("Existing draft");
 	await expect(page.getByRole("dialog", { name: "Fork Chat" })).toHaveCount(0);
 });
+
+for (const action of ["Fork", "Rewind"] as const) {
+	test(`canceling ${action} after approving Discard preserves the inline draft`, async ({ page, llm }) => {
+		await llm.chat({ chunks: ["A reply."] });
+		await page.goto("/");
+		await send(page, "Original guidance.");
+		const reply = story(page).locator("article").last();
+		await expect(reply.getByText("A reply.")).toBeVisible();
+		if (action === "Rewind") await page.getByRole("textbox", { name: "Message draft" }).fill("Existing draft");
+		await reply.getByRole("button", { name: "Edit", exact: true }).click();
+		const editor = reply.getByRole("textbox", { name: "Edit Message" });
+		await editor.fill("Unsaved edit");
+
+		const source = action === "Fork" ? reply : story(page).locator("article").filter({ hasText: "Original guidance." });
+		await source.hover();
+		await source.getByRole("button", { name: action, exact: true }).click();
+		if (action === "Rewind") page.once("dialog", (dialog) => void dialog.dismiss());
+		await page.getByRole("dialog", { name: "Unsaved changes" }).getByRole("button", { name: "Discard", exact: true }).click();
+		const fork = page.getByRole("dialog", { name: "Fork Chat" });
+		if (action === "Fork") await fork.getByRole("button", { name: "Cancel", exact: true }).click();
+		await expect(fork).toBeHidden();
+		await expect(editor).toHaveText("Unsaved edit");
+	});
+}

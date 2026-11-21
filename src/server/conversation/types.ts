@@ -1,12 +1,13 @@
+import type { GenerationFailureKind } from "../../shared/contract/generation-events";
 import type { StoredGenerationIntent } from "../../shared/contract/generation-intent";
-import type { BoxMoves, BoxRecords } from "../../shared/contract/box-generation";
+import type { BoxRecords } from "../../shared/contract/box-generation";
 import type { BoxTraces } from "../../shared/contract/box-generation";
 import type { Static } from "@sinclair/typebox";
-import type { GenerationJsonValue } from "../../shared/generation-json";
-import type { GenerationProvenance as SharedGenerationProvenance } from "../../shared/contract/generation-provenance";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import type { artifactMetadata } from "../../shared/contract/chat-import";
 import type {
 	GenerationBudgetInspection,
+	GenerationTarget,
 	ActiveGenerationDetails as SharedActiveGenerationDetails,
 	CapabilityAvailability as SharedCapabilityAvailability,
 	CastParticipant as SharedCastParticipant,
@@ -32,12 +33,8 @@ import type {
 	CanonicalGenerationSettings,
 } from "../../shared/contract/generation-settings";
 import type { MacroVariableWrite } from "../../shared/contract/macro-variables";
-import type {
-	MacroVariables as SharedMacroVariables,
-} from "../../shared/contract/macro-variables";
 import type { GenerationFormattingContext } from "../../shared/contract/conversation-schema";
 import type { LoreActivationRecord } from "../../shared/contract/lore-activation";
-import type { LoreAttachmentCommand } from "../../shared/contract/lorebook";
 
 // Public contract of the deep Conversation seam. The module owns Cast,
 // Control, Messages, Variants, authorship, and derived capabilities;
@@ -54,8 +51,6 @@ export interface ConversationDataEntry {
 // provider classes, credentials, or unserializable runtime values.
 export type ConversationJsonValue = GenerationJsonValue;
 
-export type MacroVariables = SharedMacroVariables;
-
 // Conversation-local generation controls derive from the canonical
 // Generation Settings declaration (ADR-0032) instead of restating its
 // fields: adding a canonical field changes the domain type, the defaults,
@@ -67,7 +62,7 @@ export type ConversationGenerationSettings = SharedConversationGenerationSetting
 
 export type {
 	GenerationJsonObject as GenerationRequestOverrides,
-} from "../../shared/generation-json";
+} from "../../shared/contract/json-value";
 
 // Suffixes are intentionally a closed set. They are request-time formatting
 // choices, not authored Conversation content. The domain alias stays derived
@@ -144,9 +139,6 @@ export type ParticipantRemovalEligibility = CastParticipantSnapshot["removal"];
 export type ParticipantRemovalBlockReason =
 	NonNullable<ParticipantRemovalEligibility["reason"]>;
 
-export type ParticipantDeletionMode =
-	NonNullable<ParticipantRemovalEligibility["deletionMode"]>;
-
 // Derived, never stored. A Conversation is playable only when two distinct
 // Cast Participants occupy the human and model seats; Control validity is
 // the same rule stated explicitly so clients do not reproduce it.
@@ -166,9 +158,6 @@ export type ControlValidityReason =
 export type CapabilityAvailability = SharedCapabilityAvailability;
 
 export type ConversationCapabilities = SharedConversationCapabilities;
-
-export type CapabilityBlockReason =
-	NonNullable<CapabilityAvailability["reason"]>;
 
 // Derived, never stored. Whether a new sibling Variant may be generated for
 // one Message. Conversation playability gates every play action; without a
@@ -231,39 +220,16 @@ export type ConversationDataScope = SharedConversationDataScope;
 // The command vocabulary derives from the canonical wire union (ADR-0032):
 // a transport command added to the shared schema automatically becomes a
 // domain action, so the two vocabularies cannot drift. The one deliberate
-// extension (a): the domain add-participant action carries a server-only
+// extension: the domain add-participant action carries a server-only
 // `sourceCharacterId` that the wire schema deliberately omits — clients can
 // never forge or bypass provenance/revision rules at the transport
 // boundary; only server-owned fork workflows supply it inside the
 // transaction.
-type WireConversationAction = SharedConversationAction;
-
-// @approved
-//  Extension (b): the Conversation-owned Lore attachment commands
-// (Chat Lore settings, Chat and Participant Lorebook attachments) are
-// revisioned Conversation mutations whose canonical wire declaration lives
-// in the Lorebook command schema — they ride the Lorebook attachment route,
-// so the Conversation command route never accepts them. The domain strips
-// the route envelope (conversation id and expected revision live on
-// ConversationCommand) from the shared schema, so the shapes cannot drift.
-type LoreAttachmentConversationActionType = Extract<
-	LoreAttachmentCommand["type"],
-	"attach-chat" | "detach-chat" | "attach-participant" | "detach-participant" | "save-settings"
->;
-
-type LoreAttachmentConversationAction = {
-	[Type in LoreAttachmentConversationActionType]: Omit<
-		Extract<LoreAttachmentCommand, { type: Type }>,
-		"conversationId" | "expectedRevision"
-	>;
-}[LoreAttachmentConversationActionType];
-
 export type ConversationAction =
-	| Exclude<WireConversationAction, { type: "add-participant" }>
-	| (Extract<WireConversationAction, { type: "add-participant" }> & {
+	| Exclude<SharedConversationAction, { type: "add-participant" }>
+	| (Extract<SharedConversationAction, { type: "add-participant" }> & {
 			sourceCharacterId?: number | undefined;
-	  })
-	| LoreAttachmentConversationAction;
+	  });
 
 export interface ConversationCommand {
 	conversationId: number;
@@ -279,11 +245,6 @@ export interface ConversationCommand {
 // snapshots and history pages; they exist only while the active/replay
 // lifecycle retains the generation row.
 export type ActiveGenerationDetails = SharedActiveGenerationDetails;
-
-// Compact terminal provenance is the only Generation detail that survives
-// Active Generation cleanup. It has a positive allow-list by design: no
-// request overrides, URLs, headers, credentials, or raw provider payloads.
-export type GenerationProvenance = SharedGenerationProvenance;
 
 // On-demand details for a terminal Variant. Derived from the canonical
 // shared schema (ADR-0032) so the compact provenance contract cannot drift
@@ -310,27 +271,27 @@ export interface GenerationAcceptanceCapture {
 	/** Captured server-owned lore evidence retained with the terminal Variant. */
 	loreActivation?: LoreActivationRecord | null;
 	boxTraces?: BoxTraces;
-	generationIntent?: StoredGenerationIntent;
 	provenance?: ConversationDataEntry | undefined;
 	// Captured macro state belongs to this originating preset and is attached to the target only
 	// when its Variant is retained. Direct domain callers may omit it for non-macro generations.
 	macro?: { readonly presetId: number; readonly writes: readonly MacroVariableWrite[] };
 }
 
-export interface AcceptTailGenerationInput extends GenerationAcceptanceCapture {
-	expectedRevision: number;
-	humanContent: string;
-	humanMoves?: BoxMoves | undefined;
-	// A retry may point at the already accepted trailing human Message. When
-	// omitted, acceptance creates one in the same transaction.
-	reuseHumanMessageId?: number | undefined;
-}
+export type CapturedGenerationTarget =
+	| Extract<GenerationTarget, { kind: "send" }> & { readonly reuseHumanMessageId?: number | undefined }
+	| Extract<GenerationTarget, { kind: "continuation" }> & { readonly precedingMessageId: number; readonly precedingVariantId: number; readonly intent: Extract<StoredGenerationIntent, { type: "continuation" }> }
+	| Extract<GenerationTarget, { kind: "sibling" }>;
 
-export interface AcceptedTailGeneration {
+export type GenerationAcceptanceTarget =
+	| Extract<CapturedGenerationTarget, { kind: "sibling" }>
+	| (Exclude<CapturedGenerationTarget, { kind: "sibling" }> & { readonly expectedRevision: number });
+
+export interface AcceptedGeneration {
 	generationId: number;
-	humanMessageId: number;
+	humanMessageId: number | null;
 	messageId: number;
 	provisionalVariantId: number;
+	priorVariantId: number | null;
 	conversation: ConversationSummary;
 }
 
@@ -343,17 +304,14 @@ export interface ResolveGenerationInput {
 	data?: readonly ConversationDataEntry[] | undefined;
 }
 
-// One canonical removal input. The Active Generation row's persisted intent
-// decides the mutation; the caller never selects one.
-export interface RemoveGenerationInput {
-	conversationId: number;
-	generationId: number;
-}
+/** @approved The only local terminal causes used by startup and graceful shutdown. */
+export type GenerationRecoveryCause = "server-restart" | "server-shutdown";
 
 // Explicit Stop is a server-owned lifecycle transition. The checkpoint is
 // read from the Active Generation row, so a client cannot forge partial
 // output or target another Conversation's Generation.
 export interface StopGenerationInput {
+	cause: GenerationFailureKind | "user-stop" | GenerationRecoveryCause;
 	conversationId: number;
 	generationId: number;
 	timestamp?: string | undefined;
@@ -369,38 +327,6 @@ export interface StopGenerationsInput {
 
 export interface StoppedGenerations {
 	generationIds: number[];
-	conversation: ConversationSummary;
-}
-
-// Continuation acceptance creates only the model-authored provisional target.
-// The current human seat remains part of the captured historical pair, but
-// there is deliberately no Human-authored Message for this lifecycle.
-export interface AcceptContinuationGenerationInput extends GenerationAcceptanceCapture {
-	generationIntent: Extract<StoredGenerationIntent, { type: "continuation" }>;
-	expectedRevision: number;
-	precedingMessageId: number;
-	precedingVariantId: number;
-}
-
-export interface AcceptedContinuationGeneration {
-	generationId: number;
-	messageId: number;
-	provisionalVariantId: number;
-	conversation: ConversationSummary;
-}
-
-// Sibling acceptance creates a Provisional Variant on an existing Message.
-// `priorVariantId` lets an empty failure restore the selection that was
-// visible before this attempt, without overwriting a later user selection.
-export interface AcceptSiblingGenerationInput extends GenerationAcceptanceCapture {
-	messageId: number;
-}
-
-export interface AcceptedSiblingGeneration {
-	generationId: number;
-	messageId: number;
-	provisionalVariantId: number;
-	priorVariantId: number | null;
 	conversation: ConversationSummary;
 }
 

@@ -10,18 +10,16 @@ import {
 import { toConversationSummary } from "./projections";
 import {
 	chatImportCommitBody,
-	chatImportDetails,
-	importCleanedUpResponse,
-	importCommittedResponse,
-	importDiscardedResponse,
-	importGoneResponse,
+	chatImportCommitResponse,
+	chatImportDetailsResponse,
+	chatImportDiscardResponse,
+	chatImportPreviewResponse,
+	chatImportSourceResponse,
+	chatImportStageResponse,
 	importPreviewBody,
-	importPreviewResponse,
-	importStagedResponse,
 	importTokenParams,
 } from "../../shared/contract/chat-import";
 import { conversationIdParams } from "../../shared/contract/conversation-schema";
-import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes";
 
 // @approved
 //  Thin typed adapters over the deep staged Chat import seam. The stage
@@ -29,23 +27,6 @@ import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes"
 // request stream untouched so the module can stream the uploaded bytes into
 // managed temporary storage exactly once instead of buffering the artifact.
 // The preview and discard routes stay tiny mappings of typed outcomes.
-const commitResponse = {
-	200: importCommittedResponse,
-	410: importGoneResponse,
-	422: invalidOutcome,
-};
-
-const previewResponse = {
-	200: importPreviewResponse,
-	410: importGoneResponse,
-	422: invalidOutcome,
-};
-
-const stageResponse = {
-	200: importStagedResponse,
-	422: invalidOutcome,
-};
-
 export const createChatImportRoutes = (
 	database: Database,
 	artifactDirectory: string,
@@ -76,11 +57,11 @@ export const createChatImportRoutes = (
 							});
 					return { outcome: "staged" as const, ...result };
 				} catch (error) {
-					return presentDomainError(error, stageResponse);
+					return presentDomainError(error, chatImportStageResponse);
 				}
 			},
 			{
-				response: stageResponse,
+				response: chatImportStageResponse,
 			},
 		)
 		.post(
@@ -90,13 +71,13 @@ export const createChatImportRoutes = (
 					const preview = createChatImportModule(database, { artifactDirectory: artifactDirectory }).preview(params.token, body.sha256);
 					return { outcome: "available" as const, preview };
 				} catch (error) {
-					return presentDomainError(error, previewResponse);
+					return presentDomainError(error, chatImportPreviewResponse);
 				}
 			},
 			{
 				params: importTokenParams,
 				body: importPreviewBody,
-				response: previewResponse,
+				response: chatImportPreviewResponse,
 			},
 		)
 		.post(
@@ -115,13 +96,13 @@ export const createChatImportRoutes = (
 						receipt: result.receipt,
 					};
 				} catch (error) {
-					return presentDomainError(error, commitResponse);
+					return presentDomainError(error, chatImportCommitResponse);
 				}
 			},
 			{
 				params: importTokenParams,
 				body: chatImportCommitBody,
-				response: commitResponse,
+				response: chatImportCommitResponse,
 			},
 		)
 		.post(
@@ -135,9 +116,7 @@ export const createChatImportRoutes = (
 			},
 			{
 				params: importTokenParams,
-				response: {
-					200: importDiscardedResponse,
-				},
+				response: chatImportDiscardResponse,
 			},
 		)
 		.get(
@@ -154,10 +133,7 @@ export const createChatImportRoutes = (
 			},
 			{
 				params: conversationIdParams,
-				response: {
-					200: chatImportDetails,
-					404: notFoundOutcome,
-				},
+				response: chatImportDetailsResponse,
 			},
 		)
 		.get(
@@ -191,9 +167,6 @@ export const createChatImportRoutes = (
 			},
 			{
 				params: conversationIdParams,
-				response: {
-					404: notFoundOutcome,
-					410: importCleanedUpResponse,
-				},
+				response: chatImportSourceResponse,
 			},
 		);

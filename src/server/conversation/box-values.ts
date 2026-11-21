@@ -5,7 +5,7 @@ import { and, eq, inArray, like, or, sql } from "drizzle-orm";
 import type { SQLiteColumn } from "drizzle-orm/sqlite-core";
 import { boxReference } from "../../shared/contract/box";
 import { boxValue } from "../../shared/contract/box-value";
-import type { GenerationJsonValue } from "../../shared/generation-json";
+import type { GenerationJsonValue } from "../../shared/contract/json-value";
 import { BOX_TRACES_KEY, BOX_TRACES_NAMESPACE } from "../../shared/variant-data-codecs";
 import type { CheckedBox, StoredBoxValue } from "../box/contract";
 import { isHostChatKey } from "../box/setup";

@@ -31,21 +31,14 @@ export {
 	installBoxBlocks,
 	InvalidPromptPresetOperationError,
 	movePromptPresetBlock,
-	PromptPresetBlockNotFoundError,
 	removePromptPresetBlock,
 	savePromptPresetBlockPatches,
 	setPromptPresetBlockEnabled,
 } from "./blocks";
 export {
-	BuiltInPromptPresetNotRemovableError,
-	InvalidPromptPresetCommandError,
 	PromptPresetDeletionImpactChangedError,
 	PromptPresetNotFoundError,
 } from "./errors";
 export type {
-	PromptBlockReference,
-	PromptPresetBlockPatch,
 	PromptPresetRecipe,
-	PromptPresetSlot,
-	ReferencedDefinitionBlock,
 } from "../../shared/contract/prompt-preset";

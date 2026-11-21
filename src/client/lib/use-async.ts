@@ -4,12 +4,12 @@ import { useEffect, type DependencyList } from "react";
 //  One guard per effect activation: the task's promise callbacks consult
 // `isCancelled` so state updates stop once the effect re-runs or the
 // component unmounts.
-export interface AsyncEffectGuard {
+interface AsyncEffectGuard {
 	isCancelled: () => boolean;
 	cancel: () => void;
 }
 
-export const createAsyncEffectGuard = (): AsyncEffectGuard => {
+const createAsyncEffectGuard = (): AsyncEffectGuard => {
 	let cancelled = false;
 	return {
 		isCancelled: () => cancelled,

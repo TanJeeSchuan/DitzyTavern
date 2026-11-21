@@ -10,6 +10,7 @@ describe("embedding client", () => {
 	});
 	test("requests OpenAI-compatible vectors", async () => {
 		let body: string | undefined;
+		let redirect: RequestRedirect | undefined;
 		const vectors = await requestEmbeddings(["one", "two"], {
 			endpoint: "http://localhost/v1/embeddings",
 			model: "test-model",
@@ -17,10 +18,12 @@ describe("embedding client", () => {
 			timeoutMs: 1000,
 			fetch: async (_input, init) => {
 				body = String(init?.body);
+				redirect = init?.redirect;
 				return new Response(JSON.stringify({ data: [{ embedding: [1, 0] }, { embedding: [0, 1] }] }), { status: 200 });
 			},
 		});
 		expect(JSON.parse(body ?? "{}")).toEqual({ model: "test-model", input: ["one", "two"] });
+		expect(redirect).toBe("error");
 		expect(vectors).toEqual([[1, 0], [0, 1]]);
 	});
 
