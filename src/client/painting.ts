@@ -157,6 +157,6 @@ export function useImageModel() {
 
 export const IllustrationActionsContext = createContext<{
 	addToComposer: ((name: string, hash: string) => void) | null;
-	editBrief: ((variantId: number, brief: string, ask: string) => void) | null;
+	editBrief: ((variantId: number, brief: string, ask: string, adopt: () => Promise<boolean>) => void) | null;
 	editBriefDisabledReason: string | undefined;
 } | null>(null);
