@@ -70,3 +70,11 @@ test.each(["openrouter", "openai-compatible"] as const)("%s redacts a URL query 
 		fetch: async () => new Response(`Rejected ${code} and ${encoded}.`, { status: 403 }),
 	})).rejects.toThrow("Rejected [REDACTED] and [REDACTED].");
 });
+
+test.each(["openrouter", "openai-compatible"] as const)("%s keeps the provider's JSON error message when a URL query value appears in its body", async (adapter) => {
+	await expect(paintImage({
+		profile: { ...blankConnectionProfileDraft, apiFormat: "images", adapter, requestUrl: "https://example.com/images?mode=error" },
+		modelId: "painter", secrets: null, brief: "A map", aspectRatio: "1:1", loadImage: () => undefined,
+		fetch: async () => Response.json({ error: { message: "The provider refused this Brief." } }, { status: 400 }),
+	})).rejects.toThrow(/^The provider refused this Brief.$/);
+});

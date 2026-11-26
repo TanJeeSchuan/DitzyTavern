@@ -222,13 +222,11 @@ test.describe("References", () => {
 		await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
 		await expect(picker).toHaveText("Kimono");
 		await expect(references).toHaveText("Iris: kimono");
-		await picker.click();
-		await page.getByRole("option", { name: "References", exact: true }).click();
-		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
 		await story(page).getByRole("button", { name: "Illustration actions" }).click();
 		await page.getByRole("menuitem", { name: "Edit Brief and repaint" }).click();
 		await expect(brief).toHaveText("Iris standing at the bridge.");
 		await expect(picker).toHaveText("References");
+		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
 
 		const unchanged = await brief.innerText();
 		await llm.chat({ status: 429, error: "Brief quota exceeded" });

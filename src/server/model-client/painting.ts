@@ -42,7 +42,7 @@ export async function paintImage(input: {
 				await response.body?.cancel();
 				return new Response(null, { status: response.status });
 			}
-			const diagnostic = await readProviderDiagnostic(response, secretValues);
+			const diagnostic = await readProviderDiagnostic(response, [credential ?? "", ...Object.values(headers)]);
 			return new Response(diagnostic, { status: response.status, headers: { "content-type": contentType ?? "text/plain" } });
 		},
 	});
