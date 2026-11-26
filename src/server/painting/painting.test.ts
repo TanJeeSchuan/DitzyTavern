@@ -38,7 +38,7 @@ test("an Illustration lands on its original Variant after a swipe without a Conv
 	const module = createPaintingModule(database, { fetch: () => reply.promise });
 	const message = chat.messages[0]!;
 	const variantId = message.variants[0]!.id;
-	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "Private painted scene", aspectRatio: "3:4" });
+	module.command(chat.id, { type: "paint", ask: "", references: "", variantId, brief: "Private painted scene", aspectRatio: "3:4" });
 	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "painting", variantId }]);
 	expect(database.query("SELECT * FROM message_variant_data WHERE namespace = 'painting'").all()).toHaveLength(0);
 	const targets = [{ kind: "send", content: "Continue the scene" }, { kind: "continuation" }, { kind: "sibling", messageId: message.id }] as const;
@@ -80,7 +80,7 @@ test("provider failures persist until retry or dismissal; restarting drops provi
 		return result.promise.finally(unsubscribe);
 	};
 	const variantId = chat.messages[0]!.variants[0]!.id;
-	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "A scene", aspectRatio: "1:1" });
+	module.command(chat.id, { type: "paint", ask: "", references: "", variantId, brief: "A scene", aspectRatio: "1:1" });
 	await settled();
 	const failure = module.read(chat.id).paintings[0]!;
 	expect(failure).toMatchObject({ kind: "failed", message: "The provider refused this Brief." });
@@ -90,14 +90,14 @@ test("provider failures persist until retry or dismissal; restarting drops provi
 	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "illustration" }]);
 	expect(calls).toBe(2);
 	const rejected = createPaintingModule(database, { fetch: async () => Response.json({ data: [{ b64_json: Buffer.from("<svg></svg>").toString("base64") }] }) });
-	rejected.command(chat.id, { type: "paint", ask: "", variantId, brief: "Rejected media", aspectRatio: "1:1" });
+	rejected.command(chat.id, { type: "paint", ask: "", references: "", variantId, brief: "Rejected media", aspectRatio: "1:1" });
 	await settled();
 	const invalid = module.read(chat.id).paintings.find((entry) => entry.kind === "failed")!;
 	expect(invalid).toMatchObject({ kind: "failed", message: "Only PNG, JPEG, WebP, and GIF images are accepted." });
 	module.command(chat.id, { type: "dismiss", variantId, id: invalid.id });
 	expect(module.read(chat.id).paintings).toHaveLength(1);
 	const held = createPaintingModule(database, { fetch: (_url, init) => new Promise((_resolve, reject) => init?.signal?.addEventListener("abort", () => reject(new Error("aborted")), { once: true })) });
-	held.command(chat.id, { type: "paint", ask: "", variantId, brief: "Abandoned", aspectRatio: "1:1" });
+	held.command(chat.id, { type: "paint", ask: "", references: "", variantId, brief: "Abandoned", aspectRatio: "1:1" });
 	processStateFor(database).dispose();
 	expect(createPaintingModule(database).read(chat.id).paintings).toMatchObject([{ kind: "illustration" }]);
 });
@@ -119,8 +119,8 @@ test("concurrent paintings keep their starting positions when the later picture 
 	const second = Promise.withResolvers<Response>();
 	const module = createPaintingModule(database, { fetch: (_url, init) => JSON.parse(String(init?.body)).prompt === "First" ? first.promise : second.promise });
 	const variantId = chat.messages[0]!.variants[0]!.id;
-	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "First", aspectRatio: "9:16" });
-	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "Second", aspectRatio: "16:9" });
+	module.command(chat.id, { type: "paint", ask: "", references: "", variantId, brief: "First", aspectRatio: "9:16" });
+	module.command(chat.id, { type: "paint", ask: "", references: "", variantId, brief: "Second", aspectRatio: "16:9" });
 	const ids = module.read(chat.id).paintings.map((painting) => painting.id);
 	const finish = async (reply: typeof first, brief: string) => {
 		const finished = Promise.withResolvers<void>();
@@ -149,7 +149,7 @@ test("deleting a Variant aborts only its painting and discards a late provider r
 	} });
 	const message = chat.messages[0]!;
 	const variantId = message.variants[0]!.id;
-	module.command(chat.id, { type: "paint", ask: "", variantId, brief: "Removed scene", aspectRatio: "1:1" });
+	module.command(chat.id, { type: "paint", ask: "", references: "", variantId, brief: "Removed scene", aspectRatio: "1:1" });
 	const signal = await started.promise;
 	executeConversationCommand(database, { conversationId: chat.id, expectedRevision: chat.revision, action: { type: "delete-variant", messageId: message.id, variantId } });
 	expect(signal.aborted).toBe(true);
@@ -163,7 +163,7 @@ test("deleting a Variant aborts only its painting and discards a late provider r
 
 const paintAndWait = async (fixture: ReturnType<typeof setup>, variantId: number, brief: string) => {
 	const module = createPaintingModule(fixture.database, { fetch: async () => Response.json({ data: [{ b64_json: pngFixture({ width: 320 }).toString("base64") }] }) });
-	module.command(fixture.chat.id, { type: "paint", ask: "", variantId, brief, aspectRatio: "4:3" });
+	module.command(fixture.chat.id, { type: "paint", ask: "", references: "", variantId, brief, aspectRatio: "4:3" });
 	const finished = Promise.withResolvers<void>();
 	const unsubscribe = subscribeDatabaseChanges(fixture.database, () => {
 		if (module.read(fixture.chat.id).paintings.some((painting) => painting.kind === "illustration" && painting.brief === brief)) finished.resolve();
@@ -240,9 +240,9 @@ test("the gallery includes every Variant, Cast Portraits and Appearance, without
 	const painted = module.read(chat.id).paintings[0]!;
 	if (painted.kind !== "illustration") throw new Error("Missing Illustration");
 	expect(module.gallery(chat.id)).toEqual([
-		{ hash: painted.image.slice(6), name: "Illustration", painted: { brief: "Hidden Illustration", ask: "" } },
-		{ hash: repeated.hash, name: "Repeated" }, { hash: unselected.hash, name: "Other Swipe" },
-		{ hash: portrait.hash, name: "Maren Portrait" }, { hash: appearance.hash, name: "Appearance" },
+		{ hash: painted.image.slice(6), name: "Illustration", source: "painter", painted: { brief: "Hidden Illustration", references: "", ask: "" } },
+		{ hash: repeated.hash, name: "Repeated", source: "Message" }, { hash: unselected.hash, name: "Other Swipe", source: "Message" },
+		{ hash: portrait.hash, name: "Maren Portrait", source: "Maren" }, { hash: appearance.hash, name: "Appearance", source: "Maren" },
 	]);
 });
 
@@ -257,7 +257,7 @@ test("the gallery includes live Image References while a Generation is active", 
 		timestamp: "2026-11-12T00:00:00Z",
 	});
 	checkpointFromStart(database, { conversationId: chat.id, generationId: active.generationId, content: formatImageReference("Live picture", image.hash) });
-	expect(createPaintingModule(database).gallery(chat.id)).toEqual([{ hash: image.hash, name: "Live picture" }]);
+	expect(createPaintingModule(database).gallery(chat.id)).toEqual([{ hash: image.hash, name: "Live picture", source: "Message" }]);
 });
 
 test("Remove, keep in Gallery takes an Illustration off its Message but keeps it in the Gallery, through the sweep and a Fork, until removed from that Chat's Gallery", async () => {
@@ -268,7 +268,7 @@ test("Remove, keep in Gallery takes an Illustration off its Message but keeps it
 	const module = await paintAndWait(fixture, variantId, "Kept scene");
 	const painting = module.read(chat.id).paintings[0]!;
 	if (painting.kind !== "illustration") throw new Error("Illustration missing");
-	const kept = [{ hash: painting.image.slice(6), name: "Illustration", keptId: painting.id, painted: { brief: "Kept scene", ask: "" } }];
+	const kept = [{ hash: painting.image.slice(6), name: "Illustration", source: "painter", keptId: painting.id, painted: { brief: "Kept scene", references: "", ask: "" } }];
 	module.command(chat.id, { type: "keep-in-gallery", variantId, id: painting.id });
 	expect(module.read(chat.id).paintings).toEqual([]);
 	expect(module.gallery(chat.id)).toEqual(kept);
@@ -292,7 +292,7 @@ test("an uploaded picture joins the Chat's Gallery once, through the sweep, unti
 	module.command(chat.id, { type: "add-to-gallery", hash, name: "Harbour" });
 	module.command(chat.id, { type: "add-to-gallery", hash, name: "Harbour again" });
 	const [uploaded] = module.gallery(chat.id);
-	expect(module.gallery(chat.id)).toEqual([{ hash, name: "Harbour", keptId: expect.any(String) }]);
+	expect(module.gallery(chat.id)).toEqual([{ hash, name: "Harbour", source: "Uploaded", keptId: expect.any(String) }]);
 	const later = Date.now() + 2 * 24 * 60 * 60 * 1000;
 	sweepOrphanedImages(database, later);
 	sweepOrphanedImages(database, later + 24 * 60 * 60 * 1000 + 1);
@@ -310,8 +310,115 @@ test("a kept Illustration stays removable from the Gallery while an attached Ill
 	const [kept, attached] = module.read(chat.id).paintings;
 	if (kept?.kind !== "illustration" || attached?.kind !== "illustration" || kept.image !== attached.image) throw new Error("Two Illustrations of one picture missing");
 	module.command(chat.id, { type: "keep-in-gallery", variantId, id: kept.id });
-	const shown = { hash: kept.image.slice(6), name: "Illustration", painted: { brief: "Same picture again", ask: "" } };
+	const shown = { hash: kept.image.slice(6), name: "Illustration", source: "painter", painted: { brief: "Same picture again", references: "", ask: "" } };
 	expect(module.gallery(chat.id)).toEqual([{ ...shown, keptId: kept.id }]);
 	module.command(chat.id, { type: "remove-from-gallery", id: kept.id });
 	expect(module.gallery(chat.id)).toEqual([shown]);
+});
+
+test("the Image Model receives the Brief, a separator and the References, with each Image once in order, and the Illustration keeps both", async () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const lake = await uploadImage(database, pngFixture({ width: 16 }));
+	const face = await uploadImage(database, pngFixture({ width: 24 }));
+	const requests: string[] = [];
+	const module = createPaintingModule(database, { fetch: async (_url, init) => {
+		requests.push(String(init?.body));
+		return Response.json({ data: [{ b64_json: pngFixture().toString("base64") }] });
+	} });
+	const variantId = chat.messages[0]!.variants[0]!.id;
+	const references = `Maren: ${formatImageReference("Face", face.hash)} ${formatImageReference("Lake again", lake.hash)}`;
+	module.command(chat.id, { type: "paint", ask: "", references, variantId, brief: `A lake ${formatImageReference("Lake", lake.hash)}`, aspectRatio: "1:1" });
+	const finished = Promise.withResolvers<void>();
+	const unsubscribe = subscribeDatabaseChanges(database, () => { if (module.read(chat.id).paintings.some((painting) => painting.kind === "illustration")) finished.resolve(); }, () => {});
+	await finished.promise;
+	unsubscribe();
+	const body = JSON.parse(requests[0]!);
+	expect(body.prompt).toBe("A lake [Image: Lake]\n\n---\n\nMaren: [Image: Face] [Image: Lake again]");
+	const png = (hash: string) => `data:image/png;base64,${Buffer.from(imageLoader(database)(hash)!.bytes).toString("base64")}`;
+	expect(body.input_references.map(({ image_url }: { image_url: { url: string } }) => image_url.url)).toEqual([png(lake.hash), png(face.hash)]);
+	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "illustration", brief: `A lake ${formatImageReference("Lake", lake.hash)}`, references }]);
+});
+
+test("Reference Sets: one empty set before any exists, New selects its copy, edits and the selection survive a reload and a Fork, deleting the selected set selects another", () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	expect(module.read(chat.id)).toMatchObject({ referenceSets: [{ id: "default", name: "References", references: "" }], referenceSetId: "default" });
+	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Kiseki: racing silks" });
+	module.command(chat.id, { type: "rename-reference-set", id: "default", name: "Race day" });
+	module.command(chat.id, { type: "create-reference-set", name: " Kimono ", references: "Kiseki: racing silks" });
+	const kimono = module.read(chat.id).referenceSets.find(({ name }) => name === "Kimono")!;
+	module.command(chat.id, { type: "save-reference-set", id: kimono.id, references: "Kiseki: kimono" });
+	const expected = { referenceSets: [{ id: kimono.id, name: "Kimono", references: "Kiseki: kimono" }, { id: "default", name: "Race day", references: "Kiseki: racing silks" }], referenceSetId: kimono.id };
+	expect(createPaintingModule(database).read(chat.id)).toMatchObject(expected);
+	const fork = forkConversation(database, { conversationId: chat.id, expectedRevision: chat.revision, at: { through: chat.messages[0]!.id }, name: "Fork", trimVariants: false }).conversation;
+	expect(module.read(fork.id)).toMatchObject(expected);
+	module.command(chat.id, { type: "delete-reference-set", id: kimono.id });
+	expect(module.read(chat.id)).toMatchObject({ referenceSets: [{ id: "default", name: "Race day" }], referenceSetId: "default" });
+	expect(module.read(fork.id).referenceSets).toHaveLength(2);
+	expect(() => module.command(chat.id, { type: "delete-reference-set", id: "default" })).toThrow("Keep at least one Reference Set.");
+	expect(module.read(chat.id).referenceSets).toMatchObject([{ id: "default", references: "Kiseki: racing silks" }]);
+});
+
+test("adopting an Illustration's References selects the set holding them now, or creates one, and a blank name is refused", () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Kiseki: kimono" });
+	module.command(chat.id, { type: "create-reference-set", name: "Race", references: "Kiseki: racing silks" });
+	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Kiseki: kimono" });
+	expect(module.read(chat.id)).toMatchObject({ referenceSets: [{ name: "Race" }, { id: "default" }], referenceSetId: "default" });
+	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Kiseki: kimono, hair down" });
+	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Kiseki: kimono" });
+	const { referenceSets, referenceSetId } = module.read(chat.id);
+	expect(referenceSets.find(({ id }) => id === referenceSetId)).toMatchObject({ name: "Bridge", references: "Kiseki: kimono" });
+	expect(referenceSets).toHaveLength(3);
+	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Kiseki: barefoot" });
+	expect(module.read(chat.id).referenceSets.map(({ name }) => name).sort()).toEqual(["Bridge", "Bridge 2", "Race", "References"]);
+	for (const command of [{ type: "create-reference-set", name: "   ", references: "" }, { type: "rename-reference-set", id: "default", name: " " }] as const) {
+		expect(() => module.command(chat.id, command)).toThrow("Name the Reference Set.");
+	}
+	expect(() => module.read(chat.id)).not.toThrow();
+});
+
+for (const [reply, message] of [
+	[new Response("Content moderated: try another Brief.", { status: 400, headers: { "content-type": "text/plain" } }), "Content moderated: try another Brief."],
+	[new Response(null, { status: 503 }), "The provider request failed with HTTP 503."],
+] as const) test(`a provider refusal without a JSON error still names the failure: ${message}`, async () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database, { fetch: async () => reply });
+	const variantId = chat.messages[0]!.variants[0]!.id;
+	const failed = Promise.withResolvers<void>();
+	const unsubscribe = subscribeDatabaseChanges(database, () => { if (module.read(chat.id).paintings.some((painting) => painting.kind === "failed")) failed.resolve(); }, () => {});
+	module.command(chat.id, { type: "paint", ask: "", references: "", variantId, brief: "A scene", aspectRatio: "1:1" });
+	await failed.promise;
+	unsubscribe();
+	expect(module.read(chat.id).paintings).toMatchObject([{ kind: "failed", message }]);
+});
+
+test("deleting the selected Reference Set remembers its replacement, so renaming another set keeps the selection", () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	module.command(chat.id, { type: "rename-reference-set", id: "default", name: "A" });
+	module.command(chat.id, { type: "create-reference-set", name: "C", references: "Kiseki: C" });
+	module.command(chat.id, { type: "create-reference-set", name: "B", references: "Kiseki: B" });
+	const b = module.read(chat.id).referenceSetId;
+	module.command(chat.id, { type: "delete-reference-set", id: b });
+	expect(module.read(chat.id).referenceSetId).toBe("default");
+	module.command(chat.id, { type: "rename-reference-set", id: "default", name: "Z" });
+	expect(module.read(chat.id).referenceSetId).toBe("default");
+	module.command(chat.id, { type: "save-reference-set", id: b, references: "Typed after the delete" });
+	expect(module.read(chat.id).referenceSets.map(({ name }) => name)).toEqual(["C", "Z"]);
+});
+
+test("the first adoption keeps the initial Reference Set, so an edit typed into it meanwhile is saved", () => {
+	using fixture = setup();
+	const { database, chat } = fixture;
+	const module = createPaintingModule(database);
+	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Iris: kimono" });
+	module.command(chat.id, { type: "save-reference-set", id: "default", references: "Typed during the adoption" });
+	expect(module.read(chat.id).referenceSets).toMatchObject([{ name: "Bridge", references: "Iris: kimono" }, { id: "default", name: "References", references: "Typed during the adoption" }]);
 });

@@ -284,9 +284,10 @@ export function ActiveWritingWorkspace({
 	const paintDisabledReason = assemblyActive ? "Close the Prompt Plan preview to paint." : story.preview !== null ? "Confirm or cancel the Swipe preview to paint." : undefined;
 	const composerRef = useRef<ComposerHandle>(null);
 	const paintDrafts = useRef(new Map<number, Pick<PaintTarget, "brief" | "ask">>());
-	const openPaint = (variantId: number, brief?: string, ask = "") => {
+	const openPaint = (variantId: number, brief?: string, ask = "", adopt?: () => Promise<boolean>) => {
 		if (paintDisabledReason !== undefined) return;
-		saveNavigation.requestNavigation(() => {
+		saveNavigation.requestNavigation(async () => {
+			if (adopt && !await adopt()) return;
 			const draft = brief === undefined ? paintDrafts.current.get(variantId) ?? { brief: "", ask: "" } : { brief, ask };
 			paintDrafts.current.set(variantId, draft);
 			dispatchPanel({ type: "paint-opened", target: { variantId, ...draft, requestId: crypto.randomUUID() } });

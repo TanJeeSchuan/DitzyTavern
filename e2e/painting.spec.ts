@@ -2,6 +2,8 @@ import { isChatModelCall } from "./protocol";
 import type { Page } from "@playwright/test";
 import { test, expect, send, story } from "./fixtures";
 import { pngFixture } from "../src/server/image/image-fixtures";
+import { emptyPromptChannels } from "../src/shared/definition";
+import type { IllustrationsRead } from "../src/shared/contract/painting";
 
 const picture = pngFixture({ width: 640, height: 480 }).toString("base64");
 
@@ -71,13 +73,13 @@ test("keep an Illustration in the Gallery after taking it off its Message, reuse
 	await message.getByRole("button", { name: "Paint", exact: true }).click();
 	await panel.getByRole("textbox", { name: "Brief", exact: true }).fill("");
 	await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("");
-	await panel.getByRole("button", { name: "Use Brief: Lantern at the lake", exact: true }).click();
+	await panel.getByRole("button", { name: "Picture actions: Lantern at the lake", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Use Brief", exact: true }).click();
 	await expect(panel.getByRole("textbox", { name: "Brief", exact: true })).toHaveText("A coral lantern reflected in still water.");
 	await expect(panel.getByRole("textbox", { name: "Ask", exact: true })).toHaveText("Lantern at the lake");
-	const remove = panel.getByRole("button", { name: "Remove from Gallery: Lantern at the lake", exact: true });
-	await remove.click();
-	await expect(remove).toHaveCount(0);
-	await expect(panel.getByRole("button", { name: "Open Lantern at the lake full size" })).toHaveCount(0);
+	await panel.getByRole("button", { name: "Picture actions: Lantern at the lake", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Remove from Gallery", exact: true }).click();
+	await expect(panel.getByRole("button", { name: "Use as reference: Lantern at the lake", exact: true })).toHaveCount(0);
 });
 
 test("open the Gallery from the rail, upload a picture into it, and remove it", async ({ page }) => {
@@ -88,7 +90,8 @@ test("open the Gallery from the rail, upload a picture into it, and remove it", 
 	await expect(gallery.getByRole("button", { name: "Open harbour full size" })).toBeVisible();
 	await page.reload();
 	await page.getByRole("button", { name: "Gallery", exact: true }).click();
-	await gallery.getByRole("button", { name: "Remove from Gallery: harbour", exact: true }).click();
+	await gallery.getByRole("button", { name: "Picture actions: harbour", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Remove from Gallery", exact: true }).click();
 	await expect(gallery.getByRole("button", { name: "Open harbour full size" })).toHaveCount(0);
 });
 
@@ -99,7 +102,8 @@ test("on a phone, Add to composer from the Gallery closes it over the composer",
 	await page.getByRole("button", { name: "Gallery", exact: true }).click();
 	const gallery = page.getByRole("region", { name: "Gallery", exact: true });
 	await gallery.getByLabel("Upload to Gallery").setInputFiles({ name: "harbour.png", mimeType: "image/png", buffer: Buffer.from(picture, "base64") });
-	await gallery.getByRole("button", { name: "Add to composer: harbour", exact: true }).click();
+	await gallery.getByRole("button", { name: "Picture actions: harbour", exact: true }).click();
+	await page.getByRole("menuitem", { name: "Add to composer", exact: true }).click();
 	await expect(gallery).toBeHidden();
 	await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("harbour");
 	await expect(page.getByRole("textbox", { name: "Message draft" })).toBeFocused();
@@ -146,6 +150,7 @@ test("write a Brief from an Ask on an older Message, edit it and paint", async (
 	await older.getByRole("button", { name: "Paint", exact: true }).click();
 	const panel = page.getByRole("complementary", { name: "Paint", exact: true });
 	await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("Focus on the reflection.");
+	await panel.getByText("Brief settings").click();
 	await panel.getByRole("spinbutton", { name: "Messages", exact: true }).fill("2");
 	await panel.getByRole("spinbutton", { name: "Messages", exact: true }).press("Enter");
 	await expect(panel.getByRole("textbox", { name: "Brief", exact: true })).toHaveText("A green lantern reflected under a stone bridge.");
@@ -162,60 +167,72 @@ test("write a Brief from an Ask on an older Message, edit it and paint", async (
 	expect((await llm.log()).calls.find((call) => call.kind === "image")?.body).toMatchObject({ prompt: "A red lantern reflected under a stone bridge." });
 });
 
-test.describe("Brief References", () => {
+test.describe("References", () => {
 	test.use({ allowedBrowserErrors: /status of 422/ });
 
-	test("rewrite a Brief, keep a gallery Reference, recompute Cast Appearance and paint exactly the edited References", async ({ page, llm }) => {
+	test("References survive writing a Brief again, persist in named Reference Sets and reach the Image Model after the Brief", async ({ page, llm }) => {
 		await selectImageModel(page);
 		const upload = async (width: number) => {
 			const base64 = pngFixture({ width, height: 32 }).toString("base64");
 			const image = await (await page.request.post("/api/images", { data: { data: base64 } })).json();
 			return { hash: image.hash, base64 };
 		};
-		const old = await upload(40);
+		const cloak = await upload(40);
 		const face = await upload(48);
-		const coat = await upload(56);
-		const gallery = await upload(64);
-		const quiet = await upload(72);
+		const portrait = await upload(64);
 		const { activeChatId } = await (await page.request.get("/api/workspace")).json();
 		const url = `/api/conversations/${activeChatId}`;
-		const prompt = { systemInstruction: "", identity: "", appearance: "", scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
-		for (const [name, appearance, portrait] of [
-			["Iris", `Silver hair. ![Face](image:${face.hash}) ![Coat](image:${coat.hash})`, { hash: gallery.hash, focalX: 0.5, focalY: 0.5 }],
-			["Old", `Red cloak. ![Red cloak](image:${old.hash})`, undefined],
-			["Quiet", `Hidden hood. ![Quiet picture](image:${quiet.hash})`, undefined],
-		] as const) {
-			const { revision } = await (await page.request.get(url)).json();
-			const added = await page.request.post(`${url}/commands`, { data: { expectedRevision: revision, action: {
-				type: "add-participant", definition: { name, prompt: { ...prompt, appearance }, sendAppearanceImages: name !== "Quiet", openings: [], portrait },
-			} } });
-			expect(added.ok()).toBe(true);
-		}
-		await llm.chat({ chunks: [`Old in a red cloak. ![Red cloak](image:${old.hash}) ![Duplicate](image:${old.hash})`] }, { chunks: ["Iris standing at the bridge."] });
+		const prompt = { ...emptyPromptChannels(), appearance: `Silver hair. ![Face](image:${face.hash})` };
+		const { revision } = await (await page.request.get(url)).json();
+		expect((await page.request.post(`${url}/commands`, { data: { expectedRevision: revision, action: {
+			type: "add-participant", definition: { name: "Iris", prompt, sendAppearanceImages: true, openings: [], portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } },
+		} } })).ok()).toBe(true);
+		await llm.chat({ chunks: [`Iris in a red cloak. ![Red cloak](image:${cloak.hash})`] }, { chunks: ["Iris standing at the bridge."] });
 		await llm.images({ base64: picture });
 		await page.goto("/");
 		await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
 		const panel = page.getByRole("complementary", { name: "Paint", exact: true });
-		await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("Paint Iris at the bridge in daylight.");
-		await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
 		const brief = panel.getByRole("textbox", { name: "Brief", exact: true });
-		await expect(brief.locator(".image-chip")).toHaveText(["Red cloak"]);
+		const references = panel.getByRole("textbox", { name: "References", exact: true });
+		await references.fill("Iris: ");
 		await panel.getByRole("button", { name: "Use as reference: Iris Portrait", exact: true }).click();
-		await panel.getByRole("button", { name: "Use as reference: Quiet picture", exact: true }).click();
+		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
+		await panel.getByRole("textbox", { name: "Ask", exact: true }).fill("Paint Iris at the bridge.");
 		await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
-		await expect(brief.locator(".image-chip")).toHaveText(["Face", "Coat", "Iris Portrait", "Quiet picture"]);
-		await brief.press("ControlOrMeta+Home");
-		await brief.press("ArrowDown");
-		await brief.press("ArrowDown");
-		await brief.press("Home");
-		await brief.press("Delete");
-		await expect(brief.locator(".image-chip")).toHaveText(["Coat", "Iris Portrait", "Quiet picture"]);
+		await expect(brief.locator(".image-chip")).toHaveText(["Red cloak"]);
+		await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
+		await expect(brief).toHaveText("Iris standing at the bridge.");
+		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
 		await panel.getByRole("button", { name: "Paint", exact: true }).click();
 		await expect(panel.getByRole("img", { name: "Illustration", exact: true })).toBeVisible();
 		const sent = (await llm.log()).calls.find((call) => call.kind === "image");
-		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toEqual([coat, gallery, quiet].map(({ base64 }) => `data:image/png;base64,${base64}`));
-		await panel.getByRole("button", { name: "Add to composer", exact: true }).click();
-		await expect(page.getByRole("textbox", { name: "Message draft" }).locator(".image-chip")).toHaveText("Paint Iris at the bridge in");
+		expect(sent?.body).toMatchObject({ prompt: "Iris standing at the bridge.\n\n---\n\nIris: [Image: Iris Portrait]" });
+		expect(sent?.body.input_references?.map((reference) => reference.image_url.url)).toEqual([`data:image/png;base64,${portrait.base64}`]);
+		await expect(panel.getByRole("figure", { name: "Illustration" })).toContainText("e2e-painter · 1:1");
+
+		await panel.getByRole("button", { name: "New", exact: true }).click();
+		await panel.getByRole("textbox", { name: "Reference Set name", exact: true }).fill("Kimono");
+		await panel.getByRole("button", { name: "Create", exact: true }).click();
+		const picker = panel.getByRole("combobox", { name: "Reference Set", exact: true });
+		await expect(picker).toHaveText("Kimono");
+		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
+		await references.fill("Iris: kimono");
+		await panel.getByRole("button", { name: "Close Paint" }).click();
+		await expect.poll(async () => {
+			const read: IllustrationsRead = await (await page.request.get(`${url}/illustrations`)).json();
+			return read.referenceSets.map(({ name, references }) => `${name}=${references}`);
+		})
+			.toEqual(["Kimono=Iris: kimono", `References=Iris: ![Iris Portrait](image:${portrait.hash})`]);
+		await page.reload();
+		await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
+		await expect(picker).toHaveText("Kimono");
+		await expect(references).toHaveText("Iris: kimono");
+		await story(page).getByRole("button", { name: "Illustration actions" }).click();
+		await page.getByRole("menuitem", { name: "Edit Brief and repaint" }).click();
+		await expect(brief).toHaveText("Iris standing at the bridge.");
+		await expect(picker).toHaveText("References");
+		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
+
 		const unchanged = await brief.innerText();
 		await llm.chat({ status: 429, error: "Brief quota exceeded" });
 		await panel.getByRole("button", { name: "Write Brief", exact: true }).click();
@@ -228,5 +245,4 @@ test.describe("Brief References", () => {
 		expect(await brief.innerText()).toBe(unchanged);
 		await llm.release();
 	});
-
 });

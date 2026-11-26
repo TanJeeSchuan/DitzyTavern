@@ -1,9 +1,10 @@
 import type { Database } from "bun:sqlite";
 import { Value } from "@sinclair/typebox/value";
+import type { Static } from "@sinclair/typebox";
 import { and, eq, like } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/bun-sqlite";
 import { conversationDataTable, messageVariantDataTable } from "../database/schema";
-import { illustration, keptImage, paintingSettings, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead } from "../../shared/contract/painting";
+import { illustration, keptImage, paintingSettings, referenceSet, DEFAULT_PAINTING_ASPECT_RATIO, type Painting, type PaintingCommand, type IllustrationsRead, type ReferenceSet } from "../../shared/contract/painting";
 import { ConversationNotFoundError, InvalidConversationCommandError, readConversationRevision, readChatVariantData, readChatVariantIds, readChatVariants, readConversationSummary, readPaintPresetSettings } from "../conversation";
 import { createConnectionSettingsModule, type ConnectionSettingsModuleOptions } from "../connection-settings";
 import { readImageModelSettings } from "./image-model-settings";
@@ -13,7 +14,7 @@ import { announceChange } from "../database/changes";
 import { processStateFor } from "../application/process-state";
 
 import { parseImageReferences } from "../../shared/image-reference";
-import { illustrationName } from "../../shared/painting-brief";
+import { briefWithReferences, illustrationName } from "../../shared/painting-brief";
 import type { GalleryRead } from "../../shared/contract/painting";
 
 import { PAINTING_NAMESPACE } from "../../shared/variant-data-codecs";
@@ -25,34 +26,48 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	const requireChat = (conversationId: number) => {
 		if (readConversationRevision(database, conversationId) === undefined) throw new ConversationNotFoundError(conversationId);
 	};
+	const chatRow = (conversationId: number, key: string) => and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), eq(conversationDataTable.key, key));
+	const writeChatRow = (conversationId: number, key: string, value: string) => db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key, value })
+		.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value } }).run();
+	const initialReferenceSet: ReferenceSet = { id: "default", name: "References", references: "" };
+	const storedReferenceSets = (conversationId: number): ReferenceSet[] => db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), like(conversationDataTable.key, "reference-set:%"))).all()
+		.map(({ key, value }) => Value.Parse(referenceSet, { ...JSON.parse(value), id: key.slice("reference-set:".length) }))
+		.sort((a, b) => a.name.localeCompare(b.name));
+	const referenceSets = (conversationId: number): ReferenceSet[] => {
+		const sets = storedReferenceSets(conversationId);
+		return sets.length === 0 ? [initialReferenceSet] : sets;
+	};
 	const read = (conversationId: number): IllustrationsRead => {
 		requireChat(conversationId);
-		const row = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), eq(conversationDataTable.key, "aspect-ratio"))).get();
+		const row = db.select().from(conversationDataTable).where(chatRow(conversationId, "aspect-ratio")).get();
 		const aspectRatio = row === undefined ? DEFAULT_PAINTING_ASPECT_RATIO : Value.Parse(paintingSettings, JSON.parse(row.value)).aspectRatio;
 		const variantIds = variants(conversationId);
 		const stored = readChatVariantData(database, conversationId, PAINTING_NAMESPACE);
 		const paintings: Painting[] = stored.map(({ key: id, variantId, value }) => ({ kind: "illustration", id, variantId, ...Value.Parse<typeof illustration>(illustration, JSON.parse(value)) }));
 		for (const variantId of variantIds) for (const entry of provisional.forVariant(variantId)) paintings.push(entry.painting);
-		return { ...readPaintPresetSettings(database, conversationId), aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)) };
+		const sets = referenceSets(conversationId);
+		const selected = db.select().from(conversationDataTable).where(chatRow(conversationId, "selected-reference-set")).get();
+		const referenceSetId = sets.find(({ id }) => selected !== undefined && id === JSON.parse(selected.value))?.id ?? sets[0]!.id;
+		return { ...readPaintPresetSettings(database, conversationId), aspectRatio, paintings: paintings.sort((a, b) => a.id.localeCompare(b.id)), referenceSets: sets, referenceSetId };
 	};
-	const start = ({ variantId, brief, ask, aspectRatio, id = Bun.randomUUIDv7() }: Pick<Painting, "variantId" | "brief" | "ask" | "aspectRatio"> & { id?: string }) => {
+	const start = ({ variantId, brief, references, ask, aspectRatio, id = Bun.randomUUIDv7() }: Pick<Painting, "variantId" | "brief" | "references" | "ask" | "aspectRatio"> & { id?: string }) => {
 		const { profileId, model } = readImageModelSettings(database);
 		const connections = createConnectionSettingsModule(database, options);
 		const profile = connections.get().profiles.find((profile) => profile.id === profileId);
 		if (profile === undefined || profile.apiFormat !== "images" || !model) throw new InvalidConversationCommandError("Choose an Image Model in Connections before painting.");
 		const secrets = connections.getProfileSecrets(profile.id);
 		const controller = new AbortController();
-		const painting = { kind: "painting", id, variantId, brief, ask, aspectRatio, imageModel: { profileId, model } } as const;
+		const painting = { kind: "painting", id, variantId, brief, references, ask, aspectRatio, imageModel: { profileId, model } } as const;
 		provisional.set(variantId, id, { painting, controller });
 		announceChange(database);
 		void (async () => {
 			try {
-				const bytes = await paintImage({ profile, modelId: model, secrets, brief, aspectRatio, loadImage: imageLoader(database), fetch: options.fetch, signal: controller.signal });
+				const bytes = await paintImage({ profile, modelId: model, secrets, brief: briefWithReferences(brief, references), aspectRatio, loadImage: imageLoader(database), fetch: options.fetch, signal: controller.signal });
 				const image = await ingestImage(bytes);
 				if (controller.signal.aborted) return;
 				database.transaction(() => {
 					storeImage(database, image);
-					db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: PAINTING_NAMESPACE, key: id, value: JSON.stringify({ image: `image:${image.hash}`, brief, ask, imageModel: painting.imageModel, aspectRatio }) }).run();
+					db.insert(messageVariantDataTable).values({ message_variant_id: variantId, namespace: PAINTING_NAMESPACE, key: id, value: JSON.stringify({ image: `image:${image.hash}`, brief, references, ask, imageModel: painting.imageModel, aspectRatio }) }).run();
 				}).immediate();
 				provisional.remove(variantId, id);
 			} catch (error) {
@@ -64,21 +79,45 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 	};
 	const command = (conversationId: number, command: PaintingCommand) => {
 		requireChat(conversationId);
-		if (command.type === "set-aspect-ratio") {
-			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key: "aspect-ratio", value: JSON.stringify({ aspectRatio: command.aspectRatio }) })
-				.onConflictDoUpdate({ target: [conversationDataTable.conversation_id, conversationDataTable.namespace, conversationDataTable.key], set: { value: JSON.stringify({ aspectRatio: command.aspectRatio }) } }).run();
-			return;
+		if (command.type === "set-aspect-ratio") return void writeChatRow(conversationId, "aspect-ratio", JSON.stringify({ aspectRatio: command.aspectRatio }));
+		const setName = (name: string) => {
+			if (!name.trim()) throw new InvalidConversationCommandError("Name the Reference Set.");
+			return name.trim();
+		};
+		if (command.type === "save-reference-set" || command.type === "rename-reference-set") {
+			const set = referenceSets(conversationId).find(({ id }) => id === command.id);
+			if (set === undefined) {
+				if (command.type === "save-reference-set") return;
+				throw new InvalidConversationCommandError("This Reference Set was deleted.");
+			}
+			const { name, references } = set;
+			return void writeChatRow(conversationId, `reference-set:${command.id}`, JSON.stringify(command.type === "save-reference-set" ? { name, references: command.references } : { name: setName(command.name), references }));
+		}
+		if (command.type === "select-reference-set") return void writeChatRow(conversationId, "selected-reference-set", JSON.stringify(command.id));
+		if (command.type === "delete-reference-set") return void database.transaction(() => {
+			if (referenceSets(conversationId).length === 1) throw new InvalidConversationCommandError("Keep at least one Reference Set.");
+			db.delete(conversationDataTable).where(chatRow(conversationId, `reference-set:${command.id}`)).run();
+			writeChatRow(conversationId, "selected-reference-set", JSON.stringify(read(conversationId).referenceSetId));
+		}).immediate();
+		if (command.type === "create-reference-set" || command.type === "adopt-reference-set") {
+			const name = setName(command.name);
+			return void database.transaction(() => {
+				if (storedReferenceSets(conversationId).length === 0) writeChatRow(conversationId, "reference-set:default", JSON.stringify({ name: initialReferenceSet.name, references: initialReferenceSet.references }));
+				const existing = command.type === "adopt-reference-set" ? referenceSets(conversationId).find(({ references }) => references === command.references) : undefined;
+				const id = existing?.id ?? Bun.randomUUIDv7();
+				const taken = new Set(referenceSets(conversationId).map((set) => set.name));
+				let unique = name;
+				for (let n = 2; command.type === "adopt-reference-set" && taken.has(unique); n++) unique = `${name} ${n}`;
+				if (existing === undefined) writeChatRow(conversationId, `reference-set:${id}`, JSON.stringify({ name: unique, references: command.references }));
+				writeChatRow(conversationId, "selected-reference-set", JSON.stringify(id));
+			}).immediate();
 		}
 		if (command.type === "add-to-gallery") {
 			if (readImage(db, command.hash) === undefined) throw new InvalidConversationCommandError("The image is missing; upload it again.");
 			db.insert(conversationDataTable).values({ conversation_id: conversationId, namespace: PAINTING_NAMESPACE, key: `gallery:${command.hash}`, value: JSON.stringify({ image: `image:${command.hash}`, name: command.name }) }).onConflictDoNothing().run();
 			return;
 		}
-		if (command.type === "remove-from-gallery") {
-			const { conversation_id, namespace, key } = conversationDataTable;
-			db.delete(conversationDataTable).where(and(eq(conversation_id, conversationId), eq(namespace, PAINTING_NAMESPACE), eq(key, `gallery:${command.id}`))).run();
-			return;
-		}
+		if (command.type === "remove-from-gallery") return void db.delete(conversationDataTable).where(chatRow(conversationId, `gallery:${command.id}`)).run();
 		if (!variants(conversationId).includes(command.variantId)) throw new InvalidConversationCommandError("This reply was deleted; reopen Paint.");
 		if (command.type === "delete" || command.type === "keep-in-gallery") {
 			const { message_variant_id, namespace, key } = messageVariantDataTable;
@@ -108,20 +147,21 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 		if (!chat) throw new ConversationNotFoundError(conversationId);
 		const kept = db.select().from(conversationDataTable).where(and(eq(conversationDataTable.conversation_id, conversationId), eq(conversationDataTable.namespace, PAINTING_NAMESPACE), like(conversationDataTable.key, "gallery:%"))).all()
 			.map(({ key, value }) => ({ keptId: key.slice("gallery:".length), image: Value.Parse(keptImage, JSON.parse(value)) }));
-		const entry = ({ image, ask, brief }: { image: string; ask: string; brief: string }) => ({ hash: image.slice(6), name: illustrationName(ask), painted: { brief, ask } });
+		const entry = ({ image, ask, brief, references, imageModel }: Static<typeof illustration>) =>
+			({ hash: image.slice(6), name: illustrationName(ask), source: imageModel.model, painted: { brief, references, ask } });
 		const images: GalleryRead = [
 			...read(conversationId).paintings.flatMap((painting) => painting.kind === "illustration" ? [entry(painting)] : []),
-			...kept.map(({ keptId, image }) => ({ ...("brief" in image ? entry(image) : { hash: image.image.slice(6), name: image.name }), keptId })),
-			...readChatVariants(database, conversationId, { includeActive: true }).flatMap(({ content }) => parseImageReferences(content)),
+			...kept.map(({ keptId, image }) => ({ ...("brief" in image ? entry(image) : { hash: image.image.slice(6), name: image.name, source: "Uploaded" }), keptId })),
+			...readChatVariants(database, conversationId, { includeActive: true }).flatMap(({ content }) => parseImageReferences(content).map(({ hash, name }) => ({ hash, name, source: "Message" }))),
 			...chat.cast.flatMap((participant) => [
 				...(participant.portrait ? [{ hash: participant.portrait.hash, name: `${participant.name} Portrait` }] : []),
 				...parseImageReferences(participant.prompt.appearance),
-			]),
+			].map(({ hash, name }) => ({ hash, name, source: participant.name }))),
 		];
 		const firstByHash = new Map<string, GalleryRead[number]>();
-		for (const { hash, name, keptId, painted } of images) {
-			const first = firstByHash.get(hash);
-			firstByHash.set(hash, { hash, name: first?.name ?? name, keptId: first?.keptId ?? keptId, painted: first?.painted ?? painted });
+		for (const image of images) {
+			const first = firstByHash.get(image.hash);
+			firstByHash.set(image.hash, first === undefined ? image : { ...first, keptId: first.keptId ?? image.keptId, painted: first.painted ?? image.painted });
 		}
 		return [...firstByHash.values()];
 	};

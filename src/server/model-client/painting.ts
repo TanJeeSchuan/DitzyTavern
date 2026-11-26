@@ -1,10 +1,11 @@
 import { createImageModelAdapter } from "./adapter";
-import { generateImage } from "ai";
+import { APICallError, generateImage } from "ai";
 import type { ConnectionProfileDraft, ConnectionProfileSecretSnapshot } from "../connection-settings";
 import { parseImageReferences, projectImageAnchors } from "../../shared/image-reference";
 import { resolveRequestUrl } from "../../shared/connection-url";
 import { authenticatedHeaders } from "./authenticated-headers";
-import { readProviderDiagnostic } from "./diagnostics";
+import { readProviderDiagnostic, redactProviderDiagnostic } from "./diagnostics";
+import { formatProviderError, isTextualContentType, providerErrorFields, snapshotProviderError } from "./provider-errors";
 import type { ModelFetch } from "./model-fetch";
 
 export async function paintImage(input: {
@@ -30,17 +31,37 @@ export async function paintImage(input: {
 	const requestUrl = resolveRequestUrl(profile.requestUrl, "images", { adapter: profile.adapter, references: images.length > 0 });
 	const credential = secrets?.credential ?? null;
 	const headers = secrets?.headers ?? {};
+	const querySecrets = new URL(requestUrl).search.slice(1).split("&").flatMap((pair) => {
+		const value = [...new URLSearchParams(pair).values()][0] ?? "";
+		return [pair.includes("=") ? pair.slice(pair.indexOf("=") + 1) : "", value, encodeURIComponent(value), new URLSearchParams({ "": value }).toString().slice(1)];
+	}).filter((secret) => secret.length >= 8);
+	const secretValues = [credential ?? "", ...Object.values(headers), requestUrl, ...querySecrets];
 	const model = createImageModelAdapter({ adapter: profile.adapter, modelId: input.modelId, requestUrl, credential: credential ?? "", headers,
 		fetch: async (_url, init) => {
 			const response = await (input.fetch ?? fetch)(requestUrl, { ...init, headers: authenticatedHeaders(init?.headers, credential, headers), redirect: "error" });
 			if (response.ok) return response;
-			return new Response(await readProviderDiagnostic(response, [credential ?? "", ...Object.values(headers)]), { status: response.status, headers: { "content-type": response.headers.get("content-type") ?? "text/plain" } });
+			const contentType = response.headers.get("content-type");
+			if (contentType !== null && !isTextualContentType(contentType)) {
+				await response.body?.cancel();
+				return new Response(null, { status: response.status });
+			}
+			const diagnostic = await readProviderDiagnostic(response, [credential ?? "", ...Object.values(headers)]);
+			return new Response(diagnostic, { status: response.status, headers: { "content-type": contentType ?? "text/plain" } });
 		},
 	});
 	const timeout = AbortSignal.timeout(profile.timeoutMs);
 	const aspectRatioOptions = profile.adapter === "openrouter" ? { aspectRatio: input.aspectRatio } : { providerOptions: { "ditzytavern-openai-compatible": { aspect_ratio: input.aspectRatio } } };
 	const prompt = images.length === 0 ? projectImageAnchors(input.brief) : { text: projectImageAnchors(input.brief), images };
 	const abortSignal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
-	const result = await generateImage({ model, prompt, ...aspectRatioOptions, n: 1, maxRetries: 0, abortSignal });
-	return result.image.uint8Array;
+	try {
+		return (await generateImage({ model, prompt, ...aspectRatioOptions, n: 1, maxRetries: 0, abortSignal })).image.uint8Array;
+	} catch (error) {
+		if (!(error instanceof Error)) throw error;
+		if (APICallError.isInstance(error) && !error.message.trim()) {
+			const body = error.responseBody?.trim();
+			const message = body ? redactProviderDiagnostic(body, secretValues) : formatProviderError(snapshotProviderError(providerErrorFields(error)));
+			throw new Error(message);
+		}
+		throw new Error(redactProviderDiagnostic(error.message, secretValues));
+	}
 }

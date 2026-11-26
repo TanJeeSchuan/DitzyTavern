@@ -173,7 +173,9 @@ test.describe("failed Prompt Preset reads", () => {
 test("Back to Paint asks before discarding Paint Preset edits", async ({ page }) => {
 	await page.goto("/");
 	await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
-	await page.getByRole("button", { name: "Edit Paint Preset", exact: true }).click();
+	const paint = page.getByRole("complementary", { name: "Paint", exact: true });
+	await paint.getByText("Brief settings").click();
+	await paint.getByRole("button", { name: "Edit Paint Preset", exact: true }).click();
 	const preset = page.getByRole("complementary", { name: "Paint Preset", exact: true });
 	await preset.getByRole("button", { name: "Edit Brief instruction", exact: true }).click();
 	const block = page.getByRole("dialog", { name: "Brief instruction", exact: true });
@@ -185,5 +187,5 @@ test("Back to Paint asks before discarding Paint Preset edits", async ({ page })
 	await expect(preset.getByText("Unsaved", { exact: true })).toBeVisible();
 	await preset.getByRole("button", { name: "Back to Paint" }).click();
 	await guard.getByRole("button", { name: "Discard" }).click();
-	await expect(page.getByRole("complementary", { name: "Paint", exact: true })).toBeVisible();
+	await expect(paint).toBeVisible();
 });
