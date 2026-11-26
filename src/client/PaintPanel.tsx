@@ -78,7 +78,7 @@ export function PaintPanel({ conversation, onConversationChange, target, onDraft
 				</Field>
 				<details className="grid gap-4">
 					<summary className="cursor-pointer text-xs font-medium text-muted-foreground select-none hover:text-foreground">
-						Brief settings{selection && <span className="font-normal"> · {presetName} · {selection.briefMessageCount === null ? "All Messages" : `${selection.briefMessageCount} Messages`}</span>}
+						Brief settings{selection && <span className="font-normal"> · {presetName ?? "Choose a Paint Preset"} · {selection.briefMessageCount === null ? "All Messages" : `${selection.briefMessageCount} Messages`}</span>}
 					</summary>
 					<div className="mt-4 grid gap-4">
 				<Field label="Paint Preset" htmlFor="paint-preset">

@@ -105,7 +105,10 @@ export const createPaintingModule = (database: Database, options: ConnectionSett
 				if (storedReferenceSets(conversationId).length === 0) writeChatRow(conversationId, "reference-set:default", JSON.stringify({ name: initialReferenceSet.name, references: initialReferenceSet.references }));
 				const existing = command.type === "adopt-reference-set" ? referenceSets(conversationId).find(({ references }) => references === command.references) : undefined;
 				const id = existing?.id ?? Bun.randomUUIDv7();
-				if (existing === undefined) writeChatRow(conversationId, `reference-set:${id}`, JSON.stringify({ name, references: command.references }));
+				const taken = new Set(referenceSets(conversationId).map((set) => set.name));
+				let unique = name;
+				for (let n = 2; command.type === "adopt-reference-set" && taken.has(unique); n++) unique = `${name} ${n}`;
+				if (existing === undefined) writeChatRow(conversationId, `reference-set:${id}`, JSON.stringify({ name: unique, references: command.references }));
 				writeChatRow(conversationId, "selected-reference-set", JSON.stringify(id));
 			}).immediate();
 		}

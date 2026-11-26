@@ -2,6 +2,7 @@ import { isChatModelCall } from "./protocol";
 import type { Page } from "@playwright/test";
 import { test, expect, send, story } from "./fixtures";
 import { pngFixture } from "../src/server/image/image-fixtures";
+import { emptyPromptChannels } from "../src/shared/definition";
 import type { IllustrationsRead } from "../src/shared/contract/painting";
 
 const picture = pngFixture({ width: 640, height: 480 }).toString("base64");
@@ -181,7 +182,7 @@ test.describe("References", () => {
 		const portrait = await upload(64);
 		const { activeChatId } = await (await page.request.get("/api/workspace")).json();
 		const url = `/api/conversations/${activeChatId}`;
-		const prompt = { systemInstruction: "", identity: "", appearance: `Silver hair. ![Face](image:${face.hash})`, scenario: "", exampleDialogue: "", postHistoryInstruction: "" };
+		const prompt = { ...emptyPromptChannels(), appearance: `Silver hair. ![Face](image:${face.hash})` };
 		const { revision } = await (await page.request.get(url)).json();
 		expect((await page.request.post(`${url}/commands`, { data: { expectedRevision: revision, action: {
 			type: "add-participant", definition: { name: "Iris", prompt, sendAppearanceImages: true, openings: [], portrait: { hash: portrait.hash, focalX: 0.5, focalY: 0.5 } },

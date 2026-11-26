@@ -31,7 +31,10 @@ export async function paintImage(input: {
 	const requestUrl = resolveRequestUrl(profile.requestUrl, "images", { adapter: profile.adapter, references: images.length > 0 });
 	const credential = secrets?.credential ?? null;
 	const headers = secrets?.headers ?? {};
-	const querySecrets = [...new URL(requestUrl).searchParams.values()].flatMap((value) => [value, encodeURIComponent(value), new URLSearchParams({ "": value }).toString().slice(1)]);
+	const querySecrets = new URL(requestUrl).search.slice(1).split("&").flatMap((pair) => {
+		const value = [...new URLSearchParams(pair).values()][0] ?? "";
+		return [pair.includes("=") ? pair.slice(pair.indexOf("=") + 1) : "", value, encodeURIComponent(value), new URLSearchParams({ "": value }).toString().slice(1)];
+	}).filter((secret) => secret.length >= 8);
 	const secretValues = [credential ?? "", ...Object.values(headers), requestUrl, ...querySecrets];
 	const model = createImageModelAdapter({ adapter: profile.adapter, modelId: input.modelId, requestUrl, credential: credential ?? "", headers,
 		fetch: async (_url, init) => {

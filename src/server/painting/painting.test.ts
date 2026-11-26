@@ -374,6 +374,8 @@ test("adopting an Illustration's References selects the set holding them now, or
 	const { referenceSets, referenceSetId } = module.read(chat.id);
 	expect(referenceSets.find(({ id }) => id === referenceSetId)).toMatchObject({ name: "Bridge", references: "Kiseki: kimono" });
 	expect(referenceSets).toHaveLength(3);
+	module.command(chat.id, { type: "adopt-reference-set", name: "Bridge", references: "Kiseki: barefoot" });
+	expect(module.read(chat.id).referenceSets.map(({ name }) => name).sort()).toEqual(["Bridge", "Bridge 2", "Race", "References"]);
 	for (const command of [{ type: "create-reference-set", name: "   ", references: "" }, { type: "rename-reference-set", id: "default", name: " " }] as const) {
 		expect(() => module.command(chat.id, command)).toThrow("Name the Reference Set.");
 	}

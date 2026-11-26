@@ -8,7 +8,7 @@ import { ProseEditor, type ProseEditorHandle } from "./editor/ProseEditor";
 import { usePaintingCommand, type useReferenceDraft } from "./painting";
 import type { ReferenceSet } from "../shared/contract/painting";
 
-type Naming = { kind: "new" | "rename"; name: string };
+type Naming = { kind: "new"; name: string } | { kind: "rename"; id: string; name: string };
 
 export function ReferenceSetField({ conversationId, sets, selected, draft, editorRef, disabled }: {
 	conversationId: number;
@@ -34,7 +34,7 @@ export function ReferenceSetField({ conversationId, sets, selected, draft, edito
 					<Button type="button" size="icon-sm" variant="ghost" aria-label="Reference Set actions" title="Reference Set actions" disabled={busy}><MoreHorizontal aria-hidden="true" /></Button>
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="w-auto">
-					<DropdownMenuItem onSelect={() => setNaming({ kind: "rename", name: selected?.name ?? "" })}>Rename</DropdownMenuItem>
+					<DropdownMenuItem onSelect={() => { if (selected !== undefined) setNaming({ kind: "rename", id: selected.id, name: selected.name }); }}>Rename</DropdownMenuItem>
 					<DropdownMenuItem variant="destructive" disabled={sets.length === 1} onSelect={() => {
 						if (selected === undefined) return;
 						void switchTo({ type: "delete-reference-set", id: selected.id });
@@ -47,7 +47,7 @@ export function ReferenceSetField({ conversationId, sets, selected, draft, edito
 			if (!name || selected === undefined) return;
 			const saved = naming.kind === "new"
 				? await switchTo({ type: "create-reference-set", name, references: draft.references })
-				: await submit({ type: "rename-reference-set", id: selected.id, name });
+				: await submit({ type: "rename-reference-set", id: naming.id, name });
 			if (saved) setNaming(null);
 		}}>
 			<Input aria-label="Reference Set name" className="min-w-0 flex-1" autoFocus value={naming.name} placeholder={naming.kind === "new" ? "Name the copy" : undefined}

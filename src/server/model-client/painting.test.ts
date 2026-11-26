@@ -78,3 +78,11 @@ test.each(["openrouter", "openai-compatible"] as const)("%s keeps the provider's
 		fetch: async () => Response.json({ error: { message: "The provider refused this Brief." } }, { status: 400 }),
 	})).rejects.toThrow(/^The provider refused this Brief.$/);
 });
+
+test.each(["openrouter", "openai-compatible"] as const)("%s redacts a query credential as spelled in the URL and leaves short query values in the message", async (adapter) => {
+	await expect(paintImage({
+		profile: { ...blankConnectionProfileDraft, apiFormat: "images", adapter, requestUrl: "https://example.com/images?access=illustration-code%2fxyz9&version=1" },
+		modelId: "painter", secrets: null, brief: "A map", aspectRatio: "1:1", loadImage: () => undefined,
+		fetch: async () => new Response("Rejected illustration-code%2fxyz9: maximum of 1 image allowed, the request sent 10.", { status: 403 }),
+	})).rejects.toThrow(/^Rejected \[REDACTED\]: maximum of 1 image allowed, the request sent 10\.$/);
+});
