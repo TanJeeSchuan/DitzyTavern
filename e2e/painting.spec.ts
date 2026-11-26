@@ -2,6 +2,7 @@ import { isChatModelCall } from "./protocol";
 import type { Page } from "@playwright/test";
 import { test, expect, send, story } from "./fixtures";
 import { pngFixture } from "../src/server/image/image-fixtures";
+import type { IllustrationsRead } from "../src/shared/contract/painting";
 
 const picture = pngFixture({ width: 640, height: 480 }).toString("base64");
 
@@ -216,7 +217,7 @@ test.describe("References", () => {
 		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
 		await references.fill("Iris: kimono");
 		await panel.getByRole("button", { name: "Close Paint" }).click();
-		await expect.poll(async () => (await (await page.request.get(`${url}/illustrations`)).json()).referenceSets.map(({ name, references }: { name: string; references: string }) => `${name}=${references}`))
+		await expect.poll(async () => ((await (await page.request.get(`${url}/illustrations`)).json()) as IllustrationsRead).referenceSets.map(({ name, references }) => `${name}=${references}`))
 			.toEqual(["Kimono=Iris: kimono", `References=Iris: ![Iris Portrait](image:${portrait.hash})`]);
 		await page.reload();
 		await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
