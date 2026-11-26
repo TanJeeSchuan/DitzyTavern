@@ -217,7 +217,10 @@ test.describe("References", () => {
 		await expect(references.locator(".image-chip")).toHaveText(["Iris Portrait"]);
 		await references.fill("Iris: kimono");
 		await panel.getByRole("button", { name: "Close Paint" }).click();
-		await expect.poll(async () => ((await (await page.request.get(`${url}/illustrations`)).json()) as IllustrationsRead).referenceSets.map(({ name, references }) => `${name}=${references}`))
+		await expect.poll(async () => {
+			const read: IllustrationsRead = await (await page.request.get(`${url}/illustrations`)).json();
+			return read.referenceSets.map(({ name, references }) => `${name}=${references}`);
+		})
 			.toEqual(["Kimono=Iris: kimono", `References=Iris: ![Iris Portrait](image:${portrait.hash})`]);
 		await page.reload();
 		await page.locator("form.composer").getByRole("button", { name: "Paint", exact: true }).click();
