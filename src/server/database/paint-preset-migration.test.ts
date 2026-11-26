@@ -1,6 +1,8 @@
 import { databaseAtMigration } from "../test-fixtures/migrations";
+import { createConversationWithHistory } from "../test-fixtures/conversation";
 import { expect, test } from "bun:test";
 import { initializeDatabase } from "./database";
+import { createPaintingModule } from "../painting";
 
 test("0042 upgrades existing Chats to Default (Paint) without changing their story preset", async () => {
 	using database = await databaseAtMigration(41);
@@ -29,12 +31,37 @@ test("0043 adds Cast Appearance immediately before Lore in an edited Default (Pa
 	expect(database.query("PRAGMA foreign_key_check").all()).toEqual([]);
 });
 
-test("0044 and 0046 upgrade stored Illustrations to an empty Ask and empty References", async () => {
+test("0044 backfills Ask for attached Illustrations", async () => {
 	using database = await databaseAtMigration(43);
-	database.exec(`INSERT INTO conversation (id, name, creation_time, last_message_time) VALUES (1, 'Existing', '', '');
-			INSERT INTO messages (id, conversation_id, position, timestamp) VALUES (1, 1, 1, '');
-			INSERT INTO message_variant (id, message_id, position, content, timestamp) VALUES (1, 1, 1, 'Scene', '');
-			INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (1, 'painting', 'old', '{"brief":"A bridge","aspectRatio":"1:1"}');`);
+	database.exec("CREATE TEMP TABLE conversation_generation_settings (conversation_id INTEGER PRIMARY KEY, connection_profile_id INTEGER, settings_json TEXT NOT NULL)");
+	const chat = createConversationWithHistory(database, { name: "Existing", messages: [{ variants: [{ content: "Scene", timestamp: "", selected: true }], timestamp: "" }] });
+	database.exec("DROP TABLE temp.conversation_generation_settings");
+	const variant = chat.messages[0]!.variants[0]!;
+	database.run("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'painting', 'old', ?)", [variant.id, '{"brief":"A bridge","aspectRatio":"1:1"}']);
 	initializeDatabase(database);
-	expect(database.query("SELECT value FROM message_variant_data").get()).toEqual({ value: '{"brief":"A bridge","aspectRatio":"1:1","ask":"","references":""}' });
+	expect(database.query("SELECT json_extract(value, '$.ask') AS ask FROM message_variant_data").get()).toEqual({ ask: "" });
+});
+
+test("0046 opens a Gallery with kept Illustrations from before and after Ask", async () => {
+	using database = await databaseAtMigration(45);
+	const chat = createConversationWithHistory(database, { name: "Existing", messages: [{ variants: [{ content: "Scene", timestamp: "", selected: true }], timestamp: "" }] });
+	const variant = chat.messages[0]!.variants[0]!;
+	const stored = { aspectRatio: "1:1", imageModel: { profileId: 1, model: "painter" } };
+	const attached = { ...stored, image: `image:${"a".repeat(64)}`, brief: "A bridge", ask: "At dusk" };
+	const kept = { ...stored, image: `image:${"b".repeat(64)}`, brief: "A tower", ask: "Draw a tower" };
+	const legacy = { ...stored, image: `image:${"c".repeat(64)}`, brief: "A lake" };
+	const upload = { image: `image:${"d".repeat(64)}`, name: "An upload" };
+	database.run("INSERT INTO message_variant_data (message_variant_id, namespace, key, value) VALUES (?, 'painting', 'old', ?)", [variant.id, JSON.stringify(attached)]);
+	database.run(`INSERT INTO conversation_data (conversation_id, namespace, key, value) VALUES
+		(?, 'painting', 'gallery:kept', ?),
+		(?, 'painting', 'gallery:legacy', ?),
+		(?, 'painting', 'gallery:upload', ?)`, [chat.id, JSON.stringify(kept), chat.id, JSON.stringify(legacy), chat.id, JSON.stringify(upload)]);
+	initializeDatabase(database);
+	const gallery = createPaintingModule(database).gallery(chat.id);
+	expect(gallery.map(({ keptId, name, painted }) => ({ keptId, name, painted }))).toEqual([
+		{ keptId: undefined, name: "At dusk", painted: { brief: "A bridge", ask: "At dusk", references: "" } },
+		{ keptId: "kept", name: "Draw a tower", painted: { brief: "A tower", ask: "Draw a tower", references: "" } },
+		{ keptId: "legacy", name: "Illustration", painted: { brief: "A lake", ask: "", references: "" } },
+		{ keptId: "upload", name: "An upload", painted: undefined },
+	]);
 });

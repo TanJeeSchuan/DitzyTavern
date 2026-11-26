@@ -50,3 +50,23 @@ test.each(["without references", "with references"])("OpenAI-compatible painting
 		},
 	});
 });
+
+test.each(["openrouter", "openai-compatible"] as const)("%s reports the status of an empty binary-labelled HTTP reply", async (adapter) => {
+	using server = Bun.serve({ hostname: "127.0.0.1", port: 0, fetch: () => new Response(null, {
+		status: 503, headers: { "content-type": "application/octet-stream", "content-length": "0" },
+	}) });
+	await expect(paintImage({
+		profile: { ...blankConnectionProfileDraft, apiFormat: "images", adapter, requestUrl: new URL("/v1/?version=503", server.url).href },
+		modelId: "painter", secrets: null, brief: "A map", aspectRatio: "1:1", loadImage: () => undefined,
+	})).rejects.toThrow("HTTP 503");
+});
+
+test.each(["openrouter", "openai-compatible"] as const)("%s redacts a URL query value from provider failures", async (adapter) => {
+	const code = "illustration-code x/y";
+	const encoded = encodeURIComponent(code);
+	await expect(paintImage({
+		profile: { ...blankConnectionProfileDraft, apiFormat: "images", adapter, requestUrl: `https://example.com/images?access=${encoded}` },
+		modelId: "painter", secrets: null, brief: "A map", aspectRatio: "1:1", loadImage: () => undefined,
+		fetch: async () => new Response(`Rejected ${code} and ${encoded}.`, { status: 403 }),
+	})).rejects.toThrow("Rejected [REDACTED] and [REDACTED].");
+});

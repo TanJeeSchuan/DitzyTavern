@@ -14,13 +14,13 @@ export function redactProviderDiagnostic(text: string, secrets: readonly string[
 }
 
 export async function readProviderDiagnostic(response: Response, secrets: readonly string[]): Promise<string> {
+	if (response.body === null) return "";
 	const contentType = response.headers.get("content-type");
 	if (contentType !== null && !isTextualContentType(contentType)) {
-		await response.body?.cancel();
+		await response.body.cancel();
 		return "[Provider response omitted: binary body]";
 	}
-	const reader = response.body?.getReader();
-	if (!reader) return "";
+	const reader = response.body.getReader();
 	const decoder = new TextDecoder();
 	let text = "";
 	let bytes = 0;
