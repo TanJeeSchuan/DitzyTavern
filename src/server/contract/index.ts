@@ -5,6 +5,7 @@ import type { ConversationRouteOptions } from "./conversation";
 import { Elysia } from "elysia";
 import { openapi } from "@elysiajs/openapi";
 import { defaultArtifactDirectory } from "../artifact";
+import { buildMetadata } from "../build-metadata";
 import { getWorkspace } from "../database/workspace";
 import { createChatImportRoutes } from "./chat-import";
 import { createCharacterLibraryRoutes } from "./character-library";
@@ -38,7 +39,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 		const chat = chatPath.exec(new URL(request.url).pathname)?.[1];
 		if (chat !== undefined) await loadChatVersions(database, Number(chat)).catch((error: Error) => console.error(`[boxes] Chat ${chat}'s Box versions did not load:`, error));
 	})
-	.use(openapi({ provider: null, specPath: "/api/openapi.json" }))
+	.use(openapi({ provider: null, specPath: "/api/openapi.json", documentation: { info: { title: "DitzyTavern API", version: String(buildMetadata.buildNumber ?? buildMetadata.distribution) } } }))
 	.use(contentValidators)
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
