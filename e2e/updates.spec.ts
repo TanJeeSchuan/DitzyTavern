@@ -52,7 +52,7 @@ test("custom builds show unavailable checks in narrow Settings without registry 
 	expect((await llm.log()).registryCalls).toEqual([]);
 });
 
-test("server restart cancels an in-flight refresh and clears the cached comparison", async ({ page, llm, context }) => {
+test("server restart cancels an in-flight refresh and clears the cached comparison", async ({ page, llm, context, browser }) => {
 	const revision = "a".repeat(40);
 	await llm.updates({ build: { distribution: "official", buildNumber: 9, revision }, automaticChecks: false, replies: [{ buildNumber: 10, revision }, { buildNumber: 11, revision, hold: true }] });
 	await page.goto("/");
@@ -61,13 +61,15 @@ test("server restart cancels an in-flight refresh and clears the cached comparis
 	await expect(page.getByText("Build 10 available", { exact: true })).toBeVisible();
 	await page.getByRole("button", { name: "Check now", exact: true }).click();
 	await expect(page.getByText("Checking…", { exact: true })).toBeVisible();
-	await page.close();
+	await expect.poll(async () => (await llm.log()).registryCalls).toHaveLength(4);
+	await context.close();
 	await llm.restart("graceful");
-	const reopened = await context.newPage();
-	await reopened.goto("/");
+	const reopened = await browser.newPage();
+	await reopened.goto(llm.url);
 	await reopened.getByRole("button", { name: "Settings", exact: true }).click();
 	await expect(reopened.getByText("Not checked", { exact: true })).toBeVisible();
 	await expect(reopened.getByText("Build 10 available", { exact: true })).toHaveCount(0);
+	expect((await llm.log()).registryCalls).toHaveLength(0);
 	await reopened.close();
 });
 
