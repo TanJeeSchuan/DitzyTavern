@@ -10,7 +10,7 @@ const HEARTBEAT_MS = 30_000;
 // reads revalidate instead of polling. An event carries only the change's
 // number: a reader refetches and its validator answers what did not change.
 // A proxy closes a quiet stream, so a keep-alive goes out between changes.
-export const createChangeRoutes = (database: Database) => new Elysia()
+export const createChangeRoutes = (database: Database) => new Elysia({ tags: ["Changes"] })
 	.get("/api/changes", (context) => subscriptionEvents(context, (emit, close) => {
 		const unsubscribe = subscribeDatabaseChanges(database, (seq) => emit(sse({ event: "change", data: { seq } })), close);
 		const heartbeat = setInterval(() => emit(new TextEncoder().encode(": keep-alive\n\n")), HEARTBEAT_MS);

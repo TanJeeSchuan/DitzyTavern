@@ -31,7 +31,7 @@ export const createChatImportRoutes = (
 	database: Database,
 	artifactDirectory: string,
 ) =>
-	new Elysia()
+	new Elysia({ tags: ["Chat import"] })
 		.post(
 			"/api/imports/chats/stage",
 			async ({ request, status }) => {

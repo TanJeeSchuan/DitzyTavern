@@ -11,7 +11,7 @@ import {
 } from "../../shared/contract/native-conversation";
 
 export const createNativeConversationRoutes = (database: Database) =>
-	new Elysia().post(
+	new Elysia({ tags: ["Conversations"] }).post(
 		"/api/conversations/native",
 		({ body }) => {
 			try {

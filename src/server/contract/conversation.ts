@@ -112,7 +112,7 @@ export const createConversationRoutes = (
 ) => {
 	const generationCoordinator = createGenerationCoordinator(database, options);
 
-	return new Elysia()
+	return new Elysia({ tags: ["Conversations"] })
 		.delete(
 			"/api/conversations/:id",
 			({ params }) => {

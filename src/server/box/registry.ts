@@ -167,7 +167,7 @@ const mountedRoutes = (id: BoxId, box: HostBox, database: Database): AnyElysia |
 	if (box.routes === undefined) return undefined;
 	const routes: unknown = box.routes(database, (conversationId) => boxExports(database, conversationId));
 	if (!(routes instanceof Elysia)) throw new Error(`The ${id} Box's routes must return an Elysia app.`);
-	return new Elysia({ prefix: `/api/boxes/${id}` }).use(routes);
+	return new Elysia({ prefix: `/api/boxes/${id}`, tags: ["Boxes"] }).use(routes);
 };
 
 /** @approved Where a Box's client comes from: a trusted Box's built module, or a sandboxed Box's `descriptor.json` and the `ui.js` and `ui.css` the loader read or built; a Box whose window is the passage timeline has no `ui.js`. */

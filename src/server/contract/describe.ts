@@ -8,7 +8,7 @@ import type { ConversationRouteOptions } from "./conversation";
 import { presentDomainError } from "./domain-error";
 
 const response = { 200: description, 422: invalidOutcome };
-export const createDescribeRoutes = (database: Database, options: ConversationRouteOptions = {}) => new Elysia()
+export const createDescribeRoutes = (database: Database, options: ConversationRouteOptions = {}) => new Elysia({ tags: ["Describing"] })
 	.post("/api/describe", async ({ body, request }) => {
 		try { return await describeImages(database, body, options, request.signal); }
 		catch (error) {

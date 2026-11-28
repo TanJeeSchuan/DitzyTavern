@@ -1,6 +1,6 @@
 # Configuring the app over HTTP
 
-The running server describes its whole HTTP API at `GET /api/openapi.json` (OpenAPI 3.1, generated from the route schemas in `src/shared/contract`). The server listens on `http://127.0.0.1:3000` unless `HOST` or `PORT` say otherwise; in dev, Vite on 5173 proxies `/api` to it.
+The running server describes its whole HTTP API at `GET /api/openapi.json` (OpenAPI 3.1, generated from the route schemas in `src/shared/contract`). The server listens on `http://127.0.0.1:3000` unless `HOST` or `PORT` say otherwise; in dev, Vite on 5173 proxies `/api` to it. The spec runs to about 400 KB, and each operation carries a tag naming its area (`Characters`, `Conversations`, `Connection Settings`, …), so filter by tag rather than reading it whole.
 
 Settings change through `POST …/commands` routes. Each body is one command picked by its `type` (Conversation commands nest it as `action.type`), and carries the `expectedRevision` of the state it was based on. Prompt Preset block routes (`/api/prompt-presets/:presetId/blocks…`) take no revision, so their last write wins.
 

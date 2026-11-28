@@ -10,7 +10,7 @@ import { presentDomainError } from "./domain-error";
 
 export const createPaintingRoutes = (database: Database, options: ConversationRouteOptions = {}) => {
 	const paintings = createPaintingModule(database, options);
-	return new Elysia()
+	return new Elysia({ tags: ["Painting"] })
 		.post("/api/conversations/:id/brief", async ({ params, body, request }) => {
 			const events = writeBrief(database, params.id, body, options, request.signal);
 			try {

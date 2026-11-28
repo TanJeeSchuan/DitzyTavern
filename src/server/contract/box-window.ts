@@ -28,7 +28,7 @@ const readBox = (database: Database, conversationId: number, id: BoxId) => readB
 	return loaded.box.read?.(read);
 });
 
-export const createBoxWindowRoutes = (database: Database) => new Elysia()
+export const createBoxWindowRoutes = (database: Database) => new Elysia({ tags: ["Box windows"] })
 	.get("/api/conversations/:id/boxes/:box", ({ params }) => operation(database, params.id, params.box, () => readBox(database, params.id, params.box) ?? notFoundResponse()),
 		{ params, response: readResponse })
 	// @approved

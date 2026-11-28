@@ -40,7 +40,7 @@ export const createConnectionSettingsRoutes = (
 ) => {
 	const settings = createConnectionSettingsModule(database, options);
 
-	return new Elysia()
+	return new Elysia({ tags: ["Connection Settings"] })
 		.get(
 			"/api/connection-settings",
 			() => toSettingsPayload(settings.get()),

@@ -47,7 +47,7 @@ export interface LorebookRouteOptions extends ConnectionSettingsModuleOptions {
 	readonly fetch?: ModelFetch;
 }
 
-export const createLorebookRoutes = (database: Database, options: LorebookRouteOptions = {}) => new Elysia()
+export const createLorebookRoutes = (database: Database, options: LorebookRouteOptions = {}) => new Elysia({ tags: ["Lorebooks"] })
 	.get("/api/lorebooks", () => ({ books: listLorebooks(database) }), { response: lorebookListResponse })
 	.get("/api/lorebooks/:bookId", ({ params }) => {
 		const book = readLorebook(database, params.bookId);
@@ -113,7 +113,7 @@ export const createLorebookRoutes = (database: Database, options: LorebookRouteO
 	}, { body: loreMatchTestBody, response: loreMatchTestResponse })
 	.use(createLorebookAttachmentRoutes(database));
 
-const createLorebookAttachmentRoutes = (database: Database) => new Elysia()
+const createLorebookAttachmentRoutes = (database: Database) => new Elysia({ tags: ["Lorebooks"] })
 	.get("/api/lorebooks/attachments", ({ query }) => {
 		const state = readLorebookAttachmentState(database, query.conversationId);
 		return state ?? notFoundResponse();

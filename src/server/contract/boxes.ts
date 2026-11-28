@@ -40,7 +40,7 @@ const versionOf = (box: string, version: string) => loadBoxVersion(box, version)
 // client to build its surfaces from and its `ui.js` and `ui.css` at URLs
 // that never change what they answer, so they are cached for good.
 export const createBoxRoutes = (database: Database) => {
-	const app = new Elysia()
+	const app = new Elysia({ tags: ["Boxes"] })
 		.get("/api/boxes", () => [...installedBoxes().values()].map(({ metadata }) => {
 			const source = boxClientSource(metadata.id);
 			const version = serverBoxes().get(metadata.id)?.version;
