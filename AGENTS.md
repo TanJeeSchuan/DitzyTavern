@@ -5,6 +5,8 @@ Read `CODING_STANDARDS.md` before writing or reviewing code.
 
 Box work (`src/boxes`, `src/box-sdk`, `src/server/box`, `src/client/box-windows`): start at `docs/box-system/README.md`, then follow its table to the files for your work.
 
+To change a running app's settings over HTTP, read `docs/agents/http-api.md`.
+
 There is `playwright-cli` installed
 
 When you finish with the dev or e2e servers, free ports 3000 and 5173 with `bun run dev:stop`.
@@ -19,9 +21,9 @@ When the user asks for rapid UI iteration, keep the playwright-cli session runni
 - After each test the fixture also fails if any captured Prompt Plan (from generation inspection) doesn't match a request the fake actually received. `llm.restart("crash" | "graceful")` relaunches the server on the same database; graceful shutdown uses an HTTP command because Windows signals force-kill the process.
 - `llm.authoring(...replies)` scripts Creator Mode's coding agent: libfx sends real HTTP to the worker's `/__e2e/authoring/chat/completions`, which answers each request with the next reply's tool calls or text and logs it as an `authoring` call; story calls never reach it. Point a Chat Completions profile's request URL at `${llm.url}/__e2e/authoring/`.
 - `llm.installBox(id)` copies `e2e/fixtures/boxes/<id>/`, built by the global setup with `box:build`, into the worker's plugin folder; a `llm.restart` loads it, and the next test's reset empties the folder.
+- `bun run test:doherty` reruns the suite with every API call delayed 1.5 s and fails a test when a clicked control paints no DOM change within 400 ms or a click or keypress takes over 400 ms to paint (`e2e/doherty.ts`); it also runs `e2e/doherty-*.spec.ts`, a long Chat on a 4x slower CPU, which the normal run skips. Pass spec paths to check only those. Exempt an accepted violation with `test.use({ dohertyExempt: /.../ })`.
 
 ## Ticket implementation (if implementing following tickets, ignore if no tickets exist)
-- `bun run test:doherty` reruns the suite with every API call delayed 1.5 s and fails a test when a clicked control paints no DOM change within 400 ms or a click or keypress takes over 400 ms to paint (`e2e/doherty.ts`); it also runs `e2e/doherty-*.spec.ts`, a long Chat on a 4x slower CPU, which the normal run skips. Pass spec paths to check only those. Exempt an accepted violation with `test.use({ dohertyExempt: /.../ })`.
 - Remember to edit the tickets to tick the TODOs on the way and update statuses during implementing
 
 ## Database persistence

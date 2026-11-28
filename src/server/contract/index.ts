@@ -3,6 +3,7 @@ import { createPaintingRoutes } from "./painting";
 import type { Database } from "bun:sqlite";
 import type { ConversationRouteOptions } from "./conversation";
 import { Elysia } from "elysia";
+import { openapi } from "@elysiajs/openapi";
 import { defaultArtifactDirectory } from "../artifact";
 import { getWorkspace } from "../database/workspace";
 import { createChatImportRoutes } from "./chat-import";
@@ -37,6 +38,7 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 		const chat = chatPath.exec(new URL(request.url).pathname)?.[1];
 		if (chat !== undefined) await loadChatVersions(database, Number(chat)).catch((error: Error) => console.error(`[boxes] Chat ${chat}'s Box versions did not load:`, error));
 	})
+	.use(openapi({ provider: null, specPath: "/api/openapi.json" }))
 	.use(contentValidators)
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })
