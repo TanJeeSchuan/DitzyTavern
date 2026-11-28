@@ -3,7 +3,9 @@ import { createPaintingRoutes } from "./painting";
 import type { Database } from "bun:sqlite";
 import type { ConversationRouteOptions } from "./conversation";
 import { Elysia } from "elysia";
+import { openapi } from "@elysiajs/openapi";
 import { defaultArtifactDirectory } from "../artifact";
+import { buildMetadata } from "../build-metadata";
 import { getWorkspace } from "../database/workspace";
 import { createChatImportRoutes } from "./chat-import";
 import { createCharacterLibraryRoutes } from "./character-library";
@@ -28,7 +30,7 @@ import { loadChatVersions } from "../box/registry";
 
 const chatPath = /^\/api\/conversations\/(\d+)(?:\/|$)/;
 
-export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(), updates: UpdateChecker = createUpdateChecker(database), authoring = createAuthoring(database)) => new Elysia()
+export const createContract = (database: Database, options: ConversationRouteOptions = {}, artifactDirectory = defaultArtifactDirectory(), updates: UpdateChecker = createUpdateChecker(database), authoring = createAuthoring(database)) => new Elysia({ tags: ["Workspace"] })
 	// @approved
 	//  Every Chat route resolves the Chat's Boxes at the versions it pins, so
 	// those versions load before the route runs. A version that fails to load
@@ -37,6 +39,16 @@ export const createContract = (database: Database, options: ConversationRouteOpt
 		const chat = chatPath.exec(new URL(request.url).pathname)?.[1];
 		if (chat !== undefined) await loadChatVersions(database, Number(chat)).catch((error: Error) => console.error(`[boxes] Chat ${chat}'s Box versions did not load:`, error));
 	})
+	.use(openapi({
+		provider: null,
+		specPath: "/api/openapi.json",
+		exclude: { paths: [/^(?!\/api\/)/] },
+		documentation: { info: {
+			title: "DitzyTavern API",
+			version: String(buildMetadata.buildNumber ?? buildMetadata.distribution),
+			description: "Settings change through `POST …/commands`: send one command, picked by its `type` (Conversation commands nest it as `action.type`), with the `expectedRevision` of the state you read. A 409 `conflict` means the state moved, so read it again and redo the edit. A 422 means the body failed validation, and its `reason` says why.",
+		} },
+	}))
 	.use(contentValidators)
 	.get("/api/health", () => ({ ok: true }), { response: healthResponse })
 	.get("/api/workspace", () => getWorkspace(database), { response: workspaceResponse })

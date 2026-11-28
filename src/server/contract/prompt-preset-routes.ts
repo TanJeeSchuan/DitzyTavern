@@ -49,7 +49,7 @@ const recipeResponse = (operation: () => void) => {
 };
 
 export const createPromptPresetRoutes = (database: Database) =>
-	new Elysia()
+	new Elysia({ tags: ["Prompt Presets"] })
 		.post(
 			"/api/prompt-presets/import/sillytavern/review",
 			({ body }) => {

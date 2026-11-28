@@ -3,7 +3,7 @@ import { automaticUpdateChecksCommand, updateStatus } from "../../shared/contrac
 import type { UpdateChecker } from "../updates";
 import { subscriptionEvents } from "./subscription-events";
 
-export const createUpdateRoutes = (checker: UpdateChecker) => new Elysia()
+export const createUpdateRoutes = (checker: UpdateChecker) => new Elysia({ tags: ["Updates"] })
 	.get("/api/updates", () => checker.get(), { response: updateStatus })
 	.post("/api/updates/check", () => checker.check(), { response: updateStatus })
 	.post("/api/updates/automatic", ({ body }) => checker.setAutomaticChecks(body.enabled), { body: automaticUpdateChecksCommand, response: updateStatus })

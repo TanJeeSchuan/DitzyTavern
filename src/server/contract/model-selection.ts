@@ -6,7 +6,7 @@ import { presentDomainError } from "./domain-error";
 
 import { applyDescribingModelSettings, readDescribingModelSettings } from "../painting/describing-model-settings";
 
-export const createModelSelectionRoutes = (database: Database) => new Elysia()
+export const createModelSelectionRoutes = (database: Database) => new Elysia({ tags: ["Model selection"] })
 	.get("/api/describing-model", () => readDescribingModelSettings(database), { response: modelSelectionReadResponse })
 	.post("/api/describing-model/commands", ({ body }) => {
 		try { return { outcome: "applied" as const, settings: applyDescribingModelSettings(database, body) }; }

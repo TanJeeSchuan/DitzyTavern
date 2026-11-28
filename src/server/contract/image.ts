@@ -9,7 +9,7 @@ import { invalidOutcome, notFoundOutcome } from "../../shared/contract/outcomes"
 const uploadResponse = { 200: imageUploadResponse, 422: invalidOutcome };
 
 export const createImageRoutes = (database: Database) =>
-	new Elysia().post("/api/images", async ({ body }) => {
+	new Elysia({ tags: ["Images"] }).post("/api/images", async ({ body }) => {
 		try {
 			return await uploadImage(database, Buffer.from(body.data, "base64"));
 		} catch (error) {

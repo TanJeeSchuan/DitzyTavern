@@ -9,7 +9,7 @@ import {
 } from "../../shared/contract/box";
 import { notFoundResponse } from "./responses";
 
-export const createBoxDecisionSettingsRoutes = (database: Database) => new Elysia()
+export const createBoxDecisionSettingsRoutes = (database: Database) => new Elysia({ tags: ["Boxes"] })
 	.get("/api/boxes/:box/decision-settings", ({ params }) => isDigestBox(params.box) ? readBoxDecisionSettings(database, params.box) : notFoundResponse(),
 		{ params, response: boxDecisionSettingsReadResponse })
 	.post("/api/boxes/:box/decision-settings/commands", ({ params, body }) => {

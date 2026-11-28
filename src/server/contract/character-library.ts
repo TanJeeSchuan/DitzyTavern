@@ -19,7 +19,7 @@ import { toCharacterPayload } from "./projections";
 // injected so tests can mount the same routes against a temporary store;
 // production provides the server-owned database connection.
 export const createCharacterLibraryRoutes = (database: Database) =>
-	new Elysia()
+	new Elysia({ tags: ["Characters"] })
 		.get(
 			"/api/characters",
 			() => ({

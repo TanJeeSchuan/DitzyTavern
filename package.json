@@ -43,6 +43,7 @@
 		"@ai-sdk/deepseek": "^3.0.32",
 		"@ai-sdk/openai-compatible": "^3.0.37",
 		"@ai-sdk/provider": "4.0.8",
+		"@elysiajs/openapi": "^1.4.17",
 		"@elysiajs/static": "^1.4.10",
 		"@jitl/quickjs-wasmfile-release-sync": "0.32.0",
 		"@openrouter/ai-sdk-provider": "3.0.0",

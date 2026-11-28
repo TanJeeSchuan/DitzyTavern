@@ -10,7 +10,7 @@ import { draftPerson, readDrafter } from "./server-draft";
 // `/api/boxes/character-drafter`. The stream sends each step the agent runs,
 // then the draft or why it failed, and closing it cancels the run; nothing
 // is stored.
-export const drafterRoutes = (database: Database, exportsOf: (conversationId: number) => BoxExports) => new Elysia()
+export const drafterRoutes = (database: Database, exportsOf: (conversationId: number) => BoxExports) => new Elysia({ tags: ["Character Drafter Box"] })
 	.get("/conversations/:id", ({ params }) => readDrafter(database, params.id, exportsOf) ?? status(404, { outcome: "not-found" as const }),
 		{ params: drafterConversationParams, response: { 200: drafterRead, 404: notFoundOutcome } })
 	.post("/draft", ({ body, request, set }) => subscriptionEvents({ request, set }, (emit, close) => {

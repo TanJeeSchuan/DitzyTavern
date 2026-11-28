@@ -23,7 +23,7 @@ const ids = (list: string) => list === "" ? [] : list.split(",").map(Number);
 //  records change through the host's `set-box-record` and `reset-box-record`
 //  commands, and its digests through the host's catch-up and passage digest
 //  routes.
-export const memoryRoutes = (database: Database) => new Elysia()
+export const memoryRoutes = (database: Database) => new Elysia({ tags: ["Memory Box"] })
 	.get("/settings", () => createMemorySettingsModule(database).get(), { response: memorySettingsResponse })
 	.post("/settings/commands", ({ body }) => {
 		try {

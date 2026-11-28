@@ -324,7 +324,7 @@ export const createAuthoring = (database: Database, folders: AuthoringFolders = 
 		}
 		return installed;
 	};
-	const routes = new Elysia()
+	const routes = new Elysia({ tags: ["Authoring"] })
 		.get("/api/authoring/sessions", () => list(), { response: authoringSessions })
 		.post("/api/authoring/sessions", ({ body }) => start(body), { body: authoringStartBody, response: authoringStart })
 		.post("/api/authoring/sessions/:session/open", ({ params, body }) => open(params.session, body), { params: authoringSessionParams, body: authoringStartBody, response: authoringStart })
